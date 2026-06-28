@@ -186,16 +186,7 @@ export default function ScheduleCard({
           </button>
         )}
 
-        {isConfirmed && (
-          <button
-            onClick={() => onGeneratePDF(res)}
-            className="px-3 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-colors cursor-pointer flex items-center text-xs font-semibold font-sans shadow-xs gap-1"
-            title="Gerar PDF - Aviso de Saída (NORMAM Anexo 4-A)"
-          >
-            <FileDown className="w-3.5 h-3.5" />
-            <span>Aviso Saída</span>
-          </button>
-        )}
+
 
         <button
           onClick={() => onOpenStatus(res)}

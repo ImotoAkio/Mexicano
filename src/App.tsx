@@ -23,6 +23,7 @@ import MaintenancePage from './components/MaintenancePage';
 import PortalInterno from './components/finance/PortalInterno';
 import MarinaChecklistsView from './components/MarinaChecklistsView';
 import MarinaFuelView from './components/MarinaFuelView';
+import WhatsAppPage from './components/WhatsAppPage';
 import { clientDB, boatDB, reservationDB } from './db';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -80,7 +81,7 @@ import {
 } from 'lucide-react';
 
 
-type TabType = 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel';
+type TabType = 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -99,9 +100,15 @@ export default function App() {
   const [isRoleLoading, setIsRoleLoading] = useState(false);
   const [isAdminDbLoaded, setIsAdminDbLoaded] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<TabType>('schedules');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    return (localStorage.getItem('admin_active_tab') as TabType) || 'schedules';
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('admin_active_tab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     const handleLocationChange = () => {
@@ -180,8 +187,8 @@ export default function App() {
       group: 'Operacional',
       items: [
         { id: 'schedules' as TabType, label: 'Agenda de Reservas', icon: CalendarIcon },
-        { id: 'checklists' as TabType, label: 'Checklists (Marina)', icon: ClipboardList },
-        { id: 'fuel' as TabType, label: 'Combustível (Marina)', icon: Droplets },
+        { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
+
         { id: 'sound' as TabType, label: 'Vistoria de Som', icon: Speaker },
         { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
         { id: 'manutencoes' as TabType, label: 'Manutenções', icon: Wrench },
@@ -448,6 +455,7 @@ export default function App() {
               {activeTab === 'dashboard' && adminRole !== 'financeiro' && <Dashboard />}
               {activeTab === 'schedules' && adminRole === 'marina' && <MarinaDashboard onLogout={handleLogout} operadorNome={adminName} />}
               {activeTab === 'schedules' && adminRole !== 'marina' && <SchedulesPage />}
+              {activeTab === 'whatsapp' && <WhatsAppPage />}
               {activeTab === 'checklists' && <AdminChecklistsWrapper />}
               {activeTab === 'fuel' && <AdminFuelWrapper />}
               {activeTab === 'reports' && <SchedulesReportPage />}

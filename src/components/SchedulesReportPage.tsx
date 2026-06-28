@@ -293,6 +293,14 @@ export default function SchedulesReportPage() {
               previsaoChegada: horaChegada || '17:28',
               observacao: numObs.trim() || 'Nenhuma'
             });
+            
+            try {
+              const textToCopy = `✅ CONFIRMADO - ${boatCode} - ${ownerName.toUpperCase()}    |  Saída: ${horaSaida || '11:30'}`;
+              await navigator.clipboard.writeText(textToCopy);
+            } catch (err) {
+              console.error('Erro ao copiar para clipboard:', err);
+            }
+            
             showToast('Documento gerado!', 'success');
           } catch (pdfErr) {
             console.error('Erro ao gerar PDF', pdfErr);
