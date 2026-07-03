@@ -16,6 +16,17 @@ import ImportXMLModal from './finance/ImportXMLModal';
 import Select from 'react-select';
 import { clientDB } from '../db';
 
+const cleanDescription = (desc: string) => {
+  if (!desc) return '';
+  // Remove "Serviço realizado: " prefix case-insensitively
+  let cleaned = desc.replace(/^Serviço realizado:\s*/i, '');
+  // Remove " - Cliente Ref: <any name>" suffix
+  cleaned = cleaned.replace(/\s*-\s*Cliente Ref:.*$/i, '');
+  // Remove exactly "Cliente Ref: <any name>"
+  cleaned = cleaned.replace(/^Cliente Ref:.*$/i, '');
+  return cleaned.trim();
+};
+
 export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab?: 'dashboard' | 'lancamentos' | 'atividades' | 'agenda' | 'cobranca' }) {
   const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -140,8 +151,8 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       const token = localStorage.getItem('admin_token');
       const res = await fetch('/api/financeiro/transacoes', {
@@ -202,12 +213,12 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
     } catch (err) {
       console.error("Failed to load finance data", err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(true);
   }, []);
 
   // Update selected client states when dropdown changes or clients load
@@ -318,8 +329,14 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
       const uploadResult = await resUpload.json();
       const fileUrl = uploadResult.url;
 
-      // Save transaction with comprovante url
-      const updatedTrans = { ...t, comprovante: fileUrl };
+      // Save transaction with comprovante url, automatically setting it to paid
+      const updatedTrans: TransacaoFinanceira = { 
+        ...t, 
+        comprovante: fileUrl,
+        status: 'pago',
+        dataPagamento: new Date().toISOString().split('T')[0]
+      };
+      
       const resSave = await fetch('/api/financeiro/transacoes/save', {
         method: 'POST',
         headers: { 
@@ -331,6 +348,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
 
       if (resSave.ok) {
         fetchData();
+        setViewingTransaction(updatedTrans); // Auto-update local state so modal updates instantly
       } else {
         alert('Erro ao vincular o comprovante ao lançamento.');
       }
@@ -439,30 +457,28 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
   };
 
   const handleCopyWhatsappMessage = (cliente: Cliente, clientTrans: TransacaoFinanceira[]) => {
-    let message = `*Mexicano Gestao Nautica - Demonstrativo de Pendencias*\n\n`;
-    message += `Ola, *${cliente.nome}*!\n`;
-    message += `Identificamos os seguintes lancamentos pendentes vinculados as suas cotas:\n\n`;
+    let message = `Bom dia ☀️\n`;
+    message += `Prezado(a) *${cliente.nome}*, tudo bem?\n\n`;
+    message += `Identificamos uma reserva programada em sua embarcação. No entanto, nosso sistema aponta a existência de valores em aberto, o que poderá impedir o registro da O.S. pelo sistema operacional da marina e, consequentemente, a descida da embarcação na data agendada.\n\n`;
+    message += `Segue(m) abaixo o(s) valor(es) em aberto:\n\n`;
 
     let totalGeral = 0;
 
     clientTrans.forEach(t => {
-      const { days, interest, total } = calculateTransactionInterest(t);
+      const { total } = calculateTransactionInterest(t);
       totalGeral += total;
       
-      const categoryName = t.categoria.replace('Servi??o', 'Serviço').replace('??', 'ç');
-
-      message += `- *${categoryName}*\n`;
-      message += `  Vencimento: ${new Date(t.dataVencimento).toLocaleDateString('pt-BR')}\n`;
-      message += `  Valor Original: R$ ${Number(t.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
-      if (days > 0) {
-        message += `  _Atraso de ${days} dias. Juros acumulados (0,0733%/dia): R$ ${interest.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}_\n`;
-      }
-      message += `  *Total do Lancamento: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}*\n\n`;
+      const categoryName = t.categoria.replace('Serviço', 'Serviço');
+      const cleanDesc = cleanDescription(t.descricao);
+      const descPart = cleanDesc ? ` (${cleanDesc})` : '';
+      const vencDate = new Date(t.dataVencimento).toLocaleDateString('pt-BR');
+      
+      message += `• *${categoryName}${descPart}* | Venc: ${vencDate} | *R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}*\n`;
     });
 
-    message += `*Valor Total em Aberto: R$ ${totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}*\n\n`;
-    message += `Caso ja tenha efetuado o pagamento, por favor nos envie o comprovante correspondente para realizarmos a baixa em nosso sistema.\n\n`;
-    message += `Agradecemos a atencao!`;
+    message += `\n*Valor Total em Aberto: R$ ${totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}*\n\n`;
+    message += `Para regularizarmos a situação e liberarmos a descida da embarcação, por favor nos envie o comprovante correspondente respondendo a esta mensagem.\n\n`;
+    message += `Agradecemos a atenção!`;
 
     navigator.clipboard.writeText(message).then(() => {
       setCopySuccess(true);
@@ -557,6 +573,18 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
       doc.text(`R$ ${interest.toFixed(2)}`, 145, y);
       doc.text(`R$ ${total.toFixed(2)}`, 175, y);
       
+      const cleanDesc = cleanDescription(t.descricao);
+      if (cleanDesc) {
+        y += 4;
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139); // slate-500
+        doc.text(cleanDesc.substring(0, 60), 22, y);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(51, 65, 85); // slate-700
+      }
+      
       y += 8;
       if (y > 270) {
         doc.addPage();
@@ -638,24 +666,6 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
     setIsModalOpen(true);
   };
 
-  // KPIs
-  const totalRecebidos = transacoes.filter(t => t.tipo === 'receita' && t.status === 'pago').reduce((acc, t) => acc + Number(t.valor), 0);
-  const aReceber = transacoes.filter(t => t.tipo === 'receita' && t.status === 'pendente').reduce((acc, t) => acc + Number(t.valor), 0);
-  
-  let totalAtrasadoPrincipal = 0;
-  let totalAtrasadoJuros = 0;
-  transacoes.forEach(t => {
-    if (t.tipo === 'receita') {
-      const isOverdue = t.status === 'atrasado' || (t.status === 'pendente' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
-      if (isOverdue) {
-        const { interest } = calculateTransactionInterest(t);
-        totalAtrasadoPrincipal += Number(t.valor);
-        totalAtrasadoJuros += interest;
-      }
-    }
-  });
-  const totalAtrasadosComJuros = totalAtrasadoPrincipal + totalAtrasadoJuros;
-
   // Filtered transactions for Tab 1
   const filteredTransacoes = transacoes.filter(t => {
     const searchLower = searchTerm.toLowerCase();
@@ -706,6 +716,24 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
     return matchesSearch && matchesStatus && matchesTipo && matchesCliente && matchesEmbarcacao && matchesPeriodo;
   });
 
+  // KPIs calculados com base nas transações filtradas
+  const totalRecebidos = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status === 'pago').reduce((acc, t) => acc + Number(t.valor), 0);
+  const aReceber = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status === 'pendente').reduce((acc, t) => acc + Number(t.valor), 0);
+  
+  let totalAtrasadoPrincipal = 0;
+  let totalAtrasadoJuros = 0;
+  filteredTransacoes.forEach(t => {
+    if (t.tipo === 'receita') {
+      const isOverdue = t.status === 'atrasado' || (t.status === 'pendente' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
+      if (isOverdue) {
+        const { interest } = calculateTransactionInterest(t);
+        totalAtrasadoPrincipal += Number(t.valor);
+        totalAtrasadoJuros += interest;
+      }
+    }
+  });
+  const totalAtrasadosComJuros = totalAtrasadoPrincipal + totalAtrasadoJuros;
+
   // Today and Future bookings for Tab 2
   const todayStr = new Date().toISOString().split('T')[0];
   const upcomingReservas = reservas
@@ -753,27 +781,14 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 pb-4 border-b border-slate-100">
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-                <div className="p-2 bg-indigo-50 rounded-xl">
-                  <Wallet className="w-6 h-6 text-indigo-600" />
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-50 rounded-lg">
+                  <Wallet className="w-5 h-5 text-indigo-600" />
                 </div>
                 Financeiro & Conciliação
               </h1>
-              <div className="flex items-center gap-2 mt-1 sm:mt-0">
-                {isFinanceiroOrAdmin ? (
-                  <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                    Operador Ativo
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-                    <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
-                    Visualização
-                  </span>
-                )}
-              </div>
             </div>
-            <p className="text-sm text-slate-500 mt-3 max-w-2xl leading-relaxed">
+            <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
               Gestão unificada de pagamentos, conciliação diária e controle de inadimplência. Autenticado como <strong className="font-semibold text-slate-700 capitalize">{loggedUser?.username || 'Carregando...'}</strong>.
             </p>
           </div>
@@ -817,49 +832,49 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
         {activeTab === 'lancamentos' && (
           <div className="space-y-6 animate-in fade-in duration-300">
           {/* KPI Dashboard */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-100/60 p-6 rounded-[1.5rem] shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-              <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-100 rounded-full blur-2xl opacity-50 group-hover:opacity-70 transition-opacity"></div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-emerald-100/50 rounded-xl text-emerald-600">
-                  <TrendingUp className="w-5 h-5" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-100/60 p-4 rounded-xl shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-20 h-20 bg-emerald-100 rounded-full blur-2xl opacity-50 group-hover:opacity-70 transition-opacity"></div>
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="p-1.5 bg-emerald-100/50 rounded-lg text-emerald-600">
+                  <TrendingUp className="w-4 h-4" />
                 </div>
-                <p className="text-sm font-bold text-emerald-800">Total Recebido (Pago)</p>
+                <p className="text-xs font-bold text-emerald-800">Total Recebido (Pago)</p>
               </div>
-              <p className="text-3xl font-black mt-3 text-emerald-700 tracking-tight relative z-10">
-                <span className="text-lg opacity-60 mr-1">R$</span>
+              <p className="text-xl font-black mt-1.5 text-emerald-700 tracking-tight relative z-10">
+                <span className="text-sm opacity-60 mr-1">R$</span>
                 {totalRecebidos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
             </div>
 
-            <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100/60 p-6 rounded-[1.5rem] shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-              <div className="absolute -right-4 -top-4 w-24 h-24 bg-indigo-100 rounded-full blur-2xl opacity-50 group-hover:opacity-70 transition-opacity"></div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-indigo-100/50 rounded-xl text-indigo-600">
-                  <Wallet className="w-5 h-5" />
+            <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100/60 p-4 rounded-xl shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-20 h-20 bg-indigo-100 rounded-full blur-2xl opacity-50 group-hover:opacity-70 transition-opacity"></div>
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
+                  <Wallet className="w-4 h-4" />
                 </div>
-                <p className="text-sm font-bold text-indigo-800">A Receber (Pendentes)</p>
+                <p className="text-xs font-bold text-indigo-800">A Receber (Pendentes)</p>
               </div>
-              <p className="text-3xl font-black mt-3 text-indigo-700 tracking-tight relative z-10">
-                <span className="text-lg opacity-60 mr-1">R$</span>
+              <p className="text-xl font-black mt-1.5 text-indigo-700 tracking-tight relative z-10">
+                <span className="text-sm opacity-60 mr-1">R$</span>
                 {aReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
             </div>
 
-            <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-800 p-6 rounded-[1.5rem] shadow-md hover:shadow-lg transition-all relative overflow-hidden group">
-              <div className="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/20 rounded-full blur-2xl opacity-50 group-hover:opacity-70 transition-opacity"></div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-rose-500/10 rounded-xl text-rose-400">
-                  <AlertCircle className="w-5 h-5" />
+            <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-800 p-4 rounded-xl shadow-md hover:shadow-lg transition-all relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-20 h-20 bg-rose-500/20 rounded-full blur-2xl opacity-50 group-hover:opacity-70 transition-opacity"></div>
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="p-1.5 bg-rose-500/10 rounded-lg text-rose-400">
+                  <AlertCircle className="w-4 h-4" />
                 </div>
-                <p className="text-sm font-bold text-slate-300">Em Atraso (Com Juros)</p>
+                <p className="text-xs font-bold text-slate-300">Em Atraso (Com Juros)</p>
               </div>
-              <p className="text-3xl font-black mt-3 text-white tracking-tight relative z-10">
-                <span className="text-lg text-slate-400 mr-1">R$</span>
+              <p className="text-xl font-black mt-1.5 text-white tracking-tight relative z-10">
+                <span className="text-sm text-slate-400 mr-1">R$</span>
                 {totalAtrasadosComJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
               {totalAtrasadoJuros > 0 && (
-                <p className="text-xs font-medium text-slate-400 mt-2 bg-white/5 inline-block px-2.5 py-1 rounded-lg border border-white/5">
+                <p className="text-[10px] font-medium text-slate-400 mt-1.5 bg-white/5 inline-block px-2 py-0.5 rounded border border-white/5">
                   Principal: R$ {totalAtrasadoPrincipal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} • Juros: R$ {totalAtrasadoJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
               )}
@@ -1373,7 +1388,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                                     </td>
                                     <td className="px-5 py-4">
                                       <p className="font-bold text-slate-800">{categoryNameUI}</p>
-                                      <p className="text-xs text-slate-400 truncate max-w-[150px] mt-0.5">{t.descricao || '-'}</p>
+                                      <p className="text-xs text-slate-400 truncate max-w-[150px] mt-0.5">{cleanDescription(t.descricao) || '-'}</p>
                                       {t.status === 'aguardando_aprovacao' && (
                                         <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md text-[10px] font-bold mt-1.5 inline-block">Aguardando Aprovação</span>
                                       )}
@@ -1472,7 +1487,12 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                                 const categoryName = t.categoria.replace('Servi??o', 'Serviço').replace('??', 'ç');
                                 return (
                                   <tr key={t.id}>
-                                    <td className="py-4 px-4 font-bold text-slate-800">{categoryName}</td>
+                                    <td className="py-4 px-4">
+                                      <p className="font-bold text-slate-800">{categoryName}</p>
+                                      {cleanDescription(t.descricao) && (
+                                        <p className="text-xs text-slate-400 font-normal mt-0.5">{cleanDescription(t.descricao)}</p>
+                                      )}
+                                    </td>
                                     <td className="py-4 px-4 font-semibold text-slate-600">{new Date(t.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
                                     <td className="py-4 px-4 text-slate-600 text-right">R$ {Number(t.valor).toFixed(2)}</td>
                                     <td className="py-4 px-4 text-rose-600 font-bold text-right">{interest > 0 ? `+ R$ ${interest.toFixed(2)}` : '-'}</td>

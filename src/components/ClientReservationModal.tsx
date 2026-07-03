@@ -309,6 +309,15 @@ export default function ClientReservationModal({
                   ))}
                 </select>
               )}
+              {selectedBoatId && boats.find(b => b.id === selectedBoatId)?.emManutencao && (
+                <div className="mt-3 flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-amber-500 text-xs">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold uppercase tracking-wider block text-[10px] mb-0.5">Aviso de Manutenção</span>
+                    <span className="leading-tight">Esta embarcação encontra-se atualmente em manutenção. Seu agendamento será registrado, mas dependemos da conclusão dos reparos.</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Observações */}

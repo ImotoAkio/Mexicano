@@ -377,9 +377,14 @@ export async function initializeDatabase() {
         custo DECIMAL(10, 2),
         valorRepassado DECIMAL(10, 2),
         status VARCHAR(50) NOT NULL DEFAULT 'em_andamento',
-        createdAt VARCHAR(50) NOT NULL
+        createdAt VARCHAR(50) NOT NULL,
+        descricaoServico TEXT
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    try {
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN descricaoServico TEXT;`);
+    } catch (e) {}
 
     // 12. Mecanicos Table
     await connection.query(`
@@ -901,15 +906,15 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
     if (payload.manutencoes) {
       for (const man of payload.manutencoes) {
         await connection.query(`
-          INSERT INTO Manutencoes (id, embarcacaoId, dataSaida, mecanico, orcamento, custo, valorRepassado, status, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO Manutencoes (id, embarcacaoId, dataSaida, mecanico, orcamento, custo, valorRepassado, status, createdAt, descricaoServico)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             embarcacaoId = VALUES(embarcacaoId), dataSaida = VALUES(dataSaida), mecanico = VALUES(mecanico),
             orcamento = VALUES(orcamento), custo = VALUES(custo), valorRepassado = VALUES(valorRepassado),
-            status = VALUES(status)
+            status = VALUES(status), descricaoServico = VALUES(descricaoServico)
         `, [
           man.id, man.embarcacaoId, man.dataSaida, man.mecanico || null, man.orcamento || null,
-          man.custo || null, man.valorRepassado || null, man.status || 'em_andamento', man.createdAt
+          man.custo || null, man.valorRepassado || null, man.status || 'em_andamento', man.createdAt, man.descricaoServico || null
         ]);
       }
     }
@@ -1148,6 +1153,13 @@ export async function getAllTransacoes() {
 export async function upsertTransacao(t: any) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  // Clean description: remove "[IMPORTADO]" or "[IMPORTADO] " prefix case-insensitively
+  let cleanedDesc = t.descricao || '';
+  if (typeof cleanedDesc === 'string') {
+    cleanedDesc = cleanedDesc.replace(/^\[IMPORTADO\]\s*/i, '');
+  }
+
   await currentPool.query(
     `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1159,7 +1171,7 @@ export async function upsertTransacao(t: any) {
        comprovante=VALUES(comprovante)`,
     [
       t.id, t.tipo, t.categoria, t.valor, t.dataVencimento, t.dataPagamento || null,
-      t.status, t.descricao || '', t.clienteId || null, t.embarcacaoId || null, t.comprovante || null, t.createdAt
+      t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || null, t.createdAt
     ]
   );
 
@@ -1270,6 +1282,16 @@ export async function deleteFeedback(id: string) {
 
 // ---------------- Manutencoes de Embarcacoes ----------------
 
+async function updateBoatMaintenanceStatus(pool: any, boatId: string) {
+  const [rows] = await pool.query(
+    "SELECT COUNT(*) as activeCount FROM Manutencoes WHERE embarcacaoId = ? AND status = 'em_andamento'",
+    [boatId]
+  );
+  const activeCount = (rows as any[])[0]?.activeCount || 0;
+  const emManutencao = activeCount > 0 ? 1 : 0;
+  await pool.query("UPDATE Embarcacoes SET emManutencao = ? WHERE id = ?", [emManutencao, boatId]);
+}
+
 export async function upsertManutencao(m: any) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
@@ -1278,54 +1300,19 @@ export async function upsertManutencao(m: any) {
   const isNew = (existing as any[]).length === 0;
 
   await currentPool.query(
-    `INSERT INTO Manutencoes (id, embarcacaoId, dataSaida, mecanico, orcamento, custo, valorRepassado, status, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO Manutencoes (id, embarcacaoId, dataSaida, mecanico, orcamento, custo, valorRepassado, status, createdAt, descricaoServico)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        embarcacaoId=VALUES(embarcacaoId), dataSaida=VALUES(dataSaida), mecanico=VALUES(mecanico),
        orcamento=VALUES(orcamento), custo=VALUES(custo), valorRepassado=VALUES(valorRepassado),
-       status=VALUES(status)`,
+       status=VALUES(status), descricaoServico=VALUES(descricaoServico)`,
     [
       m.id, m.embarcacaoId, m.dataSaida, m.mecanico || null, m.orcamento || null,
-      m.custo || null, m.valorRepassado || null, m.status || 'em_andamento', m.createdAt
+      m.custo || null, m.valorRepassado || null, m.status || 'em_andamento', m.createdAt, m.descricaoServico || null
     ]
   );
 
-  if (m.status === 'em_andamento') {
-    await currentPool.query("UPDATE Embarcacoes SET emManutencao = 1 WHERE id = ?", [m.embarcacaoId]);
-  } else if (m.status === 'concluido' || m.status === 'cancelado') {
-    await currentPool.query("UPDATE Embarcacoes SET emManutencao = 0 WHERE id = ?", [m.embarcacaoId]);
-  }
-
-  if (isNew && m.valorRepassado && m.valorRepassado > 0) {
-    const [boats] = await currentPool.query("SELECT donos FROM Embarcacoes WHERE id = ?", [m.embarcacaoId]);
-    const boat = (boats as any[])[0];
-    if (boat && boat.donos) {
-      let donosIds: string[] = [];
-      try {
-        donosIds = JSON.parse(boat.donos);
-      } catch (e) {}
-      if (Array.isArray(donosIds) && donosIds.length > 0) {
-        const valorPorDono = m.valorRepassado / donosIds.length;
-        for (const donoId of donosIds) {
-          const transacao = {
-            id: 'trans_' + Date.now() + Math.random().toString(36).substring(2, 7),
-            tipo: 'receita',
-            categoria: 'Manutenção',
-            valor: valorPorDono,
-            dataVencimento: m.dataSaida,
-            dataPagamento: null,
-            status: 'pendente',
-            descricao: `Manutenção - Rateio (${donosIds.length} cotistas)`,
-            clienteId: donoId,
-            embarcacaoId: m.embarcacaoId,
-            comprovante: null,
-            createdAt: new Date().toISOString()
-          };
-          await upsertTransacao(transacao);
-        }
-      }
-    }
-  }
+  await updateBoatMaintenanceStatus(currentPool, m.embarcacaoId);
 }
 
 // ---------------- Mecanicos ----------------
@@ -1358,6 +1345,37 @@ export async function deleteMecanico(id: string) {
 export async function deleteManutencao(id: string) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  // Get boat ID before deleting the record
+  const [rows] = await currentPool.query("SELECT embarcacaoId FROM Manutencoes WHERE id = ?", [id]);
+  const boatId = (rows as any[])[0]?.embarcacaoId;
+
+  // Get all clients whose transactions will be deleted to sync their financial status later
+  const [transacaoRows] = await currentPool.query(
+    "SELECT clienteId FROM TransacoesFinanceiras WHERE id LIKE ?",
+    [`fin_manut_${id}%`]
+  );
+  const clienteIds = (transacaoRows as any[])
+    .map((r: any) => r.clienteId)
+    .filter((cid: string | null) => cid !== null && cid !== undefined);
+
+  // Delete associated transactions
+  await currentPool.query(
+    "DELETE FROM TransacoesFinanceiras WHERE id LIKE ?",
+    [`fin_manut_${id}%`]
+  );
+
+  // Delete the maintenance record
   await currentPool.query("DELETE FROM Manutencoes WHERE id = ?", [id]);
+
+  if (boatId) {
+    await updateBoatMaintenanceStatus(currentPool, boatId);
+  }
+
+  // Sync client financial status for affected clients
+  for (const clienteId of clienteIds) {
+    await syncClientFinancialStatus(clienteId);
+  }
 }
+
 

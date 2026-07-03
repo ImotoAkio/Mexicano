@@ -20,6 +20,7 @@ export default defineConfig(() => {
         manifest: false, // Using our own manifest.webmanifest in /public
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
+          maximumFileSizeToCacheInBytes: 5000000,
           navigateFallback: '/index.html',
           navigateFallbackAllowlist: [/^\/portal/, /^\/feedback/, /^\/admin/],
           runtimeCaching: [

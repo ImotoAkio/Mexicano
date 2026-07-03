@@ -149,6 +149,12 @@ const sensitiveLimiter = rateLimit({
   message: { error: true, message: "Taxa excedida para operação sensível." },
 });
 
+const whatsappLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: { error: true, message: "Taxa excedida para disparos de WhatsApp." },
+});
+
 // Rate limiting on auth routes - max 50 attempts per 15 min per IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -781,6 +787,68 @@ app.post("/api/manutencoes/save", requireAdminAuth, sensitiveLimiter, async (req
       await deleteManutencao(data.id);
     } else if (action === 'upsert') {
       await upsertManutencao(data);
+
+      const pool = getDbPool();
+      if (!pool) throw new Error("MySQL Connection pool is offline.");
+      const [existingTrans] = await pool.query(
+        "SELECT id, clienteId FROM TransacoesFinanceiras WHERE id LIKE ?",
+        [`fin_manut_${data.id}%`]
+      );
+      const hasExisting = (existingTrans as any[]).length > 0;
+
+      if (data.gerarFinanceiro || hasExisting) {
+        const baseValor = Number(data.valorRepassado) || Number(data.custo) || 0;
+        if (baseValor > 0) {
+          const clientsToSync = new Set<string>();
+          for (const t of existingTrans as any[]) {
+            if (t.clienteId) clientsToSync.add(t.clienteId);
+          }
+
+          await pool.query(
+            "DELETE FROM TransacoesFinanceiras WHERE id LIKE ?",
+            [`fin_manut_${data.id}%`]
+          );
+
+          const transacaoBaseId = `fin_manut_${data.id}`;
+          const transacaoBase = {
+            id: transacaoBaseId,
+            tipo: 'receita',
+            categoria: 'Serviços/Manutenção',
+            valor: baseValor,
+            dataVencimento: data.dataSaida,
+            status: 'pendente',
+            descricao: data.descricaoServico || `Manutenção Embarcação`,
+            embarcacaoId: data.embarcacaoId,
+            createdAt: new Date().toISOString()
+          };
+
+          const dbData = await pullDatabase();
+          const boat = dbData.boats.find((b: any) => b.id === data.embarcacaoId);
+          
+          if (boat && boat.donos && boat.donos.length > 0) {
+            const numDonos = boat.donos.length;
+            const valorRateado = Number((baseValor / numDonos).toFixed(2));
+            
+            for (const donoId of boat.donos) {
+              const splitData = {
+                ...transacaoBase,
+                id: `${transacaoBaseId}_${donoId}`,
+                clienteId: donoId,
+                valor: valorRateado,
+                descricao: `${transacaoBase.descricao} | Rateio (1/${numDonos})`
+              };
+              await upsertTransacao(splitData);
+              clientsToSync.add(donoId);
+            }
+          } else {
+            await upsertTransacao(transacaoBase);
+          }
+
+          for (const clienteId of clientsToSync) {
+            await syncClientFinancialStatus(clienteId);
+          }
+        }
+      }
     }
     res.json({ success: true });
   } catch (err: any) {
@@ -1320,7 +1388,7 @@ app.get("/api/whatsapp/contacts", requireAnyAuth, async (req, res) => {
 });
 
 // Route: Send text message (Evolution API)
-app.post("/api/whatsapp/send-text", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+app.post("/api/whatsapp/send-text", requireAdminAuth, whatsappLimiter, async (req, res) => {
   try {
     const { number, text } = req.body;
     
@@ -1372,9 +1440,9 @@ app.post("/api/whatsapp/send-text", requireAdminAuth, sensitiveLimiter, async (r
 });
 
 // Endpoint para gerar a foto e notificar no grupo de whatsapp da lancha/jet
-app.post("/api/whatsapp/send-calendar", requireAnyAuth, sensitiveLimiter, async (req, res) => {
+app.post("/api/whatsapp/send-calendar", requireAnyAuth, whatsappLimiter, async (req, res) => {
   try {
-    const { base64Image, groupId, boatName, clientName, dates } = req.body;
+    const { base64Image, groupId, boatName, clientName, dates, caption } = req.body;
     
     if (!base64Image || !groupId) {
       return res.status(400).json({ error: true, message: "Missing base64Image or groupId" });
@@ -1394,7 +1462,7 @@ app.post("/api/whatsapp/send-calendar", requireAnyAuth, sensitiveLimiter, async 
       number: groupId,
       mediatype: "image",
       mimetype: "image/png",
-      caption: `📅 ✅`,
+      caption: caption || `📅 ✅`,
       media: base64Data
     };
 

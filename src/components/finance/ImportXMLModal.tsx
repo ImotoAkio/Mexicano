@@ -350,7 +350,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
         valor: row.valor,
         dataVencimento: row.dataVencimento,
         status: row.status,
-        descricao: row.descricao ? `${row.descricao} - Cliente Ref: ${row.clienteNome}` : `Cliente Ref: ${row.clienteNome}`,
+        descricao: row.descricao || '',
         createdAt: new Date().toISOString()
       };
     });

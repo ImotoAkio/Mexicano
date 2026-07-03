@@ -328,10 +328,11 @@ export const maintenanceDB = {
     };
     memoryManutencoes.push(newManutencao);
     
-    if (newManutencao.status === 'em_andamento') {
-      const boat = memoryBoats.find(b => b.id === newManutencao.embarcacaoId);
-      if (boat) boat.emManutencao = true;
+    const boat = memoryBoats.find(b => b.id === newManutencao.embarcacaoId);
+    if (boat) {
+      boat.emManutencao = memoryManutencoes.some(m => m.embarcacaoId === newManutencao.embarcacaoId && m.status === 'em_andamento');
     }
+    
     // save to new API
     const token = getAdminToken();
     fetch('/api/manutencoes/save', {
@@ -347,12 +348,9 @@ export const maintenanceDB = {
     const updated = { ...memoryManutencoes[idx], ...updatedFields };
     memoryManutencoes[idx] = updated;
 
-    if (updated.status === 'em_andamento') {
-      const boat = memoryBoats.find(b => b.id === updated.embarcacaoId);
-      if (boat) boat.emManutencao = true;
-    } else if (updated.status === 'concluido' || updated.status === 'cancelado') {
-      const boat = memoryBoats.find(b => b.id === updated.embarcacaoId);
-      if (boat) boat.emManutencao = false;
+    const boat = memoryBoats.find(b => b.id === updated.embarcacaoId);
+    if (boat) {
+      boat.emManutencao = memoryManutencoes.some(m => m.embarcacaoId === updated.embarcacaoId && m.status === 'em_andamento');
     }
 
     const token = getAdminToken();
@@ -364,7 +362,17 @@ export const maintenanceDB = {
     return updated;
   },
   delete: (id: string): void => {
+    const m = memoryManutencoes.find(item => item.id === id);
+    const boatId = m?.embarcacaoId;
+
     memoryManutencoes = memoryManutencoes.filter(m => m.id !== id);
+    
+    if (boatId) {
+      const boat = memoryBoats.find(b => b.id === boatId);
+      if (boat) {
+        boat.emManutencao = memoryManutencoes.some(item => item.embarcacaoId === boatId && item.status === 'em_andamento');
+      }
+    }
     
     const token = getAdminToken();
     fetch('/api/manutencoes/save', {

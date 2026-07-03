@@ -1,7 +1,10 @@
 import React from 'react';
 import { Reserva } from '../../types';
 import { boatDB, clientDB } from '../../db';
-import { Anchor, Wrench, AlertTriangle, RefreshCw, FileDown, ClipboardList, Trash2 } from 'lucide-react';
+import { 
+  Anchor, Wrench, AlertTriangle, RefreshCw, FileDown, ClipboardList, Trash2,
+  X, Wallet, Calendar, AlertCircle, ExternalLink 
+} from 'lucide-react';
 
 interface ScheduleCardProps {
   res: Reserva;
@@ -22,6 +25,43 @@ export default function ScheduleCard({
 }: ScheduleCardProps) {
   const boat = boatDB.getById(res.embarcacaoId);
   const client = clientDB.getById(res.clienteId);
+
+  const [showFinanceModal, setShowFinanceModal] = React.useState(false);
+  const [transactions, setTransactions] = React.useState<any[]>([]);
+  const [loadingTransactions, setLoadingTransactions] = React.useState(false);
+  const [financeError, setFinanceError] = React.useState<string | null>(null);
+
+  const loadTransactions = async () => {
+    if (!client) return;
+    setLoadingTransactions(true);
+    setFinanceError(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/financeiro/transacoes', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Não foi possível carregar os lançamentos financeiros.');
+      }
+      const data = await response.json();
+      const clientTx = data
+        .filter((t: any) => t.clienteId === client.id)
+        .sort((a: any, b: any) => {
+          const statusOrder: Record<string, number> = { 'atrasado': 1, 'pendente': 2, 'pago': 3 };
+          const orderA = statusOrder[a.status] || 99;
+          const orderB = statusOrder[b.status] || 99;
+          if (orderA !== orderB) return orderA - orderB;
+          return new Date(b.dataVencimento).getTime() - new Date(a.dataVencimento).getTime();
+        });
+      setTransactions(clientTx);
+    } catch (err: any) {
+      setFinanceError(err.message || 'Erro ao buscar transações.');
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
   
   const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome.split(' ')[0]) : 'M00';
   const boatType = boat ? (boat.tipo === 'jet' ? 'Jetski' : 'Lancha') : 'Lancha';
@@ -100,7 +140,15 @@ export default function ScheduleCard({
             )}
 
             {client?.statusFinanceiro === 'inadimplente' && (
-              <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-rose-100 text-rose-800 border border-rose-200 flex items-center shadow-xs shrink-0" title={client.observacoesFinanceiras || 'Inadimplente'}>
+              <span 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowFinanceModal(true);
+                  loadTransactions();
+                }}
+                className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-rose-100 text-rose-800 border border-rose-200 flex items-center shadow-xs shrink-0 cursor-pointer hover:bg-rose-200 transition-colors"
+                title="Clique para ver o resumo financeiro"
+              >
                 <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
                 {client.observacoesFinanceiras ? 'Pendente' : 'Inadimplente'}
               </span>
@@ -204,6 +252,211 @@ export default function ScheduleCard({
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
+      </div>
+
+      {showFinanceModal && (
+        <FinanceSummaryModal
+          clientName={ownerName}
+          observacoesFinanceiras={client?.observacoesFinanceiras}
+          transactions={transactions}
+          isLoading={loadingTransactions}
+          error={financeError}
+          onClose={() => setShowFinanceModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+const cleanDescription = (desc: string) => {
+  if (!desc) return '';
+  let cleaned = desc.replace(/^Serviço realizado:\s*/i, '');
+  cleaned = cleaned.replace(/\s*-\s*Cliente Ref:.*$/i, '');
+  cleaned = cleaned.replace(/^Cliente Ref:.*$/i, '');
+  return cleaned.trim();
+};
+
+function FinanceSummaryModal({
+  clientName,
+  observacoesFinanceiras,
+  transactions,
+  isLoading,
+  error,
+  onClose
+}: {
+  clientName: string;
+  observacoesFinanceiras?: string;
+  transactions: any[];
+  isLoading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  const formatCurrency = (val: number | string) => {
+    return Number(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return 'N/A';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const [year, month, day] = parts;
+    return `${day}/${month}/${year}`;
+  };
+
+  const totalAtrasado = transactions
+    .filter(t => t.status === 'atrasado')
+    .reduce((sum, t) => sum + Number(t.valor), 0);
+
+  const totalPendente = transactions
+    .filter(t => t.status === 'pendente')
+    .reduce((sum, t) => sum + Number(t.valor), 0);
+
+  const totalPago = transactions
+    .filter(t => t.status === 'pago')
+    .reduce((sum, t) => sum + Number(t.valor), 0);
+
+  return (
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-2xl overflow-hidden max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600 shadow-xs border border-rose-100">
+              <Wallet className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Extrato Financeiro</h3>
+              <p className="text-xs text-slate-500 font-semibold">{clientName}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-3">
+              <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
+              <p className="text-xs text-slate-500 font-semibold">Buscando lançamentos...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+              <AlertCircle className="w-10 h-10 text-rose-500" />
+              <p className="text-sm font-bold text-slate-800">Erro ao carregar dados</p>
+              <p className="text-xs text-slate-500">{error}</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-rose-50/50 border border-rose-100 rounded-2xl p-4 flex flex-col">
+                  <span className="text-[10px] text-rose-700 font-bold uppercase tracking-wider">Atrasado</span>
+                  <span className="text-lg font-black text-rose-600 font-mono mt-1">{formatCurrency(totalAtrasado)}</span>
+                </div>
+                <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-4 flex flex-col">
+                  <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">Pendente</span>
+                  <span className="text-lg font-black text-amber-600 font-mono mt-1">{formatCurrency(totalPendente)}</span>
+                </div>
+                <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 flex flex-col">
+                  <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Pago Recente</span>
+                  <span className="text-lg font-black text-emerald-600 font-mono mt-1">{formatCurrency(totalPago)}</span>
+                </div>
+              </div>
+
+              {/* Financial Observations */}
+              {observacoesFinanceiras && (
+                <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3">
+                  <span className="text-[10px] text-amber-800 font-extrabold uppercase tracking-wider block mb-1">
+                    📌 Observações Financeiras:
+                  </span>
+                  <p className="text-xs text-amber-900 font-medium italic leading-relaxed">
+                    {observacoesFinanceiras}
+                  </p>
+                </div>
+              )}
+
+              {/* Transactions List */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Histórico de Lançamentos</h4>
+                {transactions.length === 0 ? (
+                  <div className="text-center py-8 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                    <p className="text-xs text-slate-500 font-medium">Nenhum lançamento encontrado para este cliente.</p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-100 rounded-xl overflow-hidden divide-y divide-slate-100 shadow-2xs">
+                    {transactions.map((tx) => (
+                      <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                        <div className="flex flex-col min-w-0 pr-2">
+                          <span className="text-xs font-bold text-slate-900 truncate">
+                            {cleanDescription(tx.descricao) || tx.categoria}
+                          </span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[9px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <Calendar className="w-2.5 h-2.5" />
+                              Venc: {formatDate(tx.dataVencimento)}
+                            </span>
+                            {tx.dataPagamento && (
+                              <span className="text-[9px] bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded flex items-center gap-1">
+                                Pago: {formatDate(tx.dataPagamento)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-xs font-extrabold font-mono text-slate-800">
+                            {formatCurrency(tx.valor)}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            tx.status === 'pago' 
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                              : tx.status === 'atrasado'
+                                ? 'bg-rose-50 text-rose-700 border border-rose-100'
+                                : 'bg-amber-50 text-amber-700 border border-amber-100'
+                          }`}>
+                            {tx.status}
+                          </span>
+                          {tx.comprovante && (
+                            <a 
+                              href={tx.comprovante} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                              title="Ver Comprovante"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+          >
+            Fechar
+          </button>
+        </div>
       </div>
     </div>
   );

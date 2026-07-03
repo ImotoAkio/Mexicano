@@ -682,10 +682,19 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
               </option>
               {availableOwners.map(owner => (
                 <option key={owner.id} value={owner.id}>
-                  {getFirstTwoNames(owner.nome).toUpperCase()} (Cota {owner.cota || 'N/A'})
+                  {getFirstTwoNames(owner.nome).toUpperCase()} (Cota {owner.cota || 'N/A'}) {owner.statusFinanceiro === 'inadimplente' ? ' (INADIMPLENTE)' : ''}
                 </option>
               ))}
             </select>
+            {selectedBoatId && boats.find(b => b.id === selectedBoatId)?.emManutencao && (
+              <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 p-2 rounded-lg text-amber-800 text-xs">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold uppercase tracking-wider block text-[10px]">Aviso de Manutenção</span>
+                  <span className="leading-tight">A embarcação selecionada encontra-se em manutenção.</span>
+                </div>
+              </div>
+            )}
             {selectedClientId && availableOwners.find(o => o.id === selectedClientId)?.statusFinanceiro === 'inadimplente' && (
               <div className="mt-2 flex items-start gap-2 bg-rose-50 border border-rose-200 p-2 rounded-lg text-rose-800 text-xs">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />

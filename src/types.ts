@@ -142,6 +142,8 @@ export interface Manutencao {
   custo?: number | null;
   valorRepassado?: number | null;
   status: 'em_andamento' | 'concluido' | 'cancelado';
+  descricaoServico?: string;
+  gerarFinanceiro?: boolean; // apenas para frontend
   createdAt: string;
 }
 

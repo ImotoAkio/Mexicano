@@ -24,7 +24,9 @@ export default function MaintenancePage() {
     orcamento: 0,
     custo: 0,
     valorRepassado: 0,
-    status: 'em_andamento'
+    status: 'em_andamento',
+    descricaoServico: '',
+    gerarFinanceiro: true
   });
 
   const loadData = () => {
@@ -52,7 +54,9 @@ export default function MaintenancePage() {
         orcamento: 0,
         custo: 0,
         valorRepassado: 0,
-        status: 'em_andamento'
+        status: 'em_andamento',
+        descricaoServico: '',
+        gerarFinanceiro: true
       });
     }
     setIsModalOpen(true);
@@ -226,8 +230,8 @@ export default function MaintenancePage() {
       {/* Modal Form */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl flex flex-col max-h-[95vh] overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50 shrink-0">
               <h2 className="text-xl font-bold text-slate-900">
                 {editingItem ? 'Editar Manutenção' : 'Nova Manutenção'}
               </h2>
@@ -239,7 +243,7 @@ export default function MaintenancePage() {
               </button>
             </div>
             
-            <form onSubmit={handleSave} className="p-6 space-y-4">
+            <form onSubmit={handleSave} className="p-6 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 
                 <div className="space-y-1 md:col-span-2">
@@ -303,6 +307,17 @@ export default function MaintenancePage() {
                   />
                 </div>
 
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-sm font-semibold text-slate-700">Descrição do Serviço</label>
+                  <textarea
+                    rows={3}
+                    value={formData.descricaoServico || ''}
+                    onChange={e => setFormData({...formData, descricaoServico: e.target.value})}
+                    placeholder="Descreva o que foi feito na manutenção..."
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                  />
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Custo Real (R$)</label>
                   <input
@@ -341,6 +356,22 @@ export default function MaintenancePage() {
                     <option value="cancelado">Cancelado</option>
                   </select>
                 </div>
+                
+                {!editingItem && (
+                  <div className="space-y-1 md:col-span-2 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.gerarFinanceiro}
+                        onChange={e => setFormData({...formData, gerarFinanceiro: e.target.checked})}
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                      />
+                      <span className="text-sm font-medium text-slate-700">
+                        Gerar registro financeiro automaticamente para os cotistas
+                      </span>
+                    </label>
+                  </div>
+                )}
                 
               </div>
               
