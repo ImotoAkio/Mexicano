@@ -189,7 +189,6 @@ export default function App() {
       items: [
         { id: 'schedules' as TabType, label: 'Agenda de Reservas', icon: CalendarIcon },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
-        { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
 
         { id: 'sound' as TabType, label: 'Vistoria de Som', icon: Speaker },
         { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
@@ -218,6 +217,7 @@ export default function App() {
         { id: 'feedback' as TabType, label: 'Central de Feedback', icon: MessageSquare },
         { id: 'users' as TabType, label: 'Gestão de Usuários', icon: Shield },
         { id: 'integrations' as TabType, label: 'Configurações & Integrações', icon: Settings },
+        { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
       ]
     }
   ].map(group => ({
