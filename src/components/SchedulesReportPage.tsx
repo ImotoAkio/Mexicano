@@ -295,7 +295,7 @@ export default function SchedulesReportPage() {
             });
             
             try {
-              const textToCopy = `✅ CONFIRMADO - ${boatCode} - ${ownerName.toUpperCase()}    |  Saída: ${horaSaida || '11:30'}`;
+              const textToCopy = `CONFIRMADO - ${boatCode} - ${ownerName.toUpperCase()}    |  Saída: ${horaSaida || '11:30'}`;
               await navigator.clipboard.writeText(textToCopy);
             } catch (err) {
               console.error('Erro ao copiar para clipboard:', err);
