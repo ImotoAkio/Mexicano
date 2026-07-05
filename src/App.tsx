@@ -24,6 +24,7 @@ import PortalInterno from './components/finance/PortalInterno';
 import MarinaChecklistsView from './components/MarinaChecklistsView';
 import MarinaFuelView from './components/MarinaFuelView';
 import WhatsAppPage from './components/WhatsAppPage';
+import AvisosSaidaPage from './components/AvisosSaidaPage';
 import { clientDB, boatDB, reservationDB } from './db';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -77,11 +78,11 @@ import {
   MessageSquare,
   CheckCircle,
   Wrench,
-  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download
+  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer
 } from 'lucide-react';
 
 
-type TabType = 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp';
+type TabType = 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -188,6 +189,7 @@ export default function App() {
       items: [
         { id: 'schedules' as TabType, label: 'Agenda de Reservas', icon: CalendarIcon },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
+        { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
 
         { id: 'sound' as TabType, label: 'Vistoria de Som', icon: Speaker },
         { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
@@ -470,6 +472,7 @@ export default function App() {
               {activeTab === 'feedback' && <FeedbackAdmin />}
               {activeTab === 'integrations' && <IntegrationsPage />}
               {activeTab === 'portal-interno' && <PortalInterno />}
+              {activeTab === 'aviso-saida' && <AvisosSaidaPage />}
             </ErrorBoundary>
           </div>
         </div>

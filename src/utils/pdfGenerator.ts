@@ -16,7 +16,12 @@ interface PDFData {
 
 export async function generateAvisoSaidaPDF(
   fields: PDFData,
-  options?: { autoPrint?: boolean; download?: boolean }
+  options?: { 
+    autoPrint?: boolean; 
+    download?: boolean; 
+    logoUrl?: string; 
+    bannerText?: string; 
+  }
 ) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -39,17 +44,19 @@ export async function generateAvisoSaidaPDF(
   doc.setFont('Helvetica', 'normal');
 
   // Load logo image and add to PDF
-  try {
-    const logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.src = logoSrc;
-      img.onload = () => resolve(img);
-      img.onerror = (err) => reject(err);
-    });
-    // Draw logo at top-left: x=20, y=10, w=35, h=25 (highly elegant placement)
-    doc.addImage(logoImg, 'PNG', 20, 10, 35, 25);
-  } catch (err) {
-    console.error('Erro ao carregar a logo para o PDF:', err);
+  if (options?.logoUrl !== 'empty') {
+    try {
+      const logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.src = options?.logoUrl || logoSrc;
+        img.onload = () => resolve(img);
+        img.onerror = (err) => reject(err);
+      });
+      // Draw logo at top-left: x=20, y=10, w=35, h=25 (highly elegant placement)
+      doc.addImage(logoImg, 'PNG', 20, 10, 35, 25);
+    } catch (err) {
+      console.error('Erro ao carregar a logo para o PDF:', err);
+    }
   }
 
   // Top Right Aligned Header
@@ -115,7 +122,7 @@ export async function generateAvisoSaidaPDF(
 
   // Col 2 (Right): MEXICANO LANCHAS / CLUB BANNER (capitalized)
   doc.setFont('Helvetica', 'bold');
-  doc.text('MEXICANO LANCHAS', splitX + cellPaddingXRight, currentY);
+  doc.text((options?.bannerText || 'MEXICANO LANCHAS').toUpperCase(), splitX + cellPaddingXRight, currentY);
 
   // Row 2: NOME (Full width)
   currentY += rowHeights[0];
