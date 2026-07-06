@@ -1,4 +1,4 @@
-import { Cliente, Embarcacao, Reserva, Manutencao } from './types';
+import { Cliente, Embarcacao, Reserva, Manutencao, Funcionario, Folga } from './types';
 
 // In-Memory Database Arrays (No LocalStorage)
 let memoryClients: Cliente[] = [];
@@ -6,6 +6,8 @@ let memoryBoats: Embarcacao[] = [];
 let memoryReservations: Reserva[] = [];
 let memoryManutencoes: Manutencao[] = [];
 let memoryMecanicos: any[] = [];
+let memoryFuncionarios: Funcionario[] = [];
+let memoryFolgas: Folga[] = [];
 
 // Helper: Get admin JWT token for authenticated API calls
 export function getAdminToken(): string | null {
@@ -426,6 +428,98 @@ export const mecanicoDB = {
   }
 };
 
+export const funcionarioDB = {
+  getAll: (): Funcionario[] => {
+    return memoryFuncionarios.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+  getById: (id: string): Funcionario | undefined => {
+    return memoryFuncionarios.find(f => f.id === id);
+  },
+  create: (funcionario: Omit<Funcionario, 'id' | 'createdAt'>): Funcionario => {
+    const newFuncionario: Funcionario = {
+      ...funcionario,
+      id: `func_${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    memoryFuncionarios.push(newFuncionario);
+    const token = getAdminToken();
+    fetch('/api/funcionarios/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'upsert', data: newFuncionario })
+    }).catch(console.error);
+    return newFuncionario;
+  },
+  update: (id: string, updatedFields: Partial<Funcionario>): Funcionario => {
+    const idx = memoryFuncionarios.findIndex(f => f.id === id);
+    if (idx === -1) throw new Error('Funcionário não encontrado.');
+    const updated = { ...memoryFuncionarios[idx], ...updatedFields };
+    memoryFuncionarios[idx] = updated;
+    const token = getAdminToken();
+    fetch('/api/funcionarios/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'upsert', data: updated })
+    }).catch(console.error);
+    return updated;
+  },
+  delete: (id: string): void => {
+    memoryFuncionarios = memoryFuncionarios.filter(f => f.id !== id);
+    const token = getAdminToken();
+    fetch('/api/funcionarios/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'delete', data: { id } })
+    }).catch(console.error);
+  }
+};
+
+export const folgaDB = {
+  getAll: (): Folga[] => {
+    return memoryFolgas.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+  },
+  getByFuncionarioId: (funcionarioId: string): Folga[] => {
+    return folgaDB.getAll().filter(f => f.funcionarioId === funcionarioId);
+  },
+  create: (folga: Omit<Folga, 'id' | 'createdAt'>): Folga => {
+    const newFolga: Folga = {
+      ...folga,
+      id: `folga_${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    memoryFolgas.push(newFolga);
+    const token = getAdminToken();
+    fetch('/api/folgas/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'upsert', data: newFolga })
+    }).catch(console.error);
+    return newFolga;
+  },
+  update: (id: string, updatedFields: Partial<Folga>): Folga => {
+    const idx = memoryFolgas.findIndex(f => f.id === id);
+    if (idx === -1) throw new Error('Folga não encontrada.');
+    const updated = { ...memoryFolgas[idx], ...updatedFields };
+    memoryFolgas[idx] = updated;
+    const token = getAdminToken();
+    fetch('/api/folgas/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'upsert', data: updated })
+    }).catch(console.error);
+    return updated;
+  },
+  delete: (id: string): void => {
+    memoryFolgas = memoryFolgas.filter(f => f.id !== id);
+    const token = getAdminToken();
+    fetch('/api/folgas/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'delete', data: { id } })
+    }).catch(console.error);
+  }
+};
+
 
 // Carrega os dados remotamente e preenche a memoria
 export async function loadFromRemote() {
@@ -461,6 +555,8 @@ export async function loadFromRemote() {
     memoryReservations = remoteData.reservations || [];
     memoryManutencoes = remoteData.manutencoes || [];
     memoryMecanicos = remoteData.mecanicos || [];
+    memoryFuncionarios = remoteData.funcionarios || [];
+    memoryFolgas = remoteData.folgas || [];
 
     return { 
       connected: true,

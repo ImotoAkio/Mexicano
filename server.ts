@@ -1244,7 +1244,7 @@ app.get("/api/whatsapp/status", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured" });
@@ -1274,7 +1274,7 @@ app.get("/api/whatsapp/connect", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured" });
@@ -1301,7 +1301,7 @@ app.delete("/api/whatsapp/logout", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured" });
@@ -1319,6 +1319,66 @@ app.delete("/api/whatsapp/logout", requireAdminAuth, async (req, res) => {
     res.json({ success: true, message: "Deslogado com sucesso" });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Failed to logout" });
+  }
+});
+
+// Route: Create WhatsApp Instance (Evolution API)
+app.post("/api/whatsapp/instance/create", requireAdminAuth, async (req, res) => {
+  try {
+    const { instanceName } = req.body;
+    if (!instanceName) {
+      return res.status(400).json({ error: true, message: "instanceName is required" });
+    }
+
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+    
+    if (!apiUrl || !apiKey) {
+      return res.status(500).json({ error: true, message: "Evolution API not configured" });
+    }
+
+    const response = await fetch(`${apiUrl}/instance/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({ instanceName, qrcode: true, integration: "WHATSAPP-BAILEYS" })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(502).json({ error: true, message: `Evolution API failure: ${errorText}` });
+    }
+
+    const data = await response.json();
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to create instance" });
+  }
+});
+
+// Route: Delete WhatsApp Instance (Evolution API)
+app.delete("/api/whatsapp/instance/delete/:instanceName", requireAdminAuth, async (req, res) => {
+  try {
+    const { instanceName } = req.params;
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+    
+    if (!apiUrl || !apiKey) {
+      return res.status(500).json({ error: true, message: "Evolution API not configured" });
+    }
+
+    const response = await fetch(`${apiUrl}/instance/delete/${instanceName}`, {
+      method: 'DELETE',
+      headers: { 'apikey': apiKey }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(502).json({ error: true, message: `Evolution API failure: ${errorText}` });
+    }
+
+    res.json({ success: true, message: "Instância deletada com sucesso" });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to delete instance" });
   }
 });
 
@@ -1436,6 +1496,79 @@ app.post("/api/whatsapp/send-text", requireAdminAuth, whatsappLimiter, async (re
   } catch (err: any) {
     console.error("Error sending WhatsApp message:", err);
     res.status(500).json({ error: true, message: err.message || "Failed to send WhatsApp message" });
+  }
+});
+
+// Route: Generic send message for Finance (Text or Media)
+app.post("/api/whatsapp/finance/send-message", requireAdminAuth, whatsappLimiter, async (req, res) => {
+  try {
+    const { instanceName, number, text, media, mimetype, fileName } = req.body;
+    
+    if (!instanceName || !number) {
+      return res.status(400).json({ error: true, message: "Missing instanceName or number" });
+    }
+
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+
+    if (!apiUrl || !apiKey) {
+      return res.status(500).json({ error: true, message: "Evolution API not configured" });
+    }
+
+    let cleanedNumber = number.replace(/\D/g, "");
+    if (cleanedNumber.length >= 10 && cleanedNumber.length <= 11 && !cleanedNumber.startsWith("55")) {
+      cleanedNumber = `55${cleanedNumber}`;
+    }
+
+    if (media && mimetype) {
+      // Send Media (Image or Document)
+      let mediatype = "document";
+      if (mimetype.startsWith("image/")) mediatype = "image";
+      else if (mimetype.startsWith("video/")) mediatype = "video";
+
+      const base64Data = media.replace(/^data:.*?;base64,/, "");
+
+      const payload = {
+        number: cleanedNumber,
+        mediatype,
+        mimetype,
+        caption: text || "",
+        media: base64Data,
+        fileName: fileName || "arquivo"
+      };
+
+      const response = await fetch(`${apiUrl}/message/sendMedia/${instanceName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": apiKey },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(502).json({ error: true, message: `Evolution API Media failure: ${errorText}` });
+      }
+    } else if (text) {
+      // Send Text only
+      const payload = { number: cleanedNumber, text };
+
+      const response = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": apiKey },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(502).json({ error: true, message: `Evolution API Text failure: ${errorText}` });
+      }
+    } else {
+      return res.status(400).json({ error: true, message: "No text or media provided to send" });
+    }
+
+    res.json({ success: true, message: "Message sent successfully" });
+  } catch (err: any) {
+    console.error("Error sending Finance message:", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to send Finance message" });
   }
 });
 

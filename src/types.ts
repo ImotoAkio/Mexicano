@@ -153,3 +153,32 @@ export interface Mecanico {
   cnpj?: string;
   createdAt: string;
 }
+
+export interface Turno {
+  dia: number; // 0=Domingo, 1=Segunda, 2=Terça, 3=Quarta, 4=Quinta, 5=Sexta, 6=Sábado
+  entrada: string; // Formato HH:mm
+  saida: string; // Formato HH:mm
+  pausaInicio?: string;
+  pausaFim?: string;
+}
+
+export interface Funcionario {
+  id: string;
+  usuarioId?: string; // Vínculo com um Usuário do sistema
+  nome: string;
+  cargo: string;
+  setor: string;
+  turnos: Turno[];
+  createdAt: string;
+}
+
+export interface Folga {
+  id: string;
+  funcionarioId: string;
+  data: string; // YYYY-MM-DD
+  tipo: 'domingo' | 'semana' | 'compensacao_feriado' | 'outro';
+  status: 'pendente' | 'aprovada' | 'rejeitada';
+  feriadoTrabalhado?: string; // Usado caso tipo = 'compensacao_feriado'
+  observacao?: string;
+  createdAt: string;
+}

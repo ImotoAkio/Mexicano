@@ -99,9 +99,9 @@ export default function WhatsAppPage() {
 
   // --- CONFIRMATIONS LOGIC ---
   const [confDate, setConfDate] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    const today = new Date();
+    const localStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    return localStr;
   });
   
   const [confReservations, setConfReservations] = useState<Reserva[]>([]);
@@ -119,7 +119,7 @@ export default function WhatsAppPage() {
     const initialSelected = res
       .filter(r => {
         const client = clientDB.getById(r.clienteId);
-        return !!client?.telefone && !r.confirmacaoEnviada;
+        return !!client?.telefone && !r.confirmacaoEnviada && client?.statusFinanceiro !== 'inadimplente';
       })
       .map(r => r.id);
     setConfSelectedIds(initialSelected);
@@ -659,16 +659,6 @@ const fetchWaStatus = async () => {
                   const isSelected = confSelectedIds.includes(res.id);
                   const status = confSendResults[res.id] || 'pending';
                   const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
-                  const clientFirstName = client?.nome ? formatFirstName(client.nome) : '';
-                  const quando = getQuando(res.data);
-                  const previewText1 = confTemplate1
-                    .replace(/{cliente}/g, clientFirstName)
-                    .replace(/{barco}/g, boatCode)
-                    .replace(/{quando}/g, quando);
-                  const previewText2 = confTemplate2
-                    .replace(/{cliente}/g, clientFirstName)
-                    .replace(/{barco}/g, boatCode)
-                    .replace(/{quando}/g, quando);
 
                   return (
                     <div key={res.id} className={`flex flex-col p-3 rounded-xl border ${isSelected ? 'bg-emerald-50/30 border-emerald-300' : 'bg-slate-50 border-slate-200'} ${!hasPhone ? 'opacity-60 bg-slate-100 grayscale' : 'cursor-pointer hover:border-emerald-400'}`} onClick={() => hasPhone && confSendingStatus !== 'sending' && handleConfToggleSelect(res.id)}>
@@ -678,10 +668,15 @@ const fetchWaStatus = async () => {
                             <Check className="w-3.5 h-3.5" />
                           </button>
                           <div>
-                            <div className="flex items-center gap-2">
+                             <div className="flex items-center gap-2">
                                <span className="font-bold text-xs bg-slate-200 px-1.5 py-0.5 rounded">{boatCode}</span>
                                <span className="font-bold text-sm text-slate-800">{client?.nome || 'Desconhecido'}</span>
-                            </div>
+                               {client?.statusFinanceiro === 'inadimplente' && (
+                                 <span className="font-bold text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-wider" title="Cliente inadimplente não pode usufruir da embarcação">
+                                    <AlertTriangle className="w-3 h-3"/> Inadimplente
+                                 </span>
+                               )}
+                             </div>
                             <div className="mt-1">
                               {hasPhone ? <span className="text-xs text-slate-500">{client.telefone}</span> : <span className="text-xs text-rose-600 font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> Sem telefone</span>}
                             </div>
@@ -693,18 +688,6 @@ const fetchWaStatus = async () => {
                           {status === 'error' && <span className="text-rose-600 bg-rose-100 px-2 py-1 rounded">❌ Erro</span>}
                         </div>
                       </div>
-                      {hasPhone && isSelected && (
-                        <div className="mt-3 space-y-2 bg-white p-3 rounded border border-slate-150 text-xs">
-                          <div>
-                            <span className="font-bold text-slate-700 block mb-1">Preview 1ª Mensagem:</span>
-                            <div className="text-slate-600 bg-slate-50 p-2.5 rounded whitespace-pre-wrap font-sans border border-slate-100 leading-relaxed">{previewText1}</div>
-                          </div>
-                          <div>
-                            <span className="font-bold text-slate-700 block mb-1">Preview 2ª Mensagem:</span>
-                            <div className="text-slate-600 bg-slate-50 p-2.5 rounded whitespace-pre-wrap font-sans border border-slate-100 leading-relaxed">{previewText2}</div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })
