@@ -25,7 +25,9 @@ import {
   getAllAtividades, upsertAtividade, deleteAtividade,
   getAllFeedbacks, upsertFeedback, deleteFeedback,
   upsertManutencao, deleteManutencao,
-  getAllMecanicos, upsertMecanico, deleteMecanico
+  getAllMecanicos, upsertMecanico, deleteMecanico,
+  upsertFuncionario, deleteFuncionario,
+  upsertFolga, deleteFolga
 } from "./server-db";
 
 // Load environment variables early
@@ -779,6 +781,36 @@ app.post("/api/financeiro/atividades/save", requireAdminAuth, sensitiveLimiter, 
   }
 });
 
+// Route: Operacional - Funcionarios
+app.post("/api/funcionarios/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteFuncionario(data.id);
+    } else if (action === 'upsert') {
+      await upsertFuncionario(data);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save funcionario" });
+  }
+});
+
+// Route: Operacional - Folgas
+app.post("/api/folgas/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteFolga(data.id);
+    } else if (action === 'upsert') {
+      await upsertFolga(data);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save folga" });
+  }
+});
+
 // Route: Operacional/Financeiro - Manutencoes
 app.post("/api/manutencoes/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   const { action, data } = req.body;
@@ -1112,12 +1144,34 @@ app.get("/api/config", requireAdminAuth, async (req, res) => {
       }
     }
 
+    // WhatsApp templates & configs
+    const whatsapp_conf_template1 = await getConfigValue("whatsapp_conf_template1");
+    const whatsapp_conf_template2 = await getConfigValue("whatsapp_conf_template2");
+    const whatsapp_cal_template = await getConfigValue("whatsapp_cal_template");
+    const finance_whatsapp_instance = await getConfigValue("finance_whatsapp_instance");
+    const finance_whatsapp_custom_templates_str = await getConfigValue("finance_whatsapp_custom_templates");
+    let finance_whatsapp_custom_templates = null;
+    if (finance_whatsapp_custom_templates_str) {
+      try { finance_whatsapp_custom_templates = JSON.parse(finance_whatsapp_custom_templates_str); } catch { finance_whatsapp_custom_templates = []; }
+    }
+    const nautical_csv_mapping_str = await getConfigValue("nautical_csv_mapping");
+    let nautical_csv_mapping = null;
+    if (nautical_csv_mapping_str) {
+      try { nautical_csv_mapping = JSON.parse(nautical_csv_mapping_str); } catch { nautical_csv_mapping = {}; }
+    }
+
     const client = await getGoogleAuthClient();
     res.json({
       google_client_id,
       calendar_mappings,
       has_service_account: client !== null,
-      service_account_email: client?.email || null
+      service_account_email: client?.email || null,
+      whatsapp_conf_template1,
+      whatsapp_conf_template2,
+      whatsapp_cal_template,
+      finance_whatsapp_instance,
+      finance_whatsapp_custom_templates,
+      nautical_csv_mapping
     });
   } catch (error: any) {
     res.status(500).json({ error: true, message: error.message || "Could not retrieve central configurations from database." });
@@ -1127,7 +1181,10 @@ app.get("/api/config", requireAdminAuth, async (req, res) => {
 // Route: Save central configuration details to database
 app.post("/api/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   try {
-    const { google_client_id, calendar_mappings, google_service_account_json } = req.body;
+    const { google_client_id, calendar_mappings, google_service_account_json,
+            whatsapp_conf_template1, whatsapp_conf_template2, whatsapp_cal_template,
+            finance_whatsapp_instance, finance_whatsapp_custom_templates,
+            nautical_csv_mapping } = req.body;
 
     if (google_client_id !== undefined) {
       await setConfigValue("google_client_id", google_client_id);
@@ -1147,6 +1204,30 @@ app.post("/api/config", requireAdminAuth, sensitiveLimiter, async (req, res) => 
         }
       }
       await setConfigValue("google_service_account_json", trimmed);
+    }
+
+    // WhatsApp templates
+    if (whatsapp_conf_template1 !== undefined) {
+      await setConfigValue("whatsapp_conf_template1", whatsapp_conf_template1);
+    }
+    if (whatsapp_conf_template2 !== undefined) {
+      await setConfigValue("whatsapp_conf_template2", whatsapp_conf_template2);
+    }
+    if (whatsapp_cal_template !== undefined) {
+      await setConfigValue("whatsapp_cal_template", whatsapp_cal_template);
+    }
+
+    // Finance WhatsApp instance
+    if (finance_whatsapp_instance !== undefined) {
+      await setConfigValue("finance_whatsapp_instance", finance_whatsapp_instance);
+    }
+    if (finance_whatsapp_custom_templates !== undefined) {
+      await setConfigValue("finance_whatsapp_custom_templates", JSON.stringify(finance_whatsapp_custom_templates));
+    }
+
+    // CSV import mapping
+    if (nautical_csv_mapping !== undefined) {
+      await setConfigValue("nautical_csv_mapping", JSON.stringify(nautical_csv_mapping));
     }
 
     res.json({ success: true });

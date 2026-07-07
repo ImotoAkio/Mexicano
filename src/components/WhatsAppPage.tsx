@@ -57,11 +57,21 @@ export default function WhatsAppPage() {
   const handleSaveConfTemplate1 = (val: string) => {
     setConfTemplate1(val);
     localStorage.setItem('whatsapp_conf_template1', val);
+    // Persist to centralized database
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template1: val }) }).catch(console.warn);
   };
 
   const handleSaveConfTemplate2 = (val: string) => {
     setConfTemplate2(val);
     localStorage.setItem('whatsapp_conf_template2', val);
+    // Persist to centralized database
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template2: val }) }).catch(console.warn);
   };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -410,6 +420,11 @@ const fetchWaStatus = async () => {
   const handleSaveCalTemplate = (val: string) => {
     setCalMessageTemplate(val);
     localStorage.setItem('whatsapp_cal_template', val);
+    // Persist to centralized database
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_cal_template: val }) }).catch(console.warn);
   };
 
   useEffect(() => {

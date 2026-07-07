@@ -339,7 +339,7 @@ export default function App() {
   }
 
   if (adminRole === 'marina') {
-    return <MarinaDashboard onLogout={handleLogout} />;
+    return <MarinaDashboard onLogout={handleLogout} operadorNome={adminName} />;
   }
 
   return (
@@ -461,8 +461,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full pb-24">
             <ErrorBoundary>
               {activeTab === 'dashboard' && adminRole !== 'financeiro' && <Dashboard />}
-              {activeTab === 'schedules' && adminRole === 'marina' && <MarinaDashboard onLogout={handleLogout} operadorNome={adminName} />}
-              {activeTab === 'schedules' && adminRole !== 'marina' && <SchedulesPage />}
+              {activeTab === 'schedules' && <SchedulesPage />}
               {activeTab === 'whatsapp' && <WhatsAppPage />}
               {activeTab === 'checklists' && <AdminChecklistsWrapper />}
               {activeTab === 'fuel' && <AdminFuelWrapper />}

@@ -37,6 +37,9 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [data, setData] = useState(() => new Date().toISOString().split('T')[0]);
   const [observações, setObservações] = useState('');
+  const [somTesteSaida, setSomTesteSaida] = useState<'ok' | 'nao_realizado'>('nao_realizado');
+  const [somTesteRetorno, setSomTesteRetorno] = useState<'ok' | 'nao_realizado'>('nao_realizado');
+  const [somRetirado, setSomRetirado] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 

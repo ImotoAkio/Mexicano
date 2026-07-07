@@ -75,6 +75,32 @@ export async function checkServerConfig(): Promise<boolean> {
         saveCalendarMappings(localMappings);
       }
 
+      // Sync WhatsApp templates from centralized DB
+      if (data.whatsapp_conf_template1) {
+        localStorage.setItem('whatsapp_conf_template1', data.whatsapp_conf_template1);
+      }
+      if (data.whatsapp_conf_template2) {
+        localStorage.setItem('whatsapp_conf_template2', data.whatsapp_conf_template2);
+      }
+      if (data.whatsapp_cal_template) {
+        localStorage.setItem('whatsapp_cal_template', data.whatsapp_cal_template);
+      }
+
+      // Sync Finance WhatsApp instance
+      if (data.finance_whatsapp_instance) {
+        localStorage.setItem('finance_whatsapp_instance', data.finance_whatsapp_instance);
+      }
+
+      // Sync Finance custom templates
+      if (data.finance_whatsapp_custom_templates && Array.isArray(data.finance_whatsapp_custom_templates)) {
+        localStorage.setItem('finance_whatsapp_custom_templates', JSON.stringify(data.finance_whatsapp_custom_templates));
+      }
+
+      // Sync CSV import mapping
+      if (data.nautical_csv_mapping && typeof data.nautical_csv_mapping === 'object') {
+        localStorage.setItem('nautical_csv_mapping', JSON.stringify(data.nautical_csv_mapping));
+      }
+
       return serviceAccountConfigured;
     }
   } catch (e) {

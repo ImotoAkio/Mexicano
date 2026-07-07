@@ -198,16 +198,6 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
         setClientes(newClients);
         setEmbarcacoes(dbData.boats || []);
         setReservas(dbData.reservations || []);
-        localStorage.setItem('nautical_clients_db', JSON.stringify(newClients));
-        localStorage.setItem('nautical_boats_db', JSON.stringify(dbData.boats || []));
-        localStorage.setItem('nautical_reservations_db', JSON.stringify(dbData.reservations || []));
-      } else {
-        const cachedClients = localStorage.getItem('nautical_clients_db');
-        if (cachedClients) setClientes(JSON.parse(cachedClients));
-        const cachedBoats = localStorage.getItem('nautical_boats_db');
-        if (cachedBoats) setEmbarcacoes(JSON.parse(cachedBoats));
-        const cachedReservas = localStorage.getItem('nautical_reservations_db');
-        if (cachedReservas) setReservas(JSON.parse(cachedReservas));
       }
       
     } catch (err) {

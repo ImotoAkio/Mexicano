@@ -252,6 +252,11 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
       return;
     }
     localStorage.setItem('nautical_csv_mapping', JSON.stringify(mapping));
+    // Persist to centralized database
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ nautical_csv_mapping: mapping }) }).catch(console.warn);
 
     const rows: PreviewRow[] = fileData.map((row) => {
       const rawCliente = String(row[mapping.cliente] || '').trim();

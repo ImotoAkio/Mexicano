@@ -225,6 +225,11 @@ export default function FinanceWhatsAppPage() {
       if (!res.ok) throw new Error(data.message || data.error || text || 'Erro ao criar instância');
       localStorage.setItem('finance_whatsapp_instance', newInstance);
       setInstanceName(newInstance);
+      // Persist to centralized database
+      const adminToken = localStorage.getItem('admin_token');
+      const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
+      fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ finance_whatsapp_instance: newInstance }) }).catch(console.warn);
       showToast('Instância criada! Escaneie o QR Code.');
     } catch (err: any) {
       showToast(err.message || 'Erro ao criar instância', 'error');
@@ -244,6 +249,11 @@ export default function FinanceWhatsAppPage() {
     } catch (_) {}
     localStorage.removeItem('finance_whatsapp_instance');
     setInstanceName(null);
+    // Clear in centralized database
+    const adminToken = localStorage.getItem('admin_token');
+    const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
+    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ finance_whatsapp_instance: '' }) }).catch(console.warn);
     setWaStatus('not_created');
     setWaQrCode(null);
     showToast('WhatsApp desconectado!');
@@ -309,6 +319,11 @@ export default function FinanceWhatsAppPage() {
     const updated = [...customTemplates, newTpl];
     setCustomTemplates(updated);
     localStorage.setItem('finance_whatsapp_custom_templates', JSON.stringify(updated));
+    // Persist to centralized database
+    const adminToken = localStorage.getItem('admin_token');
+    const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
+    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ finance_whatsapp_custom_templates: updated }) }).catch(console.warn);
     setActiveTemplateId(newTpl.id);
     setNewTemplateName('');
     setShowSaveTemplateModal(false);
@@ -321,6 +336,11 @@ export default function FinanceWhatsAppPage() {
     const updated = customTemplates.filter(t => t.id !== id);
     setCustomTemplates(updated);
     localStorage.setItem('finance_whatsapp_custom_templates', JSON.stringify(updated));
+    // Persist to centralized database
+    const adminToken2 = localStorage.getItem('admin_token');
+    const hdr2: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (adminToken2) hdr2['Authorization'] = `Bearer ${adminToken2}`;
+    fetch('/api/config', { method: 'POST', headers: hdr2, body: JSON.stringify({ finance_whatsapp_custom_templates: updated }) }).catch(console.warn);
     if (activeTemplateId === id) {
       setActiveTemplateId(null);
       setMessageText('');
@@ -891,7 +911,7 @@ export default function FinanceWhatsAppPage() {
                       </span>
                       <span className={`text-[10px] mt-0.5 ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>{tpl.description}</span>
                     </button>
-                    {tpl.isCustom && (
+                    {(tpl as any).isCustom && (
                       <button
                         onClick={(e) => handleDeleteTemplate(tpl.id, e)}
                         className="absolute right-2 top-2 p-1 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"

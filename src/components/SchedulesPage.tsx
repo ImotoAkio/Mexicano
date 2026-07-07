@@ -57,6 +57,13 @@ import {
 } from 'lucide-react';
 import SearchableClientSelect from './shared/SearchableClientSelect';
 import ScheduleCard from './Schedules/ScheduleCard';
+import ConfirmSyncModal from './Schedules/ConfirmSyncModal';
+
+interface SyncDifference {
+  type: 'only_in_system' | 'only_in_calendar' | 'mismatch';
+  systemEvent?: any;
+  calendarEvent?: any;
+}
 import DeleteConfirmationModal from './Schedules/DeleteConfirmationModal';
 import BulkWhatsAppModal from './Schedules/BulkWhatsAppModal';
 import StatusModal from './Schedules/StatusModal';
@@ -779,8 +786,7 @@ export default function SchedulesPage() {
     try {
       // Clean up auto-generated bad observations from local storage
       const allReservations = reservationDB.getAll();
-      let localUpdated = false;
-      const cleanedLocal = allReservations.map(r => {
+      allReservations.forEach(r => {
         const obs = r.observações || '';
         const cleanObs = obs.trim();
         if (
@@ -798,14 +804,9 @@ export default function SchedulesPage() {
           cleanObs === 'Nenhuma descricao relevante.' ||
           /^M\d{2}\s*-/i.test(cleanObs)
         ) {
-          localUpdated = true;
-          return { ...r, observações: '' };
+          reservationDB.update(r.id, { observações: '' });
         }
-        return r;
       });
-      if (localUpdated) {
-        localStorage.setItem('nautical_reservations_db', JSON.stringify(cleanedLocal));
-      }
 
       const boats = boatDB.getAll();
       const isNotM04 = (r: Reserva) => {

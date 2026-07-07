@@ -493,9 +493,9 @@ export default function Dashboard() {
 
   const handleExportBackup = () => {
     try {
-      const clients = localStorage.getItem('nautical_clients_db') || '[]';
-      const boats = localStorage.getItem('nautical_boats_db') || '[]';
-      const reservations = localStorage.getItem('nautical_reservations_db') || '[]';
+      const clientsData = clientDB.getAll();
+      const boatsData = boatDB.getAll();
+      const reservationsData = reservationDB.getAll();
       
       // Get calendar configurations
       const calendarMappings = localStorage.getItem('nautical_calendar_mappings') || '{}';
@@ -503,9 +503,9 @@ export default function Dashboard() {
       const googleServiceAccountJson = localStorage.getItem('nautical_google_service_account_json') || '';
 
       const backupData = {
-        clients: JSON.parse(clients),
-        boats: JSON.parse(boats),
-        reservations: JSON.parse(reservations),
+        clients: clientsData,
+        boats: boatsData,
+        reservations: reservationsData,
         calendarMappings: JSON.parse(calendarMappings),
         googleClientId: googleClientId,
         googleServiceAccountJson: googleServiceAccountJson,
@@ -540,11 +540,6 @@ export default function Dashboard() {
           showToast('Formato de backup inválido! O arquivo JSON deve conter clients, boats e reservations.', 'error');
           return;
         }
-
-        // Save to localStorage
-        localStorage.setItem('nautical_clients_db', JSON.stringify(backupData.clients));
-        localStorage.setItem('nautical_boats_db', JSON.stringify(backupData.boats));
-        localStorage.setItem('nautical_reservations_db', JSON.stringify(backupData.reservations));
 
         // Save Google configs if found
         if (backupData.calendarMappings) {

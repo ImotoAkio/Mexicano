@@ -51,8 +51,8 @@ export default function StatusModal({
       
       setNumObs(reserva.observações || '');
       setSomRetirado(!!reserva.somRetirado);
-      setSomTesteSaida(reserva.somTesteSaida || 'nao_realizado');
-      setSomTesteRetorno(reserva.somTesteRetorno || 'nao_realizado');
+      setSomTesteSaida((reserva.somTesteSaida as any) || 'nao_realizado');
+      setSomTesteRetorno((reserva.somTesteRetorno as any) || 'nao_realizado');
     }
   }, [reserva, isOpen]);
 

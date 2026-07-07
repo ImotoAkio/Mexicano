@@ -439,6 +439,33 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE DriveFiles ADD COLUMN clienteId VARCHAR(50) DEFAULT NULL;`);
     } catch (e) {}
 
+    // 16. Funcionarios Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS Funcionarios (
+        id VARCHAR(50) PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        cargo VARCHAR(255),
+        setor VARCHAR(255),
+        usuarioId VARCHAR(50),
+        turnos TEXT,
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 17. Folgas Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS Folgas (
+        id VARCHAR(50) PRIMARY KEY,
+        funcionarioId VARCHAR(50) NOT NULL,
+        data VARCHAR(20) NOT NULL,
+        tipo VARCHAR(50) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        motivo TEXT,
+        observacao TEXT,
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     // Seed default admin user if none exists
     const [existingAdmins] = await connection.query("SELECT COUNT(*) as cnt FROM AdminUsers");
     const adminCount = (existingAdmins as any[])[0]?.cnt || 0;
@@ -530,6 +557,8 @@ export async function pullDatabase() {
   const [manutencoes] = await currentPool.query("SELECT * FROM Manutencoes ORDER BY createdAt DESC");
   const [mecanicos] = await currentPool.query("SELECT * FROM Mecanicos ORDER BY createdAt DESC");
   const [transacoes] = await currentPool.query("SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC");
+  const [funcionarios] = await currentPool.query("SELECT * FROM Funcionarios ORDER BY createdAt DESC");
+  const [folgas] = await currentPool.query("SELECT * FROM Folgas ORDER BY data DESC");
 
   const todayStr = new Date().toISOString().split('T')[0];
   const [overdueCounts] = await currentPool.query(`
@@ -613,7 +642,9 @@ export async function pullDatabase() {
     controlesSom: parsedControlesSom,
     manutencoes: manutencoes as any[],
     mecanicos: mecanicos as any[],
-    transacoes: transacoes as any[]
+    transacoes: transacoes as any[],
+    funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : []})),
+    folgas: folgas as any[]
   };
 }
 
@@ -1378,4 +1409,37 @@ export async function deleteManutencao(id: string) {
   }
 }
 
+export async function upsertFuncionario(f: any) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  const turnosStr = f.turnos ? JSON.stringify(f.turnos) : null;
+  const query = `
+    INSERT INTO Funcionarios (id, nome, cargo, setor, usuarioId, turnos, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE nome = VALUES(nome), cargo = VALUES(cargo), setor = VALUES(setor), usuarioId = VALUES(usuarioId), turnos = VALUES(turnos)
+  `;
+  await currentPool.query(query, [f.id, f.nome, f.cargo || null, f.setor || null, f.usuarioId || null, turnosStr, f.createdAt || new Date().toISOString()]);
+}
 
+export async function deleteFuncionario(id: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM Funcionarios WHERE id = ?", [id]);
+}
+
+export async function upsertFolga(f: any) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  const query = `
+    INSERT INTO Folgas (id, funcionarioId, data, tipo, status, motivo, observacao, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE funcionarioId = VALUES(funcionarioId), data = VALUES(data), tipo = VALUES(tipo), status = VALUES(status), motivo = VALUES(motivo), observacao = VALUES(observacao)
+  `;
+  await currentPool.query(query, [f.id, f.funcionarioId, f.data, f.tipo, f.status, f.motivo || null, f.observacao || null, f.createdAt || new Date().toISOString()]);
+}
+
+export async function deleteFolga(id: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM Folgas WHERE id = ?", [id]);
+}
