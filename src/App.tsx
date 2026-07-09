@@ -28,6 +28,7 @@ import FinanceWhatsAppPage from './components/FinanceWhatsAppPage';
 import FinanceSchedulesPage from './components/FinanceSchedulesPage';
 import AvisosSaidaPage from './components/AvisosSaidaPage';
 import ControleFolgasPage from './components/ControleFolgasPage';
+import BoletosPage from './components/finance/BoletosPage';
 import { clientDB, boatDB, reservationDB } from './db';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -81,11 +82,11 @@ import {
   MessageSquare,
   CheckCircle,
   Wrench,
-  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer
+  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt
 } from 'lucide-react';
 
 
-type TabType = 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas';
+type TabType = 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -211,6 +212,7 @@ export default function App() {
         { id: 'finance-lancamentos' as TabType, label: 'Lançamentos', icon: Wallet },
         { id: 'finance-atividades' as TabType, label: 'Atividades', icon: ClipboardList },
         { id: 'finance-cobranca' as TabType, label: 'Débitos & Cobrança', icon: FileText },
+        { id: 'finance-boletos' as TabType, label: 'Envio de Boletos', icon: Receipt },
         { id: 'finance-schedules' as TabType, label: 'Consulta de Agendas', icon: CalendarIcon },
         { id: 'finance-whatsapp' as TabType, label: 'WhatsApp', icon: MessageSquare },
       ]
@@ -228,11 +230,11 @@ export default function App() {
     }
   ].map(group => ({
     ...group,
-    items: group.items.filter(item => adminRole === 'financeiro' ? ['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id) : true)
+    items: group.items.filter(item => adminRole === 'financeiro' ? ['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id) : true)
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
-    if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
+    if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
       setActiveTab('finance-lancamentos');
     }
   }, [adminRole, activeTab]);
@@ -473,6 +475,7 @@ export default function App() {
               {activeTab === 'finance-lancamentos' && <FinancePage initialTab="lancamentos" />}
               {activeTab === 'finance-atividades' && <FinancePage initialTab="atividades" />}
               {activeTab === 'finance-cobranca' && <FinancePage initialTab="cobranca" />}
+              {activeTab === 'finance-boletos' && <BoletosPage />}
               {activeTab === 'finance-whatsapp' && <FinanceWhatsAppPage />}
               {activeTab === 'finance-schedules' && <FinanceSchedulesPage />}
               {activeTab === 'users' && <UsersPage />}
