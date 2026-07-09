@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const TOKEN = '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';
+const TOKEN = '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';
 const OWNER = 'ImotoAkio';
 const REPO = 'Mexicano';
 const BRANCH = 'main';

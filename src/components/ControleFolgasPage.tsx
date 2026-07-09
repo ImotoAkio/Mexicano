@@ -9,7 +9,7 @@ import {
 const diasDaSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
 export default function ControleFolgasPage() {
-  const [activeTab, setActiveTab] = useState<'folgas' | 'funcionarios'>('folgas');
+  // Removed activeTab state because it's only folgas now
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
   
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
@@ -17,7 +17,7 @@ export default function ControleFolgasPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   
   // Modals
-  const [isFuncModalOpen, setIsFuncModalOpen] = useState(false);
+  
   const [isFolgaModalOpen, setIsFolgaModalOpen] = useState(false);
   
   // Toast
@@ -44,121 +44,6 @@ export default function ControleFolgasPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  // ================= FUNCIONARIOS LOGIC =================
-  const [funcId, setFuncId] = useState('');
-  const [funcNome, setFuncNome] = useState('');
-  const [funcCargo, setFuncCargo] = useState('');
-  const [funcSetor, setFuncSetor] = useState('');
-  const [funcUsuarioId, setFuncUsuarioId] = useState('');
-  const [funcTurnos, setFuncTurnos] = useState<Turno[]>([]);
-  
-  // New User Inline Creation
-  const [funcCriarUsuario, setFuncCriarUsuario] = useState(false);
-  const [funcNewUsername, setFuncNewUsername] = useState('');
-  const [funcNewPassword, setFuncNewPassword] = useState('');
-  const [funcNewRole, setFuncNewRole] = useState<'admin' | 'marina' | 'financeiro'>('marina');
-
-  const openFuncModal = (func?: Funcionario) => {
-    if (func) {
-      setFuncId(func.id);
-      setFuncNome(func.nome);
-      setFuncCargo(func.cargo);
-      setFuncSetor(func.setor);
-      setFuncUsuarioId(func.usuarioId || '');
-      setFuncTurnos([...func.turnos]);
-    } else {
-      setFuncId('');
-      setFuncNome('');
-      setFuncCargo('');
-      setFuncSetor('');
-      setFuncUsuarioId('');
-      setFuncTurnos([]);
-      setFuncCriarUsuario(false);
-      setFuncNewUsername('');
-      setFuncNewPassword('');
-      setFuncNewRole('marina');
-    }
-    setIsFuncModalOpen(true);
-  };
-
-  const handleAddTurno = (dia: number) => {
-    if (funcTurnos.some(t => t.dia === dia)) return;
-    setFuncTurnos([...funcTurnos, { dia, entrada: '08:00', saida: '18:00', pausaInicio: '12:00', pausaFim: '13:00' }]);
-  };
-
-  const handleRemoveTurno = (dia: number) => {
-    setFuncTurnos(funcTurnos.filter(t => t.dia !== dia));
-  };
-
-  const handleTurnoChange = (dia: number, field: keyof Turno, value: string) => {
-    setFuncTurnos(funcTurnos.map(t => t.dia === dia ? { ...t, [field]: value } : t));
-  };
-
-  const handleSaveFuncionario = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    let finalUsuarioId = funcUsuarioId;
-    
-    if (funcCriarUsuario && (!funcId || !funcUsuarioId)) {
-      try {
-        const payload = {
-          action: 'upsert',
-          data: {
-            username: funcNewUsername.trim(),
-            password: funcNewPassword,
-            role: funcNewRole
-          }
-        };
-        const res = await fetch('/api/admin/users/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        
-        if (!res.ok) throw new Error('Falha ao criar usuário na API.');
-        
-        // Obter o ID do usuário criado
-        const data = await res.json().catch(() => ({}));
-        
-        if (data && data.id) {
-           finalUsuarioId = data.id;
-        } else {
-           // Fallback: buscar a lista atualizada
-           const usersRes = await fetch('/api/admin/users');
-           const usersData = await usersRes.json();
-           const createdUser = usersData.find((u: any) => u.username === funcNewUsername.trim());
-           if (createdUser) finalUsuarioId = createdUser.id;
-        }
-      } catch (err) {
-        showToast('Não foi possível criar o acesso do usuário no servidor.', 'error');
-        return; // Interrompe se falhou
-      }
-    }
-    
-    try {
-      const data = { nome: funcNome, cargo: funcCargo, setor: funcSetor, usuarioId: finalUsuarioId, turnos: funcTurnos };
-      if (funcId) {
-        funcionarioDB.update(funcId, data);
-        showToast('Funcionário atualizado com sucesso!');
-      } else {
-        funcionarioDB.create(data);
-        showToast('Funcionário cadastrado com sucesso!');
-      }
-      setIsFuncModalOpen(false);
-      loadData();
-    } catch (err) {
-      showToast('Erro ao salvar funcionário', 'error');
-    }
-  };
-
-  const handleDeleteFuncionario = (id: string) => {
-    if (confirm('Deseja realmente remover este funcionário? Suas folgas também poderão ser afetadas.')) {
-      funcionarioDB.delete(id);
-      showToast('Funcionário removido!');
-      loadData();
-    }
-  };
 
   // ================= FOLGAS LOGIC =================
   const [folgaId, setFolgaId] = useState('');
@@ -313,31 +198,11 @@ export default function ControleFolgasPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex space-x-2 bg-slate-200/50 p-1 rounded-xl w-max">
-        <button 
-          onClick={() => setActiveTab('folgas')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-            activeTab === 'folgas' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
-          }`}
-        >
-          <Calendar className="w-4 h-4" /> Calendário de Folgas
-        </button>
-        <button 
-          onClick={() => setActiveTab('funcionarios')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-            activeTab === 'funcionarios' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
-          }`}
-        >
-          <Users className="w-4 h-4" /> Funcionários e Turnos
-        </button>
-      </div>
-
       {/* Main Content Area */}
       <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
         
         {/* ================= ABA FOLGAS ================= */}
-        {activeTab === 'folgas' && (
+        
           <div className="flex flex-col h-full">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 flex-wrap gap-4">
               <div className="flex items-center gap-4">
@@ -429,190 +294,9 @@ export default function ControleFolgasPage() {
               )}
             </div>
           </div>
-        )}
-
-        {/* ================= ABA FUNCIONARIOS ================= */}
-        {activeTab === 'funcionarios' && (
-          <div className="flex flex-col h-full">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-sm font-bold text-slate-700">Equipe e Escalas</h2>
-              <button
-                onClick={() => openFuncModal()}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
-              >
-                <Plus className="w-4 h-4" /> Novo Funcionário
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {funcionarios.map(func => (
-                  <div key={func.id} className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="font-bold text-slate-900">{func.nome}</h3>
-                        <p className="text-xs text-slate-500">{func.cargo} • {func.setor}</p>
-                      </div>
-                      <div className="flex gap-1">
-                        <button onClick={() => openFuncModal(func)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded"><Edit className="w-4 h-4"/></button>
-                        <button onClick={() => handleDeleteFuncionario(func.id)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded"><Trash2 className="w-4 h-4"/></button>
-                      </div>
-                    </div>
-                    {func.usuarioId ? (
-                      <div className="mb-3 text-[10px] text-emerald-600 font-bold flex items-center gap-1 bg-emerald-50 w-max px-2 py-0.5 rounded">
-                        <CheckCircle className="w-3 h-3"/> Acesso ao Sistema Vinculado
-                      </div>
-                    ) : (
-                      <div className="mb-3 text-[10px] text-amber-600 font-bold flex items-center gap-1 bg-amber-50 w-max px-2 py-0.5 rounded">
-                        <AlertTriangle className="w-3 h-3"/> Sem Acesso ao Sistema
-                      </div>
-                    )}
-                    <div className="space-y-1.5 mt-4">
-                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Escala de Trabalho</h4>
-                      {diasDaSemana.map((diaNome, idx) => {
-                        const turno = func.turnos.find(t => t.dia === idx);
-                        if (!turno) return null;
-                        return (
-                          <div key={idx} className="flex justify-between items-center text-xs bg-slate-50 p-1.5 rounded">
-                            <span className="font-semibold text-slate-700">{diaNome}</span>
-                            <span className="text-slate-500 font-mono text-[10px]">{turno.entrada} - {turno.saida}</span>
-                          </div>
-                        );
-                      })}
-                      {func.turnos.length === 0 && <span className="text-xs text-slate-400">Nenhuma escala definida.</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ================= MODAL DE FUNCIONARIO ================= */}
-      {isFuncModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-xl">
-            <div className="p-4 border-b flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
-              <h2 className="font-bold text-slate-800">{funcId ? 'Editar Funcionário' : 'Novo Funcionário'}</h2>
-              <button onClick={() => setIsFuncModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
-            </div>
-            
-            <form onSubmit={handleSaveFuncionario} className="flex-1 overflow-y-auto p-6 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nome Completo</label>
-                  <input required value={funcNome} onChange={e => setFuncNome(e.target.value)} className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
-                </div>
-                <div>
-                  {!funcUsuarioId && !funcId && (
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 mb-3 cursor-pointer">
-                      <input type="checkbox" checked={funcCriarUsuario} onChange={e => setFuncCriarUsuario(e.target.checked)} className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500" />
-                      Criar Acesso ao Sistema para o Funcionário
-                    </label>
-                  )}
-                  
-                  {!funcCriarUsuario ? (
-                    <>
-                      <label className="block text-[11px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Vincular a Usuário Existente</label>
-                      <select value={funcUsuarioId} onChange={e => setFuncUsuarioId(e.target.value)} className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
-                        <option value="">-- Nenhum Usuário Vinculado --</option>
-                        {usuarios.map(u => (
-                          <option key={u.id} value={u.id}>{u.username} ({u.role || 'Admin'})</option>
-                        ))}
-                      </select>
-                    </>
-                  ) : (
-                    <div className="space-y-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                       <div>
-                         <label className="block text-[10px] font-bold text-slate-700 mb-1">Nome de Usuário (Login)</label>
-                         <input required={funcCriarUsuario} value={funcNewUsername} onChange={e => setFuncNewUsername(e.target.value)} className="w-full text-xs py-1.5 px-3 border border-slate-300 rounded-lg outline-none focus:border-emerald-500" placeholder="ex: adhler.marina" />
-                       </div>
-                       <div>
-                         <label className="block text-[10px] font-bold text-slate-700 mb-1">Senha Provisória</label>
-                         <input type="password" required={funcCriarUsuario} value={funcNewPassword} onChange={e => setFuncNewPassword(e.target.value)} className="w-full text-xs py-1.5 px-3 border border-slate-300 rounded-lg outline-none focus:border-emerald-500" placeholder="••••••••" />
-                       </div>
-                       <div>
-                         <label className="block text-[10px] font-bold text-slate-700 mb-1">Perfil de Acesso</label>
-                         <select required={funcCriarUsuario} value={funcNewRole} onChange={e => setFuncNewRole(e.target.value as any)} className="w-full text-xs py-1.5 px-3 border border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500">
-                           <option value="marina">Operacional da Marina (Sem acesso financeiro)</option>
-                           <option value="financeiro">Financeiro (Somente área financeira)</option>
-                           <option value="admin">Administrador (Acesso Total)</option>
-                         </select>
-                       </div>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Cargo / Função</label>
-                  <input required value={funcCargo} onChange={e => setFuncCargo(e.target.value)} placeholder="Ex: Marinheiro, Limpeza..." className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Setor</label>
-                  <select required value={funcSetor} onChange={e => setFuncSetor(e.target.value)} className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
-                    <option value="">Selecione...</option>
-                    <option value="Operacional">Operacional (Marina)</option>
-                    <option value="Administrativo">Administrativo</option>
-                    <option value="Manutencao">Manutenção</option>
-                    <option value="Limpeza">Limpeza</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><Clock className="w-4 h-4"/> Escala de Trabalho Semanal</h3>
-                <div className="space-y-3">
-                  {diasDaSemana.map((dia, idx) => {
-                    const hasTurno = funcTurnos.some(t => t.dia === idx);
-                    const turno = funcTurnos.find(t => t.dia === idx);
-                    
-                    return (
-                      <div key={idx} className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${hasTurno ? 'bg-emerald-50/30 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                        <div className="flex items-center gap-3 w-40">
-                          <input 
-                            type="checkbox" 
-                            checked={hasTurno} 
-                            onChange={(e) => e.target.checked ? handleAddTurno(idx) : handleRemoveTurno(idx)}
-                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-600"
-                          />
-                          <span className={`text-sm font-semibold ${hasTurno ? 'text-emerald-900' : 'text-slate-500'}`}>{dia}</span>
-                        </div>
-                        
-                        {hasTurno && turno && (
-                          <div className="flex-1 flex flex-wrap gap-3 items-center">
-                            <div className="flex items-center gap-2">
-                              <label className="text-[10px] text-slate-500 font-bold uppercase">Entrada</label>
-                              <input type="time" required value={turno.entrada} onChange={e => handleTurnoChange(idx, 'entrada', e.target.value)} className="text-xs p-1.5 border border-emerald-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <label className="text-[10px] text-slate-500 font-bold uppercase">Saída</label>
-                              <input type="time" required value={turno.saida} onChange={e => handleTurnoChange(idx, 'saida', e.target.value)} className="text-xs p-1.5 border border-emerald-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
-                            </div>
-                            <div className="flex items-center gap-2 border-l border-emerald-200 pl-3">
-                              <label className="text-[10px] text-slate-500 font-bold uppercase">Pausa (opc.)</label>
-                              <input type="time" value={turno.pausaInicio || ''} onChange={e => handleTurnoChange(idx, 'pausaInicio', e.target.value)} className="text-xs p-1.5 border border-emerald-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 bg-white w-20" />
-                              <span className="text-emerald-300">-</span>
-                              <input type="time" value={turno.pausaFim || ''} onChange={e => handleTurnoChange(idx, 'pausaFim', e.target.value)} className="text-xs p-1.5 border border-emerald-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 bg-white w-20" />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-4">
-                <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2">
-                  <Check className="w-4 h-4"/> Salvar Funcionário
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
-      )}
 
-      {/* ================= MODAL DE FOLGA ================= */}
+        {/* ================= MODAL DE FOLGA ================= */}
       {isFolgaModalOpen && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col shadow-xl">

@@ -8,6 +8,7 @@ let memoryManutencoes: Manutencao[] = [];
 let memoryMecanicos: any[] = [];
 let memoryFuncionarios: Funcionario[] = [];
 let memoryFolgas: Folga[] = [];
+let memoryEpis: any[] = [];
 
 // Helper: Get admin JWT token for authenticated API calls
 export function getAdminToken(): string | null {
@@ -521,6 +522,54 @@ export const folgaDB = {
 };
 
 
+
+export const epiDB = {
+  getAll: (): any[] => {
+    return memoryEpis.sort((a, b) => new Date(b.geradoEm).getTime() - new Date(a.geradoEm).getTime());
+  },
+  getByFuncionarioId: (funcionarioId: string): any[] => {
+    return epiDB.getAll().filter(e => e.funcionarioId === funcionarioId);
+  },
+  create: async (funcionarioId: string, epi: any): Promise<any> => {
+    try {
+      const token = getAdminToken();
+      const res = await fetch(`/api/funcionarios/${funcionarioId}/epis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+        body: JSON.stringify(epi)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newEpi = { ...epi, id: data.id, funcionarioId, geradoEm: new Date().toISOString() };
+        const existingIndex = memoryEpis.findIndex(e => e.id === data.id);
+        if (existingIndex >= 0) {
+          memoryEpis[existingIndex] = newEpi;
+        } else {
+          memoryEpis.push(newEpi);
+        }
+        return newEpi;
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  },
+  delete: async (id: string): Promise<void> => {
+    try {
+      const token = getAdminToken();
+      const res = await fetch(`/api/epis/${id}`, {
+        method: 'DELETE',
+        headers: { ...(token ? {'Authorization': `Bearer ${token}`} : {}) }
+      });
+      if (res.ok) {
+        memoryEpis = memoryEpis.filter(e => e.id !== id);
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  }
+};
+
+
 // Carrega os dados remotamente e preenche a memoria
 export async function loadFromRemote() {
   if (!localStorage.getItem('admin_token')) {
@@ -557,6 +606,7 @@ export async function loadFromRemote() {
     memoryMecanicos = remoteData.mecanicos || [];
     memoryFuncionarios = remoteData.funcionarios || [];
     memoryFolgas = remoteData.folgas || [];
+    memoryEpis = remoteData.epis || [];
 
     return { 
       connected: true,

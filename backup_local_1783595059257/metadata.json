@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Reservas Náuticas",
+  "description": "Painel de gestão de reservas de veículos náuticos sincronizado com o Google Calendar.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

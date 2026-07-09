@@ -1,6 +1,6 @@
 import fs from 'fs';
 
-const TOKEN = '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';
+const TOKEN = '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';
 const OWNER = 'ImotoAkio';
 const REPO = 'Mexicano';
 const BRANCH = 'main';

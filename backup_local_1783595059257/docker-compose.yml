@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  app-mexicano:
+    # Substitua 'seu_usuario' e 'nome_do_repo' pelo nome real do seu github e repositório
+    image: ghcr.io/imotoakio/mexicano:latest 
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      # Você pode mapear as variáveis do .env diretamente pela interface do Portainer (Aba Env)
+      # ou descomentar abaixo e preencher:
+      # - DB_HOST=ip-do-banco-ou-nome-do-container
+      # - DB_USER=usuario
+      # - DB_PASSWORD=senha
+      # - DB_NAME=gestao_nautica
+    networks:
+      - echonet
+    volumes:
+      # Caso precise persistir os uploads (arquivos físicos enviados) no host
+      - mexicano_uploads:/app/uploads
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        # Habilita o Traefik para buscar esse container
+        - "traefik.enable=true"
+        
+        # Rota HTTP -> HTTPS via Traefik
+        - "traefik.http.routers.mexicano.rule=Host(`mexicano.echo.dev.br`)"
+        - "traefik.http.routers.mexicano.entrypoints=websecure" # Use o nome do seu entrypoint HTTPS (geralmente websecure)
+        
+        # Porta exposta da aplicação para o Traefik encaminhar o tráfego
+        - "traefik.http.services.mexicano.loadbalancer.server.port=3000"
+        
+        # Certificado SSL Let's Encrypt
+        - "traefik.http.routers.mexicano.tls=true"
+        - "traefik.http.routers.mexicano.tls.certresolver=myresolver"
+
+networks:
+  echonet:
+    external: true
+
+volumes:
+  mexicano_uploads:
+    # Volume criado no docker local para não perder imagens salvas se o container reiniciar

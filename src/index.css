@@ -112,3 +112,29 @@
     touch-action: manipulation;
   }
 }
+
+/* Fix for printing clipped contents in Tailwind layouts */
+
+@media print { body * { visibility: hidden; } #print-section, #print-section *, #print-area, #print-area * { visibility: visible; }  }
+#print-section {
+  display: none;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-section, #print-section *, #print-area, #print-area * {
+    visibility: visible;
+  }
+  #print-section, #print-area {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+}
+

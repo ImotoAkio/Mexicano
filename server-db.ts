@@ -123,6 +123,30 @@ export async function initializeDatabase() {
     const connection = await currentPool.getConnection();
     console.log("VPS Database connected. Ensuring tables exist...");
 
+    try {
+      const colsToAdd = [
+        'cpf VARCHAR(20)', 'admissao VARCHAR(20)',
+        'rg VARCHAR(50)', 'rgEmissao VARCHAR(20)', 'rgOrgao VARCHAR(50)', 'rgUF VARCHAR(5)',
+        'ctps VARCHAR(50)', 'pis VARCHAR(50)', 'dataNascimento VARCHAR(20)', 'estadoCivil VARCHAR(50)',
+        'filiacao VARCHAR(255)', 'conjugue VARCHAR(255)', 'grauInstrucao VARCHAR(100)', 
+        'primeiroEmprego TINYINT(1) DEFAULT 0', 'contratoExperiencia VARCHAR(20)',
+        'endereco VARCHAR(255)', 'numero VARCHAR(50)', 'cep VARCHAR(20)', 'cidade VARCHAR(100)',
+        'estado VARCHAR(5)', 'telefone VARCHAR(50)', 'contatoEmergencia VARCHAR(100)',
+        'salarioBase VARCHAR(50)', 'dadosBancarios VARCHAR(255)',
+        'tamanhoCalca VARCHAR(20)', 'tamanhoCamisa VARCHAR(20)', 'tamanhoBota VARCHAR(20)', 'tamanhoCinto VARCHAR(20)'
+      ];
+      for (const col of colsToAdd) {
+        const colName = col.split(' ')[0];
+        try {
+          await connection.query(`ALTER TABLE Funcionarios ADD COLUMN ${col}`);
+          console.log(`[Migration] Added column ${colName} to Funcionarios`);
+        } catch(e) {
+          // Column probably already exists, ignore
+        }
+      }
+    } catch(e) { console.error("Migration error:", e); }
+
+
     // 1. Clientes Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS Clientes (
@@ -446,6 +470,8 @@ export async function initializeDatabase() {
         nome VARCHAR(255) NOT NULL,
         cargo VARCHAR(255),
         setor VARCHAR(255),
+        cpf VARCHAR(20),
+        admissao VARCHAR(20),
         usuarioId VARCHAR(50),
         turnos TEXT,
         createdAt VARCHAR(50) NOT NULL
@@ -643,7 +669,7 @@ export async function pullDatabase() {
     manutencoes: manutencoes as any[],
     mecanicos: mecanicos as any[],
     transacoes: transacoes as any[],
-    funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : []})),
+    funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : [], primeiroEmprego: f.primeiroEmprego === 1})),
     folgas: folgas as any[]
   };
 }
@@ -1414,11 +1440,32 @@ export async function upsertFuncionario(f: any) {
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   const turnosStr = f.turnos ? JSON.stringify(f.turnos) : null;
   const query = `
-    INSERT INTO Funcionarios (id, nome, cargo, setor, usuarioId, turnos, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE nome = VALUES(nome), cargo = VALUES(cargo), setor = VALUES(setor), usuarioId = VALUES(usuarioId), turnos = VALUES(turnos)
+    INSERT INTO Funcionarios (id, nome, cargo, setor, cpf, admissao, usuarioId, turnos, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE nome = VALUES(nome), cargo = VALUES(cargo), setor = VALUES(setor), cpf = VALUES(cpf), admissao = VALUES(admissao), usuarioId = VALUES(usuarioId), turnos = VALUES(turnos)
   `;
-  await currentPool.query(query, [f.id, f.nome, f.cargo || null, f.setor || null, f.usuarioId || null, turnosStr, f.createdAt || new Date().toISOString()]);
+  await currentPool.query(query, [f.id, f.nome, f.cargo || null, f.setor || null, f.cpf || null, f.admissao || null, f.usuarioId || null, turnosStr, f.createdAt || new Date().toISOString()]);
+}
+
+export async function upsertEPI(funcionarioId: string, e: any) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  const query = `
+    INSERT INTO FuncionariosEPIs (id, funcionarioId, descricao, ca, quantidade, dataEntrega, dataDevolucao, geradoEm)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      descricao = VALUES(descricao), ca = VALUES(ca), quantidade = VALUES(quantidade), dataEntrega = VALUES(dataEntrega), dataDevolucao = VALUES(dataDevolucao)
+  `;
+  const values = [
+    e.id, funcionarioId, e.descricao, e.ca || null, e.quantidade || 1, e.dataEntrega || null, e.dataDevolucao || null, e.geradoEm || new Date().toISOString()
+  ];
+  await currentPool.query(query, values);
+}
+
+export async function deleteEPI(id: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM FuncionariosEPIs WHERE id = ?", [id]);
 }
 
 export async function deleteFuncionario(id: string) {

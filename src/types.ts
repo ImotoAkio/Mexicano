@@ -168,6 +168,34 @@ export interface Funcionario {
   nome: string;
   cargo: string;
   setor: string;
+  cpf?: string;
+  admissao?: string;
+  rg?: string;
+  rgEmissao?: string;
+  rgOrgao?: string;
+  rgUF?: string;
+  ctps?: string;
+  pis?: string;
+  dataNascimento?: string;
+  estadoCivil?: string;
+  filiacao?: string;
+  conjugue?: string;
+  grauInstrucao?: string;
+  primeiroEmprego?: boolean;
+  contratoExperiencia?: string;
+  endereco?: string;
+  numero?: string;
+  cep?: string;
+  cidade?: string;
+  estado?: string;
+  telefone?: string;
+  contatoEmergencia?: string;
+  salarioBase?: string;
+  dadosBancarios?: string;
+  tamanhoCalca?: string;
+  tamanhoCamisa?: string;
+  tamanhoBota?: string;
+  tamanhoCinto?: string;
   turnos: Turno[];
   createdAt: string;
 }
@@ -182,3 +210,15 @@ export interface Folga {
   observacao?: string;
   createdAt: string;
 }
+
+export interface EpiEntrega {
+  id: string;
+  funcionarioId: string;
+  quantidade: string;
+  descricao: string;
+  ca: string;
+  dataEntrega: string;
+  dataDevolucao: string;
+  geradoEm: string;
+}
+

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { reservationDB, boatDB, clientDB, syncWithRemote } from '../db';
+import { reservationDB, boatDB, clientDB, funcionarioDB, folgaDB, syncWithRemote } from '../db';
 import { fetchGoogleCalendarEvents, fetchGoogleCalendarEventsRange, deleteGoogleCalendarEvent, isCalendarConnected, setSimulatedConnection, setDeveloperToken, CalendarEvent, getGoogleClientId, setGoogleClientId, initiateOAuthLogin, handleOAuthCallback, setCachedToken, mergeLocalAndGoogleEvents, getCachedToken, createGoogleCalendarEvent, checkServerConfig } from '../googleCalendar';
 import { Reserva, Embarcacao, Cliente } from '../types';
 import ReservationModal from './ReservationModal';
-import { Calendar, Ship, Trash2, Anchor, RefreshCw, Plus, Users, Shield, Radio, Sparkles, CheckCircle2, CloudSun, Compass, HelpCircle, ShieldAlert, Clock, ExternalLink, Database, Download, Upload } from 'lucide-react';
+import { Calendar, Ship, Trash2, Anchor, RefreshCw, Plus, Users, Shield, Radio, Sparkles, CheckCircle2, CloudSun, Compass, HelpCircle, ShieldAlert, Clock, ExternalLink, Database, Download, Upload, Briefcase, LayoutDashboard, Calculator, UserCheck } from 'lucide-react';
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const getLocalDateStr = (d: Date = new Date()) => {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -62,6 +62,10 @@ export default function Dashboard() {
   
   // Stats counters
   const [boatsCount, setBoatsCount] = useState(0);
+
+  const [employeesCount, setEmployeesCount] = useState(0);
+  const [employeesOnLeaveToday, setEmployeesOnLeaveToday] = useState(0);
+
   const [clientsCount, setClientsCount] = useState(0);
 
   // Connection & OAuth
@@ -823,7 +827,60 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Dynamic Useful Statistics & Analytics Panel */}
+      
+      {/* Atalhos de Setores / Painel de Módulos */}
+      <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-xs">
+        <div className="mb-5">
+          <h3 className="font-semibold text-slate-900 text-lg flex items-center">
+            <LayoutDashboard className="w-5 h-5 text-indigo-600 mr-2" />
+            Módulos do Sistema
+          </h3>
+          <p className="text-xs text-slate-500 mt-1">Acesso rápido às áreas operacionais, financeiras e de gestão de pessoas.</p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <button
+            onClick={() => onNavigate && onNavigate('schedules')}
+            className="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-xl hover:shadow-md transition-all group cursor-pointer text-center"
+          >
+            <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <Compass className="w-6 h-6" />
+            </div>
+            <span className="font-bold text-slate-800">Operacional</span>
+            <span className="text-[11px] text-slate-500 mt-1">Gestão de Reservas e Lanchas</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate && onNavigate('finance-lancamentos')}
+            className="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 rounded-xl hover:shadow-md transition-all group cursor-pointer text-center"
+          >
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <Calculator className="w-6 h-6" />
+            </div>
+            <span className="font-bold text-slate-800">Financeiro</span>
+            <span className="text-[11px] text-slate-500 mt-1">Controle de Caixas e Lançamentos</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate && onNavigate('dp-dashboard')}
+            className="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-amber-50 to-white border border-amber-100 rounded-xl hover:shadow-md transition-all group cursor-pointer text-center relative"
+          >
+            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <Briefcase className="w-6 h-6" />
+            </div>
+            <span className="font-bold text-slate-800">Departamento Pessoal</span>
+            <span className="text-[11px] text-slate-500 mt-1">Funcionários, Folgas e EPIs</span>
+            
+            {employeesOnLeaveToday > 0 && (
+               <span className="absolute top-4 right-4 bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse shadow-sm">
+                 {employeesOnLeaveToday} folga(s) hoje
+               </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+{/* Dynamic Useful Statistics & Analytics Panel */}
       {(() => {
         const allLocalRes = reservationDB.getAll().filter(r => r.status === 'confirmado');
         

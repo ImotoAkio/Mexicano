@@ -1,7 +1,7 @@
 import fs from 'fs';
 import https from 'https';
 
-const TOKEN = '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';
+const TOKEN = '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';
 const REPO = 'ImotoAkio/Mexicano';
 const PATH = 'package-lock.json';
 const BRANCH = 'main'; // Adjust if branch is different

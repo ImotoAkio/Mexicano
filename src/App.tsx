@@ -28,6 +28,9 @@ import FinanceWhatsAppPage from './components/FinanceWhatsAppPage';
 import FinanceSchedulesPage from './components/FinanceSchedulesPage';
 import AvisosSaidaPage from './components/AvisosSaidaPage';
 import ControleFolgasPage from './components/ControleFolgasPage';
+import ControleEpiPage from './components/ControleEpiPage';
+import DPPage from './components/DP/DPPage';
+import BoletosPage from './components/finance/BoletosPage';
 import { clientDB, boatDB, reservationDB } from './db';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -81,11 +84,11 @@ import {
   MessageSquare,
   CheckCircle,
   Wrench,
-  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer
+  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt
 } from 'lucide-react';
 
 
-type TabType = 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas';
+type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -192,7 +195,6 @@ export default function App() {
       items: [
         { id: 'schedules' as TabType, label: 'Agenda de Reservas', icon: CalendarIcon },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
-
         { id: 'sound' as TabType, label: 'Vistoria de Som', icon: Speaker },
         { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
         { id: 'manutencoes' as TabType, label: 'Manutenções', icon: Wrench },
@@ -211,8 +213,17 @@ export default function App() {
         { id: 'finance-lancamentos' as TabType, label: 'Lançamentos', icon: Wallet },
         { id: 'finance-atividades' as TabType, label: 'Atividades', icon: ClipboardList },
         { id: 'finance-cobranca' as TabType, label: 'Débitos & Cobrança', icon: FileText },
+        { id: 'finance-boletos' as TabType, label: 'Envio de Boletos', icon: Receipt },
         { id: 'finance-schedules' as TabType, label: 'Consulta de Agendas', icon: CalendarIcon },
         { id: 'finance-whatsapp' as TabType, label: 'WhatsApp', icon: MessageSquare },
+      ]
+    },
+    {
+      group: 'Departamento Pessoal',
+      items: [
+        { id: 'dp-dashboard' as TabType, label: 'Painel & Cadastros', icon: Users },
+        { id: 'controle-folgas' as TabType, label: 'Controle de Folgas', icon: CalendarIcon },
+        { id: 'controle-epi' as TabType, label: 'Controle de EPI', icon: Shield },
       ]
     },
     {
@@ -220,7 +231,6 @@ export default function App() {
       items: [
         { id: 'portal-interno' as TabType, label: 'Portal Interno', icon: MessageSquare },
         { id: 'feedback' as TabType, label: 'Central de Feedback', icon: MessageSquare },
-        { id: 'controle-folgas' as TabType, label: 'Controle de Folgas', icon: CalendarIcon },
         { id: 'users' as TabType, label: 'Gestão de Usuários', icon: Shield },
         { id: 'integrations' as TabType, label: 'Configurações & Integrações', icon: Settings },
         { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
@@ -228,11 +238,11 @@ export default function App() {
     }
   ].map(group => ({
     ...group,
-    items: group.items.filter(item => adminRole === 'financeiro' ? ['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id) : true)
+    items: group.items.filter(item => adminRole === 'financeiro' ? ['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id) : true)
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
-    if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
+    if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
       setActiveTab('finance-lancamentos');
     }
   }, [adminRole, activeTab]);
@@ -460,7 +470,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto subtle-scrollbar w-full relative">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full pb-24">
             <ErrorBoundary>
-              {activeTab === 'dashboard' && adminRole !== 'financeiro' && <Dashboard />}
+              {activeTab === 'dashboard' && adminRole !== 'financeiro' && <Dashboard onNavigate={handleTabChange} />}
               {activeTab === 'schedules' && <SchedulesPage />}
               {activeTab === 'whatsapp' && <WhatsAppPage />}
               {activeTab === 'checklists' && <AdminChecklistsWrapper />}
@@ -473,6 +483,7 @@ export default function App() {
               {activeTab === 'finance-lancamentos' && <FinancePage initialTab="lancamentos" />}
               {activeTab === 'finance-atividades' && <FinancePage initialTab="atividades" />}
               {activeTab === 'finance-cobranca' && <FinancePage initialTab="cobranca" />}
+              {activeTab === 'finance-boletos' && <BoletosPage />}
               {activeTab === 'finance-whatsapp' && <FinanceWhatsAppPage />}
               {activeTab === 'finance-schedules' && <FinanceSchedulesPage />}
               {activeTab === 'users' && <UsersPage />}
@@ -480,7 +491,9 @@ export default function App() {
               {activeTab === 'integrations' && <IntegrationsPage />}
               {activeTab === 'portal-interno' && <PortalInterno />}
               {activeTab === 'aviso-saida' && <AvisosSaidaPage />}
+              {activeTab === 'dp-dashboard' && <DPPage />}
               {activeTab === 'controle-folgas' && <ControleFolgasPage />}
+              {activeTab === 'controle-epi' && <ControleEpiPage />}
             </ErrorBoundary>
           </div>
         </div>

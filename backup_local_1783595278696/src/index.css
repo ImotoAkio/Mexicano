@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;605;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background-color: #f8fafc;
+  }
+}
+
+/* Premium luxury minimal animations */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+@keyframes luxury-reveal {
+  0% { transform: translateY(15px); opacity: 0; filter: blur(5px); }
+  100% { transform: translateY(0); opacity: 1; filter: blur(0px); }
+}
+
+@keyframes luxury-scale-up {
+  0% { transform: scale(0.95); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes luxury-line-expand {
+  0% { width: 0; opacity: 0; }
+  50% { opacity: 1; }
+  100% { width: 100%; opacity: 0; }
+}
+
+@keyframes luxury-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes luxury-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(-1deg); }
+}
+
+.subtle-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.subtle-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.subtle-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+/* Hide scrollbar utility */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ═══════════ PWA Standalone Mode Enhancements ═══════════ */
+
+/* Safe area insets for iOS (notch, home indicator, status bar) */
+@supports (padding: env(safe-area-inset-top)) {
+  .pwa-safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pwa-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Standalone mode specific styles */
+@media (display-mode: standalone) {
+  /* Prevent overscroll bounce (rubber banding) on iOS */
+  html, body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text selection for app-like feel on UI elements */
+  button, nav, [role="button"] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Prevent pull-to-refresh on Chrome Android */
+  body {
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* Smooth touch interactions for mobile */
+@media (hover: none) and (pointer: coarse) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  button, a, [role="button"] {
+    touch-action: manipulation;
+  }
+}

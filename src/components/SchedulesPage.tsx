@@ -57,12 +57,13 @@ import {
 } from 'lucide-react';
 import SearchableClientSelect from './shared/SearchableClientSelect';
 import ScheduleCard from './Schedules/ScheduleCard';
-import ConfirmSyncModal from './Schedules/ConfirmSyncModal';
+
 
 interface SyncDifference {
   type: 'only_in_system' | 'only_in_calendar' | 'mismatch';
   systemEvent?: any;
   calendarEvent?: any;
+  [key: string]: any;
 }
 import DeleteConfirmationModal from './Schedules/DeleteConfirmationModal';
 import BulkWhatsAppModal from './Schedules/BulkWhatsAppModal';
