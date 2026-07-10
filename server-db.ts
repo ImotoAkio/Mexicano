@@ -556,6 +556,77 @@ export async function initializeDatabase() {
       console.warn("Skipped or failed duplicate reservations cleanup migration:", dupErr);
     }
 
+    // 18. FuncionariosEPIs Table (Lista fixa de EPIs por funcionário)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS FuncionariosEPIs (
+        id VARCHAR(50) PRIMARY KEY,
+        funcionarioId VARCHAR(50) NOT NULL,
+        descricao VARCHAR(255),
+        ca VARCHAR(50),
+        quantidade VARCHAR(50),
+        dataEntrega VARCHAR(50),
+        dataDevolucao VARCHAR(50),
+        status VARCHAR(50) DEFAULT 'pendente',
+        geradoEm VARCHAR(50),
+        historicoTrocas JSON
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 19. HistoricoEPIMensal Table (Log de impressões)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS HistoricoEPIMensal (
+        id VARCHAR(50) PRIMARY KEY,
+        funcionarioId VARCHAR(50) NOT NULL,
+        mesAno VARCHAR(20) NOT NULL,
+        dadosSnapshot TEXT NOT NULL,
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 20. CatalogoEPIs Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS CatalogoEPIs (
+        id VARCHAR(50) PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        caPadrao VARCHAR(50),
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    try {
+      const [existingEPIs] = await connection.query("SELECT COUNT(*) as cnt FROM CatalogoEPIs");
+      const epiCount = (existingEPIs as any[])[0]?.cnt || 0;
+      if (epiCount === 0) {
+        const defaultEPIs = [
+          { nome: "Óculos Preto", caPadrao: "" },
+          { nome: "Chapéu Árabe", caPadrao: "" },
+          { nome: "Luva de Borracha", caPadrao: "" },
+          { nome: "Luva de Pano", caPadrao: "" },
+          { nome: "Sapatilha", caPadrao: "" },
+          { nome: "Óculos Transparente", caPadrao: "" },
+          { nome: "Calça Térmica", caPadrao: "" },
+          { nome: "Protetor Auricular", caPadrao: "" },
+          { nome: "Camisa UV", caPadrao: "" },
+          { nome: "Repelente", caPadrao: "" },
+          { nome: "Protetor Solar", caPadrao: "" },
+          { nome: "Macacão de Água", caPadrao: "" },
+          { nome: "Colete Homologado Classe 5", caPadrao: "" },
+          { nome: "Lanterna de Mão", caPadrao: "" },
+          { nome: "Lanterna de Cabeça", caPadrao: "" }
+        ];
+        
+        for (const epi of defaultEPIs) {
+          await connection.query(
+            "INSERT INTO CatalogoEPIs (id, nome, caPadrao, createdAt) VALUES (?, ?, ?, ?)",
+            [`epi_cat_${Date.now()}_${Math.floor(Math.random()*1000)}`, epi.nome, epi.caPadrao, new Date().toISOString()]
+          );
+        }
+        console.log(`✅ CatalogoEPIs table seeded with ${defaultEPIs.length} default items.`);
+      }
+    } catch(seedErr) {
+      console.warn("Failed to seed CatalogoEPIs:", seedErr);
+    }
+
     connection.release();
     isInitialized = true;
     console.log("VPS Database tables validated/initialized successfully.");
@@ -585,6 +656,7 @@ export async function pullDatabase() {
   const [transacoes] = await currentPool.query("SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC");
   const [funcionarios] = await currentPool.query("SELECT * FROM Funcionarios ORDER BY createdAt DESC");
   const [folgas] = await currentPool.query("SELECT * FROM Folgas ORDER BY data DESC");
+  const [catalogoEPIs] = await currentPool.query("SELECT * FROM CatalogoEPIs ORDER BY nome ASC");
 
   const todayStr = new Date().toISOString().split('T')[0];
   const [overdueCounts] = await currentPool.query(`
@@ -661,6 +733,9 @@ export async function pullDatabase() {
     somRetirado: r.somRetirado === 1 || r.somRetirado === true,
   }));
 
+  const [funcionariosEPIs] = await currentPool.query("SELECT * FROM FuncionariosEPIs ORDER BY geradoEm DESC");
+  const [historicoEPIMensal] = await currentPool.query("SELECT * FROM HistoricoEPIMensal ORDER BY mesAno DESC");
+
   return {
     clients: parsedClients,
     boats: parsedBoats,
@@ -670,7 +745,13 @@ export async function pullDatabase() {
     mecanicos: mecanicos as any[],
     transacoes: transacoes as any[],
     funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : [], primeiroEmprego: f.primeiroEmprego === 1})),
-    folgas: folgas as any[]
+    folgas: folgas as any[],
+    catalogoEPIs: catalogoEPIs as any[],
+    epis: (funcionariosEPIs as any[]).map(e => ({
+      ...e,
+      historicoTrocas: e.historicoTrocas ? (typeof e.historicoTrocas === 'string' ? JSON.parse(e.historicoTrocas) : e.historicoTrocas) : []
+    })),
+    historicoEpis: historicoEPIMensal as any[]
   };
 }
 
@@ -1447,19 +1528,30 @@ export async function upsertFuncionario(f: any) {
   await currentPool.query(query, [f.id, f.nome, f.cargo || null, f.setor || null, f.cpf || null, f.admissao || null, f.usuarioId || null, turnosStr, f.createdAt || new Date().toISOString()]);
 }
 
+export async function deleteFuncionario(id: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM Funcionarios WHERE id = ?", [id]);
+}
+
 export async function upsertEPI(funcionarioId: string, e: any) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
-  const query = `
-    INSERT INTO FuncionariosEPIs (id, funcionarioId, descricao, ca, quantidade, dataEntrega, dataDevolucao, geradoEm)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+
+  const historicoTrocasStr = e.historicoTrocas ? JSON.stringify(e.historicoTrocas) : JSON.stringify([]);
+
+  await currentPool.query(`
+    INSERT INTO FuncionariosEPIs (id, funcionarioId, descricao, ca, quantidade, dataEntrega, dataDevolucao, status, geradoEm, historicoTrocas)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
-      descricao = VALUES(descricao), ca = VALUES(ca), quantidade = VALUES(quantidade), dataEntrega = VALUES(dataEntrega), dataDevolucao = VALUES(dataDevolucao)
-  `;
-  const values = [
-    e.id, funcionarioId, e.descricao, e.ca || null, e.quantidade || 1, e.dataEntrega || null, e.dataDevolucao || null, e.geradoEm || new Date().toISOString()
-  ];
-  await currentPool.query(query, values);
+      descricao = VALUES(descricao),
+      ca = VALUES(ca),
+      quantidade = VALUES(quantidade),
+      dataEntrega = VALUES(dataEntrega),
+      dataDevolucao = VALUES(dataDevolucao),
+      status = VALUES(status),
+      historicoTrocas = VALUES(historicoTrocas)
+  `, [e.id, funcionarioId, e.descricao, e.ca, e.quantidade, e.dataEntrega || null, e.dataDevolucao || null, e.status || 'pendente', e.geradoEm || new Date().toISOString(), historicoTrocasStr]);
 }
 
 export async function deleteEPI(id: string) {
@@ -1468,10 +1560,14 @@ export async function deleteEPI(id: string) {
   await currentPool.query("DELETE FROM FuncionariosEPIs WHERE id = ?", [id]);
 }
 
-export async function deleteFuncionario(id: string) {
+export async function saveHistoricoEPI(log: any) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
-  await currentPool.query("DELETE FROM Funcionarios WHERE id = ?", [id]);
+
+  await currentPool.query(`
+    INSERT INTO HistoricoEPIMensal (id, funcionarioId, mesAno, dadosSnapshot, createdAt)
+    VALUES (?, ?, ?, ?, ?)
+  `, [log.id, log.funcionarioId, log.mesAno, log.dadosSnapshot, log.createdAt]);
 }
 
 export async function upsertFolga(f: any) {

@@ -218,7 +218,23 @@ export interface EpiEntrega {
   descricao: string;
   ca: string;
   dataEntrega: string;
-  dataDevolucao: string;
+  dataDevolucao?: string;
+  status: 'pendente' | 'em_uso' | 'devolvido';
   geradoEm: string;
+  historicoTrocas?: any[];
 }
 
+export interface HistoricoEPIMensal {
+  id: string;
+  funcionarioId: string;
+  mesAno: string; // Ex: "2026-07"
+  dadosSnapshot: string; // JSON content of the table at the time
+  createdAt: string;
+}
+
+export interface CatalogoEpi {
+  id: string;
+  nome: string;
+  caPadrao?: string;
+  createdAt: string;
+}

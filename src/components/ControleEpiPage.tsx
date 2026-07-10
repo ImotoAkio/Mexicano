@@ -1,26 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Funcionario } from '../types';
-import { funcionarioDB, epiDB } from '../db';
-import { Shield, Printer, Plus, Trash2, Calendar, FileText, Briefcase, User } from 'lucide-react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-
-interface EPIItem {
-  id: string;
-  quantidade: string;
-  descricao: string;
-  ca: string;
-  dataEntrega: string;
-  dataDevolucao: string;
-}
+import { Funcionario, CatalogoEpi, EpiEntrega } from '../types';
+import { funcionarioDB, epiDB, catalogoEpiDB, historicoEpiDB } from '../db';
+import { Shield, Printer, Plus, Trash2, Calendar, FileText, Briefcase, User, Settings, X, CheckSquare, Clock, Check } from 'lucide-react';
 
 export default function ControleEpiPage() {
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [selectedFuncId, setSelectedFuncId] = useState<string>('');
-  const [epiList, setEpiList] = useState<EPIItem[]>([
-    { id: Date.now().toString(), quantidade: '1', descricao: '', ca: '', dataEntrega: '', dataDevolucao: '' }
-  ]);
+  const [epiList, setEpiList] = useState<EpiEntrega[]>([]);
+  const [catalogItems, setCatalogItems] = useState<CatalogoEpi[]>([]);
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+  const [isAddEpiModalOpen, setIsAddEpiModalOpen] = useState(false);
   
+  // For Catalog management modal
+  const [newCatalogName, setNewCatalogName] = useState('');
+  const [newCatalogCA, setNewCatalogCA] = useState('');
+  
+  // For Add EPIs modal
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
+
+  // For History modal
+  const [epiWithHistory, setEpiWithHistory] = useState<EpiEntrega | null>(null);
+
   // Dados fixos da empresa
   const EMPRESA = "C L S DE CASTRO MARINA CLUB VELHO CHICO";
   const CNPJ = "65.614.161/0001-10";
@@ -32,89 +32,195 @@ export default function ControleEpiPage() {
   const loadFuncionarios = () => {
     const list = funcionarioDB.getAll();
     setFuncionarios(list);
+    setCatalogItems(catalogoEpiDB.getAll());
   };
 
   useEffect(() => {
     if (selectedFuncId) {
       const savedEpis = epiDB.getByFuncionarioId(selectedFuncId);
-      if (savedEpis && savedEpis.length > 0) {
-        setEpiList(savedEpis);
-      } else {
-        setEpiList([{ id: Date.now().toString(), quantidade: '1', descricao: '', ca: '', dataEntrega: '', dataDevolucao: '' }]);
-      }
+      setEpiList(savedEpis || []);
     } else {
-      setEpiList([{ id: Date.now().toString(), quantidade: '1', descricao: '', ca: '', dataEntrega: '', dataDevolucao: '' }]);
+      setEpiList([]);
     }
   }, [selectedFuncId]);
 
-  
-  const commonEPIs = [
-    "Óculos de Segurança Escuro",
-    "Óculos de Segurança Incolor",
-    "Chapéu de Proteção (Árabe)",
-    "Luva Nitrílica (Borracha)",
-    "Luva de Malha (Algodão)",
-    "Calçado Sapatilha Náutica",
-    "Calça Térmica",
-    "Camisa Proteção Solar UV",
-    "Protetor Auditivo"
-  ];
+  // Catalog Management
+  const handleAddCatalogItem = async () => {
+    if (!newCatalogName) return;
+    await catalogoEpiDB.create({ nome: newCatalogName, caPadrao: newCatalogCA });
+    setNewCatalogName('');
+    setNewCatalogCA('');
+    setCatalogItems(catalogoEpiDB.getAll());
+  };
 
-  const handleQuickAdd = (descricao: string) => {
-    const emptyIndex = epiList.findIndex(e => !e.descricao && !e.ca && !e.dataEntrega);
-    if (emptyIndex >= 0) {
-       const newList = [...epiList];
-       newList[emptyIndex].descricao = descricao;
-       setEpiList(newList);
-    } else {
-      setEpiList([...epiList, { id: Date.now().toString() + Math.random(), quantidade: '1', descricao, ca: '', dataEntrega: '', dataDevolucao: '' }]);
+  const handleDeleteCatalogItem = async (id: string) => {
+    if(confirm('Tem certeza que deseja remover este EPI do catálogo?')) {
+      await catalogoEpiDB.delete(id);
+      setCatalogItems(catalogoEpiDB.getAll());
     }
   };
 
-  const handleAddEpi = () => {
-    setEpiList([
-      ...epiList,
-      { id: Date.now().toString(), quantidade: '1', descricao: '', ca: '', dataEntrega: '', dataDevolucao: '' }
-    ]);
+  // Fixed List Management
+  const openAddEpiModal = () => {
+    setSelectedCatalogIds(new Set());
+    setIsAddEpiModalOpen(true);
   };
 
-  const handleRemoveEpi = (id: string) => {
-    setEpiList(epiList.filter(item => item.id !== id));
+  const toggleCatalogSelection = (id: string) => {
+    const newSet = new Set(selectedCatalogIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedCatalogIds(newSet);
   };
 
-  const handleUpdateEpi = (id: string, field: keyof EPIItem, value: string) => {
-    setEpiList(epiList.map(item => item.id === id ? { ...item, [field]: value } : item));
+  const selectAllCatalog = () => {
+    if (selectedCatalogIds.size === catalogItems.length) {
+      setSelectedCatalogIds(new Set()); // deselect all
+    } else {
+      setSelectedCatalogIds(new Set(catalogItems.map(c => c.id)));
+    }
+  };
+
+  const handleAddSelectedEpis = async () => {
+    if (!selectedFuncId) return;
+    const newEpis: EpiEntrega[] = [];
+    
+    for (const catId of Array.from(selectedCatalogIds)) {
+      const catItem = catalogItems.find(c => c.id === catId);
+      if (!catItem) continue;
+      
+      const newEpi: any = {
+        id: `epi_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+        funcionarioId: selectedFuncId,
+        quantidade: '1',
+        descricao: catItem.nome,
+        ca: catItem.caPadrao || '',
+        dataEntrega: '',
+        dataDevolucao: '',
+        status: 'pendente',
+        geradoEm: new Date().toISOString()
+      };
+      
+      const saved = await epiDB.create(selectedFuncId, newEpi);
+      if (saved) newEpis.push(saved);
+    }
+    
+    setEpiList([...epiList, ...newEpis]);
+    setIsAddEpiModalOpen(false);
+  };
+
+  const handleRemoveEpi = async (id: string) => {
+    if(confirm('Remover este item da lista do funcionário?')) {
+      await epiDB.delete(id);
+      setEpiList(epiList.filter(item => item.id !== id));
+    }
+  };
+
+  const handleEntregar = async (epi: EpiEntrega) => {
+    const dataEntrega = prompt('Data de Entrega (DD/MM/AAAA):', new Date().toLocaleDateString('pt-BR'));
+    if (!dataEntrega) return;
+    
+    let formattedDate = dataEntrega;
+    if (dataEntrega.includes('/')) {
+      const [d, m, y] = dataEntrega.split('/');
+      formattedDate = `${y}-${m}-${d}`;
+    }
+
+    const ca = prompt('C.A. do Equipamento:', epi.ca);
+    
+    const updatedEpi = {
+      ...epi,
+      dataEntrega: formattedDate,
+      ca: ca || epi.ca,
+      status: 'em_uso' as const
+    };
+
+    const saved = await epiDB.create(selectedFuncId, updatedEpi);
+    if (saved) {
+      setEpiList(epiList.map(item => item.id === epi.id ? saved : item));
+    }
+  };
+
+  const handleDevolver = async (epi: EpiEntrega) => {
+    const dataDevolucao = prompt('Data de Devolução (DD/MM/AAAA):', new Date().toLocaleDateString('pt-BR'));
+    if (!dataDevolucao) return;
+
+    let formattedDate = dataDevolucao;
+    if (dataDevolucao.includes('/')) {
+      const [d, m, y] = dataDevolucao.split('/');
+      formattedDate = `${y}-${m}-${d}`;
+    }
+
+    const updatedEpi = {
+      ...epi,
+      dataDevolucao: formattedDate,
+      status: 'devolvido' as const
+    };
+
+    const saved = await epiDB.create(selectedFuncId, updatedEpi);
+    if (saved) {
+      setEpiList(epiList.map(item => item.id === epi.id ? saved : item));
+    }
+  };
+
+  const handleSubstituir = async (epi: EpiEntrega) => {
+    const dataDevolucao = prompt('Qual a data que o equipamento VELHO foi devolvido? (DD/MM/AAAA):', new Date().toLocaleDateString('pt-BR'));
+    if (!dataDevolucao) return;
+
+    const dataEntrega = prompt('Qual a data que o NOVO equipamento está sendo entregue? (DD/MM/AAAA):', new Date().toLocaleDateString('pt-BR'));
+    if (!dataEntrega) return;
+
+    const ca = prompt('Qual o C.A. do NOVO Equipamento:', epi.ca);
+
+    let formatDev = dataDevolucao;
+    if (dataDevolucao.includes('/')) formatDev = dataDevolucao.split('/').reverse().join('-');
+    
+    let formatEnt = dataEntrega;
+    if (dataEntrega.includes('/')) formatEnt = dataEntrega.split('/').reverse().join('-');
+
+    const trocaRecord = {
+      ca: epi.ca,
+      dataEntrega: epi.dataEntrega,
+      dataDevolucao: formatDev
+    };
+
+    const updatedEpi = {
+      ...epi,
+      dataEntrega: formatEnt,
+      dataDevolucao: '',
+      ca: ca || epi.ca,
+      status: 'em_uso' as const,
+      historicoTrocas: [...(epi.historicoTrocas || []), trocaRecord]
+    };
+
+    const saved = await epiDB.create(selectedFuncId, updatedEpi);
+    if (saved) {
+      setEpiList(epiList.map(item => item.id === epi.id ? saved : item));
+    }
   };
 
   const selectedFunc = funcionarios.find(f => f.id === selectedFuncId);
 
-  
-  
-
-  
   const [isSaving, setIsSaving] = useState(false);
 
   const handlePrint = async () => {
-    if (!selectedFunc) return;
+    if (!selectedFunc || epiList.length === 0) {
+      alert("Selecione um funcionário e adicione EPIs na lista dele primeiro.");
+      return;
+    }
+    
     setIsSaving(true);
     try {
-      for (const epi of epiList) {
-        if (epi.descricao || epi.ca || epi.dataEntrega) {
-          await epiDB.create(selectedFuncId, {
-            id: epi.id,
-            quantidade: epi.quantidade,
-            descricao: epi.descricao,
-            ca: epi.ca,
-            dataEntrega: epi.dataEntrega,
-            dataDevolucao: epi.dataDevolucao
-          });
-        }
-      }
+      // Save Monthly Log
+      const mesAno = new Date().toISOString().substring(0, 7); // YYYY-MM
+      await historicoEpiDB.create(selectedFuncId, {
+        id: `hist_epi_${Date.now()}`,
+        mesAno,
+        dadosSnapshot: JSON.stringify(epiList)
+      });
       
-      // Reset after save
-      setEpiList([{ id: Date.now().toString(), quantidade: '1', descricao: '', ca: '', dataEntrega: '', dataDevolucao: '' }]);
     } catch(e) {
-      console.error('Error saving EPIs', e);
+      console.error('Error saving EPI log', e);
     }
     setIsSaving(false);
 
@@ -165,13 +271,6 @@ export default function ControleEpiPage() {
     printWindow.document.close();
   };
 
-  const currentMonthPrefix = new Date().toISOString().substring(0, 7);
-  const episForPrint = epiList.filter(epi => {
-    if (!epi.dataDevolucao) return true;
-    const devMonth = epi.dataDevolucao.substring(0, 7);
-    return devMonth === currentMonthPrefix;
-  });
-
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-hidden">
       {/* Header visível apenas na tela */}
@@ -181,21 +280,21 @@ export default function ControleEpiPage() {
             <Shield className="w-6 h-6 text-emerald-600" />
             Controle de Entrega de EPI
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Gere e imprima a ficha de controle de Equipamentos de Proteção Individual.</p>
+          <p className="text-sm text-slate-500 mt-1">Gerencie a posse de EPIs e imprima a ficha mensal do funcionário.</p>
         </div>
         <button 
           onClick={handlePrint}
-          disabled={!selectedFunc || isSaving}
+          disabled={!selectedFunc || isSaving || epiList.length === 0}
           className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-md hover:shadow-lg active:scale-95"
         >
           <Printer className="w-4 h-4" />
-          {isSaving ? 'Salvando e Gerando...' : 'Imprimir Ficha'}
+          {isSaving ? 'Registrando Log...' : 'Gerar Ficha Mensal'}
         </button>
       </div>
 
       {/* Conteúdo principal na tela */}
       <div className="flex-1 overflow-y-auto p-6 z-10">
-        <div className="max-w-4xl mx-auto space-y-6">
+        <div className="max-w-5xl mx-auto space-y-6">
           
           {/* Seleção de Funcionário */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 overflow-hidden relative">
@@ -255,87 +354,124 @@ export default function ControleEpiPage() {
             </div>
           </div>
 
-          {/* Lista de EPIs */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
-             
-             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                <Shield className="w-5 h-5 text-blue-500" />
-                Equipamentos (EPIs)
-              </h2>
-              <button 
-                onClick={handleAddEpi}
-                className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                <Plus className="w-4 h-4" /> Adicionar EPI
-              </button>
-            </div>
-
-            
-            
-            
-            <div className="mb-5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Adição Rápida (Clique para adicionar)</p>
-              <div className="flex flex-wrap gap-2">
-                {commonEPIs.map(epi => (
-                  <button
-                    key={epi}
-                    onClick={() => handleQuickAdd(epi)}
-                    className="text-xs font-medium bg-white border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-sm"
+          {/* Lista de EPIs do Funcionário */}
+          {selectedFuncId && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
+               
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-blue-500" />
+                    Lista Fixa de EPIs (Histórico)
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">Gerencie os equipamentos exigidos para o setor deste colaborador.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setIsCatalogModalOpen(true)}
+                    className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg transition-colors"
                   >
-                    + {epi}
+                    <Settings className="w-4 h-4" /> Catálogo Geral
                   </button>
-                ))}
+                  <button 
+                    onClick={openAddEpiModal}
+                    className="flex items-center gap-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm px-4 py-2 rounded-lg transition-all"
+                  >
+                    <Plus className="w-4 h-4" /> Adicionar Equipamentos
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="space-y-3">
-              {epiList.map((epi, index) => (
-                <div key={epi.id} className="grid grid-cols-12 gap-2 items-center bg-slate-50 border border-slate-200 rounded-xl p-3 hover:border-blue-200 transition-colors group">
-                  <div className="col-span-1">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Qtd</label>
-                    <input type="number" min="1" value={epi.quantidade} onChange={e => handleUpdateEpi(epi.id, 'quantidade', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-center" />
-                  </div>
-                  <div className="col-span-3">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Descrição do EPI</label>
-                    <input type="text" placeholder="Ex: Luva de segurança, Capacete..." value={epi.descricao} onChange={e => handleUpdateEpi(epi.id, 'descricao', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">C.A.</label>
-                    <input type="text" placeholder="Número do CA" value={epi.ca} onChange={e => handleUpdateEpi(epi.id, 'ca', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Entrega</label>
-                    <input type="date" value={epi.dataEntrega} onChange={e => handleUpdateEpi(epi.id, 'dataEntrega', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Devolução</label>
-                    <input type="date" value={epi.dataDevolucao} onChange={e => handleUpdateEpi(epi.id, 'dataDevolucao', e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div className="col-span-1">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Status</label>
-                    <div className="flex items-center justify-center h-[34px]">
-                      {epi.dataDevolucao ? (
-                        <span className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[9px] font-bold">Devolvido</span>
-                      ) : (
-                        <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold">Em Uso</span>
+
+              <div className="space-y-3">
+                {epiList.map((epi) => (
+                  <div key={epi.id} className="grid grid-cols-12 gap-4 items-center bg-slate-50 border border-slate-200 rounded-xl p-4 hover:border-blue-200 transition-colors group">
+                    <div className="col-span-4">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Descrição do EPI</div>
+                      <div className="text-sm font-semibold text-slate-800">{epi.descricao}</div>
+                    </div>
+                    
+                    <div className="col-span-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">C.A.</div>
+                      <div className="text-sm text-slate-600">{epi.ca || '-'}</div>
+                    </div>
+
+                    <div className="col-span-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Status</div>
+                      <div className="flex items-center">
+                        {epi.status === 'pendente' && <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-md text-[10px] font-bold flex items-center gap-1"><Clock className="w-3 h-3"/> Pendente</span>}
+                        {epi.status === 'em_uso' && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold flex items-center gap-1"><Check className="w-3 h-3"/> Em Uso</span>}
+                        {epi.status === 'devolvido' && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold flex items-center gap-1"><CheckSquare className="w-3 h-3"/> Devolvido</span>}
+                      </div>
+                    </div>
+
+                    <div className="col-span-3 flex justify-end gap-2">
+                      {epi.status === 'pendente' && (
+                        <button onClick={() => handleEntregar(epi)} className="text-xs font-medium bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
+                          Registrar Entrega
+                        </button>
+                      )}
+                      {epi.status === 'em_uso' && (
+                        <>
+                          <button onClick={() => handleSubstituir(epi)} className="text-xs font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                            Substituir
+                          </button>
+                          <button onClick={() => handleDevolver(epi)} className="text-xs font-medium bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors shadow-sm">
+                            Devolver
+                          </button>
+                        </>
+                      )}
+                      {epi.status === 'devolvido' && (
+                        <button onClick={() => handleEntregar(epi)} className="text-xs font-medium bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm" title="Entregar novo item">
+                          Nova Entrega
+                        </button>
                       )}
                     </div>
+                    
+                    <div className="col-span-1 flex justify-end">
+                      <button onClick={() => handleRemoveEpi(epi.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    {/* Linha de Datas (Embaixo) se já entregou */}
+                    {(epi.dataEntrega || epi.dataDevolucao || (epi.historicoTrocas && epi.historicoTrocas.length > 0)) && (
+                      <div className="col-span-12 flex items-center justify-between mt-2 pt-2 border-t border-slate-200">
+                        <div className="flex gap-6">
+                          {epi.dataEntrega && (
+                            <div className="text-xs text-slate-500">
+                              <span className="font-semibold text-slate-700">Entregue em:</span> {epi.dataEntrega.split('-').reverse().join('/')}
+                            </div>
+                          )}
+                          {epi.dataDevolucao && (
+                            <div className="text-xs text-slate-500">
+                              <span className="font-semibold text-slate-700">Devolvido em:</span> {epi.dataDevolucao.split('-').reverse().join('/')}
+                            </div>
+                          )}
+                        </div>
+                        {epi.historicoTrocas && epi.historicoTrocas.length > 0 && (
+                          <button onClick={() => setEpiWithHistory(epi)} className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Ver Histórico ({epi.historicoTrocas.length})
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="col-span-1 flex justify-center mt-4">
-                    <button onClick={() => handleRemoveEpi(epi.id)} disabled={epiList.length === 1} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                      <Trash2 className="w-4 h-4" />
+                ))}
+                
+                {epiList.length === 0 && (
+                  <div className="text-center py-10 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl">
+                    <Shield className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <h3 className="text-sm font-medium text-slate-600 mb-1">A lista está vazia</h3>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto mb-4">Adicione os EPIs necessários para o setor deste colaborador para iniciar o controle.</p>
+                    <button onClick={openAddEpiModal} className="text-sm font-medium text-blue-600 bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors">
+                      Adicionar Equipamentos
                     </button>
                   </div>
-                </div>
-              ))}
-              {epiList.length === 0 && (
-                <div className="text-center py-8 text-sm text-slate-500 border-2 border-dashed border-slate-200 rounded-xl">
-                  Nenhum EPI adicionado.
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -405,8 +541,8 @@ export default function ControleEpiPage() {
             </tr>
           </thead>
           <tbody>
-            {Array.from({ length: Math.max(7, episForPrint.length) }).map((_, i) => {
-              const item = episForPrint[i];
+            {Array.from({ length: Math.max(7, epiList.length) }).map((_, i) => {
+              const item = epiList[i];
               return (
                 <tr key={item ? item.id : `empty-${i}`} className="even:bg-emerald-50/20">
                   <td className="border border-emerald-700 p-1 text-center text-[11px] h-7 text-emerald-900 font-medium">{item?.quantidade || ''}</td>
@@ -414,7 +550,7 @@ export default function ControleEpiPage() {
                   <td className="border border-emerald-700 p-1 text-center text-[11px] h-7 text-emerald-900">{item?.ca || ''}</td>
                   <td className="border border-emerald-700 p-1 text-center text-[11px] h-7 text-emerald-900">{item?.dataEntrega ? item.dataEntrega.split('-').reverse().join('/') : ''}</td>
                   <td className="border border-emerald-700 p-1 text-center text-[11px] h-7 text-emerald-900">{item?.dataDevolucao ? item.dataDevolucao.split('-').reverse().join('/') : ''}</td>
-                  <td className="border border-emerald-700 p-1 text-center text-[10px] h-7 text-emerald-900 font-bold uppercase">{item ? (item.dataDevolucao ? 'Devolvido' : 'Em Uso') : ''}</td>
+                  <td className="border border-emerald-700 p-1 text-center text-[10px] h-7 text-emerald-900 font-bold uppercase">{item ? (item.status === 'em_uso' ? 'Em Uso' : item.status === 'pendente' ? 'Pendente' : 'Devolvido') : ''}</td>
                   <td className="border border-emerald-700 p-1 text-center h-7"></td>
                 </tr>
               );
@@ -464,8 +600,218 @@ export default function ControleEpiPage() {
              <span className="text-[11px] font-medium">_____________________________ de ___________________________________ de 20________</span>
           </div>
         </div>
-
       </div>
+      
+      {/* Modal Adicionar EPIs da Lista */}
+      {isAddEpiModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-blue-500" />
+                  Adicionar à Lista Fixa
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">Selecione os EPIs necessários para este funcionário.</p>
+              </div>
+              <button onClick={() => setIsAddEpiModalOpen(false)} className="p-2 text-slate-400 hover:bg-white hover:text-slate-600 rounded-lg transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-sm font-medium text-slate-700">{selectedCatalogIds.size} selecionados</span>
+                <button onClick={selectAllCatalog} className="text-xs font-semibold text-blue-600 hover:text-blue-800">
+                  {selectedCatalogIds.size === catalogItems.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                </button>
+              </div>
+              
+              <div className="space-y-2">
+                {catalogItems.map(item => (
+                  <label key={item.id} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedCatalogIds.has(item.id)}
+                      onChange={() => toggleCatalogSelection(item.id)}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">{item.nome}</div>
+                      {item.caPadrao && <div className="text-xs text-slate-500">C.A. Padrão: {item.caPadrao}</div>}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button 
+                onClick={() => setIsAddEpiModalOpen(false)}
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors text-sm"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleAddSelectedEpis}
+                disabled={selectedCatalogIds.size === 0}
+                className="px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm"
+              >
+                Adicionar Selecionados
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Gerenciar Catálogo EPI */}
+      {isCatalogModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-emerald-500" />
+                Gerenciar Catálogo Geral de EPIs
+              </h2>
+              <button onClick={() => setIsCatalogModalOpen(false)} className="p-2 text-slate-400 hover:bg-white hover:text-slate-600 rounded-lg transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-6">
+                <h3 className="text-sm font-semibold text-emerald-800 mb-3">Adicionar Novo EPI ao Catálogo</h3>
+                <div className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Nome / Descrição</label>
+                    <input 
+                      type="text" 
+                      value={newCatalogName}
+                      onChange={e => setNewCatalogName(e.target.value)}
+                      placeholder="Ex: Luva de Raspa"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                    />
+                  </div>
+                  <div className="w-1/3">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">CA Padrão (Opcional)</label>
+                    <input 
+                      type="text" 
+                      value={newCatalogCA}
+                      onChange={e => setNewCatalogCA(e.target.value)}
+                      placeholder="Ex: 12345"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleAddCatalogItem}
+                    disabled={!newCatalogName}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-slate-800 mb-2">EPIs Cadastrados ({catalogItems.length})</h3>
+                {catalogItems.length === 0 ? (
+                  <p className="text-sm text-slate-500 text-center py-4 bg-slate-50 rounded-lg border border-slate-100">Nenhum EPI cadastrado.</p>
+                ) : (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 text-slate-600 text-xs uppercase border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 font-medium">Nome / Descrição</th>
+                          <th className="px-4 py-3 font-medium">CA Padrão</th>
+                          <th className="px-4 py-3 text-right font-medium">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {catalogItems.map(item => (
+                          <tr key={item.id} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 font-medium text-slate-800">{item.nome}</td>
+                            <td className="px-4 py-3 text-slate-600">{item.caPadrao || '-'}</td>
+                            <td className="px-4 py-3 text-right">
+                              <button 
+                                onClick={() => handleDeleteCatalogItem(item.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                title="Remover"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 bg-slate-50 text-right">
+              <button 
+                onClick={() => setIsCatalogModalOpen(false)}
+                className="px-5 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors text-sm"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Histórico de Trocas */}
+      {epiWithHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-500" />
+                  Histórico de Trocas
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">{epiWithHistory.descricao}</p>
+              </div>
+              <button onClick={() => setEpiWithHistory(null)} className="p-2 text-slate-400 hover:bg-white hover:text-slate-600 rounded-lg transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
+                {epiWithHistory.historicoTrocas?.map((troca, index) => (
+                  <div key={index} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-slate-200 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 relative z-10">
+                      <CheckSquare className="w-4 h-4" />
+                    </div>
+                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-[10px] font-bold uppercase text-slate-400">C.A. {troca.ca || 'N/A'}</div>
+                        <div className="text-xs font-medium text-slate-500">Troca #{index + 1}</div>
+                      </div>
+                      <div className="text-sm text-slate-700">
+                        <p><span className="font-semibold">Entregue:</span> {troca.dataEntrega ? troca.dataEntrega.split('-').reverse().join('/') : '?'}</p>
+                        <p><span className="font-semibold">Devolvido:</span> {troca.dataDevolucao ? troca.dataDevolucao.split('-').reverse().join('/') : '?'}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 bg-slate-50 text-right">
+              <button 
+                onClick={() => setEpiWithHistory(null)}
+                className="px-5 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors text-sm"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

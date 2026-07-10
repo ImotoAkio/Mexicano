@@ -9,6 +9,8 @@ let memoryMecanicos: any[] = [];
 let memoryFuncionarios: Funcionario[] = [];
 let memoryFolgas: Folga[] = [];
 let memoryEpis: any[] = [];
+let memoryCatalogoEpis: any[] = [];
+let memoryHistoricoEpis: any[] = [];
 
 // Helper: Get admin JWT token for authenticated API calls
 export function getAdminToken(): string | null {
@@ -607,6 +609,8 @@ export async function loadFromRemote() {
     memoryFuncionarios = remoteData.funcionarios || [];
     memoryFolgas = remoteData.folgas || [];
     memoryEpis = remoteData.epis || [];
+    memoryCatalogoEpis = remoteData.catalogoEPIs || [];
+    memoryHistoricoEpis = remoteData.historicoEpis || [];
 
     return { 
       connected: true,
@@ -629,3 +633,79 @@ export async function loadFromRemote() {
 export async function syncWithRemote() {
   return await loadFromRemote();
 }
+
+export const catalogoEpiDB = {
+  getAll: (): any[] => {
+    return memoryCatalogoEpis;
+  },
+  create: async (epi: any): Promise<any> => {
+    try {
+      const token = getAdminToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/catalogo-epis`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(epi)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newEpi = { ...epi, id: data.id, createdAt: new Date().toISOString() };
+        const existingIndex = memoryCatalogoEpis.findIndex(e => e.id === data.id);
+        if (existingIndex >= 0) {
+          memoryCatalogoEpis[existingIndex] = newEpi;
+        } else {
+          memoryCatalogoEpis.push(newEpi);
+        }
+        return newEpi;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return null;
+  },
+  delete: async (id: string) => {
+    try {
+      const token = getAdminToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/catalogo-epis/${id}`, {
+        method: 'DELETE',
+        headers
+      });
+      if (res.ok) {
+        memoryCatalogoEpis = memoryCatalogoEpis.filter(e => e.id !== id);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+};
+
+export const historicoEpiDB = {
+  getAll: (): any[] => {
+    return memoryHistoricoEpis.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+  getByFuncionarioId: (funcionarioId: string): any[] => {
+    return historicoEpiDB.getAll().filter(e => e.funcionarioId === funcionarioId);
+  },
+  create: async (funcionarioId: string, log: any): Promise<any> => {
+    try {
+      const token = getAdminToken();
+      const res = await fetch(`/api/funcionarios/${funcionarioId}/historico-epi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+        body: JSON.stringify(log)
+      });
+      if (res.ok) {
+        const newLog = { ...log, funcionarioId, createdAt: log.createdAt || new Date().toISOString() };
+        memoryHistoricoEpis.push(newLog);
+        return newLog;
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  }
+};

@@ -808,6 +808,44 @@ app.delete("/api/epis/:id", requireAdminAuth, sensitiveLimiter, async (req, res)
   }
 });
 
+app.post("/api/funcionarios/:id/historico-epi", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    const logData = req.body;
+    await import('./server-db.js').then(m => m.saveHistoricoEPI({ 
+      ...logData, 
+      funcionarioId: req.params.id,
+      id: logData.id || `hist_epi_${Date.now()}`
+    }));
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[Historico EPI Save Error]", err);
+    res.status(500).json({ error: true, message: err.message });
+  }
+});
+
+// Route: Operacional - Catálogo EPIs
+app.post("/api/catalogo-epis", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    const { id, ...epiData } = req.body;
+    const finalId = id || `epi_cat_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+    await import('./server-db.js').then(m => m.upsertCatalogoEPI({ ...epiData, id: finalId }));
+    res.json({ success: true, id: finalId });
+  } catch (err: any) {
+    console.error("[Catalogo EPI Save Error]", err);
+    res.status(500).json({ error: true, message: err.message });
+  }
+});
+
+app.delete("/api/catalogo-epis/:id", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    await import('./server-db.js').then(m => m.deleteCatalogoEPI(req.params.id));
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[Catalogo EPI Delete Error]", err);
+    res.status(500).json({ error: true, message: err.message });
+  }
+});
+
 // Route: Operacional - Funcionarios
 app.post("/api/funcionarios/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   const { action, data } = req.body;
