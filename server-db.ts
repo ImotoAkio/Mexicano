@@ -863,6 +863,7 @@ export async function upsertReservation(reserva: any) {
   const fotosChecklistSaidaStr = reserva.fotosChecklistSaida ? JSON.stringify(reserva.fotosChecklistSaida) : null;
   const fotosChecklistChegadaStr = reserva.fotosChecklistChegada ? JSON.stringify(reserva.fotosChecklistChegada) : null;
 
+  const query = `
     INSERT INTO Reservas (
       id, embarcacaoId, clienteId, data, periodo, observacoes, googleEventId, status, createdAt,
       somRetirado, somTesteSaida, somTesteRetorno, horaSaida, horaChegada, fotosChecklistSaida, fotosChecklistChegada,
