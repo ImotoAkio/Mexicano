@@ -1,36 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Logo from './components/Logo';
 import { loadFromRemote } from './db';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 
-import Dashboard from './components/Dashboard';
-import SchedulesPage from './components/SchedulesPage';
-import SchedulesReportPage from './components/SchedulesReportPage';
-import ClientPage from './components/ClientPage';
-import BoatPage from './components/BoatPage';
-import IntegrationsPage from './components/IntegrationsPage';
-import SoundControlsPage from './components/SoundControlsPage';
-import FinancePage from './components/FinancePage';
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const SchedulesPage = lazy(() => import('./components/SchedulesPage'));
+const SchedulesReportPage = lazy(() => import('./components/SchedulesReportPage'));
+const ClientPage = lazy(() => import('./components/ClientPage'));
+const BoatPage = lazy(() => import('./components/BoatPage'));
+const IntegrationsPage = lazy(() => import('./components/IntegrationsPage'));
+const SoundControlsPage = lazy(() => import('./components/SoundControlsPage'));
+const FinancePage = lazy(() => import('./components/FinancePage'));
 import LoginPage from './components/LoginPage';
 import ClientLoginPage from './components/ClientLoginPage';
-import ClientDashboardPage from './components/ClientDashboardPage';
+const ClientDashboardPage = lazy(() => import('./components/ClientDashboardPage'));
 import LandingPage from './components/LandingPage';
-import MarinaDashboard from './components/MarinaDashboard';
-import UsersPage from './components/UsersPage';
-import FeedbackForm from './components/FeedbackForm';
-import FeedbackAdmin from './components/FeedbackAdmin';
-import MaintenancePage from './components/MaintenancePage';
-import PortalInterno from './components/finance/PortalInterno';
-import MarinaChecklistsView from './components/MarinaChecklistsView';
-import MarinaFuelView from './components/MarinaFuelView';
-import WhatsAppPage from './components/WhatsAppPage';
-import FinanceWhatsAppPage from './components/FinanceWhatsAppPage';
-import FinanceSchedulesPage from './components/FinanceSchedulesPage';
-import AvisosSaidaPage from './components/AvisosSaidaPage';
-import ControleFolgasPage from './components/ControleFolgasPage';
-import ControleEpiPage from './components/ControleEpiPage';
-import DPPage from './components/DP/DPPage';
-import BoletosPage from './components/finance/BoletosPage';
+const MarinaDashboard = lazy(() => import('./components/MarinaDashboard'));
+const UsersPage = lazy(() => import('./components/UsersPage'));
+const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
+const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
+const MaintenancePage = lazy(() => import('./components/MaintenancePage'));
+const PortalInterno = lazy(() => import('./components/finance/PortalInterno'));
+const MarinaChecklistsView = lazy(() => import('./components/MarinaChecklistsView'));
+const MarinaFuelView = lazy(() => import('./components/MarinaFuelView'));
+const WhatsAppPage = lazy(() => import('./components/WhatsAppPage'));
+const FinanceWhatsAppPage = lazy(() => import('./components/FinanceWhatsAppPage'));
+const FinanceSchedulesPage = lazy(() => import('./components/FinanceSchedulesPage'));
+const AvisosSaidaPage = lazy(() => import('./components/AvisosSaidaPage'));
+const ControleFolgasPage = lazy(() => import('./components/ControleFolgasPage'));
+const ControleEpiPage = lazy(() => import('./components/ControleEpiPage'));
+const DPPage = lazy(() => import('./components/DP/DPPage'));
+const BoletosPage = lazy(() => import('./components/finance/BoletosPage'));
+const RetroativoPage = lazy(() => import('./components/RetroativoPage').then(m => ({ default: m.RetroativoPage })));
 import { clientDB, boatDB, reservationDB } from './db';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -260,11 +261,16 @@ export default function App() {
   const isFeedbackRoute = currentPath === '/feedback' || currentPath.startsWith('/feedback');
   const isAdminRoute = currentPath.startsWith('/admin');
   const isPortalRoute = currentPath.startsWith('/portal');
-  const isLandingRoute = !isAdminRoute && !isPortalRoute && !isFeedbackRoute;
+  const isSimuladorRoute = currentPath === '/simulador-epi';
+  const isLandingRoute = !isAdminRoute && !isPortalRoute && !isFeedbackRoute && !isSimuladorRoute;
 
   // ═══════════ FEEDBACK PUBLIC PAGE (/feedback) ═══════════
   if (isFeedbackRoute) {
-    return <FeedbackForm />;
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <FeedbackForm />
+      </Suspense>
+    );
   }
 
   // ═══════════ LANDING PAGE (/) ═══════════
@@ -313,16 +319,18 @@ export default function App() {
 
     return (
       <ErrorBoundary>
-        <ClientDashboardPage 
-          client={clientData.client}
-          boats={clientData.boats}
-          reservations={clientData.reservations}
-          onLogout={() => {
-            localStorage.removeItem('client_token');
-            setClientToken(null);
-            setClientData(null);
-          }}
-        />
+        <Suspense fallback={<div className="min-h-[100dvh] w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white"><div className="relative w-28 h-28 flex items-center justify-center animate-pulse"><div className="w-full h-full opacity-90 p-4"><Logo className="w-full h-full text-[#B69D74]" /></div></div></div>}>
+          <ClientDashboardPage 
+            client={clientData.client}
+            boats={clientData.boats}
+            reservations={clientData.reservations}
+            onLogout={() => {
+              localStorage.removeItem('client_token');
+              setClientToken(null);
+              setClientData(null);
+            }}
+          />
+        </Suspense>
       </ErrorBoundary>
     );
   }
@@ -348,8 +356,20 @@ export default function App() {
     );
   }
 
+  if (currentPath === '/simulador-epi') {
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <RetroativoPage />
+      </Suspense>
+    );
+  }
+
   if (adminRole === 'marina') {
-    return <MarinaDashboard onLogout={handleLogout} operadorNome={adminName} />;
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <MarinaDashboard onLogout={handleLogout} operadorNome={adminName} />
+      </Suspense>
+    );
   }
 
   return (
@@ -470,30 +490,32 @@ export default function App() {
         <div className="flex-1 overflow-y-auto subtle-scrollbar w-full relative">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full pb-24">
             <ErrorBoundary>
-              {activeTab === 'dashboard' && adminRole !== 'financeiro' && <Dashboard onNavigate={handleTabChange} />}
-              {activeTab === 'schedules' && <SchedulesPage />}
-              {activeTab === 'whatsapp' && <WhatsAppPage />}
-              {activeTab === 'checklists' && <AdminChecklistsWrapper />}
-              {activeTab === 'fuel' && <AdminFuelWrapper />}
-              {activeTab === 'reports' && <SchedulesReportPage />}
-              {activeTab === 'clients' && <ClientPage />}
-              {activeTab === 'boats' && <BoatPage />}
-              {activeTab === 'sound' && <SoundControlsPage />}
-              {activeTab === 'manutencoes' && <MaintenancePage />}
-              {activeTab === 'finance-lancamentos' && <FinancePage initialTab="lancamentos" />}
-              {activeTab === 'finance-atividades' && <FinancePage initialTab="atividades" />}
-              {activeTab === 'finance-cobranca' && <FinancePage initialTab="cobranca" />}
-              {activeTab === 'finance-boletos' && <BoletosPage />}
-              {activeTab === 'finance-whatsapp' && <FinanceWhatsAppPage />}
-              {activeTab === 'finance-schedules' && <FinanceSchedulesPage />}
-              {activeTab === 'users' && <UsersPage />}
-              {activeTab === 'feedback' && <FeedbackAdmin />}
-              {activeTab === 'integrations' && <IntegrationsPage />}
-              {activeTab === 'portal-interno' && <PortalInterno />}
-              {activeTab === 'aviso-saida' && <AvisosSaidaPage />}
-              {activeTab === 'dp-dashboard' && <DPPage />}
-              {activeTab === 'controle-folgas' && <ControleFolgasPage />}
-              {activeTab === 'controle-epi' && <ControleEpiPage />}
+              <Suspense fallback={<div className="h-full w-full min-h-[400px] flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
+                {activeTab === 'dashboard' && adminRole !== 'financeiro' && <Dashboard onNavigate={handleTabChange} />}
+                {activeTab === 'schedules' && <SchedulesPage />}
+                {activeTab === 'whatsapp' && <WhatsAppPage />}
+                {activeTab === 'checklists' && <AdminChecklistsWrapper />}
+                {activeTab === 'fuel' && <AdminFuelWrapper />}
+                {activeTab === 'reports' && <SchedulesReportPage />}
+                {activeTab === 'clients' && <ClientPage />}
+                {activeTab === 'boats' && <BoatPage />}
+                {activeTab === 'sound' && <SoundControlsPage />}
+                {activeTab === 'manutencoes' && <MaintenancePage />}
+                {activeTab === 'finance-lancamentos' && <FinancePage initialTab="lancamentos" />}
+                {activeTab === 'finance-atividades' && <FinancePage initialTab="atividades" />}
+                {activeTab === 'finance-cobranca' && <FinancePage initialTab="cobranca" />}
+                {activeTab === 'finance-boletos' && <BoletosPage />}
+                {activeTab === 'finance-whatsapp' && <FinanceWhatsAppPage />}
+                {activeTab === 'finance-schedules' && <FinanceSchedulesPage />}
+                {activeTab === 'users' && <UsersPage />}
+                {activeTab === 'feedback' && <FeedbackAdmin />}
+                {activeTab === 'integrations' && <IntegrationsPage />}
+                {activeTab === 'portal-interno' && <PortalInterno />}
+                {activeTab === 'aviso-saida' && <AvisosSaidaPage />}
+                {activeTab === 'dp-dashboard' && <DPPage />}
+                {activeTab === 'controle-folgas' && <ControleFolgasPage />}
+                {activeTab === 'controle-epi' && <ControleEpiPage />}
+              </Suspense>
             </ErrorBoundary>
           </div>
         </div>

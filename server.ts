@@ -14,6 +14,7 @@ import jwt from "jsonwebtoken";
 import cors from "cors";
 import fs from "fs";
 import crypto from "crypto";
+import compression from "compression";
 import { PDFParse } from "pdf-parse";
 import { PDFDocument } from "pdf-lib";
 import {
@@ -23,7 +24,7 @@ import {
   getConfigValue, setConfigValue, getClientByCpf,
   getAdminByUsername, getClientAuth, upsertClientAuth,
   getAllAdmins, createAdmin, updateAdmin, deleteAdmin,
-  getAllTransacoes, upsertTransacao, deleteTransacao, syncClientFinancialStatus,
+  getAllTransacoes, upsertTransacao, deleteTransacao, syncClientFinancialStatus, deleteAllTransacoes, deleteTransacoesByClientIds,
   getAllAtividades, upsertAtividade, deleteAtividade,
   getAllFeedbacks, upsertFeedback, deleteFeedback,
   upsertManutencao, deleteManutencao,

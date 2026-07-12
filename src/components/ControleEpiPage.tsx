@@ -282,7 +282,16 @@ export default function ControleEpiPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-1">Gerencie a posse de EPIs e imprima a ficha mensal do funcionário.</p>
         </div>
-        <button 
+        <div className="flex items-center gap-3">
+          <a
+            href="/simulador-epi"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-medium transition-all shadow-sm border border-slate-200"
+          >
+            Fichas Antigas (Simulador)
+          </a>
+          <button 
           onClick={handlePrint}
           disabled={!selectedFunc || isSaving || epiList.length === 0}
           className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-md hover:shadow-lg active:scale-95"
@@ -291,6 +300,7 @@ export default function ControleEpiPage() {
           {isSaving ? 'Registrando Log...' : 'Gerar Ficha Mensal'}
         </button>
       </div>
+    </div>
 
       {/* Conteúdo principal na tela */}
       <div className="flex-1 overflow-y-auto p-6 z-10">

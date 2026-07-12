@@ -46,6 +46,10 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
   const [currentReviewIndex, setCurrentReviewIndex] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  type FilterMode = 'all' | 'pending' | 'ready' | 'missing_client' | 'missing_category' | 'ignored';
+  const [filterMode, setFilterMode] = useState<FilterMode>('all');
+  const [importMode, setImportMode] = useState<'append' | 'overwrite_clients' | 'overwrite_all'>('overwrite_clients');
 
   // Load saved mapping on mount
   useEffect(() => {
@@ -81,6 +85,9 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
       } else if (e.key.toLowerCase() === 's') {
         e.preventDefault();
         handleUpdatePreviewRow(currentReviewIndex, { categoria: 'Serviço' });
+      } else if (e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        handleUpdatePreviewRow(currentReviewIndex, { categoria: 'Parcela de Cota' });
       }
     };
 
@@ -181,6 +188,9 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                 const foundClient = clientes.find(c => c.nome.toLowerCase() === currentClientName.toLowerCase());
                 const day = parsedData.split('-')[2];
                 const categoriaDefault = day === '10' ? 'Mensalidade' : '';
+                
+                const todayStr = new Date().toISOString().split('T')[0];
+                const statusDefault = parsedData < todayStr ? 'atrasado' : 'pendente';
 
                 autoParsedRows.push({
                   _originalRow: row,
@@ -188,7 +198,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                   clienteIdEncontrado: foundClient?.id,
                   valor: parsedValor,
                   dataVencimento: parsedData,
-                  status: 'aguardando_aprovacao',
+                  status: statusDefault,
                   categoria: categoriaDefault,
                   descricao: ''
                 });
@@ -290,7 +300,8 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
 
       const day = parsedData.split('-')[2];
       const categoriaDefault = day === '10' ? 'Mensalidade' : '';
-      const statusDefault = 'aguardando_aprovacao';
+      const todayStr = new Date().toISOString().split('T')[0];
+      const statusDefault = parsedData < todayStr ? 'atrasado' : 'pendente';
 
       return {
         _originalRow: row,
@@ -368,7 +379,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ action: 'upsert', data: payloadData })
+        body: JSON.stringify({ action: 'upsert', data: payloadData, importMode })
       });
       
       if (res.ok) {
@@ -478,25 +489,61 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
 
           {step === 'review' && (
             <div className="flex-grow flex flex-col gap-2 min-h-0 overflow-hidden">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-base font-bold text-slate-800">Conferência de Lançamentos</h3>
-                  <p className="text-[11px] text-slate-500">Atalhos: ← / → navegar, M mensalidade, S serviço. Apenas faturamentos ativos serão importados.</p>
+                  <p className="text-[11px] text-slate-500">Atalhos: ← / → navegar, M mensalidade, S serviço, P parcela de cota. Apenas faturamentos ativos serão importados.</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newRows = previewRows.map(r => 
+                      !r.clienteIdEncontrado ? { ...r, ignored: true } : r
+                    );
+                    setPreviewRows(newRows);
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <EyeOff className="w-3.5 h-3.5" /> Ignorar Não Localizados
+                </button>
               </div>
 
               {currentRow ? (
                 <div className="flex-1 flex flex-col md:flex-row gap-4 items-stretch min-h-0 overflow-hidden">
                   {/* Left list pane */}
                   <div className="w-full md:w-72 flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm h-full">
-                    <div className="p-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lançamentos</span>
-                      <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-full">
-                        {previewRows.filter(r => !r.ignored).length} / {previewRows.length} ativos
-                      </span>
+                    <div className="p-3 border-b border-slate-100 bg-slate-50 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lançamentos</span>
+                        <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-full">
+                          {previewRows.filter(r => !r.ignored).length} / {previewRows.length} ativos
+                        </span>
+                      </div>
+                      <select 
+                        value={filterMode} 
+                        onChange={(e) => setFilterMode(e.target.value as FilterMode)}
+                        className="text-[11px] font-medium p-1.5 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white text-slate-700 w-full"
+                      >
+                        <option value="all">Todos ({previewRows.length})</option>
+                        <option value="pending">Pendentes</option>
+                        <option value="ready">Prontos</option>
+                        <option value="missing_client">Cliente Não Encontrado</option>
+                        <option value="missing_category">Sem Categoria</option>
+                        <option value="ignored">Ignorados</option>
+                      </select>
                     </div>
                     <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-                      {previewRows.map((row, idx) => {
+                      {previewRows.map((row, index) => ({ row, index })).filter(({ row }) => {
+                        const isComplete = row.clienteIdEncontrado && row.categoria;
+                        if (filterMode === 'all') return true;
+                        if (filterMode === 'ignored') return row.ignored;
+                        if (row.ignored) return false;
+                        if (filterMode === 'ready') return isComplete;
+                        if (filterMode === 'pending') return !isComplete;
+                        if (filterMode === 'missing_client') return !row.clienteIdEncontrado;
+                        if (filterMode === 'missing_category') return row.clienteIdEncontrado && !row.categoria;
+                        return true;
+                      }).map(({ row, index: idx }) => {
                         const isActive = idx === currentReviewIndex;
                         const isComplete = row.clienteIdEncontrado && row.categoria;
 
@@ -614,6 +661,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                             <option value="">-- Selecione Categoria --</option>
                             <option value="Mensalidade">Mensalidade</option>
                             <option value="Serviço">Serviço</option>
+                            <option value="Parcela de Cota">Parcela de Cota</option>
                             <option value="Outro">Outro</option>
                           </select>
                           {!currentRow.categoria && (
@@ -727,23 +775,39 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
         </div>
 
         {/* Footer */}
-        <div className="p-3 border-t border-slate-100 bg-white flex justify-end gap-3 shrink-0">
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition-colors text-sm"
-          >
-            Cancelar
-          </button>
-          
-          {step === 'review' && (
+        <div className="p-3 border-t border-slate-100 bg-white flex justify-between gap-3 shrink-0 items-center">
+          {step === 'review' ? (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-slate-700">Modo de Importação:</label>
+              <select 
+                value={importMode} 
+                onChange={e => setImportMode(e.target.value as any)}
+                className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
+              >
+                <option value="append">Adicionar / Atualizar (Padrão)</option>
+                <option value="overwrite_clients">Sobrescrever clientes desta planilha (Recomendado)</option>
+                <option value="overwrite_all">Sobrescrever TODOS os registros (Atenção!)</option>
+              </select>
+            </div>
+          ) : <div />}
+          <div className="flex gap-3">
             <button 
-              onClick={handleImport}
-              disabled={isProcessing}
-              className="px-6 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition-colors text-sm"
             >
-              {isProcessing ? 'Importando...' : `Confirmar Importação (${previewRows.filter(r => !r.ignored).length})`}
+              Cancelar
             </button>
-          )}
+            
+            {step === 'review' && (
+              <button 
+                onClick={handleImport}
+                disabled={isProcessing}
+                className="px-6 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+              >
+                {isProcessing ? 'Importando...' : `Confirmar Importação (${previewRows.filter(r => !r.ignored).length})`}
+              </button>
+            )}
+          </div>
         </div>
 
       </div>

@@ -271,19 +271,6 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN pessoasABordo VARCHAR(50);`);
-    } catch (e) {}
-    try {
-      await connection.query(`ALTER TABLE Reservas ADD COLUMN fotosChecklistChegada TEXT;`);
-    } catch (e) {}
-
-    // Ensure sound control columns exist on existing Databases
-    try {
-      await connection.query(`ALTER TABLE Reservas ADD COLUMN somRetirado TINYINT(1) DEFAULT 0;`);
-    } catch (e) {}
-    try {
-      await connection.query(`ALTER TABLE Reservas ADD COLUMN somTesteSaida VARCHAR(50) DEFAULT NULL;`);
-    } catch (e) {}
-    try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN somTesteRetorno VARCHAR(50) DEFAULT NULL;`);
     } catch (e) {}
     try {
@@ -876,12 +863,11 @@ export async function upsertReservation(reserva: any) {
   const fotosChecklistSaidaStr = reserva.fotosChecklistSaida ? JSON.stringify(reserva.fotosChecklistSaida) : null;
   const fotosChecklistChegadaStr = reserva.fotosChecklistChegada ? JSON.stringify(reserva.fotosChecklistChegada) : null;
 
-  const query = `
     INSERT INTO Reservas (
       id, embarcacaoId, clienteId, data, periodo, observacoes, googleEventId, status, createdAt,
       somRetirado, somTesteSaida, somTesteRetorno, horaSaida, horaChegada, fotosChecklistSaida, fotosChecklistChegada,
-      previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada, litrosAbastecidos
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       embarcacaoId = VALUES(embarcacaoId),
       clienteId = VALUES(clienteId),
@@ -907,7 +893,8 @@ export async function upsertReservation(reserva: any) {
       operadorChegada = VALUES(operadorChegada),
       destino = VALUES(destino),
       pessoasABordo = VALUES(pessoasABordo),
-      confirmacaoEnviada = VALUES(confirmacaoEnviada)
+      confirmacaoEnviada = VALUES(confirmacaoEnviada),
+      litrosAbastecidos = VALUES(litrosAbastecidos)
   `;
 
   const values = [
@@ -937,7 +924,8 @@ export async function upsertReservation(reserva: any) {
     reserva.operadorChegada || null,
     reserva.destino || null,
     reserva.pessoasABordo || null,
-    reserva.confirmacaoEnviada ? 1 : 0
+    reserva.confirmacaoEnviada ? 1 : 0,
+    reserva.litrosAbastecidos || null
   ];
 
   await currentPool.query(query, values);
@@ -1011,14 +999,16 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
     // 3. Sync reservations
     for (const res of payload.reservations) {
       const obs = res.observações || res.observacoes || null;
+      const fotosChecklistDescidaStr = res.fotosChecklistDescida ? JSON.stringify(res.fotosChecklistDescida) : null;
       const fotosChecklistSaidaStr = res.fotosChecklistSaida ? JSON.stringify(res.fotosChecklistSaida) : null;
       const fotosChecklistChegadaStr = res.fotosChecklistChegada ? JSON.stringify(res.fotosChecklistChegada) : null;
       
       await connection.query(`
         INSERT INTO Reservas (id, embarcacaoId, clienteId, data, periodo, observacoes, googleEventId, status, createdAt,
           somRetirado, somTesteSaida, somTesteRetorno, horaSaida, horaChegada, fotosChecklistSaida, fotosChecklistChegada,
-          previsaoSaida, previsaoChegada, destino, pessoasABordo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          previsaoSaida, previsaoChegada, destino, pessoasABordo, statusMarina, horaDescida, fotosChecklistDescida,
+          operadorDescida, operadorSaida, operadorChegada, confirmacaoEnviada, litrosAbastecidos)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           embarcacaoId = VALUES(embarcacaoId), clienteId = VALUES(clienteId),
           data = VALUES(data), periodo = VALUES(periodo), observacoes = VALUES(observacoes),
@@ -1027,7 +1017,12 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
           horaSaida = VALUES(horaSaida), horaChegada = VALUES(horaChegada),
           fotosChecklistSaida = VALUES(fotosChecklistSaida), fotosChecklistChegada = VALUES(fotosChecklistChegada),
           previsaoSaida = VALUES(previsaoSaida), previsaoChegada = VALUES(previsaoChegada),
-          destino = VALUES(destino), pessoasABordo = VALUES(pessoasABordo)
+          destino = VALUES(destino), pessoasABordo = VALUES(pessoasABordo),
+          statusMarina = VALUES(statusMarina), horaDescida = VALUES(horaDescida),
+          fotosChecklistDescida = VALUES(fotosChecklistDescida),
+          operadorDescida = VALUES(operadorDescida), operadorSaida = VALUES(operadorSaida),
+          operadorChegada = VALUES(operadorChegada), confirmacaoEnviada = VALUES(confirmacaoEnviada),
+          litrosAbastecidos = VALUES(litrosAbastecidos)
       `, [
         res.id, res.embarcacaoId, res.clienteId, res.data, res.periodo,
         obs, res.googleEventId || null, res.status || "confirmado",
@@ -1036,7 +1031,10 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
         res.horaSaida || null, res.horaChegada || null,
         fotosChecklistSaidaStr, fotosChecklistChegadaStr,
         res.previsaoSaida || null, res.previsaoChegada || null,
-        res.destino || null, res.pessoasABordo || null
+        res.destino || null, res.pessoasABordo || null,
+        res.statusMarina || null, res.horaDescida || null, fotosChecklistDescidaStr,
+        res.operadorDescida || null, res.operadorSaida || null, res.operadorChegada || null,
+        res.confirmacaoEnviada ? 1 : 0, res.litrosAbastecidos || null
       ]);
     }
 
@@ -1332,6 +1330,30 @@ export async function deleteTransacao(id: string) {
 
   if (clienteId) {
     await syncClientFinancialStatus(clienteId);
+  }
+}
+
+export async function deleteAllTransacoes() {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  await currentPool.query("DELETE FROM TransacoesFinanceiras");
+
+  const [clients] = await currentPool.query("SELECT id FROM Clientes");
+  for (const c of clients as any[]) {
+    await syncClientFinancialStatus(c.id);
+  }
+}
+
+export async function deleteTransacoesByClientIds(clientIds: string[]) {
+  if (!clientIds || clientIds.length === 0) return;
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  await currentPool.query("DELETE FROM TransacoesFinanceiras WHERE clienteId IN (?)", [clientIds]);
+
+  for (const cId of clientIds) {
+    await syncClientFinancialStatus(cId);
   }
 }
 

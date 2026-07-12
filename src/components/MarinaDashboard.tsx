@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import MarinaChecklistsView from './MarinaChecklistsView';
@@ -46,7 +46,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [checklistFotos, setChecklistFotos] = useState<Record<string, string>>({});
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
 
-  const [filterType, setFilterType] = useState<'agendadas' | 'confirmadas' | 'canceladas' | 'todos'>('confirmadas');
+  const [filterType, setFilterType] = useState<'agendadas' | 'confirmadas' | 'prontas' | 'retornaram'>('agendadas');
   const [tempFuelData, setTempFuelData] = useState<{liters: number, paymentType: string, comprovanteUrl: string | null} | null>(null);
   
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
@@ -180,10 +180,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     }
   };
 
-  const executeRegistrarDescida = async (fotosChecklistDescida: string[]) => {
+  const executeRegistrarDescida = async (fotosChecklistDescida: string[], reservaTarget?: any) => {
+    const alvo = reservaTarget || selectedReserva;
+    if (!alvo) return;
+    
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const updatedReserva = { 
-      ...selectedReserva, 
+      ...alvo, 
       horaDescida: horaAtual, 
       fotosChecklistDescida, 
       statusMarina: 'pier',
@@ -202,7 +205,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       
       setData((prev: any) => ({
         ...prev,
-        reservations: prev.reservations.map((r: any) => r.id === selectedReserva.id ? updatedReserva : r)
+        reservations: prev.reservations.map((r: any) => r.id === alvo.id ? updatedReserva : r)
       }));
       setChecklistOpen(false);
     } catch (err) {
@@ -268,7 +271,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       horaChegada: horaAtual,
       fotosChecklistChegada,
       statusMarina: 'chegada',
-      operadorChegada: operadorNome || 'Operador'
+      operadorChegada: operadorNome || 'Operador',
+      litrosAbastecidos: tempFuelData.liters > 0 ? tempFuelData.liters.toString() : '0'
     };
     
     const litersNum = tempFuelData.liters;
@@ -365,9 +369,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     if (filterType === 'agendadas') {
       filtered = filtered.filter((r: any) => r.status === 'agendado');
     } else if (filterType === 'confirmadas') {
-      filtered = filtered.filter((r: any) => r.status === 'confirmado');
-    } else if (filterType === 'canceladas') {
-      filtered = filtered.filter((r: any) => r.status === 'cancelado');
+      filtered = filtered.filter((r: any) => r.status === 'confirmado' && !r.horaDescida);
+    } else if (filterType === 'prontas') {
+      filtered = filtered.filter((r: any) => r.status === 'confirmado' && r.horaDescida && !r.horaChegada);
+    } else if (filterType === 'retornaram') {
+      filtered = filtered.filter((r: any) => r.horaChegada || r.status === 'cancelado');
     }
     
     return filtered;
@@ -418,13 +424,18 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
             {/* Filters */}
             <div className="flex bg-white shadow-sm border border-slate-200 rounded-xl p-1 gap-1 overflow-x-auto subtle-scrollbar mb-4">
-              {['agendadas', 'confirmadas', 'todos', 'canceladas'].map(t => (
+              {[
+                { id: 'agendadas', label: 'Agendadas' },
+                { id: 'confirmadas', label: 'Confirmadas' },
+                { id: 'prontas', label: 'Prontas' },
+                { id: 'retornaram', label: 'Retornaram' }
+              ].map(t => (
                 <button 
-                  key={t}
-                  onClick={() => setFilterType(t as any)}
-                  className={`flex-1 min-w-[80px] py-2 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${filterType === t ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                  key={t.id}
+                  onClick={() => setFilterType(t.id as any)}
+                  className={`flex-1 min-w-[70px] py-2 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer whitespace-nowrap ${filterType === t.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
-                  {t}
+                  {t.label}
                 </button>
               ))}
             </div>
@@ -524,13 +535,27 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
                 {/* Botões Grandes e Tap-friendly */}
                 {reserva.status === 'confirmado' && !reserva.horaDescida && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); openChecklistForDescida(reserva); }}
-                    className="w-full py-4 bg-amber-500 active:bg-amber-600 text-white rounded-xl font-black text-sm uppercase tracking-wide flex items-center justify-center gap-2 transition-colors shadow-sm"
-                  >
-                    <ArrowRight className="w-5 h-5" />
-                    Registrar Descida
-                  </button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        if (confirm("Confirmar descida rápida sem fotos?")) {
+                          executeRegistrarDescida([], reserva);
+                        }
+                      }}
+                      className="w-1/3 py-3 bg-amber-100 active:bg-amber-200 text-amber-700 rounded-xl font-black text-[10px] uppercase tracking-wide flex flex-col items-center justify-center gap-1 transition-colors shadow-sm"
+                    >
+                      <Zap className="w-5 h-5" />
+                      Rápida
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); openChecklistForDescida(reserva); }}
+                      className="w-2/3 py-3 bg-amber-500 active:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-wide flex items-center justify-center gap-2 transition-colors shadow-sm"
+                    >
+                      <Camera className="w-5 h-5" />
+                      Descida c/ Fotos
+                    </button>
+                  </div>
                 )}
 
                 {reserva.status === 'confirmado' && reserva.horaDescida && !reserva.horaSaida && (
@@ -759,7 +784,20 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   />
                   <span className="absolute right-5 top-4 text-slate-400 font-bold text-xl">L</span>
                 </div>
-                <p className="text-xs text-slate-500 font-medium">Digite 0 se não houve abastecimento.</p>
+                
+                <div className="grid grid-cols-4 gap-2 mt-2">
+                  {[0, 50, 100, 150].map(val => (
+                    <button 
+                      type="button"
+                      key={val}
+                      onClick={() => setLiters(val.toString())}
+                      className="py-3 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition-colors flex items-center justify-center"
+                    >
+                      {val === 0 ? 'Zero' : `+${val}L`}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500 font-medium">Toque nos botões ou digite os litros manualmente.</p>
               </div>
 
               {Number(liters) > 0 && (
@@ -850,14 +888,25 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               )}
 
               <div className="pt-2">
-                <button 
-                  type="submit" 
-                  disabled={isSubmitting}
-                  className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-blue-700 disabled:opacity-70 transition-colors shadow-md"
-                >
-                  <ArrowRight className="w-5 h-5" />
-                  Ir para Checklist
-                </button>
+                {Number(liters) === 0 ? (
+                  <button 
+                    type="submit" 
+                    disabled={isSubmitting}
+                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-slate-800 disabled:opacity-70 transition-colors shadow-md"
+                  >
+                    <ArrowRight className="w-5 h-5" />
+                    Avançar p/ Chegada (Sem Fuel)
+                  </button>
+                ) : (
+                  <button 
+                    type="submit" 
+                    disabled={isSubmitting}
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-blue-700 disabled:opacity-70 transition-colors shadow-md"
+                  >
+                    <ArrowRight className="w-5 h-5" />
+                    Ir para Checklist
+                  </button>
+                )}
               </div>
             </form>
           </div>
