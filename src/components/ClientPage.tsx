@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
-import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye } from 'lucide-react';
+import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download } from 'lucide-react';
 import ClientProfileModal from './ClientProfileModal';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function ClientPage() {
   const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll());
@@ -29,6 +31,7 @@ export default function ClientPage() {
   const [isFetchingCep, setIsFetchingCep] = useState(false);
   const [statusFinanceiro, setStatusFinanceiro] = useState<'em_dia' | 'inadimplente'>('em_dia');
   const [observacoesFinanceiras, setObservacoesFinanceiras] = useState('');
+  const [plano, setPlano] = useState<'normal' | 'completo'>('normal');
   
   // Quick Finance Update State
   const [quickFinanceClient, setQuickFinanceClient] = useState<Cliente | null>(null);
@@ -42,10 +45,10 @@ export default function ClientPage() {
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Advanced Filters State
   const [filterBoat, setFilterBoat] = useState<string>('all');
   const [filterFinance, setFilterFinance] = useState<string>('all');
   const [filterBoatType, setFilterBoatType] = useState<string>('all');
+  const [filterPlano, setFilterPlano] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('name-asc');
   const [isFiltersVisible, setIsFiltersVisible] = useState<boolean>(false);
 
@@ -57,6 +60,58 @@ export default function ClientPage() {
   const handleRefresh = () => {
     setClients(clientDB.getAll());
     setBoats(boatDB.getAll());
+  };
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(16);
+    doc.text('Relatório de Clientes e Embarcações', 14, 22);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    const dateStr = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    doc.text(`Gerado em: ${dateStr}`, 14, 30);
+
+    const tableColumn = ["Nome do Cliente", "Telefone", "Plano", "Status", "Embarcações (Cota)"];
+    const tableRows: any[] = [];
+
+    // Usar os clientes que estão sendo visualizados (filtrados e ordenados)
+    filteredClients.forEach(c => {
+      const nome = c.nome || "-";
+      const telefone = c.telefone || "-";
+      const plano = c.plano === 'completo' ? 'Completo' : 'Normal';
+      const statusFinanceiro = c.statusFinanceiro === 'inadimplente' ? 'Inadimplente' : 'Em Dia';
+      
+      const linkedBoatsList = c.embarcacoes && c.embarcacoes.length > 0
+        ? c.embarcacoes
+        : [{ embarcacaoId: c.embarcacaoId || '', cota: c.cota || '' }];
+        
+      const embarcacoesStr = linkedBoatsList.map(eb => {
+        const boatName = boats.find(b => b.id === eb.embarcacaoId)?.nome || "Desconhecido";
+        return `${boatName} (${eb.cota})`;
+      }).join("\n"); // Quebra de linha no PDF
+
+      tableRows.push([
+        nome,
+        telefone,
+        plano,
+        statusFinanceiro,
+        embarcacoesStr
+      ]);
+    });
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 35,
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [79, 70, 229] }, // indigo-600
+      alternateRowStyles: { fillColor: [248, 250, 252] } // slate-50
+    });
+
+    doc.save("clientes_embarcacoes.pdf");
+    showToast('Exportação concluída com sucesso!');
   };
 
   const handleOpenQuickFinance = (client: Cliente) => {
@@ -98,6 +153,7 @@ export default function ClientPage() {
     setEstado('');
     setStatusFinanceiro('em_dia');
     setObservacoesFinanceiras('');
+    setPlano('normal');
     setIsModalOpen(true);
   };
 
@@ -126,6 +182,7 @@ export default function ClientPage() {
     setEstado(client.estado || '');
     setStatusFinanceiro(client.statusFinanceiro || 'em_dia');
     setObservacoesFinanceiras(client.observacoesFinanceiras || '');
+    setPlano(client.plano || 'normal');
     setIsModalOpen(true);
   };
 
@@ -215,7 +272,8 @@ export default function ClientPage() {
           bairro,
           cidade,
           estado,
-          observacoesFinanceiras
+          observacoesFinanceiras,
+          plano
         });
         showToast('Cliente atualizado com sucesso!');
       } else {
@@ -237,7 +295,8 @@ export default function ClientPage() {
           bairro,
           cidade,
           estado,
-          observacoesFinanceiras
+          observacoesFinanceiras,
+          plano
         });
         showToast('Cliente cadastrado com sucesso!');
       }
@@ -308,7 +367,13 @@ export default function ClientPage() {
         });
       }
 
-      return matchesSearch && matchesBoat && matchesFinance && matchesBoatType;
+      // 5. Filter by plano
+      let matchesPlano = true;
+      if (filterPlano !== 'all') {
+        matchesPlano = (c.plano || 'normal') === filterPlano;
+      }
+
+      return matchesSearch && matchesBoat && matchesFinance && matchesBoatType && matchesPlano;
     })
     .sort((a, b) => {
       if (sortBy === 'name-asc') {
@@ -323,13 +388,14 @@ export default function ClientPage() {
       return 0;
     });
 
-  const hasActiveFilters = filterBoat !== 'all' || filterFinance !== 'all' || filterBoatType !== 'all' || search !== '';
+  const hasActiveFilters = filterBoat !== 'all' || filterFinance !== 'all' || filterBoatType !== 'all' || search.trim() !== '' || filterPlano !== 'all';
 
   const handleClearFilters = () => {
     setSearch('');
     setFilterBoat('all');
     setFilterFinance('all');
     setFilterBoatType('all');
+    setFilterPlano('all');
     setSortBy('name-asc');
   };
 
@@ -350,14 +416,24 @@ export default function ClientPage() {
           <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Cadastro de Clientes</h2>
           <p className="text-sm text-slate-500">Cadastre e associe os proprietários às cotas de suas embarcações correspondentes.</p>
         </div>
-        <button
-          id="btn-new-client"
-          onClick={handleOpenCreateModal}
-          className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Novo Cliente
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportPDF}
+            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+            title="Exportar Relatório (PDF)"
+          >
+            <FileText className="w-4 h-4 md:mr-2 text-rose-600" />
+            <span className="hidden md:inline">Exportar PDF</span>
+          </button>
+          <button
+            id="btn-new-client"
+            onClick={handleOpenCreateModal}
+            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Cliente
+          </button>
+        </div>
       </div>
 
       {/* Filters/Search Section */}
@@ -388,7 +464,7 @@ export default function ClientPage() {
               title="Filtros Avançados"
             >
               <SlidersHorizontal className="w-4 h-4 mr-2" />
-              Filtros { (filterBoat !== 'all' || filterFinance !== 'all' || filterBoatType !== 'all') && '•' }
+              Filtros { (filterBoat !== 'all' || filterFinance !== 'all' || filterBoatType !== 'all' || filterPlano !== 'all') && '•' }
             </button>
 
             {/* Sort Dropdown */}
@@ -413,7 +489,7 @@ export default function ClientPage() {
 
         {/* Expandable Advanced Filters */}
         {isFiltersVisible && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-3 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
             {/* Filter by Boat */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Embarcação Vinculada</label>
@@ -456,6 +532,20 @@ export default function ClientPage() {
                 <option value="all">Todos os status</option>
                 <option value="em_dia">Em Dia</option>
                 <option value="inadimplente">Inadimplente</option>
+              </select>
+            </div>
+
+            {/* Filter by Plan */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Plano</label>
+              <select
+                value={filterPlano}
+                onChange={(e) => setFilterPlano(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-medium cursor-pointer"
+              >
+                <option value="all">Todos os Planos</option>
+                <option value="normal">Normal</option>
+                <option value="completo">Completo</option>
               </select>
             </div>
           </div>
@@ -662,6 +752,20 @@ export default function ClientPage() {
                            "{client.observacoesFinanceiras}"
                         </div>
                       )}
+                      
+                      <div className="flex justify-between items-center pt-2 mt-2 border-t border-slate-50">
+                        <div className="flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-indigo-500" />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Plano</span>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                            client.plano === 'completo' ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' : 'bg-slate-100 text-slate-800 border border-slate-200'
+                          }`}
+                        >
+                            {client.plano === 'completo' ? 'Plano Completo' : 'Normal'}
+                        </span>
+                      </div>
                     </div>
 
                   </div>
@@ -955,6 +1059,20 @@ export default function ClientPage() {
                       rows={2}
                       className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white resize-none"
                     ></textarea>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-4 pt-2 border-t border-orange-200/50">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Plano de Agendamento</label>
+                    <select
+                      value={plano}
+                      onChange={(e) => setPlano(e.target.value as 'normal' | 'completo')}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
+                    >
+                      <option value="normal">Normal (Sem acesso a seg/ter)</option>
+                      <option value="completo">Plano Completo (Acesso total)</option>
+                    </select>
                   </div>
                 </div>
               </div>

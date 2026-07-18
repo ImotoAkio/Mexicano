@@ -253,7 +253,7 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
   const token = authHeader.substring(7);
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    if (decoded.role !== "admin" && decoded.role !== "marina" && decoded.role !== "financeiro") {
+    if (decoded.role !== "admin" && decoded.role !== "marina" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos") {
       return res.status(403).json({ error: true, message: "Acesso negado. Permissão insuficiente." });
     }
     (req as any).user = decoded;
@@ -414,7 +414,7 @@ app.post("/api/auth/client", authLimiter, async (req, res) => {
       : [client.embarcacaoId];
 
     const boats = allBoats.filter((b: any) => clientBoatsList.includes(b.id));
-    const reservations = allReservations.filter((r: any) => r.clienteId === client.id);
+    const reservations = allReservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
 
     const token = jwt.sign(
       { id: client.id, nome: client.nome, role: "client" },
@@ -504,7 +504,7 @@ app.get("/api/client/me", requireClientAuth, async (req, res) => {
       : [client.embarcacaoId];
 
     const boats = dbData.boats.filter((b: any) => clientBoatsList.includes(b.id));
-    const reservations = dbData.reservations.filter((r: any) => r.clienteId === client.id);
+    const reservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
 
     writeAuditLog(client.nome, "client", "FETCH_DATA", req.ip, `ID: ${client.id}`);
     res.json({ client, boats, reservations });
@@ -548,6 +548,33 @@ app.post("/api/client/reserve", requireClientAuth, async (req, res) => {
       return res.status(400).json({ error: true, message: "A embarcação já possui reserva para esta data." });
     }
 
+    const reqDateObj = new Date(date + "T12:00:00Z");
+    const reqDayOfWeek = reqDateObj.getUTCDay(); // 0 = Domingo, 1 = Segunda, 2 = Terça, 6 = Sábado
+
+    // Regra: A marina é fechada de segunda e terça. Apenas clientes com plano 'completo' podem agendar nestes dias
+    if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && client.plano !== 'completo') {
+      return res.status(400).json({ error: true, message: "A Marina é fechada às segundas e terças-feiras para o seu plano atual." });
+    }
+
+    // Regra: Um cliente pode reservar apenas um sabado e um domingo por mes
+    if (reqDayOfWeek === 0 || reqDayOfWeek === 6) {
+      const reqMonth = reqDateObj.getUTCMonth();
+      const reqYear = reqDateObj.getUTCFullYear();
+      
+      const sameDayTypeReservations = dbData.reservations.filter((r: any) => {
+        if (r.clienteId !== userId || r.status === 'cancelado') return false;
+        const rDateObj = new Date(r.data + "T12:00:00Z");
+        return rDateObj.getUTCMonth() === reqMonth && 
+               rDateObj.getUTCFullYear() === reqYear && 
+               rDateObj.getUTCDay() === reqDayOfWeek;
+      });
+      
+      if (sameDayTypeReservations.length >= 1) {
+        const dayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
+        return res.status(400).json({ error: true, message: `Você já possui um agendamento para um ${dayName} neste mês.` });
+      }
+    }
+
     // Check limits
     const activeReservations = dbData.reservations.filter((r: any) => 
       r.clienteId === userId && r.status !== 'cancelado' && r.data >= todayStr
@@ -563,7 +590,7 @@ app.post("/api/client/reserve", requireClientAuth, async (req, res) => {
       data: date,
       periodo,
       observações: observacoes,
-      status: 'confirmado', // Automatically confirmed per requirements
+      status: 'agendado',
       createdAt: new Date().toISOString()
     };
 
@@ -1182,7 +1209,7 @@ app.post("/api/db/bulk-save", requireAdminAuth, sensitiveLimiter, async (req, re
 });
 
 // Route: Get status of Google Service Account configuration
-app.get("/api/calendar/config", requireAdminAuth, async (req, res) => {
+app.get("/api/calendar/config", requireAnyAuth, async (req, res) => {
   try {
     const client = await getGoogleAuthClient();
     res.json({

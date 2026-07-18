@@ -20,6 +20,7 @@ export interface Cliente {
   estado?: string;
   statusFinanceiro?: 'em_dia' | 'inadimplente';
   observacoesFinanceiras?: string;
+  plano?: 'normal' | 'completo';
 }
 
 export interface Embarcacao {
@@ -36,6 +37,7 @@ export interface Embarcacao {
   whatsappGroupId?: string; // Evolution API group ID for notifications
   imagemUrl?: string; // URL for the boat image
   temSom?: boolean; // Indicates if the boat requires sound control checks
+  horasMotor?: number; // Track current engine hours
 }
 
 export interface Reserva {
@@ -144,6 +146,8 @@ export interface Manutencao {
   status: 'em_andamento' | 'concluido' | 'cancelado';
   descricaoServico?: string;
   gerarFinanceiro?: boolean; // apenas para frontend
+  horasMotorAtual?: number; // Engine hours when maintenance started
+  proximaRevisaoHoras?: number; // Engine hours due for next revision
   createdAt: string;
 }
 

@@ -168,10 +168,8 @@ export const clientDB = {
 export const boatDB = {
   getAll: (): Embarcacao[] => {
     return memoryBoats.map(b => {
-      const cleanNum = (b.numero || '').padStart(2, '0');
       return {
         ...b,
-        nome: `M${cleanNum}`
       };
     });
   },
@@ -185,6 +183,29 @@ export const boatDB = {
     };
     memoryBoats.push(newBoat);
     saveToRemoteDB('boats', 'create', newBoat);
+
+    // Sync client records of their ownerships
+    let clientsChanged = false;
+    if (newBoat.donos && newBoat.donos.length > 0) {
+      memoryClients.forEach(c => {
+        if (newBoat.donos.includes(c.id)) {
+          if (!c.embarcacoes) {
+            c.embarcacoes = [];
+          }
+          c.embarcacoes.push({ embarcacaoId: newBoat.id, cota: '1/4' }); // default cota
+          clientsChanged = true;
+        }
+      });
+    }
+    
+    if (clientsChanged) {
+      memoryClients.forEach(c => {
+        if (newBoat.donos && newBoat.donos.includes(c.id)) {
+          saveToRemoteDB('clients', 'update', c);
+        }
+      });
+    }
+
     return newBoat;
   },
   update: (id: string, updatedFields: Partial<Omit<Embarcacao, 'id'>>): Embarcacao => {
@@ -336,6 +357,9 @@ export const maintenanceDB = {
     const boat = memoryBoats.find(b => b.id === newManutencao.embarcacaoId);
     if (boat) {
       boat.emManutencao = memoryManutencoes.some(m => m.embarcacaoId === newManutencao.embarcacaoId && m.status === 'em_andamento');
+      if (newManutencao.horasMotorAtual !== undefined && newManutencao.horasMotorAtual > 0) {
+        boatDB.update(boat.id, { horasMotor: newManutencao.horasMotorAtual });
+      }
     }
     
     // save to new API
@@ -356,6 +380,9 @@ export const maintenanceDB = {
     const boat = memoryBoats.find(b => b.id === updated.embarcacaoId);
     if (boat) {
       boat.emManutencao = memoryManutencoes.some(m => m.embarcacaoId === updated.embarcacaoId && m.status === 'em_andamento');
+      if (updated.horasMotorAtual !== undefined && updated.horasMotorAtual > 0) {
+        boatDB.update(boat.id, { horasMotor: updated.horasMotorAtual });
+      }
     }
 
     const token = getAdminToken();

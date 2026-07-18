@@ -167,13 +167,18 @@ export async function initializeDatabase() {
         estado VARCHAR(10),
         embarcacoes TEXT,
         statusFinanceiro VARCHAR(50) DEFAULT 'em_dia',
-        observacoesFinanceiras TEXT
+        observacoesFinanceiras TEXT,
+        plano VARCHAR(20) DEFAULT 'normal'
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
     try {
       await connection.query(`ALTER TABLE Clientes ADD COLUMN statusFinanceiro VARCHAR(50) DEFAULT 'em_dia';`);
       await connection.query(`ALTER TABLE Clientes ADD COLUMN observacoesFinanceiras TEXT;`);
+    } catch (e) {}
+
+    try {
+      await connection.query(`ALTER TABLE Clientes ADD COLUMN plano VARCHAR(20) DEFAULT 'normal';`);
     } catch (e) {}
 
     // 2. Embarcacoes Table
@@ -275,6 +280,9 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN confirmacaoEnviada TINYINT(1) DEFAULT 0;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN litrosAbastecidos VARCHAR(50);`);
     } catch (e) {}
 
     // 4. ControlesSom Table
@@ -752,8 +760,8 @@ export async function upsertClient(client: any) {
   const query = `
     INSERT INTO Clientes (
       id, nome, embarcacaoId, cota, telefone, email, cpf, dataCadastro, 
-      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       nome = VALUES(nome),
       embarcacaoId = VALUES(embarcacaoId),
@@ -770,7 +778,8 @@ export async function upsertClient(client: any) {
       estado = VALUES(estado),
       embarcacoes = VALUES(embarcacoes),
       statusFinanceiro = VALUES(statusFinanceiro),
-      observacoesFinanceiras = VALUES(observacoesFinanceiras)
+      observacoesFinanceiras = VALUES(observacoesFinanceiras),
+      plano = VALUES(plano)
   `;
 
   await currentPool.query(query, [
@@ -791,7 +800,8 @@ export async function upsertClient(client: any) {
     client.estado || null,
     embarcacoesJson,
     client.statusFinanceiro || 'em_dia',
-    client.observacoesFinanceiras || null
+    client.observacoesFinanceiras || null,
+    client.plano || 'normal'
   ]);
 }
 

@@ -28,18 +28,26 @@ export function getServiceAccountEmail(): string | null {
   return serviceAccountEmail;
 }
 
+export function getAuthHeader(): string {
+  if (serviceAccountConfigured) {
+    const platformToken = localStorage.getItem('admin_token') || localStorage.getItem('client_token');
+    return `Bearer ${platformToken}`;
+  }
+  return `Bearer ${cachedToken}`;
+}
+
 export async function checkServerConfig(): Promise<boolean> {
-  // Only admins can fetch server config. Skip if no admin token to prevent 401 errors.
-  if (!localStorage.getItem('admin_token')) {
+  const adminToken = localStorage.getItem('admin_token');
+  const clientToken = localStorage.getItem('client_token');
+
+  if (!adminToken && !clientToken) {
     return false;
   }
 
   try {
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch('/api/config', { headers });
+    if (adminToken) {
+      const headers: Record<string, string> = { 'Authorization': `Bearer ${adminToken}` };
+      const res = await fetch('/api/config', { headers });
     if (res.ok) {
       const data = await res.json();
       
@@ -101,7 +109,20 @@ export async function checkServerConfig(): Promise<boolean> {
         localStorage.setItem('nautical_csv_mapping', JSON.stringify(data.nautical_csv_mapping));
       }
 
+      }
       return serviceAccountConfigured;
+    } else if (clientToken) {
+      const headers: Record<string, string> = { 'Authorization': `Bearer ${clientToken}` };
+      const res = await fetch('/api/calendar/config', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        serviceAccountConfigured = !!data.configured;
+        serviceAccountEmail = data.email || null;
+        if (serviceAccountConfigured) {
+          simulatedConnected = false;
+        }
+        return serviceAccountConfigured;
+      }
     }
   } catch (e) {
     console.warn('Erro ao verificar config central no backend:', e);
@@ -370,7 +391,7 @@ export function formatEventTimes(date: string, period: 'dia_inteiro' | 'manha' |
 
 // Generate the required event title format: M00 - Nome Cliente (Primeiro e segundo nome apenas)
 export function generateEventTitle(boat: Embarcacao, client: Cliente): string {
-  const padNum = boat.numero.padStart(2, '0');
+  const padNum = String(boat.numero || '').padStart(2, '0');
   const parts = client.nome.trim().replace(/\s+/g, ' ').split(' ');
   const shortName = parts.length <= 2 ? client.nome : `${parts[0]} ${parts[1]}`;
   return `M${padNum} - ${shortName.toUpperCase()}`;
@@ -465,7 +486,7 @@ export async function fetchCalendarList(): Promise<GoogleCalendarEntry[]> {
     try {
       const response = await fetch(getApiUrl('https://www.googleapis.com/calendar/v3/users/me/calendarList'), {
         headers: {
-          'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+          'Authorization': getAuthHeader(),
           'Content-Type': 'application/json'
         }
       });
@@ -543,7 +564,7 @@ export async function findCalendarForBoat(boatCode: string): Promise<string> {
       const cleanTargetCode = boatCode.toLowerCase().trim().replace(/[^a-z0-9]/g, ''); // e.g. "m30", "m01"
 
       const matchedBoat = allBoats.find(b => {
-        const cleanBoatNum = `m${(b.numero || '').padStart(2, '0')}`.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+        const cleanBoatNum = `m${String(b.numero || '').padStart(2, '0')}`.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
         return cleanBoatNum === cleanTargetCode;
       });
 
@@ -737,7 +758,7 @@ export async function fetchGoogleCalendarEvents(dateFilter?: string): Promise<Ca
 
             const response = await fetch(getApiUrl(url), {
               headers: {
-                'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+                'Authorization': getAuthHeader(),
                 'Content-Type': 'application/json'
               }
             });
@@ -867,7 +888,7 @@ export async function fetchGoogleCalendarEventsRange(dateFilter: string, daysLim
             const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?singleEvents=true&orderBy=startTime&timeMin=${timeMin}&timeMax=${timeMax}&maxResults=2500`;
             const response = await fetch(getApiUrl(url), {
               headers: {
-                'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+                'Authorization': getAuthHeader(),
                 'Content-Type': 'application/json'
               }
             });
@@ -1007,8 +1028,8 @@ export async function createGoogleCalendarEvent(
   let marinaCalendarError = '';
   let finalEventId = '';
 
-  const padNum = boat.numero.padStart(2, '0');
-  const boatCode = `M${padNum}`;
+  const padNum = String(boat.numero || '').padStart(2, '0');
+  const boatCode = padNum !== '00' ? `M${padNum}` : (boat.nome.split(' ')[0] || 'M00');
   
   let boatCalendarId = 'primary';
   let marinaCalendarId = 'primary';
@@ -1032,7 +1053,7 @@ export async function createGoogleCalendarEvent(
       let response = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(boatCalendarId)}/events`), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+          'Authorization': getAuthHeader(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(eventPayload)
@@ -1046,7 +1067,7 @@ export async function createGoogleCalendarEvent(
           response = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/primary/events`), {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+              'Authorization': getAuthHeader(),
               'Content-Type': 'application/json'
             },
             body: JSON.stringify(eventPayload)
@@ -1082,7 +1103,7 @@ export async function createGoogleCalendarEvent(
       const response = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(marinaCalendarId)}/events`), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+          'Authorization': getAuthHeader(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(eventPayload)
@@ -1154,7 +1175,7 @@ export async function deleteGoogleCalendarEvent(eventId: string, boatCode?: stri
       try {
         const response = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events/${encodeURIComponent(eventId)}`), {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${cachedToken || 'service_account_active'}` }
+          headers: { 'Authorization': getAuthHeader() }
         });
         if (response.ok || response.status === 404) boatDeleted = true;
       } catch (e) {}
@@ -1167,7 +1188,7 @@ export async function deleteGoogleCalendarEvent(eventId: string, boatCode?: stri
       if (marinaId && marinaId !== 'primary' && marinaId !== targetCalendarId) {
         const response2 = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(marinaId)}/events/${encodeURIComponent(eventId)}`), {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${cachedToken || 'service_account_active'}` }
+          headers: { 'Authorization': getAuthHeader() }
         });
         if (response2.ok || response2.status === 404) marinaDeleted = true;
       }
@@ -1177,7 +1198,7 @@ export async function deleteGoogleCalendarEvent(eventId: string, boatCode?: stri
     if (!boatDeleted && !marinaDeleted) {
       const response3 = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`), {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${cachedToken || 'service_account_active'}` }
+        headers: { 'Authorization': getAuthHeader() }
       });
       if (!response3.ok && response3.status !== 404) {
         throw new Error(`Google Calendar API delete error: ${response3.statusText}`);
@@ -1238,7 +1259,7 @@ export async function updateGoogleCalendarEvent(
     let response = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(boatCalendarId)}/events/${eventId}`), {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+        'Authorization': getAuthHeader(),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -1252,7 +1273,7 @@ export async function updateGoogleCalendarEvent(
       response = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`), {
         method: 'PATCH',
         headers: {
-          'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+          'Authorization': getAuthHeader(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -1274,7 +1295,7 @@ export async function updateGoogleCalendarEvent(
         await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(marinaCalendarId)}/events/${eventId}`), {
           method: 'PATCH',
           headers: {
-            'Authorization': `Bearer ${cachedToken || 'service_account_active'}`,
+            'Authorization': getAuthHeader(),
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
@@ -1312,7 +1333,7 @@ export function mapReservationToCalendarEvent(
   if (!boat || !client) return null;
 
   // Utilize the exact same titles and times as google calendar
-  const padNum = boat.numero.padStart(2, '0');
+  const padNum = String(boat.numero || '').padStart(2, '0');
   const parts = client.nome.trim().replace(/\s+/g, ' ').split(' ');
   const shortName = parts.length <= 2 ? client.nome : `${parts[0]} ${parts[1]}`;
   const title = `M${padNum} - ${shortName.toUpperCase()}`;
@@ -1365,7 +1386,7 @@ export function mergeLocalAndGoogleEvents(
     // 2. Check if a duplicate already exists in gcalEvts
     const resDate = res.data;
     const boat = boats.find(b => b.id === res.embarcacaoId);
-    const boatCode = boat ? `M${boat.numero.padStart(2, '0')}` : '';
+    const boatCode = boat ? `M${String(boat.numero || '').padStart(2, '0')}` : '';
 
     const isDuplicate = gcalEvts.some(evt => {
       if (res.googleEventId && evt.id === res.googleEventId) return true;

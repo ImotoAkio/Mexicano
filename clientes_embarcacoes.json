@@ -1,0 +1,2992 @@
+[
+  {
+    "id": "cli_1",
+    "nome": "ABRAHAO RIBEIRO SILVA",
+    "email": null,
+    "telefone": "+55 74 8157-2063",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M30",
+        "nome": "M30",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "30"
+      }
+    ]
+  },
+  {
+    "id": "cli_10",
+    "nome": "ANDREY SIDNEY RIBEIRO SILVA",
+    "email": null,
+    "telefone": "5587998142003",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M16",
+        "nome": "M16",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2022,
+        "numero": "16"
+      }
+    ]
+  },
+  {
+    "id": "cli_100",
+    "nome": "LUAN YURI RIBEIRO DO NASCIMENTO",
+    "email": null,
+    "telefone": "5587988586459",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M16",
+        "nome": "M16",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2022,
+        "numero": "16"
+      }
+    ]
+  },
+  {
+    "id": "cli_101",
+    "nome": "LUCIANO CEZARIO GALVÃO DE SOUZA",
+    "email": null,
+    "telefone": "5587999947033",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M57",
+        "nome": "M57",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2026,
+        "numero": "57"
+      }
+    ]
+  },
+  {
+    "id": "cli_102",
+    "nome": "LUIZ FERNANDO FISCHER",
+    "email": null,
+    "telefone": "5519991652919",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": []
+  },
+  {
+    "id": "cli_103",
+    "nome": "LUIZ MARTINS DA SILVA LEAL",
+    "email": null,
+    "telefone": "558788417902",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M16",
+        "nome": "M16",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2022,
+        "numero": "16"
+      }
+    ]
+  },
+  {
+    "id": "cli_104",
+    "nome": "MARCELO ANDRE NOBREGA DE FARIA",
+    "email": null,
+    "telefone": "5587981558183",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_MIC",
+        "nome": "M00",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX",
+        "ano": 2009,
+        "numero": "00"
+      }
+    ]
+  },
+  {
+    "id": "cli_105",
+    "nome": "MARCELO OLIVEIRA BORRALLO",
+    "email": null,
+    "telefone": "5511940226624",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M23",
+        "nome": "M23",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX 195",
+        "ano": 2020,
+        "numero": "23"
+      }
+    ]
+  },
+  {
+    "id": "cli_106",
+    "nome": "MARCOS VINICIUS MARTINS LOBATO JARDIM",
+    "email": null,
+    "telefone": "14372602755",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M10",
+        "nome": "M10",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX",
+        "ano": 2009,
+        "numero": "10"
+      }
+    ]
+  },
+  {
+    "id": "cli_107",
+    "nome": "MATEUS HENRIQUE MAGALHAES DE OLIVEIRA",
+    "email": null,
+    "telefone": "558781673768",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M32",
+        "nome": "M32",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "32"
+      }
+    ]
+  },
+  {
+    "id": "cli_108",
+    "nome": "MATHEUS FELIPE TELES SANTOS CHAVES",
+    "email": null,
+    "telefone": "5574988216518",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M22",
+        "nome": "M22",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "22"
+      }
+    ]
+  },
+  {
+    "id": "cli_109",
+    "nome": "MATHEUS MARQUES PEREIRA",
+    "email": null,
+    "telefone": "5573982136138",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M32",
+        "nome": "M32",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "32"
+      }
+    ]
+  },
+  {
+    "id": "cli_11",
+    "nome": "ARLINDO BARBOSA DO NASCIMENTO",
+    "email": null,
+    "telefone": "5574988055686",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M42",
+        "nome": "M42",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "42"
+      }
+    ]
+  },
+  {
+    "id": "cli_110",
+    "nome": "MAYKON AMERICO GOMES",
+    "email": null,
+    "telefone": "5587999514879",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M47",
+        "nome": "M47",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 170",
+        "ano": 2021,
+        "numero": "47"
+      }
+    ]
+  },
+  {
+    "id": "cli_111",
+    "nome": "MAYR CARLOS MARINS DOS SANTOS",
+    "email": null,
+    "telefone": "5587988550445",
+    "cpf": "092.755.064-42",
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M13",
+        "nome": "M13",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "13"
+      }
+    ]
+  },
+  {
+    "id": "cli_112",
+    "nome": "MEXICANO LANCHAS LTDA",
+    "email": null,
+    "telefone": "558796552883",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M06",
+        "nome": "M06",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2002,
+        "numero": "06"
+      }
+    ]
+  },
+  {
+    "id": "cli_12",
+    "nome": "ARNALDO RICARDO FERREIRA MARIANO",
+    "email": null,
+    "telefone": "+55 87 9156-9517",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M22",
+        "nome": "M22",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "22"
+      }
+    ]
+  },
+  {
+    "id": "cli_126",
+    "nome": "MURILO REZENDE DA SILVA",
+    "email": null,
+    "telefone": "5587991413511",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M19",
+        "nome": "M19",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "19"
+      }
+    ]
+  },
+  {
+    "id": "cli_127",
+    "nome": "NATANAEL ALVES FERREIRA",
+    "email": null,
+    "telefone": "5587996275598",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M42",
+        "nome": "M42",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "42"
+      }
+    ]
+  },
+  {
+    "id": "cli_128",
+    "nome": "OSMUNDO FONSECA BARBOSA",
+    "email": null,
+    "telefone": "5587981028700",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M27",
+        "nome": "M27",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2009,
+        "numero": "27"
+      }
+    ]
+  },
+  {
+    "id": "cli_129",
+    "nome": "PALOMA SALVIANO DA NOBREGA SILVA",
+    "email": null,
+    "telefone": "558799791835",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M49",
+        "nome": "M49",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2024,
+        "numero": "49"
+      }
+    ]
+  },
+  {
+    "id": "cli_13",
+    "nome": "ARTUR CARLOS DO NASCIMENTO",
+    "email": null,
+    "telefone": "5571999781344",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M43",
+        "nome": "M43",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "43"
+      }
+    ]
+  },
+  {
+    "id": "cli_130",
+    "nome": "PAULO EDUARDO CERQUEIRA GOMES",
+    "email": null,
+    "telefone": "5574991232902",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M10",
+        "nome": "M10",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX",
+        "ano": 2009,
+        "numero": "10"
+      }
+    ]
+  },
+  {
+    "id": "cli_131",
+    "nome": "PAULO GIOVANNI PESSOA DA GAMA",
+    "email": null,
+    "telefone": "+55 87 8111-3179",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M57",
+        "nome": "M57",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2026,
+        "numero": "57"
+      }
+    ]
+  },
+  {
+    "id": "cli_132",
+    "nome": "PAULO HENRIQUE HIGINO FREIRE",
+    "email": null,
+    "telefone": "558799067468",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M41",
+        "nome": "M41",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "WAKE 170",
+        "ano": 2024,
+        "numero": "41"
+      }
+    ]
+  },
+  {
+    "id": "cli_134",
+    "nome": "PAULO VINICIUS MACHADO PEIXOTO",
+    "email": null,
+    "telefone": "5587988242667",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M03",
+        "nome": "M03",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2007,
+        "numero": "03"
+      }
+    ]
+  },
+  {
+    "id": "cli_135",
+    "nome": "PEDRO AUGUSTO BASTOS RIBEIRO",
+    "email": null,
+    "telefone": "5587999903233",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M55",
+        "nome": "M55",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2025,
+        "numero": "55"
+      }
+    ]
+  },
+  {
+    "id": "cli_136",
+    "nome": "PEDRO AUGUSTO BASTOS RIBEIRO",
+    "email": null,
+    "telefone": "558799903233",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M38",
+        "nome": "M38",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "38"
+      }
+    ]
+  },
+  {
+    "id": "cli_137",
+    "nome": "PLINIO VICTOR DA SILVA SOUZA",
+    "email": null,
+    "telefone": "5574988562666",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M05",
+        "nome": "M05",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "DARTH 200",
+        "ano": 2010,
+        "numero": "05"
+      }
+    ]
+  },
+  {
+    "id": "cli_139",
+    "nome": "RAFAEL CAMPELO FERRAZ RIBEIRO",
+    "email": null,
+    "telefone": "5574991443640",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M15",
+        "nome": "M15",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 170",
+        "ano": 2022,
+        "numero": "15"
+      }
+    ]
+  },
+  {
+    "id": "cli_14",
+    "nome": "AYRES MILANO DE SOUZA NETO",
+    "email": null,
+    "telefone": "5587998074050",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": []
+  },
+  {
+    "id": "cli_140",
+    "nome": "RAFAEL SANTOS BRANDAO",
+    "email": null,
+    "telefone": "558186991999",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M55",
+        "nome": "M55",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2025,
+        "numero": "55"
+      }
+    ]
+  },
+  {
+    "id": "cli_141",
+    "nome": "RICARDO FREITAS DA CUNHA",
+    "email": null,
+    "telefone": "5575981229984",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M20",
+        "nome": "M20",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2019,
+        "numero": "20"
+      }
+    ]
+  },
+  {
+    "id": "cli_142",
+    "nome": "RICARDO PENA VA DE OLIVEIRA",
+    "email": null,
+    "telefone": "557488250013",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M12",
+        "nome": "M12",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 190",
+        "ano": 2008,
+        "numero": "12"
+      }
+    ]
+  },
+  {
+    "id": "cli_143",
+    "nome": "RINALDO LUIZ DO NASCIMENTO",
+    "email": null,
+    "telefone": "5587999986773",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M06",
+        "nome": "M06",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2002,
+        "numero": "06"
+      }
+    ]
+  },
+  {
+    "id": "cli_144",
+    "nome": "ROBSON FERREIRA ALENCAR",
+    "email": null,
+    "telefone": "5581997439105",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M17",
+        "nome": "M17",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX250",
+        "ano": 2023,
+        "numero": "17"
+      }
+    ]
+  },
+  {
+    "id": "cli_145",
+    "nome": "RODRIGO APARECIDO SILVA CARDOSO",
+    "email": null,
+    "telefone": "5574988174787",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M35",
+        "nome": "M35",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX 255",
+        "ano": 2012,
+        "numero": "35"
+      }
+    ]
+  },
+  {
+    "id": "cli_146",
+    "nome": "RODRIGO PAIXÃO FERNANDES",
+    "email": null,
+    "telefone": "+55 87 9921-7870",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M03",
+        "nome": "M03",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2007,
+        "numero": "03"
+      }
+    ]
+  },
+  {
+    "id": "cli_147",
+    "nome": "ROGERIO MELO DA SILVA",
+    "email": null,
+    "telefone": "+55 74 8835-8426",
+    "cpf": "088.914.815-56",
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M13",
+        "nome": "M13",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "13"
+      }
+    ]
+  },
+  {
+    "id": "cli_148",
+    "nome": "TADEU VINICIUS VOLTOLINI",
+    "email": null,
+    "telefone": "558799360135",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M06",
+        "nome": "M06",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2002,
+        "numero": "06"
+      }
+    ]
+  },
+  {
+    "id": "cli_149",
+    "nome": "THIAGO DOS REIS SILVA",
+    "email": null,
+    "telefone": "5511968988303",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M05",
+        "nome": "M05",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "DARTH 200",
+        "ano": 2010,
+        "numero": "05"
+      }
+    ]
+  },
+  {
+    "id": "cli_15",
+    "nome": "BARTOLOMEU ANDRADE SOUZA JUNIOR",
+    "email": null,
+    "telefone": "5574999715353",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M35",
+        "nome": "M35",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX 255",
+        "ano": 2012,
+        "numero": "35"
+      }
+    ]
+  },
+  {
+    "id": "cli_150",
+    "nome": "THULIO RAMIREZ ALVES DOS SANTO",
+    "email": null,
+    "telefone": "5583998713776",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M50",
+        "nome": "M50",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTR 230",
+        "ano": 2020,
+        "numero": "50"
+      }
+    ]
+  },
+  {
+    "id": "cli_151",
+    "nome": "VICENTE OLIVEIRA DE SOUZA",
+    "email": null,
+    "telefone": "558781585857",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M43",
+        "nome": "M43",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "43"
+      }
+    ]
+  },
+  {
+    "id": "cli_152",
+    "nome": "VICENTE RIOS CARNEIRO NETO",
+    "email": null,
+    "telefone": "5574991910808",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M15",
+        "nome": "M15",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 170",
+        "ano": 2022,
+        "numero": "15"
+      }
+    ]
+  },
+  {
+    "id": "cli_153",
+    "nome": "VICTOR GOMES PATRICIO",
+    "email": null,
+    "telefone": "5587999987033",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M50",
+        "nome": "M50",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTR 230",
+        "ano": 2020,
+        "numero": "50"
+      }
+    ]
+  },
+  {
+    "id": "cli_154",
+    "nome": "VICTOR RAFAEL DA SILVA LIMA",
+    "email": null,
+    "telefone": "5587999566877",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M17",
+        "nome": "M17",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX250",
+        "ano": 2023,
+        "numero": "17"
+      }
+    ]
+  },
+  {
+    "id": "cli_155",
+    "nome": "VINICIUS VARZIA LIBERAL",
+    "email": null,
+    "telefone": "558199901979",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M37",
+        "nome": "M37",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "SEADOO",
+        "ano": 2008,
+        "numero": "37"
+      }
+    ]
+  },
+  {
+    "id": "cli_156",
+    "nome": "VISTA AO MAR PARTICIPAÇÕES LTDA",
+    "email": null,
+    "telefone": "+55 71 9387-2197",
+    "cpf": "05.949.139/0001-08",
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M10",
+        "nome": "M10",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX",
+        "ano": 2009,
+        "numero": "10"
+      }
+    ]
+  },
+  {
+    "id": "cli_157",
+    "nome": "VITOR PINHEIRO RODRIGUES",
+    "email": null,
+    "telefone": "5587988311947",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M34",
+        "nome": "M34",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "34"
+      }
+    ]
+  },
+  {
+    "id": "cli_158",
+    "nome": "VALTER MARIO DOS SANTOS SERAFIM",
+    "email": null,
+    "telefone": "5574988529262",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M24",
+        "nome": "M24",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2023,
+        "numero": "24"
+      }
+    ]
+  },
+  {
+    "id": "cli_159",
+    "nome": "WALNEY DE ARAUJO TORRES",
+    "email": null,
+    "telefone": "5574988213511",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M48",
+        "nome": "M48",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "48"
+      }
+    ]
+  },
+  {
+    "id": "cli_16",
+    "nome": "MILLER MOTA",
+    "email": null,
+    "telefone": "+55 87 8161-1836",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M25",
+        "nome": "M25",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2020,
+        "numero": "25"
+      }
+    ]
+  },
+  {
+    "id": "cli_160",
+    "nome": "WESLEY FRANZEANDERSON GONCALVES",
+    "email": null,
+    "telefone": "+55 74 9160-0506",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M09",
+        "nome": "M09",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2020,
+        "numero": "09"
+      }
+    ]
+  },
+  {
+    "id": "cli_161",
+    "nome": "WILHAMYS JOSE GOMES DOS SANTOS",
+    "email": null,
+    "telefone": "5587988700527",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M19",
+        "nome": "M19",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "19"
+      }
+    ]
+  },
+  {
+    "id": "cli_162",
+    "nome": "ZUILA DA SILVA BEZERRA",
+    "email": null,
+    "telefone": "5574988058830",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M08",
+        "nome": "M08",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "TEMPEST",
+        "ano": 2008,
+        "numero": "08"
+      }
+    ]
+  },
+  {
+    "id": "cli_17",
+    "nome": "BRUNO BATISTA SOUZA",
+    "email": null,
+    "telefone": "5587991736193",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M47",
+        "nome": "M47",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 170",
+        "ano": 2021,
+        "numero": "47"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780575296781",
+    "nome": "SAULO MEDEIROS DE OLIVEIRA CORREA DOS SANTOS",
+    "email": null,
+    "telefone": "558181554424",
+    "cpf": null,
+    "dataCadastro": "2026-06-04T12:14:56.781Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M13",
+        "nome": "M13",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "13"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780576759588",
+    "nome": "EDMAR GUIMARAES BEZERRA",
+    "email": null,
+    "telefone": "+55 81 9480-1453",
+    "cpf": "066.778.464-07",
+    "dataCadastro": "2026-06-04T12:39:19.589Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M48",
+        "nome": "M48",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "48"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780583598411",
+    "nome": "CLERISSON MENDES CORREIA DOS SANTOS",
+    "email": null,
+    "telefone": "557488078767",
+    "cpf": null,
+    "dataCadastro": "2026-06-04T14:33:18.411Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M44",
+        "nome": "M44",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "WAKE 170",
+        "ano": 2024,
+        "numero": "44"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780678991311",
+    "nome": "PAULO GUSTAVO TORRES E SILVA",
+    "email": null,
+    "telefone": "5587981540412",
+    "cpf": null,
+    "dataCadastro": "2026-06-05T17:03:11.311Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M26",
+        "nome": "M26",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2020,
+        "numero": "26"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780753457906",
+    "nome": "RANIERE GOMES DE SOUZA",
+    "email": null,
+    "telefone": "5587996678440",
+    "cpf": "060.847.644-79",
+    "dataCadastro": "2026-06-06T13:44:17.906Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M05",
+        "nome": "M05",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "DARTH 200",
+        "ano": 2010,
+        "numero": "05"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780757361791",
+    "nome": "OSVALDO MOZ JUNIOR",
+    "email": null,
+    "telefone": "5581999654577",
+    "cpf": "106.292.528-90",
+    "dataCadastro": "2026-06-06T14:49:21.791Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M02",
+        "nome": "M02",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2006,
+        "numero": "02"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780761972930",
+    "nome": "ARTHUR CARRARO PEDROSA",
+    "email": null,
+    "telefone": "5587981690003",
+    "cpf": "120.752.334-89",
+    "dataCadastro": "2026-06-06T16:06:12.930Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M02",
+        "nome": "M02",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2006,
+        "numero": "02"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780762914293",
+    "nome": "THAIS ALEXANDRE BORGES LOPES",
+    "email": null,
+    "telefone": "5587981342910",
+    "cpf": "040.463.415-05",
+    "dataCadastro": "2026-06-06T16:21:54.293Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M45",
+        "nome": "M45",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "45"
+      }
+    ]
+  },
+  {
+    "id": "cli_1780767128264",
+    "nome": "AKIO",
+    "email": null,
+    "telefone": "+55 87 8102-2142",
+    "cpf": "07833944467",
+    "dataCadastro": "2026-06-06T17:32:08.264Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_1780767211388",
+        "nome": "M99",
+        "tipo": "lancha",
+        "fabricante": "YAMAHA",
+        "modelo": "FOCKER 290",
+        "ano": 2026,
+        "numero": "99"
+      }
+    ]
+  },
+  {
+    "id": "cli_1781109117086",
+    "nome": "ADHLER KATTER",
+    "email": null,
+    "telefone": "+55 87 8849-5466",
+    "cpf": null,
+    "dataCadastro": "2026-06-10T16:31:57.086Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M18",
+        "nome": "M18",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2023,
+        "numero": "18"
+      }
+    ]
+  },
+  {
+    "id": "cli_1782300663642",
+    "nome": "JAILSON PASSOS DE SOUZA",
+    "email": null,
+    "telefone": "+55 87 9680-2703",
+    "cpf": "007.580.644-46",
+    "dataCadastro": "2026-06-24T11:31:03.642Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M12",
+        "nome": "M12",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 190",
+        "ano": 2008,
+        "numero": "12"
+      }
+    ]
+  },
+  {
+    "id": "cli_1782300951446",
+    "nome": "RAFAEL ALVES",
+    "email": null,
+    "telefone": "+55 74 9124-7115",
+    "cpf": null,
+    "dataCadastro": "2026-06-24T11:35:51.446Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M57",
+        "nome": "M57",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2026,
+        "numero": "57"
+      }
+    ]
+  },
+  {
+    "id": "cli_1782576356949",
+    "nome": "MATHEUS RIBEIRO DANTAS BARBOSA DE OLIVEIRA",
+    "email": null,
+    "telefone": "+55 87 8869-7260",
+    "cpf": "860.883.505-39",
+    "dataCadastro": "2026-06-27T16:05:56.949Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M44",
+        "nome": "M44",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "WAKE 170",
+        "ano": 2024,
+        "numero": "44"
+      }
+    ]
+  },
+  {
+    "id": "cli_1783688723764",
+    "nome": "GUSTAVO CORREIA DA SILVA REIS",
+    "email": null,
+    "telefone": "+55 71 8827-2077",
+    "cpf": "03847311544",
+    "dataCadastro": "2026-07-10T13:05:23.764Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_1780767211388",
+        "nome": "M99",
+        "tipo": "lancha",
+        "fabricante": "YAMAHA",
+        "modelo": "FOCKER 290",
+        "ano": 2026,
+        "numero": "99"
+      }
+    ]
+  },
+  {
+    "id": "cli_1784120378469",
+    "nome": "DANIEL VINICIO SILVA",
+    "email": null,
+    "telefone": "+55 74 9969-8199",
+    "cpf": null,
+    "dataCadastro": "2026-07-15T12:59:38.469Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M55",
+        "nome": "M55",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2025,
+        "numero": "55"
+      }
+    ]
+  },
+  {
+    "id": "cli_18",
+    "nome": "CAIO SOUZA PITTA LIMA",
+    "email": null,
+    "telefone": "558893217701",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M45",
+        "nome": "M45",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "45"
+      }
+    ]
+  },
+  {
+    "id": "cli_19",
+    "nome": "CARLOS HENRIQUE RODRIGUES",
+    "email": null,
+    "telefone": "5574991913447",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M20",
+        "nome": "M20",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2019,
+        "numero": "20"
+      }
+    ]
+  },
+  {
+    "id": "cli_2",
+    "nome": "ALBERT EINSTEIN ASSIS CARTAXO",
+    "email": null,
+    "telefone": "+55 74 9986-8113",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M44",
+        "nome": "M44",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "WAKE 170",
+        "ano": 2024,
+        "numero": "44"
+      }
+    ]
+  },
+  {
+    "id": "cli_20",
+    "nome": "CAYO HENRIQUE LOPES AQUINO QUEIROZ",
+    "email": null,
+    "telefone": "5587991534411",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": []
+  },
+  {
+    "id": "cli_21",
+    "nome": "CLAUDIMIRO BARBOSA DOS SANTOS",
+    "email": null,
+    "telefone": "5587988190184",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M09",
+        "nome": "M09",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2020,
+        "numero": "09"
+      }
+    ]
+  },
+  {
+    "id": "cli_22",
+    "nome": "CLAUDIO APARECIDO BARBOSA SILVA",
+    "email": null,
+    "telefone": "5587988726258",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M17",
+        "nome": "M17",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX250",
+        "ano": 2023,
+        "numero": "17"
+      }
+    ]
+  },
+  {
+    "id": "cli_23",
+    "nome": "CLAUDIO OLIVEIRA ALBUQUERQUE",
+    "email": null,
+    "telefone": "5581999215502",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M55",
+        "nome": "M55",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2025,
+        "numero": "55"
+      }
+    ]
+  },
+  {
+    "id": "cli_24",
+    "nome": "CLEITON DE CARVALHO GAMA",
+    "email": null,
+    "telefone": "5575983466115",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": []
+  },
+  {
+    "id": "cli_25",
+    "nome": "CARLOS HENRIQUE AMORIM BRITO",
+    "email": null,
+    "telefone": "+55 74 9115-4847",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M33",
+        "nome": "M33",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "33"
+      }
+    ]
+  },
+  {
+    "id": "cli_26",
+    "nome": "DANIEL BRUNO CONCEICAO GAMA",
+    "email": null,
+    "telefone": "5574988046935",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M37",
+        "nome": "M37",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "SEADOO",
+        "ano": 2008,
+        "numero": "37"
+      }
+    ]
+  },
+  {
+    "id": "cli_27",
+    "nome": "DANIEL CARDOSO DOS SANTOS",
+    "email": null,
+    "telefone": "+55 87 9663-6809",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M41",
+        "nome": "M41",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "WAKE 170",
+        "ano": 2024,
+        "numero": "41"
+      }
+    ]
+  },
+  {
+    "id": "cli_28",
+    "nome": "DANIEL HENRIQUE RIBEIRO BATISTA",
+    "email": null,
+    "telefone": "+55 87 8863-5629",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M24",
+        "nome": "M24",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2023,
+        "numero": "24"
+      }
+    ]
+  },
+  {
+    "id": "cli_29",
+    "nome": "DANIEL RODRIGUES DO NASCIMENTO",
+    "email": null,
+    "telefone": "5587999066698",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M56",
+        "nome": "M56",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX260",
+        "ano": 2025,
+        "numero": "56"
+      }
+    ]
+  },
+  {
+    "id": "cli_3",
+    "nome": "ALEXANDRE RODRIGUES SILVA",
+    "email": null,
+    "telefone": "+55 87 8857-5033",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M15",
+        "nome": "M15",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 170",
+        "ano": 2022,
+        "numero": "15"
+      }
+    ]
+  },
+  {
+    "id": "cli_30",
+    "nome": "DANIELLE CONSUEL PESSOA",
+    "email": null,
+    "telefone": "5581999714669",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M37",
+        "nome": "M37",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "SEADOO",
+        "ano": 2008,
+        "numero": "37"
+      }
+    ]
+  },
+  {
+    "id": "cli_31",
+    "nome": "DANILO DA SILVA QUEIROZ",
+    "email": null,
+    "telefone": "5574988359941",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M44",
+        "nome": "M44",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "WAKE 170",
+        "ano": 2024,
+        "numero": "44"
+      }
+    ]
+  },
+  {
+    "id": "cli_32",
+    "nome": "DANILO PORTO DA SILVA",
+    "email": null,
+    "telefone": "5587991927568",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M49",
+        "nome": "M49",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2024,
+        "numero": "49"
+      }
+    ]
+  },
+  {
+    "id": "cli_33",
+    "nome": "DARK BLACKER DE ANDRADE",
+    "email": null,
+    "telefone": "5573991706190",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M38",
+        "nome": "M38",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "38"
+      }
+    ]
+  },
+  {
+    "id": "cli_34",
+    "nome": "DEIVID NILO FERREIRA FREITAS",
+    "email": null,
+    "telefone": "5574988188370",
+    "cpf": "040.110.955-08",
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M19",
+        "nome": "M19",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "19"
+      }
+    ]
+  },
+  {
+    "id": "cli_35",
+    "nome": "DIEGO BARROSO MAIA",
+    "email": null,
+    "telefone": "5574999156851",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M50",
+        "nome": "M50",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTR 230",
+        "ano": 2020,
+        "numero": "50"
+      }
+    ]
+  },
+  {
+    "id": "cli_36",
+    "nome": "DIEGO NOGUEIRA DE OLIVEIRA",
+    "email": null,
+    "telefone": "5582981829882",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M06",
+        "nome": "M06",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2002,
+        "numero": "06"
+      }
+    ]
+  },
+  {
+    "id": "cli_37",
+    "nome": "DIEGO OLIVEIRA DE ARAUJO",
+    "email": null,
+    "telefone": "5581997207233",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M20",
+        "nome": "M20",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2019,
+        "numero": "20"
+      }
+    ]
+  },
+  {
+    "id": "cli_38",
+    "nome": "DIOGO FERREIRA GUIMARAES",
+    "email": null,
+    "telefone": "5587981228666",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M34",
+        "nome": "M34",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "34"
+      }
+    ]
+  },
+  {
+    "id": "cli_39",
+    "nome": "DIOGO VARGAS MARTINS",
+    "email": null,
+    "telefone": "5574988534022",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M33",
+        "nome": "M33",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "33"
+      }
+    ]
+  },
+  {
+    "id": "cli_4",
+    "nome": "ALISSON GABRIEL GOMES DE MATTOS",
+    "email": null,
+    "telefone": "+55 87 8805-7350",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M08",
+        "nome": "M08",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "TEMPEST",
+        "ano": 2008,
+        "numero": "08"
+      }
+    ]
+  },
+  {
+    "id": "cli_40",
+    "nome": "DOMINGOS ANGELO DA SILVA NETO",
+    "email": null,
+    "telefone": "5587988236771",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_MCS",
+        "nome": "M00",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "TEMPEST",
+        "ano": 2008,
+        "numero": "00"
+      }
+    ]
+  },
+  {
+    "id": "cli_41",
+    "nome": "DOUGLAS ASSIS DE MEDEIROS",
+    "email": null,
+    "telefone": "5587999667050",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M30",
+        "nome": "M30",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "30"
+      }
+    ]
+  },
+  {
+    "id": "cli_44",
+    "nome": "EMANNUEL ASSUNÇÃO MEDRADO DE CASTRO",
+    "email": null,
+    "telefone": "+55 87 9974-7720",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M38",
+        "nome": "M38",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "38"
+      }
+    ]
+  },
+  {
+    "id": "cli_45",
+    "nome": "ENNUS ELIAS DE LIMA",
+    "email": null,
+    "telefone": "557981720015",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": []
+  },
+  {
+    "id": "cli_46",
+    "nome": "ERISVAN DA COSTA GOMES",
+    "email": null,
+    "telefone": "+55 87 8169-3648",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M08",
+        "nome": "M08",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "TEMPEST",
+        "ano": 2008,
+        "numero": "08"
+      }
+    ]
+  },
+  {
+    "id": "cli_47",
+    "nome": "ERIVALDO DE ARAUJO GOMES",
+    "email": null,
+    "telefone": "+55 74 8807-8247",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M26",
+        "nome": "M26",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2020,
+        "numero": "26"
+      }
+    ]
+  },
+  {
+    "id": "cli_48",
+    "nome": "ERNESTO PAULO DE AMORIM JUNIOR",
+    "email": null,
+    "telefone": "557988321855",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M18",
+        "nome": "M18",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2023,
+        "numero": "18"
+      }
+    ]
+  },
+  {
+    "id": "cli_49",
+    "nome": "ESTEFANYA CONCEIÇÃO DE SOUSA",
+    "email": null,
+    "telefone": "+55 87 8167-2661",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M16",
+        "nome": "M16",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2022,
+        "numero": "16"
+      }
+    ]
+  },
+  {
+    "id": "cli_5",
+    "nome": "ALISSON NANDO DOS SANTOS DIAS",
+    "email": null,
+    "telefone": "+55 74 8809-5876",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M42",
+        "nome": "M42",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "42"
+      }
+    ]
+  },
+  {
+    "id": "cli_50",
+    "nome": "EUDES SOBREIRA BARBOSA JUNIOR",
+    "email": null,
+    "telefone": "+55 74 8117-2525",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M25",
+        "nome": "M25",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2020,
+        "numero": "25"
+      }
+    ]
+  },
+  {
+    "id": "cli_51",
+    "nome": "EXPEDITO JOATAN MIRANDA SOBREIRA",
+    "email": null,
+    "telefone": "558796471448",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_MA",
+        "nome": "M00",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "00"
+      }
+    ]
+  },
+  {
+    "id": "cli_52",
+    "nome": "FABIO ALEXANDER DE ALMEIDA FERNANDES",
+    "email": null,
+    "telefone": "557488126060",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M35",
+        "nome": "M35",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX 255",
+        "ano": 2012,
+        "numero": "35"
+      }
+    ]
+  },
+  {
+    "id": "cli_53",
+    "nome": "FELIPE FRANCISCO DE SOUZA",
+    "email": null,
+    "telefone": "554999099927",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M56",
+        "nome": "M56",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX260",
+        "ano": 2025,
+        "numero": "56"
+      }
+    ]
+  },
+  {
+    "id": "cli_54",
+    "nome": "FELIPE HENRIQUE DA COSTA FERRE",
+    "email": null,
+    "telefone": "557988014393",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M29",
+        "nome": "M29",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "29"
+      }
+    ]
+  },
+  {
+    "id": "cli_55",
+    "nome": "FERNANDO VIEIRA ARAUJO",
+    "email": null,
+    "telefone": "557988294594",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M28",
+        "nome": "M28",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "28"
+      }
+    ]
+  },
+  {
+    "id": "cli_56",
+    "nome": "FRANCISCO BEZERRA CARMO",
+    "email": null,
+    "telefone": "557999435334",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M23",
+        "nome": "M23",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX 195",
+        "ano": 2020,
+        "numero": "23"
+      }
+    ]
+  },
+  {
+    "id": "cli_57",
+    "nome": "FRANCISCO LUIZ TORRISI",
+    "email": null,
+    "telefone": "+55 87 8127-0707",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M56",
+        "nome": "M56",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX260",
+        "ano": 2025,
+        "numero": "56"
+      }
+    ]
+  },
+  {
+    "id": "cli_58",
+    "nome": "FRANCISCO WILLAME NORONHA",
+    "email": null,
+    "telefone": "+55 87 9638-6377",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M29",
+        "nome": "M29",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "29"
+      }
+    ]
+  },
+  {
+    "id": "cli_59",
+    "nome": "FRIDDA FIGUEIREDO PONTES",
+    "email": null,
+    "telefone": "557999773313",
+    "cpf": "895.749.745-53",
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M27",
+        "nome": "M27",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2009,
+        "numero": "27"
+      }
+    ]
+  },
+  {
+    "id": "cli_6",
+    "nome": "ANDERSON GOMES DOS SANTOS",
+    "email": null,
+    "telefone": "+55 74 9198-8366",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M45",
+        "nome": "M45",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "45"
+      }
+    ]
+  },
+  {
+    "id": "cli_60",
+    "nome": "GABRIEL COELHO DE SOUZA",
+    "email": null,
+    "telefone": "557996629700",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M47",
+        "nome": "M47",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 170",
+        "ano": 2021,
+        "numero": "47"
+      }
+    ]
+  },
+  {
+    "id": "cli_61",
+    "nome": "GABRIEL TORRES DA SILVA JUNIOR",
+    "email": null,
+    "telefone": "554998070843",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M27",
+        "nome": "M27",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2009,
+        "numero": "27"
+      }
+    ]
+  },
+  {
+    "id": "cli_62",
+    "nome": "GERALDO ANDRE ROCHA MENEZES",
+    "email": null,
+    "telefone": "5575991942974",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M26",
+        "nome": "M26",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2020,
+        "numero": "26"
+      }
+    ]
+  },
+  {
+    "id": "cli_63",
+    "nome": "GLEDSON ANDRE SILVA FERREIRA",
+    "email": null,
+    "telefone": "557491112366",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M18",
+        "nome": "M18",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2023,
+        "numero": "18"
+      }
+    ]
+  },
+  {
+    "id": "cli_64",
+    "nome": "GUSTAVO HENRIQUE OLIVEIRA",
+    "email": null,
+    "telefone": "+55 81 9814-8822",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M43",
+        "nome": "M43",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "43"
+      }
+    ]
+  },
+  {
+    "id": "cli_65",
+    "nome": "HALLAN DE GUIMARAES",
+    "email": null,
+    "telefone": "558799153529",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M35",
+        "nome": "M35",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "PHOENIX 255",
+        "ano": 2012,
+        "numero": "35"
+      }
+    ]
+  },
+  {
+    "id": "cli_66",
+    "nome": "HUIGO GOMES DE SALES",
+    "email": null,
+    "telefone": "5587999794545",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M34",
+        "nome": "M34",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "34"
+      }
+    ]
+  },
+  {
+    "id": "cli_67",
+    "nome": "IAGO DA SILVA SANTOS",
+    "email": null,
+    "telefone": "5587991292577",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_MA",
+        "nome": "M00",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "00"
+      }
+    ]
+  },
+  {
+    "id": "cli_68",
+    "nome": "IGOR PALITOT DIAS DE SOUZA",
+    "email": null,
+    "telefone": "5574988195604",
+    "cpf": "838.806.902-00",
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M13",
+        "nome": "M13",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "13"
+      }
+    ]
+  },
+  {
+    "id": "cli_69",
+    "nome": "ITALO GOMES TORRES",
+    "email": null,
+    "telefone": "+55 74 9133-8103",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M48",
+        "nome": "M48",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "48"
+      }
+    ]
+  },
+  {
+    "id": "cli_7",
+    "nome": "ANDRE DE LIMA FRANCO RODRIGUES",
+    "email": null,
+    "telefone": "5587991174834",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M22",
+        "nome": "M22",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "22"
+      }
+    ]
+  },
+  {
+    "id": "cli_70",
+    "nome": "ITAMAR MACHADO MORAES JUNIOR",
+    "email": null,
+    "telefone": "5574998077266",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M29",
+        "nome": "M29",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "29"
+      }
+    ]
+  },
+  {
+    "id": "cli_71",
+    "nome": "JACKSON FERREIRA DA SILVA",
+    "email": null,
+    "telefone": "5574991202532",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M22",
+        "nome": "M22",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "22"
+      }
+    ]
+  },
+  {
+    "id": "cli_72",
+    "nome": "JANDURY VICTOR COELHO CASSIANO",
+    "email": null,
+    "telefone": "558399327345",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M34",
+        "nome": "M34",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "34"
+      }
+    ]
+  },
+  {
+    "id": "cli_73",
+    "nome": "JANIO GOMES DA SILVA JUNIOR",
+    "email": null,
+    "telefone": "5587991252532",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M45",
+        "nome": "M45",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "45"
+      }
+    ]
+  },
+  {
+    "id": "cli_74",
+    "nome": "JEAN FONSECA GONÇALVES",
+    "email": null,
+    "telefone": "5574988187125",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M15",
+        "nome": "M15",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 170",
+        "ano": 2022,
+        "numero": "15"
+      }
+    ]
+  },
+  {
+    "id": "cli_75",
+    "nome": "JEFFERSON ADRIANO BARBOSA DOS SANTOS",
+    "email": null,
+    "telefone": "557488594430",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M29",
+        "nome": "M29",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "29"
+      }
+    ]
+  },
+  {
+    "id": "cli_76",
+    "nome": "JEFFERSON DOS SANTOS BARBOSA",
+    "email": null,
+    "telefone": "5587999980024",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M31",
+        "nome": "M31",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2007,
+        "numero": "31"
+      }
+    ]
+  },
+  {
+    "id": "cli_77",
+    "nome": "JEFFERSON SIQUEIRA",
+    "email": null,
+    "telefone": "5574988444195",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M27",
+        "nome": "M27",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2009,
+        "numero": "27"
+      }
+    ]
+  },
+  {
+    "id": "cli_78",
+    "nome": "JEREMIAS CARVALHO DE SOUZA",
+    "email": null,
+    "telefone": "5587996152626",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M02",
+        "nome": "M02",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2006,
+        "numero": "02"
+      }
+    ]
+  },
+  {
+    "id": "cli_79",
+    "nome": "JHON ANDERSON MARTINS",
+    "email": null,
+    "telefone": "5587981121557",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M38",
+        "nome": "M38",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "38"
+      }
+    ]
+  },
+  {
+    "id": "cli_8",
+    "nome": "ANDRE FERREIRA CABRAL",
+    "email": null,
+    "telefone": "5587999937003",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M12",
+        "nome": "M12",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 190",
+        "ano": 2008,
+        "numero": "12"
+      }
+    ]
+  },
+  {
+    "id": "cli_80",
+    "nome": "JOALISSON EMANUEL DA SILVA CORREIA",
+    "email": null,
+    "telefone": "5587991585831",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M28",
+        "nome": "M28",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "28"
+      }
+    ]
+  },
+  {
+    "id": "cli_81",
+    "nome": "JOAO EDUARDO DE SOUZA EVANGELISTA TOLEDO",
+    "email": null,
+    "telefone": "+55 74 8109-7883",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M31",
+        "nome": "M31",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2007,
+        "numero": "31"
+      }
+    ]
+  },
+  {
+    "id": "cli_82",
+    "nome": "JOAO PARENTE SA NETO",
+    "email": null,
+    "telefone": "5587996391619",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M48",
+        "nome": "M48",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "48"
+      }
+    ]
+  },
+  {
+    "id": "cli_83",
+    "nome": "JOÃO PAULO FIGUEIREDO RODRIGUES",
+    "email": null,
+    "telefone": "+55 87 9135-0621",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M49",
+        "nome": "M49",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2024,
+        "numero": "49"
+      }
+    ]
+  },
+  {
+    "id": "cli_84",
+    "nome": "JOÃO PAULO SILVA FERREIRA",
+    "email": null,
+    "telefone": "558799067468",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M43",
+        "nome": "M43",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTX 170",
+        "ano": 2024,
+        "numero": "43"
+      }
+    ]
+  },
+  {
+    "id": "cli_85",
+    "nome": "JOAO VICTOR DOS REIS SILVA",
+    "email": null,
+    "telefone": "5574988089399",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M21",
+        "nome": "M21",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2006,
+        "numero": "21"
+      }
+    ]
+  },
+  {
+    "id": "cli_86",
+    "nome": "JOHNNIS ALVES DA SILVA",
+    "email": null,
+    "telefone": "5587988032222",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M06",
+        "nome": "M06",
+        "tipo": "lancha",
+        "fabricante": "Fibrafort",
+        "modelo": "FOCKER 240",
+        "ano": 2002,
+        "numero": "06"
+      }
+    ]
+  },
+  {
+    "id": "cli_87",
+    "nome": "JOSE HERNANDES FREITAS BONFIM",
+    "email": null,
+    "telefone": "5587991353661",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M24",
+        "nome": "M24",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2023,
+        "numero": "24"
+      }
+    ]
+  },
+  {
+    "id": "cli_88",
+    "nome": "JOSE PHELIPE AQUINO BRANDAO",
+    "email": null,
+    "telefone": "5587991918021",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M49",
+        "nome": "M49",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 130",
+        "ano": 2024,
+        "numero": "49"
+      }
+    ]
+  },
+  {
+    "id": "cli_89",
+    "nome": "JOSIMAR RODRIGUES DO NASCIMENTO",
+    "email": null,
+    "telefone": "5587981341923",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M28",
+        "nome": "M28",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2012,
+        "numero": "28"
+      }
+    ]
+  },
+  {
+    "id": "cli_9",
+    "nome": "ANDRE LUIZ PARENTE E SILVA",
+    "email": null,
+    "telefone": "5587988638779",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M44",
+        "nome": "M44",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "WAKE 170",
+        "ano": 2024,
+        "numero": "44"
+      }
+    ]
+  },
+  {
+    "id": "cli_90",
+    "nome": "JOZIEL DA COSTA QUEIROZ",
+    "email": null,
+    "telefone": "5587991828695",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M25",
+        "nome": "M25",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2020,
+        "numero": "25"
+      }
+    ]
+  },
+  {
+    "id": "cli_91",
+    "nome": "JOÃO BOSCO DE SA JUNIOR",
+    "email": null,
+    "telefone": "558788440020",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M25",
+        "nome": "M25",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "RXT-X 300",
+        "ano": 2020,
+        "numero": "25"
+      }
+    ]
+  },
+  {
+    "id": "cli_92",
+    "nome": "JOÃO FRANCISCO FERNANDES DE SOUZA",
+    "email": null,
+    "telefone": "5574988151822",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M30",
+        "nome": "M30",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "30"
+      }
+    ]
+  },
+  {
+    "id": "cli_93",
+    "nome": "JOÃO TAVARES JUNIOR",
+    "email": null,
+    "telefone": "5531996266924",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M17",
+        "nome": "M17",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX250",
+        "ano": 2023,
+        "numero": "17"
+      }
+    ]
+  },
+  {
+    "id": "cli_94",
+    "nome": "JULIA INES CORREIA NOBRE MOTA",
+    "email": null,
+    "telefone": "+55 87 8820-1073",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M50",
+        "nome": "M50",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTR 230",
+        "ano": 2020,
+        "numero": "50"
+      }
+    ]
+  },
+  {
+    "id": "cli_95",
+    "nome": "KENEDY ANDERSON DA PAIXÃO SILVA OLIVEIRA",
+    "email": null,
+    "telefone": "5587981508763",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M33",
+        "nome": "M33",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "VX 1100",
+        "ano": 2010,
+        "numero": "33"
+      }
+    ]
+  },
+  {
+    "id": "cli_96",
+    "nome": "LAECIO GOMES OLIVEIRA",
+    "email": null,
+    "telefone": "5574988089230",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M24",
+        "nome": "M24",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX280",
+        "ano": 2023,
+        "numero": "24"
+      }
+    ]
+  },
+  {
+    "id": "cli_97",
+    "nome": "LEANDRO GONCALVES ROSAS",
+    "email": null,
+    "telefone": "5587988072248",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M41",
+        "nome": "M41",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "WAKE 170",
+        "ano": 2024,
+        "numero": "41"
+      }
+    ]
+  },
+  {
+    "id": "cli_98",
+    "nome": "LEANDRO LEMOS DOS SANTOS",
+    "email": null,
+    "telefone": "5587981083700",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M56",
+        "nome": "M56",
+        "tipo": "lancha",
+        "fabricante": "NX Boats",
+        "modelo": "NX260",
+        "ano": 2025,
+        "numero": "56"
+      }
+    ]
+  },
+  {
+    "id": "cli_99",
+    "nome": "LEONARDO VIANA EDILMAR DA CRUZ",
+    "email": null,
+    "telefone": "5581997308931",
+    "cpf": null,
+    "dataCadastro": "2026-06-03T16:24:28.455Z",
+    "embarcacoes_relacionadas": [
+      {
+        "id": "boat_M47",
+        "nome": "M47",
+        "tipo": "jet",
+        "fabricante": "Sea-Doo",
+        "modelo": "GTI 170",
+        "ano": 2021,
+        "numero": "47"
+      }
+    ]
+  }
+]

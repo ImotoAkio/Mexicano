@@ -9,7 +9,7 @@ interface ClientReservationModalProps {
   selectedDate: string;
   client: any;
   boats: any[];
-  onSuccess: () => void;
+  onSuccess: (newRes?: any) => void;
 }
 
 function getFirstTwoNames(fullName: string): string {
@@ -37,6 +37,7 @@ export default function ClientReservationModal({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<CalendarSyncResult | null>(null);
   const [whatsappStatus, setWhatsappStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [createdReservation, setCreatedReservation] = useState<any>(null);
 
   if (!isOpen) return null;
 
@@ -117,6 +118,8 @@ export default function ClientReservationModal({
       if (!dbRes.ok) {
         throw new Error(dbData.message || 'Erro ao realizar o agendamento no sistema principal.');
       }
+      
+      setCreatedReservation(dbData.reservation);
 
       // 2. Enviar para o Google Calendar usando o mesmo fluxo do admin
       const shortName = getFirstTwoNames(client.nome).toUpperCase();
@@ -130,7 +133,7 @@ export default function ClientReservationModal({
           data: selectedDate,
           periodo: 'dia_inteiro',
           observações: observacoes,
-          status: 'confirmado'
+          status: 'agendado'
         });
 
         // 3. Informar o servidor sobre o ID gerado pelo Google Agenda para manter a sincronia
@@ -172,7 +175,7 @@ export default function ClientReservationModal({
   };
 
   const handleFinish = () => {
-    onSuccess();
+    onSuccess(createdReservation);
     onClose();
   };
 

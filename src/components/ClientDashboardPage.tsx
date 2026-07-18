@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2 } from 'lucide-react';
 // @ts-ignore
 import boatImg1 from '../assets/images/1.webp';
 // @ts-ignore
 import boatImg2 from '../assets/images/2.webp';
 import ClientReservationModal from './ClientReservationModal';
+import ClientCheckinModal from './ClientCheckinModal';
+import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
 
 interface ClientDashboardPageProps {
@@ -12,17 +14,33 @@ interface ClientDashboardPageProps {
   boats: any[];
   reservations: any[];
   onLogout: () => void;
+  onRefresh?: () => void;
 }
 
-export default function ClientDashboardPage({ client, boats, reservations, onLogout }: ClientDashboardPageProps) {
+export default function ClientDashboardPage({ client, boats, reservations, onLogout, onRefresh }: ClientDashboardPageProps) {
   const [activeTab, setActiveTab] = useState<'home' | 'calendar' | 'finance' | 'profile'>('home');
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [privacyTab, setPrivacyTab] = useState<'general' | 'data' | 'rights' | 'dpo'>('general');
 
+  // Optimistic UI states
+  const [optimisticReservations, setOptimisticReservations] = useState<any[]>([]);
+  const [lastAddedResId, setLastAddedResId] = useState<string | null>(null);
+
+  // Merge external and optimistic reservations
+  const mergedMap = new Map();
+  reservations.forEach(r => mergedMap.set(r.id, r));
+  optimisticReservations.forEach(r => mergedMap.set(r.id, r));
+  const mergedReservations = Array.from(mergedMap.values());
+
+  const myReservations = mergedReservations.filter(r => r.clienteId === client.id);
+
   // Calendar states
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
+  const [selectedReservationForCheckin, setSelectedReservationForCheckin] = useState<any>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [reservationFilter, setReservationFilter] = useState<'all' | 'upcoming' | 'past'>('upcoming');
 
   // Check-in states
   const [showCheckinModal, setShowCheckinModal] = useState(false);
@@ -147,7 +165,7 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
         tipo: b.tipo,
         modelo: b.modelo
       })),
-      agendamentos: reservations.map(r => ({
+      agendamentos: myReservations.map(r => ({
         id: r.id,
         data: r.data,
         periodo: r.periodo,
@@ -195,7 +213,7 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
   // --------------------------
 
   const todayStrLocal = new Date().toISOString().split('T')[0];
-  const todayReservation = reservations.find(r => r.data === todayStrLocal && r.status !== 'cancelado');
+  const todayReservation = myReservations.find(r => r.data === todayStrLocal && r.status !== 'cancelado');
   const needsCheckin = todayReservation && (!todayReservation.previsaoSaida || !todayReservation.pessoasABordo || todayReservation.statusMarina === 'agendado');
   const isCheckedIn = todayReservation && todayReservation.statusMarina === 'confirmado';
 
@@ -272,19 +290,21 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
     }
   };
 
-  const handleCancelReservation = async () => {
-    if (!todayReservation) return;
+  const handleCancelReservation = async (reservationId?: string) => {
+    const idToCancel = typeof reservationId === 'string' ? reservationId : todayReservation?.id;
+    if (!idToCancel) return;
     setIsCanceling(true);
     try {
       const token = localStorage.getItem('client_token');
       const res = await fetch('/api/client/cancel-reservation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ id: todayReservation.id })
+        body: JSON.stringify({ id: idToCancel })
       });
       if (!res.ok) throw new Error('Falha ao cancelar reserva');
       showToast('Cancelado', 'Reserva cancelada com sucesso.', 'success');
-      setTimeout(() => window.location.reload(), 2000);
+      if (onRefresh) onRefresh();
+      else window.location.reload();
     } catch (err: any) {
       showToast('Erro', err.message || 'Erro ao comunicar com o servidor.', 'error');
     } finally {
@@ -597,25 +617,35 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
       <div className="px-6 pb-6 mt-8">
         <h3 className="text-xs uppercase tracking-widest text-white/40 mb-4 font-semibold">Próxima Reserva</h3>
         
-        {reservations.length > 0 ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-md flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/5 flex flex-col items-center justify-center border border-white/5 shrink-0">
-              <span className="text-[10px] font-bold text-[#B69D74] uppercase">DEZ</span>
-              <span className="text-base font-light text-white">24</span>
+        {(() => {
+          const nextRes = myReservations.filter(r => r.data >= todayStrLocal && r.status !== 'cancelado').sort((a,b) => a.data.localeCompare(b.data))[0];
+          if (!nextRes) {
+            return (
+              <div className="bg-white/[0.02] border border-white/5 border-dashed rounded-2xl p-6 text-center">
+                <p className="text-xs text-white/30 tracking-wide">Você não possui reservas futuras.</p>
+              </div>
+            );
+          }
+          const resDate = new Date(nextRes.data + 'T12:00:00Z');
+          const monthName = resDate.toLocaleString('pt-BR', { month: 'short' }).toUpperCase();
+          const day = resDate.getDate();
+          const b = boats.find(b => b.id === nextRes.embarcacaoId) || primaryBoat;
+          return (
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-md flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-white/5 flex flex-col items-center justify-center border border-white/5 shrink-0">
+                <span className="text-[10px] font-bold text-[#B69D74] uppercase">{monthName}</span>
+                <span className="text-base font-light text-white">{day}</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-white">Dia Inteiro</p>
+                <p className="text-xs text-white/40 mt-0.5">{b?.nome}</p>
+              </div>
+              <span className="text-[9px] px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400 uppercase font-bold tracking-wider">
+                Confirmada
+              </span>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-white">Dia Inteiro</p>
-              <p className="text-xs text-white/40 mt-0.5">{primaryBoat?.nome}</p>
-            </div>
-            <span className="text-[9px] px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400 uppercase font-bold tracking-wider">
-              Confirmada
-            </span>
-          </div>
-        ) : (
-          <div className="bg-white/[0.02] border border-white/5 border-dashed rounded-2xl p-6 text-center">
-            <p className="text-xs text-white/30 tracking-wide">Você não possui reservas futuras.</p>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
@@ -712,35 +742,45 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
                 String(dateObj.getDate()).padStart(2, '0')
               ].join('-');
 
-              // Verificar se o CLIENTE tem reserva nesse dia
-              const hasMyReservation = reservations.find(r => r.data === isoStr && r.status !== 'cancelado');
+              // Verificar se a marina está fechada (Segunda = 1, Terça = 2)
+              const dayOfWeek = dateObj.getDay();
+              const isClosed = (dayOfWeek === 1 || dayOfWeek === 2) && client.plano !== 'completo';
+
+              // Verificar se o CLIENTE tem reserva nesse dia ou se está ocupado
+              const hasMyReservation = myReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
+              const isOccupied = !hasMyReservation && mergedReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
               
-              // Evitar clicar no passado
+              // Evitar clicar no passado, dias ocupados ou dias fechados
               const past = dateObj < new Date(new Date().setHours(0,0,0,0));
               const isToday = isoStr === todayStr;
 
               return (
                 <button
                   key={idx}
-                  disabled={past}
+                  disabled={past || !!isOccupied || isClosed}
                   onClick={() => openReservation(dateObj)}
                   className={`
                     relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all duration-300
-                    ${past ? 'opacity-30 cursor-not-allowed' : 'hover:scale-105 cursor-pointer shadow-lg'}
+                    ${(past || isOccupied || isClosed) ? 'opacity-30 cursor-not-allowed' : 'hover:scale-105 cursor-pointer shadow-lg'}
                     ${hasMyReservation 
                       ? 'bg-[#B69D74]/20 border border-[#B69D74]/40 text-[#B69D74]' 
-                      : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
-                    ${isToday && !hasMyReservation ? 'ring-1 ring-white/20 bg-white/10 text-white' : ''}
+                      : isOccupied
+                        ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                        : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
+                    ${isToday && !hasMyReservation && !isOccupied ? 'ring-1 ring-white/20 bg-white/10 text-white' : ''}
                   `}
                 >
-                  <span className={`text-sm ${hasMyReservation ? 'font-bold' : 'font-medium'}`}>
+                  <span className={`text-sm ${hasMyReservation || isOccupied ? 'font-bold' : 'font-medium'}`}>
                     {dateObj.getDate()}
                   </span>
                   
                   {hasMyReservation && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#B69D74] mt-1 shadow-[0_0_8px_rgba(182,157,116,0.8)]" />
+                    <div className={`w-1.5 h-1.5 rounded-full bg-[#B69D74] mt-1 shadow-[0_0_8px_rgba(182,157,116,0.8)] ${hasMyReservation.id === lastAddedResId ? 'animate-[ping_2s_ease-out_1,pulse_2s_infinite]' : ''}`} />
                   )}
-                  {!hasMyReservation && !past && (
+                  {isOccupied && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
+                  )}
+                  {!hasMyReservation && !isOccupied && !past && !isClosed && (
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                       <Plus className="w-5 h-5 text-white/50" />
                     </div>
@@ -753,21 +793,58 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
 
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-white/50">Minhas Reservas</h2>
+          <div className="flex bg-white/5 rounded-lg p-1">
+            <button 
+              onClick={() => setReservationFilter('upcoming')}
+              className={`px-3 py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${reservationFilter === 'upcoming' ? 'bg-[#B69D74] text-slate-900' : 'text-white/40 hover:text-white/70'}`}
+            >
+              Próximos
+            </button>
+            <button 
+              onClick={() => setReservationFilter('past')}
+              className={`px-3 py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${reservationFilter === 'past' ? 'bg-[#B69D74] text-slate-900' : 'text-white/40 hover:text-white/70'}`}
+            >
+              Anteriores
+            </button>
+            <button 
+              onClick={() => setReservationFilter('all')}
+              className={`px-3 py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${reservationFilter === 'all' ? 'bg-[#B69D74] text-slate-900' : 'text-white/40 hover:text-white/70'}`}
+            >
+              Todos
+            </button>
+          </div>
         </div>
 
-        {reservations.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 py-12">
-            <Calendar className="w-12 h-12 text-[#B69D74] mb-4" />
-            <p className="text-sm font-light text-white tracking-wide">Nenhuma reserva encontrada</p>
-            <p className="text-xs text-white/40 mt-2 max-w-[200px]">Os seus agendamentos aparecerão nesta tela.</p>
-          </div>
-        ) : (
-          <div className="space-y-4 pb-12">
-            {reservations.sort((a,b) => a.data.localeCompare(b.data)).map(res => {
+        {(() => {
+          const displayedReservations = myReservations.filter(res => {
+            const isFuture = res.data >= todayStr;
+            if (reservationFilter === 'upcoming') return isFuture && res.status !== 'cancelado';
+            if (reservationFilter === 'past') return !isFuture;
+            return true;
+          }).sort((a,b) => {
+            if (reservationFilter === 'past') return b.data.localeCompare(a.data);
+            return a.data.localeCompare(b.data);
+          });
+
+          if (displayedReservations.length === 0) {
+            return (
+              <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 py-12">
+                <Calendar className="w-12 h-12 text-[#B69D74] mb-4" />
+                <p className="text-sm font-light text-white tracking-wide">Nenhuma reserva encontrada</p>
+                <p className="text-xs text-white/40 mt-2 max-w-[200px]">Altere o filtro ou realize um novo agendamento.</p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="space-y-4 pb-12">
+              {displayedReservations.map(res => {
               const boat = boats.find(b => b.id === res.embarcacaoId);
+              const isFuture = res.data >= todayStrLocal;
+              const isNew = res.id === lastAddedResId;
               return (
-                <div key={res.id} className="bg-[#111] border border-white/5 rounded-2xl p-5 flex items-center gap-4 transition-all hover:border-white/10">
-                  <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center shrink-0 shadow-inner">
+                <div key={res.id} className={`bg-[#111] border ${isNew ? 'border-[#B69D74]/50 shadow-[0_0_15px_rgba(182,157,116,0.15)] animate-in slide-in-from-top-4' : 'border-white/5'} rounded-2xl p-5 flex items-center gap-4 transition-all hover:border-white/10`}>
+                  <div className={`w-14 h-14 rounded-2xl ${isNew ? 'bg-[#B69D74]/10' : 'bg-white/5'} flex items-center justify-center shrink-0 shadow-inner`}>
                     <Calendar className="w-6 h-6 text-[#B69D74]" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -785,9 +862,11 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
                     <span className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
                       res.status === 'cancelado' 
                         ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : res.statusMarina === 'confirmado'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                     }`}>
-                      {res.status === 'cancelado' ? 'Cancelado' : 'Confirmado'}
+                      {res.status === 'cancelado' ? 'Cancelado' : (res.statusMarina === 'confirmado' ? 'Confirmado' : 'Agendado')}
                     </span>
                     {res.statusMarina === 'confirmado' && (
                       <button 
@@ -801,12 +880,40 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
                         PDF
                       </button>
                     )}
+                    {isFuture && res.status !== 'cancelado' && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm("Deseja realmente cancelar esta reserva?")) {
+                            handleCancelReservation(res.id);
+                          }
+                        }}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-[10px] font-medium text-rose-400 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Cancelar
+                      </button>
+                    )}
+                    {res.data === todayStrLocal && res.status !== 'cancelado' && res.statusMarina !== 'confirmado' && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedReservationForCheckin(res);
+                          setIsCheckinModalOpen(true);
+                        }}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-[#B69D74]/10 hover:bg-[#B69D74]/20 border border-[#B69D74]/20 rounded-xl text-[10px] font-medium text-[#B69D74] transition-colors cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        Confirmar
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
+          );
+        })()}
 
         <ClientReservationModal 
           isOpen={isReservationModalOpen}
@@ -814,10 +921,30 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
           selectedDate={selectedDate}
           client={client}
           boats={boats}
+          onSuccess={(newRes) => {
+            if (newRes) {
+              setOptimisticReservations(prev => [...prev, newRes]);
+              setLastAddedResId(newRes.id);
+            }
+            if (onRefresh) {
+              onRefresh();
+            } else {
+              window.location.reload();
+            }
+          }}
+        />
+
+        <ClientCheckinModal 
+          isOpen={isCheckinModalOpen}
+          onClose={() => setIsCheckinModalOpen(false)}
+          reservation={selectedReservationForCheckin}
           onSuccess={() => {
-            // Um simples refresh da página já resolve para pegar os dados atualizados do servidor
-            // mas o ideal seria chamar uma função onRefresh no App.tsx
-            window.location.reload();
+            setIsCheckinModalOpen(false);
+            if (onRefresh) {
+              onRefresh();
+            } else {
+              window.location.reload();
+            }
           }}
         />
       </div>
@@ -1227,7 +1354,8 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
               <button 
                 onClick={() => {
                   setShowPreviewModal(false);
-                  window.location.reload();
+                  if (onRefresh) onRefresh();
+                  else window.location.reload();
                 }} 
                 className="w-8 h-8 rounded-full flex items-center justify-center text-white/30 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
               >
@@ -1329,7 +1457,8 @@ export default function ClientDashboardPage({ client, boats, reservations, onLog
               <button
                 onClick={() => {
                   setShowPreviewModal(false);
-                  window.location.reload();
+                  if (onRefresh) onRefresh();
+                  else window.location.reload();
                 }}
                 className="w-full py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-semibold text-xs tracking-wider uppercase transition-all duration-200 cursor-pointer border border-white/10 text-center"
               >

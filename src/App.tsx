@@ -103,7 +103,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return !!localStorage.getItem('admin_token');
   });
-  const [adminRole, setAdminRole] = useState<'admin' | 'marina' | 'financeiro' | null>(null);
+  const [adminRole, setAdminRole] = useState<'admin' | 'marina' | 'financeiro' | 'pecas_servicos' | null>(null);
   const [adminName, setAdminName] = useState<string>('');
   const [isRoleLoading, setIsRoleLoading] = useState(false);
   const [isAdminDbLoaded, setIsAdminDbLoaded] = useState(false);
@@ -136,10 +136,12 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (data.valid) {
-          setAdminRole(data.role as 'admin' | 'marina' | 'financeiro');
+          setAdminRole(data.role as 'admin' | 'marina' | 'financeiro' | 'pecas_servicos');
           setAdminName(data.nome || data.username || 'Operador');
           if (data.role === 'financeiro') {
             setActiveTab('finance-lancamentos');
+          } else if (data.role === 'pecas_servicos') {
+            setActiveTab('manutencoes');
           }
         } else {
           handleLogout();
@@ -157,32 +159,47 @@ export default function App() {
     }
   }, [isAuthenticated, isAdminDbLoaded]);
 
+  const fetchClientData = async (showLoading = false) => {
+    if (!clientToken) return;
+    if (showLoading) setClientLoading(true);
+    try {
+      const res = await fetch('/api/client/me', {
+        headers: { 'Authorization': `Bearer ${clientToken}` }
+      });
+      if (!res.ok) {
+        localStorage.removeItem('client_token');
+        setClientToken(null);
+        throw new Error('Token inválido');
+      }
+      const data = await res.json();
+      setClientData(data);
+    } catch (e) {
+      localStorage.removeItem('client_token');
+      setClientToken(null);
+    } finally {
+      if (showLoading) setClientLoading(false);
+    }
+  };
+
   // Fetch client data from API using JWT (never stored in localStorage)
   useEffect(() => {
     if (clientToken && !clientData && !clientLoading) {
-      setClientLoading(true);
-      fetch('/api/client/me', {
-        headers: { 'Authorization': `Bearer ${clientToken}` }
-      })
-        .then(res => {
-          if (!res.ok) {
-            // Token expired or invalid
-            localStorage.removeItem('client_token');
-            setClientToken(null);
-            throw new Error('Token inválido');
-          }
-          return res.json();
-        })
-        .then(data => {
-          setClientData(data);
-        })
-        .catch(() => {
-          localStorage.removeItem('client_token');
-          setClientToken(null);
-        })
-        .finally(() => setClientLoading(false));
+      fetchClientData(true);
     }
   }, [clientToken, clientData, clientLoading]);
+
+  // Polling to keep client data updated in the background (e.g., other co-owners making reservations)
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (clientToken) {
+      interval = setInterval(() => {
+        fetchClientData(false);
+      }, 15000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [clientToken]);
 
   const navGroups = [
     {
@@ -239,12 +256,21 @@ export default function App() {
     }
   ].map(group => ({
     ...group,
-    items: group.items.filter(item => adminRole === 'financeiro' ? ['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id) : true)
+    items: group.items.filter(item => {
+      if (adminRole === 'financeiro') {
+        return ['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id);
+      } else if (adminRole === 'pecas_servicos') {
+        return ['manutencoes', 'finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(item.id);
+      }
+      return true;
+    })
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
     if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
       setActiveTab('finance-lancamentos');
+    } else if (adminRole === 'pecas_servicos' && !['manutencoes', 'finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(activeTab)) {
+      setActiveTab('manutencoes');
     }
   }, [adminRole, activeTab]);
 
@@ -324,6 +350,7 @@ export default function App() {
             client={clientData.client}
             boats={clientData.boats}
             reservations={clientData.reservations}
+            onRefresh={() => fetchClientData(false)}
             onLogout={() => {
               localStorage.removeItem('client_token');
               setClientToken(null);
@@ -491,7 +518,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full pb-24">
             <ErrorBoundary>
               <Suspense fallback={<div className="h-full w-full min-h-[400px] flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
-                {activeTab === 'dashboard' && adminRole !== 'financeiro' && <Dashboard onNavigate={handleTabChange} />}
+                {activeTab === 'dashboard' && adminRole !== 'financeiro' && adminRole !== 'pecas_servicos' && <Dashboard onNavigate={handleTabChange} />}
                 {activeTab === 'schedules' && <SchedulesPage />}
                 {activeTab === 'whatsapp' && <WhatsAppPage />}
                 {activeTab === 'checklists' && <AdminChecklistsWrapper />}

@@ -21,7 +21,7 @@ export default function UsersPage() {
   
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'marina' | 'financeiro'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'marina' | 'financeiro' | 'pecas_servicos'>('all');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -32,7 +32,7 @@ export default function UsersPage() {
   const [formUsername, setFormUsername] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formConfirmPassword, setFormConfirmPassword] = useState('');
-  const [formRole, setFormRole] = useState<'admin' | 'marina' | 'financeiro'>('admin');
+  const [formRole, setFormRole] = useState<'admin' | 'marina' | 'financeiro' | 'pecas_servicos'>('admin');
   const [formError, setFormError] = useState<string | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
 
@@ -78,7 +78,7 @@ export default function UsersPage() {
     setFormUsername(user.username || '');
     setFormPassword('');
     setFormConfirmPassword('');
-    setFormRole((user.role as 'admin' | 'marina' | 'financeiro') || 'admin');
+    setFormRole((user.role as 'admin' | 'marina' | 'financeiro' | 'pecas_servicos') || 'admin');
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -230,6 +230,7 @@ export default function UsersPage() {
             <option value="admin">Admin</option>
             <option value="marina">Marina</option>
             <option value="financeiro">Financeiro</option>
+            <option value="pecas_servicos">Peças e Serviços</option>
           </select>
         </div>
       </div>
@@ -271,9 +272,11 @@ export default function UsersPage() {
                           ? 'bg-blue-100 text-blue-700 border border-blue-200' 
                           : user.role === 'financeiro'
                           ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                          : user.role === 'pecas_servicos'
+                          ? 'bg-orange-100 text-orange-700 border border-orange-200'
                           : 'bg-amber-100 text-amber-700 border border-amber-200'
                       }`}>
-                        {user.role === 'marina' ? 'Marina' : user.role === 'financeiro' ? 'Financeiro' : 'Admin'}
+                        {user.role === 'marina' ? 'Marina' : user.role === 'financeiro' ? 'Financeiro' : user.role === 'pecas_servicos' ? 'Peças/Serviços' : 'Admin'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-500 font-mono">
@@ -358,12 +361,13 @@ export default function UsersPage() {
                   <label className="block text-xs font-semibold text-slate-700">Perfil de Acesso</label>
                   <select
                     value={formRole}
-                    onChange={(e) => setFormRole(e.target.value as 'admin' | 'marina' | 'financeiro')}
+                    onChange={(e) => setFormRole(e.target.value as 'admin' | 'marina' | 'financeiro' | 'pecas_servicos')}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white transition-all appearance-none"
                   >
                     <option value="admin">Administrador (Acesso Total)</option>
                     <option value="marina">Marina (Painel de Píer e Abastecimento)</option>
                     <option value="financeiro">Financeiro (Acesso Exclusivo Financeiro)</option>
+                    <option value="pecas_servicos">Peças e Serviços (Manutenção, Agenda e Financeiro)</option>
                   </select>
                 </div>
 
