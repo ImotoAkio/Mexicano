@@ -63,7 +63,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
   const [formData, setFormData] = useState<Partial<TransacaoFinanceira>>({
     tipo: 'receita',
     categoria: 'Mensalidade',
-    status: 'aguardando_aprovacao',
+    status: 'lancado',
     valor: 0,
     dataVencimento: new Date().toISOString().split('T')[0]
   });
@@ -123,7 +123,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
   const calculateTransactionInterest = (t: TransacaoFinanceira) => {
     if (t.tipo !== 'receita') return { days: 0, interest: 0, total: Number(t.valor) };
     
-    const isOverdue = t.status === 'atrasado' || (t.status === 'pendente' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
+    const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
     
     if (!isOverdue) return { days: 0, interest: 0, total: Number(t.valor) };
 
@@ -177,8 +177,8 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
           const isDefaulting = transacoesData.some((t: any) => {
             if (t.clienteId !== c.id) return false;
             if (t.tipo !== 'receita') return false;
-            if (t.status === 'atrasado') return true;
-            if (t.status === 'pendente' && t.dataVencimento < todayStr) return true;
+            if (t.status === 'vencido') return true;
+            if (t.status === 'lancado' && t.dataVencimento < todayStr) return true;
             return false;
           });
           
@@ -388,7 +388,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
     const isOverdue = new Date(t.dataVencimento + 'T23:59:59') < new Date();
     const updatedTrans: TransacaoFinanceira = {
       ...t,
-      status: isOverdue ? 'atrasado' : 'pendente'
+      status: isOverdue ? 'vencido' : 'lancado'
     };
 
     try {
@@ -643,7 +643,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
       setFormData({
         tipo: 'receita',
         categoria: 'Mensalidade',
-        status: 'aguardando_aprovacao',
+        status: 'lancado',
         valor: 0,
         dataVencimento: new Date().toISOString().split('T')[0]
       });
@@ -708,13 +708,13 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
 
   // KPIs calculados com base nas transações filtradas
   const totalRecebidos = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status === 'pago').reduce((acc, t) => acc + Number(t.valor), 0);
-  const aReceber = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status === 'pendente').reduce((acc, t) => acc + Number(t.valor), 0);
+  const aReceber = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status === 'lancado').reduce((acc, t) => acc + Number(t.valor), 0);
   
   let totalAtrasadoPrincipal = 0;
   let totalAtrasadoJuros = 0;
   filteredTransacoes.forEach(t => {
     if (t.tipo === 'receita') {
-      const isOverdue = t.status === 'atrasado' || (t.status === 'pendente' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
+      const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
       if (isOverdue) {
         const { interest } = calculateTransactionInterest(t);
         totalAtrasadoPrincipal += Number(t.valor);
@@ -722,7 +722,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
       }
     }
   });
-  const totalAtrasadosComJuros = totalAtrasadoPrincipal + totalAtrasadoJuros;
+  const totalVencidosComJuros = totalAtrasadoPrincipal + totalAtrasadoJuros;
 
   // Today and Future bookings for Tab 2
   const todayStr = new Date().toISOString().split('T')[0];
@@ -732,27 +732,27 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
 
   // Selected client unpaid list for Tab 3
   const clientUnpaidTransactions = selectedClienteId 
-    ? transacoes.filter(t => t.clienteId === selectedClienteId && t.status !== 'pago' && t.status !== 'aguardando_aprovacao' && t.tipo === 'receita')
+    ? transacoes.filter(t => t.clienteId === selectedClienteId && t.status !== 'pago' && t.status !== 'lancado' && t.tipo === 'receita')
     : [];
 
   const getStatusBadge = (t: TransacaoFinanceira) => {
     const baseClasses = "px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 w-fit shadow-sm border";
     
     // Se não está pago nem cancelado, mas tem comprovante, é solicitação de baixa
-    if (t.status !== 'pago' && t.status !== 'cancelado' && t.status !== 'aguardando_aprovacao' && t.comprovante) {
+    if (t.status !== 'pago' && t.status !== 'cancelado' && t.status !== 'lancado' && t.comprovante) {
       return <span className={`${baseClasses} bg-amber-50 text-amber-700 border-amber-200`}><div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div> Solicitação de Baixa</span>;
     }
 
     switch(t.status) {
       case 'pago': 
         return <span className={`${baseClasses} bg-emerald-50 text-emerald-700 border-emerald-100`}><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Pago</span>;
-      case 'pendente': 
-        return <span className={`${baseClasses} bg-amber-50 text-amber-700 border-amber-100`}><div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Pendente</span>;
-      case 'atrasado': 
+      case 'lancado': 
+        return <span className={`${baseClasses} bg-amber-50 text-amber-700 border-amber-100`}><div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Lançado</span>;
+      case 'vencido': 
         return <span className={`${baseClasses} bg-rose-50 text-rose-700 border-rose-100`}><div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></div> Atrasado</span>;
       case 'cancelado': 
         return <span className={`${baseClasses} bg-slate-50 text-slate-600 border-slate-100`}><div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div> Cancelado</span>;
-      case 'aguardando_aprovacao': 
+      case 'lancado': 
         return <span className={`${baseClasses} bg-indigo-50 text-indigo-700 border-indigo-100`}><div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Aguardando Apr.</span>;
       default: return null;
     }
@@ -843,7 +843,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                 <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
                   <Wallet className="w-4 h-4" />
                 </div>
-                <p className="text-xs font-bold text-indigo-800">A Receber (Pendentes)</p>
+                <p className="text-xs font-bold text-indigo-800">A Receber (Lançados)</p>
               </div>
               <p className="text-xl font-black mt-1.5 text-indigo-700 tracking-tight relative z-10">
                 <span className="text-sm opacity-60 mr-1">R$</span>
@@ -861,7 +861,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
               </div>
               <p className="text-xl font-black mt-1.5 text-white tracking-tight relative z-10">
                 <span className="text-sm text-slate-400 mr-1">R$</span>
-                {totalAtrasadosComJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {totalVencidosComJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
               {totalAtrasadoJuros > 0 && (
                 <p className="text-[10px] font-medium text-slate-400 mt-1.5 bg-white/5 inline-block px-2 py-0.5 rounded border border-white/5">
@@ -902,9 +902,8 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                   >
                     <option value="todos">Todos os Status</option>
                     <option value="baixas">Apenas Solicitações de Baixa</option>
-                    <option value="aguardando_aprovacao">Aguardando Aprovação</option>
-                    <option value="pendente">Pendente</option>
-                    <option value="atrasado">Atrasado</option>
+                    <option value="lancado">Lançado</option>
+                    <option value="vencido">Vencido</option>
                     <option value="pago">Pago</option>
                     <option value="cancelado">Cancelado</option>
                   </select>
@@ -1017,7 +1016,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                       }
 
                       const hasComprovante = !!t.comprovante;
-                      const isUnpaid = t.status === 'pendente' || t.status === 'atrasado' || t.status === 'aguardando_aprovacao';
+                      const isUnpaid = t.status === 'lancado' || t.status === 'vencido';
 
                       return (
                         <tr key={t.id} className="group hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => setViewingTransaction(t)}>
@@ -1224,7 +1223,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                 </div>
                 <div className="text-center">
                   <p className="font-bold text-slate-600 text-lg">Extrato Financeiro</p>
-                  <p className="text-sm mt-1 max-w-sm mx-auto">Selecione um cliente acima para visualizar os débitos pendentes, calcular juros e gerar faturas em PDF.</p>
+                  <p className="text-sm mt-1 max-w-sm mx-auto">Selecione um cliente acima para visualizar os débitos lançados, calcular juros e gerar faturas em PDF.</p>
                 </div>
               </div>
           ) : (
@@ -1379,8 +1378,8 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                                     <td className="px-5 py-4">
                                       <p className="font-bold text-slate-800">{categoryNameUI}</p>
                                       <p className="text-xs text-slate-400 truncate max-w-[150px] mt-0.5">{cleanDescription(t.descricao) || '-'}</p>
-                                      {t.status === 'aguardando_aprovacao' && (
-                                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md text-[10px] font-bold mt-1.5 inline-block">Aguardando Aprovação</span>
+                                      {t.status === 'lancado' && (
+                                        <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-md text-[10px] font-bold mt-1.5 inline-block">Lançado</span>
                                       )}
                                     </td>
                                     <td className="px-5 py-4 font-semibold text-slate-600">
@@ -1398,7 +1397,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                                     </td>
                                     <td className="px-5 py-4 text-right">
                                       <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                                        {t.status === 'aguardando_aprovacao' && isFinanceiroOrAdmin && (
+                                        {t.status === 'lancado' && isFinanceiroOrAdmin && (
                                           <button 
                                             onClick={() => handleAprovarLancamento(t)}
                                             className="text-white bg-indigo-500 hover:bg-indigo-600 font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 transition-colors"
@@ -1540,6 +1539,34 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
             handleUploadFile(viewingTransaction, e);
           }}
           isUploading={isUploading[viewingTransaction.id] || false}
+          onGenerateAsaas={async (billingType) => {
+            try {
+              const token = localStorage.getItem('admin_token');
+              const res = await fetch(`/api/financeiro/transacoes/${viewingTransaction.id}/gerar-asaas`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ billingType })
+              });
+              const json = await res.json();
+              if (json.success) {
+                const updatedTx = {
+                  ...viewingTransaction,
+                  asaasPaymentId: json.asaasPaymentId,
+                  asaasPaymentUrl: json.asaasPaymentUrl
+                };
+                setViewingTransaction(updatedTx);
+                setTransacoes(prev => prev.map(t => t.id === viewingTransaction.id ? updatedTx : t));
+                alert("Cobrança Asaas gerada com sucesso!");
+              } else {
+                alert(`Erro: ${json.message || "Erro desconhecido"}`);
+              }
+            } catch (err: any) {
+              alert(`Erro ao conectar com servidor: ${err.message}`);
+            }
+          }}
         />
       )}
 
@@ -1627,12 +1654,10 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
                     onChange={(e) => setFormData({...formData, status: e.target.value as any})}
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-semibold text-sm"
                   >
-                    {(formData.status === 'aguardando_aprovacao' || !isFinanceiro) && (
-                      <option value="aguardando_aprovacao">Aguardando Aprovação</option>
-                    )}
-                    <option value="pendente">Pendente</option>
+                    
+                    <option value="lancado">Lançado</option>
                     <option value="pago">Pago</option>
-                    <option value="atrasado">Atrasado</option>
+                    <option value="vencido">Vencido</option>
                     <option value="cancelado">Cancelado</option>
                   </select>
                 </div>

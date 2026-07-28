@@ -166,16 +166,18 @@ export default function App() {
       const res = await fetch('/api/client/me', {
         headers: { 'Authorization': `Bearer ${clientToken}` }
       });
-      if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('client_token');
         setClientToken(null);
-        throw new Error('Token inválido');
+        throw new Error('Token inválido ou expirado');
+      }
+      if (!res.ok) {
+        throw new Error('Erro ao buscar dados do cliente');
       }
       const data = await res.json();
       setClientData(data);
     } catch (e) {
-      localStorage.removeItem('client_token');
-      setClientToken(null);
+      console.error("Erro no polling do cliente:", e);
     } finally {
       if (showLoading) setClientLoading(false);
     }
@@ -334,7 +336,7 @@ export default function App() {
             </div>
             <div className="mt-8 flex flex-col items-center">
               <h1 className="text-xl font-medium tracking-[0.2em] text-white/90">
-                MARINA CLUB
+                VILA NÁUTICA
               </h1>
               <div className="h-[1px] bg-[#B69D74]/30 mt-4 w-12 [animation:luxury-line-expand_2.5s_ease-in-out_infinite]"></div>
             </div>
@@ -350,6 +352,7 @@ export default function App() {
             client={clientData.client}
             boats={clientData.boats}
             reservations={clientData.reservations}
+            transacoes={clientData.transacoes || []}
             onRefresh={() => fetchClientData(false)}
             onLogout={() => {
               localStorage.removeItem('client_token');

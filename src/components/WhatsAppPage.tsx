@@ -89,7 +89,7 @@ export default function WhatsAppPage() {
   // WhatsApp Contacts Sync States
   const [clients, setClients] = useState<Cliente[]>([]);
   const setClientsFiltered = (allClients: Cliente[]) => {
-    setClients(allClients.filter(c => !c.nome.toLowerCase().includes('mexicano lanchas')));
+    setClients(allClients.filter(c => !c.nome.toLowerCase().includes('vila nautica')));
   };
   const [whatsAppContacts, setWhatsAppContacts] = useState<any[]>([]);
   const [isFetchingContacts, setIsFetchingContacts] = useState(false);

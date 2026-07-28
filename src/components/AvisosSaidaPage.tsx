@@ -29,7 +29,7 @@ export default function AvisosSaidaPage() {
   const [logoOption, setLogoOption] = useState<'default' | 'empty' | 'custom'>('default');
   const [customLogoBase64, setCustomLogoBase64] = useState<string>('');
   const [customLogoName, setCustomLogoName] = useState<string>('');
-  const [bannerText, setBannerText] = useState('MEXICANO LANCHAS');
+  const [bannerText, setBannerText] = useState('VILA NÁUTICA');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,7 +114,7 @@ export default function AvisosSaidaPage() {
         autoPrint: action === 'print',
         download: action === 'download',
         logoUrl,
-        bannerText: bannerText || 'MEXICANO LANCHAS'
+        bannerText: bannerText || 'VILA NÁUTICA'
       });
     } catch (err) {
       console.error('Erro ao gerar o PDF:', err);
@@ -173,7 +173,7 @@ export default function AvisosSaidaPage() {
                 type="text"
                 value={bannerText}
                 onChange={(e) => setBannerText(e.target.value)}
-                placeholder="Ex: MEXICANO LANCHAS"
+                placeholder="Ex: VILA NÁUTICA"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74]"
               />
             </div>
@@ -471,7 +471,7 @@ export default function AvisosSaidaPage() {
                     <span className="text-[10px]">{data}</span>
                   </div>
                   <div className="col-span-6 p-2 font-bold text-[10px] text-left truncate bg-slate-50/50">
-                    {bannerText ? bannerText.toUpperCase() : 'MEXICANO LANCHAS'}
+                    {bannerText ? bannerText.toUpperCase() : 'VILA NÁUTICA'}
                   </div>
                 </div>
 

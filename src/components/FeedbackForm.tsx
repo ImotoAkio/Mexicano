@@ -227,7 +227,7 @@ export default function FeedbackForm() {
             <Logo className="w-full h-full text-[#B69D74]" />
           </div>
           <h1 className="text-lg font-bold tracking-[0.25em] text-white/95 uppercase">
-            Marina Club
+            Vila Náutica
           </h1>
           <p className="text-[10px] text-[#B69D74] font-semibold tracking-widest uppercase mt-1">
             Central de Opiniões
@@ -411,7 +411,7 @@ export default function FeedbackForm() {
                   
                   {/* CPF Search */}
                   <div className="space-y-1.5">
-                    <label className="text-[9px] text-white/50 font-bold tracking-wider uppercase">CPF cadastrado (Marina Club)</label>
+                    <label className="text-[9px] text-white/50 font-bold tracking-wider uppercase">CPF cadastrado (Vila Náutica)</label>
                     <div className="relative flex items-center">
                       <input
                         type="text"
@@ -525,7 +525,7 @@ export default function FeedbackForm() {
               <div className="space-y-2">
                 <h2 className="text-xl font-bold tracking-tight text-white">Muito obrigado!</h2>
                 <p className="text-xs text-white/50 px-4 leading-relaxed">
-                  Sua opinião é vital para nos ajudar a construir uma experiência excepcional para todos os proprietários do Marina Club.
+                  Sua opinião é vital para nos ajudar a construir uma experiência excepcional para todos os proprietários do Vila Náutica.
                 </p>
               </div>
 
@@ -571,7 +571,7 @@ export default function FeedbackForm() {
 
         {/* Footer */}
         <footer className="text-center pb-2 text-[9px] text-white/20 select-none">
-          <p>© {new Date().getFullYear()} Grupo Marina Club. Todos os direitos reservados.</p>
+          <p>© {new Date().getFullYear()} Grupo Vila Náutica. Todos os direitos reservados.</p>
         </footer>
 
       </div>

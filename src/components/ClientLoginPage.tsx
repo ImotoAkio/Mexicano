@@ -191,7 +191,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
             </div>
             <div className="mt-8 flex flex-col items-center">
               <h1 className="text-xl font-medium tracking-[0.2em] text-white/90 [animation:luxury-reveal_1.5s_ease-out_0.5s_both]">
-                MARINA CLUB
+                VILA NÁUTICA
               </h1>
               <div className="h-[1px] bg-[#B69D74]/30 mt-4 [animation:luxury-line-expand_2.5s_ease-in-out_infinite_1s]"></div>
             </div>
@@ -448,7 +448,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
 
         <div className="mt-auto pt-8 text-center">
           <p className="text-[10px] text-white/20 uppercase tracking-widest">
-            Um portal do Grupo Marina Club
+            Um portal do Grupo Vila Náutica
           </p>
           <p className="text-[9px] text-white/10 mt-1">
             Desenvolvido por Echo
@@ -514,7 +514,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
               {privacyTab === 'general' && (
                 <div className="space-y-4 animate-in fade-in duration-200">
                   <p className="text-white/80">
-                    O <strong className="font-medium text-white/95">Grupo Marina Club</strong> composto por Marina Club, Mexicano Lanchas, Vale Administradora e Passeios do Vale, preza pelo mais alto rigor no tratamento dos seus dados.
+                    O <strong className="font-medium text-white/95">Grupo Vila Náutica</strong> composto por Vila Náutica, Vila Náutica, Vale Administradora e Passeios do Vale, preza pelo mais alto rigor no tratamento dos seus dados.
                   </p>
                   <p>
                     Esta aplicação foi desenvolvida sob rígidos padrões de segurança cibernética pela <strong className="text-white/85">Echo Desenvolvimento de Software</strong>, assegurando que toda informação trafegada e armazenada esteja devidamente protegida contra acessos não autorizados.

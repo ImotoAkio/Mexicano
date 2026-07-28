@@ -120,9 +120,9 @@ export async function generateAvisoSaidaPDF(
   doc.setFont('Helvetica', 'normal');
   doc.text(fields.data, startX + cellPaddingXLeft + labelWidth, currentY);
 
-  // Col 2 (Right): MEXICANO LANCHAS / CLUB BANNER (capitalized)
+  // Col 2 (Right): VILA NÁUTICA / CLUB BANNER (capitalized)
   doc.setFont('Helvetica', 'bold');
-  doc.text((options?.bannerText || 'MEXICANO LANCHAS').toUpperCase(), splitX + cellPaddingXRight, currentY);
+  doc.text((options?.bannerText || 'VILA NÁUTICA').toUpperCase(), splitX + cellPaddingXRight, currentY);
 
   // Row 2: NOME (Full width)
   currentY += rowHeights[0];

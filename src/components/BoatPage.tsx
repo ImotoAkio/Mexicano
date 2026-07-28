@@ -141,7 +141,7 @@ export default function BoatPage() {
         }
 
         const paddedNum = b.numero ? b.numero.padStart(2, '0') : '';
-        const standardName = `EL MEXICANO ${paddedNum}`;
+        const standardName = `VILA NÁUTICA ${paddedNum}`;
         const group = data.groups.find((g: any) => {
           const subject = (g.subject || g.name || '').toUpperCase();
           if (paddedNum && subject.includes(standardName.toUpperCase())) return true;

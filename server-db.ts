@@ -168,7 +168,8 @@ export async function initializeDatabase() {
         embarcacoes TEXT,
         statusFinanceiro VARCHAR(50) DEFAULT 'em_dia',
         observacoesFinanceiras TEXT,
-        plano VARCHAR(20) DEFAULT 'normal'
+        plano VARCHAR(20) DEFAULT 'normal',
+        asaasCustomerId VARCHAR(100)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -179,6 +180,10 @@ export async function initializeDatabase() {
 
     try {
       await connection.query(`ALTER TABLE Clientes ADD COLUMN plano VARCHAR(20) DEFAULT 'normal';`);
+    } catch (e) {}
+
+    try {
+      await connection.query(`ALTER TABLE Clientes ADD COLUMN asaasCustomerId VARCHAR(100);`);
     } catch (e) {}
 
     // 2. Embarcacoes Table
@@ -347,7 +352,9 @@ export async function initializeDatabase() {
         clienteId VARCHAR(50),
         embarcacaoId VARCHAR(50),
         comprovante VARCHAR(255),
-        createdAt VARCHAR(50) NOT NULL
+        createdAt VARCHAR(50) NOT NULL,
+        asaasPaymentId VARCHAR(100),
+        asaasPaymentUrl VARCHAR(255)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -356,6 +363,14 @@ export async function initializeDatabase() {
     } catch (e) {
       // Ignore if column already exists
     }
+
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN asaasPaymentId VARCHAR(100) NULL;`);
+    } catch (e) {}
+
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN asaasPaymentUrl VARCHAR(255) NULL;`);
+    } catch (e) {}
 
     // 9. AtividadesFinanceiras Table (Kanban)
     await connection.query(`
@@ -622,6 +637,14 @@ export async function initializeDatabase() {
       console.warn("Failed to seed CatalogoEPIs:", seedErr);
     }
 
+    try {
+      await connection.query("UPDATE TransacoesFinanceiras SET status = 'lancado' WHERE status IN ('pendente', 'em_aprovacao', 'aguardando_aprovacao')");
+      await connection.query("UPDATE TransacoesFinanceiras SET status = 'vencido' WHERE status = 'atrasado'");
+      console.log("✅ Financial statuses migrated to unified format.");
+    } catch(migErr) {
+      console.warn("Failed to migrate financial statuses:", migErr);
+    }
+
     connection.release();
     isInitialized = true;
     console.log("VPS Database tables validated/initialized successfully.");
@@ -648,12 +671,24 @@ export async function pullDatabase() {
   const [controlesSom] = await currentPool.query("SELECT * FROM ControlesSom ORDER BY createdAt DESC");
   const [manutencoes] = await currentPool.query("SELECT * FROM Manutencoes ORDER BY createdAt DESC");
   const [mecanicos] = await currentPool.query("SELECT * FROM Mecanicos ORDER BY createdAt DESC");
+  
+  // Auto-update overdue transactions before fetching
+  const todayStr = new Date().toISOString().split('T')[0];
+  await currentPool.query(`
+    UPDATE TransacoesFinanceiras 
+    SET status = 'vencido' 
+    WHERE status = 'lancado' 
+      AND dataVencimento < ? 
+      AND dataVencimento != '' 
+      AND dataVencimento IS NOT NULL
+  `, [todayStr]);
+
   const [transacoes] = await currentPool.query("SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC");
   const [funcionarios] = await currentPool.query("SELECT * FROM Funcionarios ORDER BY createdAt DESC");
   const [folgas] = await currentPool.query("SELECT * FROM Folgas ORDER BY data DESC");
   const [catalogoEPIs] = await currentPool.query("SELECT * FROM CatalogoEPIs ORDER BY nome ASC");
 
-  const todayStr = new Date().toISOString().split('T')[0];
+
   const [overdueCounts] = await currentPool.query(`
     SELECT clienteId, COUNT(*) as cnt 
     FROM TransacoesFinanceiras 
@@ -760,8 +795,8 @@ export async function upsertClient(client: any) {
   const query = `
     INSERT INTO Clientes (
       id, nome, embarcacaoId, cota, telefone, email, cpf, dataCadastro, 
-      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       nome = VALUES(nome),
       embarcacaoId = VALUES(embarcacaoId),
@@ -779,7 +814,8 @@ export async function upsertClient(client: any) {
       embarcacoes = VALUES(embarcacoes),
       statusFinanceiro = VALUES(statusFinanceiro),
       observacoesFinanceiras = VALUES(observacoesFinanceiras),
-      plano = VALUES(plano)
+      plano = VALUES(plano),
+      asaasCustomerId = VALUES(asaasCustomerId)
   `;
 
   await currentPool.query(query, [
@@ -801,7 +837,8 @@ export async function upsertClient(client: any) {
     embarcacoesJson,
     client.statusFinanceiro || 'em_dia',
     client.observacoesFinanceiras || null,
-    client.plano || 'normal'
+    client.plano || 'normal',
+    client.asaasCustomerId || null
   ]);
 }
 
@@ -1293,6 +1330,18 @@ export async function upsertClientAuth(clienteId: string, passwordHash: string) 
 export async function getAllTransacoes() {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  
+  // Auto-update overdue transactions before fetching
+  const todayStr = new Date().toISOString().split('T')[0];
+  await currentPool.query(`
+    UPDATE TransacoesFinanceiras 
+    SET status = 'vencido' 
+    WHERE status = 'lancado' 
+      AND dataVencimento < ? 
+      AND dataVencimento != '' 
+      AND dataVencimento IS NOT NULL
+  `, [todayStr]);
+
   const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC");
   return rows;
 }
@@ -1308,17 +1357,19 @@ export async function upsertTransacao(t: any) {
   }
 
   await currentPool.query(
-    `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        tipo=VALUES(tipo), categoria=VALUES(categoria), valor=VALUES(valor),
        dataVencimento=VALUES(dataVencimento), dataPagamento=VALUES(dataPagamento),
        status=VALUES(status), descricao=VALUES(descricao),
        clienteId=VALUES(clienteId), embarcacaoId=VALUES(embarcacaoId),
-       comprovante=VALUES(comprovante)`,
+       comprovante=VALUES(comprovante),
+       asaasPaymentId=VALUES(asaasPaymentId), asaasPaymentUrl=VALUES(asaasPaymentUrl)`,
     [
       t.id, t.tipo, t.categoria, t.valor, t.dataVencimento, t.dataPagamento || null,
-      t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || null, t.createdAt
+      t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || null, t.createdAt,
+      t.asaasPaymentId || null, t.asaasPaymentUrl || null
     ]
   );
 

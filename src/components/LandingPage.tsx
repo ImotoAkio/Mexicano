@@ -35,7 +35,7 @@ export default function LandingPage() {
         <div className="max-w-[1400px] mx-auto px-6 flex items-center justify-between">
           
           <button onClick={() => scrollTo('#inicio')} className="flex items-center gap-2 group shrink-0">
-            <img src="/MEXICANO.png" alt="Mexicano Lanchas" className="h-10 md:h-12 w-auto object-contain" />
+            <img src="/MEXICANO.png" alt="Vila Náutica" className="h-10 md:h-12 w-auto object-contain" />
           </button>
 
           {/* Links */}
@@ -141,7 +141,7 @@ export default function LandingPage() {
 
                       <div>
                         <p className="text-2xl font-black text-[#111111]">
-                          Mexicano Lanchas
+                          Vila Náutica
                         </p>
                         <p className="text-xs font-bold text-[#666666] mt-1 uppercase tracking-wider">
                           Embarcação Exclusiva
@@ -209,7 +209,7 @@ export default function LandingPage() {
                 COMPRA <br className="hidden md:block"/>INTELIGENTE
               </h2>
               <p className="text-lg text-[#666666] mb-6 leading-relaxed font-medium">
-                A Mexicano Lanchas é especialista na venda de cotas náuticas (lanchas e jet skis), revolucionando a forma como você adquire e desfruta de uma embarcação de luxo.
+                A Vila Náutica é especialista na venda de cotas náuticas (lanchas e jet skis), revolucionando a forma como você adquire e desfruta de uma embarcação de luxo.
               </p>
               <p className="text-[#666666] mb-8 leading-relaxed">
                 O nosso sistema de multipropriedade permite que uma única embarcação tenha mais de um dono. Os custos de aquisição, manutenção e o usufruto são divididos proporcionalmente entre os sócios, garantindo economia inteligente e zero preocupação.
@@ -240,7 +240,7 @@ export default function LandingPage() {
         <div className="max-w-[1400px] mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="text-4xl md:text-5xl font-black text-[#111111] mb-6 tracking-tight">COMO FUNCIONA?</h2>
-            <p className="text-lg text-[#666666] font-medium">Conheça as vantagens exclusivas do modelo de cotas da Mexicano Lanchas.</p>
+            <p className="text-lg text-[#666666] font-medium">Conheça as vantagens exclusivas do modelo de cotas da Vila Náutica.</p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-8">
@@ -255,7 +255,7 @@ export default function LandingPage() {
                 icon: Shield, 
                 title: 'Economia Inteligente', 
                 focus: 'Custos fracionados', 
-                desc: 'Não pague sozinho por uma embarcação que você não usa todos os dias. Na Mexicano, os custos de aquisição, manutenção mensal, seguro e marina são divididos proporcionalmente entre os sócios.' 
+                desc: 'Não pague sozinho por uma embarcação que você não usa todos os dias. Na Vila Náutica, os custos de aquisição, manutenção mensal, seguro e marina são divididos proporcionalmente entre os sócios.' 
               },
               { 
                 icon: Users, 
@@ -335,7 +335,7 @@ export default function LandingPage() {
       <footer className="bg-[#111111] text-white py-16">
         <div className="max-w-[1400px] mx-auto px-6 text-center">
           <div className="flex items-center justify-center mb-8">
-            <img src="/MEXICANO.png" alt="Mexicano Lanchas" className="h-16 w-auto object-contain brightness-0 invert" />
+            <img src="/MEXICANO.png" alt="Vila Náutica" className="h-16 w-auto object-contain brightness-0 invert" />
           </div>
           <p className="text-sm font-medium text-white/50 max-w-md mx-auto mb-8">
             Acesso inteligente ao mundo náutico através de cotas e multipropriedade. O máximo de prazer com o mínimo de preocupação.

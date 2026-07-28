@@ -21,6 +21,7 @@ export interface Cliente {
   statusFinanceiro?: 'em_dia' | 'inadimplente';
   observacoesFinanceiras?: string;
   plano?: 'normal' | 'completo';
+  asaasCustomerId?: string;
 }
 
 export interface Embarcacao {
@@ -105,12 +106,14 @@ export interface TransacaoFinanceira {
   valor: number;
   dataVencimento: string; // YYYY-MM-DD
   dataPagamento?: string; // YYYY-MM-DD (nullable)
-  status: 'pendente' | 'pago' | 'atrasado' | 'cancelado' | 'aguardando_aprovacao';
+  status: 'lancado' | 'vencido' | 'pago' | 'cancelado';
   descricao: string;
   clienteId?: string; // Optional linkage to client
   embarcacaoId?: string; // Optional linkage to boat
   comprovante?: string; // URL/Path to receipt file
   createdAt: string;
+  asaasPaymentId?: string;
+  asaasPaymentUrl?: string;
 }
 
 export interface AtividadeFinanceira {

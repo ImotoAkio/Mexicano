@@ -190,7 +190,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                 const categoriaDefault = day === '10' ? 'Mensalidade' : '';
                 
                 const todayStr = new Date().toISOString().split('T')[0];
-                const statusDefault = parsedData < todayStr ? 'atrasado' : 'pendente';
+                const statusDefault = parsedData < todayStr ? 'vencido' : 'lancado';
 
                 autoParsedRows.push({
                   _originalRow: row,
@@ -301,7 +301,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
       const day = parsedData.split('-')[2];
       const categoriaDefault = day === '10' ? 'Mensalidade' : '';
       const todayStr = new Date().toISOString().split('T')[0];
-      const statusDefault = parsedData < todayStr ? 'atrasado' : 'pendente';
+      const statusDefault = parsedData < todayStr ? 'vencido' : 'lancado';
 
       return {
         _originalRow: row,
@@ -525,7 +525,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                         className="text-[11px] font-medium p-1.5 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white text-slate-700 w-full"
                       >
                         <option value="all">Todos ({previewRows.length})</option>
-                        <option value="pending">Pendentes</option>
+                        <option value="pending">Lançados</option>
                         <option value="ready">Prontos</option>
                         <option value="missing_client">Cliente Não Encontrado</option>
                         <option value="missing_category">Sem Categoria</option>
@@ -548,7 +548,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                         const isComplete = row.clienteIdEncontrado && row.categoria;
 
                         let badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
-                        let badgeText = "Pendente";
+                        let badgeText = "Lançado";
 
                         if (row.ignored) {
                           badgeColor = "bg-slate-100 text-slate-500 border-slate-200";
@@ -607,7 +607,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                         </span>
                       ) : (
                         <span className="text-xs px-2.5 py-1 bg-amber-50 text-amber-700 font-bold rounded-lg border border-amber-200 flex items-center gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Pendente
+                          <AlertTriangle className="w-3.5 h-3.5" /> Lançado
                         </span>
                       )}
                     </div>

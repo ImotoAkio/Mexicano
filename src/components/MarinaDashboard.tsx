@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import MarinaChecklistsView from './MarinaChecklistsView';
@@ -59,15 +59,72 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   // Bottom Navigation Tab
   const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'combustivel'>('operacao');
 
+  // Toast notification state
+  const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string, type: 'info' | 'success' | 'warning' = 'info') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type });
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+
   useEffect(() => {
-    fetchData();
+    fetchData(true);
 
     const socket = io(window.location.origin, {
       auth: { token: localStorage.getItem('admin_token') }
     });
     
-    socket.on('marina_update', () => {
-      fetchData();
+    socket.on('marina_update', (payload: any) => {
+      if (!payload?.reservation) {
+        // Fallback: se não veio payload, faz fetch completo (compatibilidade)
+        fetchData();
+        return;
+      }
+
+      const { reservation, action } = payload;
+
+      setData((prev: any) => {
+        if (!prev) return prev;
+
+        let updatedReservations = [...(prev.reservations || [])];
+
+        if (action === 'delete') {
+          updatedReservations = updatedReservations.filter((r: any) => r.id !== reservation.id);
+        } else if (action === 'new') {
+          // Nova reserva — adiciona se não existir
+          const exists = updatedReservations.some((r: any) => r.id === reservation.id);
+          if (!exists) {
+            updatedReservations.push(reservation);
+          }
+        } else {
+          // upsert / checkin / cancel — merge parcial nos dados existentes
+          const idx = updatedReservations.findIndex((r: any) => r.id === reservation.id);
+          if (idx >= 0) {
+            updatedReservations[idx] = { ...updatedReservations[idx], ...reservation };
+          } else {
+            updatedReservations.push(reservation);
+          }
+        }
+
+        return { ...prev, reservations: updatedReservations };
+      });
+
+      // Gerar mensagem de notificação
+      const boat = data?.boats?.find((b: any) => b.id === reservation.embarcacaoId);
+      const boatLabel = boat?.nome || reservation.embarcacaoId || 'Embarcação';
+
+      const messages: Record<string, { msg: string; type: 'info' | 'success' | 'warning' }> = {
+        new:     { msg: `Nova reserva: ${boatLabel}`, type: 'info' },
+        checkin: { msg: `Check-in confirmado: ${boatLabel}`, type: 'success' },
+        cancel:  { msg: `Reserva cancelada: ${boatLabel}`, type: 'warning' },
+        upsert:  { msg: `Reserva atualizada: ${boatLabel}`, type: 'info' },
+        delete:  { msg: `Reserva removida`, type: 'warning' },
+      };
+
+      const info = messages[action] || { msg: 'Atualização recebida', type: 'info' as const };
+      showToast(info.msg, info.type);
     });
     
     return () => {
@@ -75,8 +132,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     };
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (isInitial = false) => {
+    if (isInitial || !data) setLoading(true);
     try {
       const res = await fetch('/api/db/pull', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
@@ -85,7 +142,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       const json = await res.json();
       setData(json);
     } catch (err: any) {
-      setError(err.message);
+      if (isInitial || !data) setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -286,7 +343,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       paymentLabel = 'Cartão de Crédito';
     } else if (pType === 'admin') {
       pricePerLiter = 13;
-      paymentStatus = 'aguardando_aprovacao';
+      paymentStatus = 'pendente';
       paymentLabel = 'Pós-pago (Cobrar Cliente)';
     }
 
@@ -600,6 +657,27 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         )}
       </div>
 
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-sm animate-toast-in">
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border backdrop-blur-xl ${
+            toast.type === 'success' ? 'bg-emerald-950/90 border-emerald-700/50 text-emerald-100' :
+            toast.type === 'warning' ? 'bg-amber-950/90 border-amber-700/50 text-amber-100' :
+            'bg-slate-950/90 border-blue-700/50 text-blue-100'
+          }`}>
+            <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+              toast.type === 'success' ? 'bg-emerald-500/20' :
+              toast.type === 'warning' ? 'bg-amber-500/20' :
+              'bg-blue-500/20'
+            }`}>
+              <Bell className="w-4 h-4" />
+            </div>
+            <span className="text-sm font-semibold flex-1">{toast.message}</span>
+            <button onClick={() => setToast(null)} className="shrink-0 text-white/50 hover:text-white/80 text-lg font-bold leading-none cursor-pointer">×</button>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Navigation Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-[40] safe-area-bottom">
         <div className="flex justify-around items-center h-16 max-w-md mx-auto">
@@ -635,6 +713,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         }
         .animate-slide-up-fast {
           animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes toastIn {
+          from { opacity: 0; transform: translate(-50%, -1rem); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .animate-toast-in {
+          animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
       `}</style>
 

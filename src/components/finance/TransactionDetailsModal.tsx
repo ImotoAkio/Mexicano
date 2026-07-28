@@ -13,6 +13,7 @@ interface TransactionDetailsModalProps {
   onConfirmPayment: () => void;
   onUploadReceipt: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isUploading: boolean;
+  onGenerateAsaas?: (billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD') => Promise<void>;
 }
 
 export default function TransactionDetailsModal({
@@ -25,7 +26,8 @@ export default function TransactionDetailsModal({
   onApprove,
   onConfirmPayment,
   onUploadReceipt,
-  isUploading
+  isUploading,
+  onGenerateAsaas
 }: TransactionDetailsModalProps) {
   
   const [copiedLink, setCopiedLink] = React.useState(false);
@@ -126,19 +128,17 @@ export default function TransactionDetailsModal({
     switch (status) {
       case 'pago': 
         return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-200`}><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Pago</span>;
-      case 'pendente': 
-        return <span className={`${base} bg-amber-50 text-amber-700 border-amber-200`}><div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Pendente</span>;
-      case 'atrasado': 
-        return <span className={`${base} bg-rose-50 text-rose-700 border-rose-200`}><div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></div> Atrasado</span>;
-      case 'aguardando_aprovacao': 
-        return <span className={`${base} bg-indigo-50 text-indigo-700 border-indigo-200`}><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div> Aguardando Aprovação</span>;
+      case 'lancado': 
+        return <span className={`${base} bg-amber-50 text-amber-700 border-amber-200`}><div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Lançado</span>;
+      case 'vencido': 
+        return <span className={`${base} bg-rose-50 text-rose-700 border-rose-200`}><div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></div> Vencido</span>;
       case 'cancelado': 
         return <span className={`${base} bg-slate-50 text-slate-600 border-slate-200`}><div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div> Cancelado</span>;
       default: return null;
     }
   };
 
-  const isUnpaid = transacao.status === 'pendente' || transacao.status === 'atrasado' || transacao.status === 'aguardando_aprovacao';
+  const isUnpaid = transacao.status === 'lancado' || transacao.status === 'vencido';
   const hasComprovante = !!transacao.comprovante;  return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200" onClick={onClose}>
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col md:flex-row" onClick={e => e.stopPropagation()}>
@@ -212,22 +212,95 @@ export default function TransactionDetailsModal({
                 </div>
               )}
             </div>
+
+            {/* Asaas Integration Section */}
+            {transacao.tipo === 'receita' && cliente && (
+              <div className="mt-4 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider">Integração Asaas</h4>
+                    <p className="text-[10px] text-indigo-600 font-medium">Gateway de Pagamentos</p>
+                  </div>
+                  {transacao.asaasPaymentUrl ? (
+                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black rounded uppercase self-start sm:self-auto">Cobrança Ativa</span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black rounded uppercase self-start sm:self-auto">Sem Cobrança</span>
+                  )}
+                </div>
+
+                {transacao.asaasPaymentUrl ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a 
+                        href={transacao.asaasPaymentUrl} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[10px] flex items-center gap-1 shadow-sm transition-all"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> Abrir Link de Pagamento
+                      </a>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(transacao.asaasPaymentUrl || '');
+                          alert("Link de pagamento copiado!");
+                        }}
+                        className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg font-bold text-[10px] flex items-center gap-1 shadow-sm transition-all"
+                      >
+                        <Copy className="w-3.5 h-3.5 text-slate-400" /> Copiar Link
+                      </button>
+                    </div>
+                    {transacao.asaasPaymentId && (
+                      <p className="text-[9px] text-slate-400 font-semibold select-all">Asaas ID: {transacao.asaasPaymentId}</p>
+                    )}
+                  </div>
+                ) : (
+                  isUnpaid && onGenerateAsaas && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-slate-500">Escolha uma forma de pagamento para gerar a cobrança no Asaas:</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => {
+                            if (confirm("Gerar cobrança via PIX?")) {
+                              onGenerateAsaas("PIX");
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-200 text-indigo-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all shadow-sm cursor-pointer"
+                        >
+                          ⚡ Gerar PIX
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm("Gerar cobrança via Boleto Bancário?")) {
+                              onGenerateAsaas("BOLETO");
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-200 text-indigo-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all shadow-sm cursor-pointer"
+                        >
+                          📄 Gerar Boleto
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm("Gerar cobrança via Cartão de Crédito?")) {
+                              onGenerateAsaas("CREDIT_CARD");
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-200 text-indigo-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all shadow-sm cursor-pointer"
+                        >
+                          💳 Gerar Cartão
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
           </div>
 
           {/* Footer Actions - Sticky */}
           <div className="p-3.5 border-t border-slate-100 bg-slate-50/50 shrink-0">
             <h4 className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">Ações Disponíveis</h4>
             <div className="flex flex-wrap gap-2">
-              {transacao.status === 'aguardando_aprovacao' && (
-                <button 
-                  onClick={() => { onApprove(); onClose(); }}
-                  className="flex-1 min-w-[120px] px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[11px] transition-all shadow-sm flex items-center justify-center gap-1"
-                >
-                  <CheckCircle className="w-3 h-3" /> Aprovar Lançamento
-                </button>
-              )}
-
-              {isUnpaid && transacao.status !== 'aguardando_aprovacao' && (
+              {isUnpaid && (
                 <button 
                   onClick={() => { onConfirmPayment(); onClose(); }}
                   className="flex-1 min-w-[120px] px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] transition-all shadow-sm flex items-center justify-center gap-1"

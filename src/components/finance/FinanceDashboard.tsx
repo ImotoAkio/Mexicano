@@ -23,7 +23,7 @@ export default function FinanceDashboard({ transacoes }: FinanceDashboardProps) 
   const saldo = totalReceitas - totalDespesas;
 
   const totalInadimplencia = transacoes
-    .filter(t => t.tipo === 'receita' && (t.status === 'atrasado' || (t.status === 'pendente' && new Date(t.dataVencimento) < new Date())))
+    .filter(t => t.tipo === 'receita' && (t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento) < new Date())))
     .reduce((acc, curr) => acc + Number(curr.valor), 0);
 
   const pieData = [

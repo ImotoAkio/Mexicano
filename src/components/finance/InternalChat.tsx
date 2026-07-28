@@ -97,7 +97,7 @@ export default function InternalChat() {
       id: `task_${Date.now()}`,
       titulo: taskTitle,
       descricao: taskDesc,
-      status: 'pendente',
+      status: 'lancado',
       prioridade: 'media',
       dataCriacao: new Date().toISOString()
     };

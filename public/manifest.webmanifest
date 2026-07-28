@@ -1,7 +1,7 @@
 {
-  "name": "Mexicano Lanchas",
-  "short_name": "Mexicano",
-  "description": "Painel do Cliente - Marina Club & Mexicano Lanchas",
+  "name": "Vila Náutica",
+  "short_name": "Vila Náutica",
+  "description": "Painel do Cliente - Marina Club & Vila Náutica",
   "start_url": "/portal",
   "scope": "/",
   "display": "standalone",

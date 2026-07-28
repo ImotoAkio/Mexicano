@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, CalendarDays, CheckCircle2, X } from 'lucide-react';
+import { Compass, CalendarDays, CheckCircle2, X, CreditCard, Key, Shield } from 'lucide-react';
 import { Cliente } from '../types';
 import { 
   initiateOAuthLogin, 
@@ -31,6 +31,12 @@ export default function IntegrationsPage() {
   const [gcalConnected, setGcalConnected] = useState(false);
   const [saJsonInput, setSaJsonInput] = useState('');
 
+  // Asaas Configs
+  const [asaasApiKey, setAsaasApiKey] = useState('');
+  const [asaasApiUrl, setAsaasApiUrl] = useState('https://api-sandbox.asaas.com/v3');
+  const [asaasWebhookToken, setAsaasWebhookToken] = useState('');
+  const [hasAsaasApiKey, setHasAsaasApiKey] = useState(false);
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -53,7 +59,60 @@ export default function IntegrationsPage() {
     checkServerConfig().then(isActive => {
       setIsSAMode(isActive);
     });
+
+    // Fetch Asaas config status on mount
+    const token = localStorage.getItem('admin_token');
+    if (token) {
+      fetch('/api/config', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          setHasAsaasApiKey(!!data.has_asaas_api_key);
+          setAsaasApiUrl(data.asaas_api_url || 'https://api-sandbox.asaas.com/v3');
+          setAsaasWebhookToken(data.asaas_webhook_token || '');
+          if (data.has_asaas_api_key) {
+            setAsaasApiKey('__UNCHANGED__');
+          }
+        }
+      })
+      .catch(err => console.warn('Erro ao carregar configurações do Asaas:', err));
+    }
   }, []);
+
+  const handleSaveAsaasConfig = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          asaas_api_key: asaasApiKey,
+          asaas_api_url: asaasApiUrl,
+          asaas_webhook_token: asaasWebhookToken
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.message || 'Falha ao salvar configurações do Asaas.', 'error');
+      } else {
+        showToast('Configurações do Asaas salvas com sucesso!');
+        if (asaasApiKey && asaasApiKey !== '__UNCHANGED__') {
+          setHasAsaasApiKey(true);
+          setAsaasApiKey('__UNCHANGED__');
+        }
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao conectar ao servidor.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSaveServiceAccount = async () => {
     const raw = saJsonInput.trim();
@@ -171,6 +230,90 @@ export default function IntegrationsPage() {
               <Compass className="w-4 h-4 text-slate-400" />
               Configurar Mapeamento de Agendas
             </button>
+          </div>
+        </div>
+
+        {/* ASAAS INTEGRATION CARD */}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden flex flex-col justify-between">
+          <div className="p-5 flex items-center justify-between bg-slate-50 border-b border-slate-100">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100 font-bold">
+                <CreditCard className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Integração Asaas</h3>
+                <p className="text-[10px] text-slate-500">Cobranças por PIX, Boleto e Cartão</p>
+              </div>
+            </div>
+            {hasAsaasApiKey ? (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wider">
+                CONECTADO
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wider uppercase">
+                Chave Pendente
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Ambiente de Execução</label>
+                <select
+                  value={asaasApiUrl}
+                  onChange={(e) => setAsaasApiUrl(e.target.value)}
+                  className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="https://api-sandbox.asaas.com/v3">Sandbox / Homologação (Testes)</option>
+                  <option value="https://api.asaas.com/v3">Produção (Dinheiro Real)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">API Key do Asaas</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                    <Key className="w-3.5 h-3.5" />
+                  </span>
+                  <input
+                    type="password"
+                    placeholder={hasAsaasApiKey ? "••••••••••••••••••••••••••••••••" : "Cole sua access_token do Asaas"}
+                    value={asaasApiKey === '__UNCHANGED__' ? '' : asaasApiKey}
+                    onChange={(e) => setAsaasApiKey(e.target.value)}
+                    className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+                {hasAsaasApiKey && (
+                  <p className="text-[9px] text-slate-400 mt-1">
+                    * Uma chave de API já está salva. Deixe em branco se não quiser alterá-la.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Token de Segurança do Webhook</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                    <Shield className="w-3.5 h-3.5" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Configure um token para validação das chamadas do webhook"
+                    value={asaasWebhookToken}
+                    onChange={(e) => setAsaasWebhookToken(e.target.value)}
+                    className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleSaveAsaasConfig}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors mt-2"
+              >
+                {isLoading ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
+            </div>
           </div>
         </div>
 

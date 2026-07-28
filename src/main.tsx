@@ -59,7 +59,7 @@ if (typeof window !== 'undefined') {
     }
 
     const response = await originalFetch(resource, config);
-    if (response.status === 401) {
+    if (response.status === 401 && !url.includes('/api/auth/')) {
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_username');
       localStorage.removeItem('client_token');

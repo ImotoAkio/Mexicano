@@ -343,7 +343,7 @@ export default function BoletosPage() {
                 const isComplete = !!row.clientIdEncontrado;
 
                 let badgeColor = "bg-rose-50 text-rose-600 border-rose-200";
-                let badgeText = "Pendente";
+                let badgeText = "Lançado";
                 let Icon = AlertTriangle;
 
                 if (row.ignored) {

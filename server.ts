@@ -1248,6 +1248,10 @@ app.get("/api/config", requireAdminAuth, async (req, res) => {
     if (finance_whatsapp_custom_templates_str) {
       try { finance_whatsapp_custom_templates = JSON.parse(finance_whatsapp_custom_templates_str); } catch { finance_whatsapp_custom_templates = []; }
     }
+    const dbAsaasApiKey = await getConfigValue("asaas_api_key");
+    const dbAsaasApiUrl = await getConfigValue("asaas_api_url");
+    const dbAsaasWebhookToken = await getConfigValue("asaas_webhook_token");
+
     const nautical_csv_mapping_str = await getConfigValue("nautical_csv_mapping");
     let nautical_csv_mapping = null;
     if (nautical_csv_mapping_str) {
@@ -1265,7 +1269,10 @@ app.get("/api/config", requireAdminAuth, async (req, res) => {
       whatsapp_cal_template,
       finance_whatsapp_instance,
       finance_whatsapp_custom_templates,
-      nautical_csv_mapping
+      nautical_csv_mapping,
+      has_asaas_api_key: !!dbAsaasApiKey || !!process.env.ASAAS_API_KEY,
+      asaas_api_url: dbAsaasApiUrl || process.env.ASAAS_API_URL || "https://api-sandbox.asaas.com/v3",
+      asaas_webhook_token: dbAsaasWebhookToken || process.env.ASAAS_WEBHOOK_TOKEN || ""
     });
   } catch (error: any) {
     res.status(500).json({ error: true, message: error.message || "Could not retrieve central configurations from database." });
@@ -1278,7 +1285,7 @@ app.post("/api/config", requireAdminAuth, sensitiveLimiter, async (req, res) => 
     const { google_client_id, calendar_mappings, google_service_account_json,
             whatsapp_conf_template1, whatsapp_conf_template2, whatsapp_cal_template,
             finance_whatsapp_instance, finance_whatsapp_custom_templates,
-            nautical_csv_mapping } = req.body;
+            nautical_csv_mapping, asaas_api_key, asaas_api_url, asaas_webhook_token } = req.body;
 
     if (google_client_id !== undefined) {
       await setConfigValue("google_client_id", google_client_id);
@@ -1322,6 +1329,19 @@ app.post("/api/config", requireAdminAuth, sensitiveLimiter, async (req, res) => 
     // CSV import mapping
     if (nautical_csv_mapping !== undefined) {
       await setConfigValue("nautical_csv_mapping", JSON.stringify(nautical_csv_mapping));
+    }
+
+    // Asaas integration settings
+    if (asaas_api_key !== undefined) {
+      if (asaas_api_key !== "__UNCHANGED__" && asaas_api_key !== "") {
+        await setConfigValue("asaas_api_key", asaas_api_key.trim());
+      }
+    }
+    if (asaas_api_url !== undefined) {
+      await setConfigValue("asaas_api_url", asaas_api_url.trim());
+    }
+    if (asaas_webhook_token !== undefined) {
+      await setConfigValue("asaas_webhook_token", asaas_webhook_token.trim());
     }
 
     res.json({ success: true });

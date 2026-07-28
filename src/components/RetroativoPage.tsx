@@ -28,7 +28,7 @@ export function RetroativoPage() {
   const [generatedMonths, setGeneratedMonths] = useState<any[]>([]);
 
   // Dados fixos da empresa
-  const EMPRESA = "C L S DE CASTRO MARINA CLUB VELHO CHICO";
+  const EMPRESA = "C L S DE CASTRO VILA NÁUTICA VELHO CHICO";
   const CNPJ = "65.614.161/0001-10";
 
   useEffect(() => {

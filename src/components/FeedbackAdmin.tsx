@@ -131,7 +131,7 @@ export default function FeedbackAdmin() {
         </head>
         <body>
           <div class="container">
-            <h1 style="color: #b69d74;">MARINA CLUB</h1>
+            <h1 style="color: #b69d74;">VILA NÁUTICA</h1>
             <h2 style="font-size: 16px; margin-top: 0; color: #475569; letter-spacing: 1px;">Sua Opinião Vale Muito</h2>
             <p>Escaneie o QR Code abaixo com a câmera do seu celular para registrar sua reclamação, sugestão ou elogio diretamente na nossa ouvidoria.</p>
             <div class="qr-frame">
@@ -307,7 +307,7 @@ export default function FeedbackAdmin() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Central de Feedback</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Gerencie opiniões, reclamações e sugestões dos proprietários do Marina Club.
+            Gerencie opiniões, reclamações e sugestões dos proprietários do Vila Náutica.
           </p>
         </div>
         <button
