@@ -75,8 +75,8 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://frontend-cdn.perplexity.ai", "data:"],
-      connectSrc: ["'self'", "https://www.googleapis.com", "https://api.open-meteo.com", "ws:", "wss:"],
-      imgSrc: ["'self'", "data:", "blob:", "https://api.qrserver.com"],
+      connectSrc: ["'self'", "https://www.googleapis.com", "https://api.open-meteo.com", "https://fonts.googleapis.com", "ws:", "wss:"],
+      imgSrc: ["'self'", "data:", "blob:", "https://api.qrserver.com", "https://*.ibb.co", "https://i.ibb.co"],
       upgradeInsecureRequests: null,
     }
   },
