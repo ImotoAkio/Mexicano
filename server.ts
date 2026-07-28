@@ -32,6 +32,7 @@ import {
   upsertFuncionario, deleteFuncionario,
   upsertFolga, deleteFolga
 } from "./server-db";
+import { getOrRegisterAsaasCustomer, createAsaasCharge, getPixQrCode } from "./server-asaas";
 
 // Load environment variables early
 dotenv.config();
@@ -787,6 +788,137 @@ app.post("/api/financeiro/transacoes/save", requireAdminAuth, sensitiveLimiter, 
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Failed to save transacao" });
   }
+});
+
+// Route: Financeiro - Asaas Payment Generation
+app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { id } = req.params;
+  const { billingType } = req.body; // 'PIX', 'BOLETO', 'CREDIT_CARD'
+
+  if (!["PIX", "BOLETO", "CREDIT_CARD"].includes(billingType)) {
+    return res.status(400).json({ error: true, message: "Tipo de cobrança inválido" });
+  }
+
+  const currentPool = getDbPool();
+  if (!currentPool) {
+    return res.status(500).json({ error: true, message: "Banco de dados offline" });
+  }
+
+  try {
+    // 1. Fetch transaction
+    const [txRows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE id = ?", [id]);
+    const tx = (txRows as any[])[0];
+
+    if (!tx) {
+      return res.status(404).json({ error: true, message: "Transação não encontrada" });
+    }
+    if (tx.tipo !== "receita") {
+      return res.status(400).json({ error: true, message: "Apenas receitas podem ter cobranças Asaas" });
+    }
+    if (tx.status === "pago") {
+      return res.status(400).json({ error: true, message: "Esta transação já está paga" });
+    }
+    if (!tx.clienteId) {
+      return res.status(400).json({ error: true, message: "Transação não possui cliente vinculado" });
+    }
+
+    // 2. Fetch client
+    const [clientRows] = await currentPool.query("SELECT * FROM Clientes WHERE id = ?", [tx.clienteId]);
+    const client = (clientRows as any[])[0];
+    if (!client) {
+      return res.status(404).json({ error: true, message: "Cliente vinculado não encontrado" });
+    }
+
+    // 3. Synchronize / Get Asaas customer ID
+    const asaasCustomerId = await getOrRegisterAsaasCustomer(client);
+
+    // 4. Create charge on Asaas
+    const charge = await createAsaasCharge(tx, asaasCustomerId, billingType);
+
+    // 5. Save payment ID and URL back to transaction
+    await currentPool.query(
+      "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ? WHERE id = ?",
+      [charge.asaasPaymentId, charge.asaasPaymentUrl, tx.id]
+    );
+
+    // 6. If PIX, fetch QR Code
+    let qrCode = null;
+    if (billingType === "PIX") {
+      try {
+        qrCode = await getPixQrCode(charge.asaasPaymentId);
+      } catch (qrErr: any) {
+        console.error("Failed to fetch Pix QR Code from Asaas:", qrErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      asaasPaymentId: charge.asaasPaymentId,
+      asaasPaymentUrl: charge.asaasPaymentUrl,
+      qrCode
+    });
+  } catch (err: any) {
+    console.error("Error generating Asaas charge:", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to generate Asaas charge" });
+  }
+});
+
+// Route: Asaas Webhook (Public Endpoint)
+app.post("/api/webhooks/asaas", async (req, res) => {
+  const token = req.headers["asaas-access-token"];
+  const expectedToken = process.env.ASAAS_WEBHOOK_TOKEN || await getConfigValue("asaas_webhook_token");
+  if (expectedToken && token !== expectedToken) {
+    console.warn("[Asaas Webhook] Invalid webhook token received.");
+    return res.status(401).json({ error: true, message: "Unauthorized token" });
+  }
+
+  const { event, payment } = req.body;
+  if (!event || !payment) {
+    return res.status(400).json({ error: true, message: "Invalid payload" });
+  }
+
+  console.log(`[Asaas Webhook] Event received: ${event} for payment: ${payment.id}`);
+
+  if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
+    const paymentId = payment.id;
+    const externalRef = payment.externalReference;
+
+    const currentPool = getDbPool();
+    if (currentPool) {
+      try {
+        let tx = null;
+        if (externalRef) {
+          const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE id = ?", [externalRef]);
+          if ((rows as any[]).length > 0) tx = (rows as any[])[0];
+        }
+        if (!tx && paymentId) {
+          const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE asaasPaymentId = ?", [paymentId]);
+          if ((rows as any[]).length > 0) tx = (rows as any[])[0];
+        }
+
+        if (tx) {
+          if (tx.status !== "pago") {
+            const todayStr = new Date().toISOString().split("T")[0];
+            await currentPool.query(
+              "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = ? WHERE id = ?",
+              [todayStr, tx.id]
+            );
+            console.log(`[Asaas Webhook] Marked transaction ${tx.id} as paid.`);
+            
+            if (tx.clienteId) {
+              await syncClientFinancialStatus(tx.clienteId);
+            }
+          }
+        } else {
+          console.warn(`[Asaas Webhook] No matching transaction found for Asaas payment ID ${paymentId} or externalRef ${externalRef}`);
+        }
+      } catch (err: any) {
+        console.error("[Asaas Webhook] Error processing webhook database update:", err);
+      }
+    }
+  }
+
+  return res.status(200).json({ received: true });
 });
 
 // Route: Financeiro - Atividades (Kanban)
