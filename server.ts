@@ -906,8 +906,8 @@ app.post("/api/webhooks/asaas", async (req, res) => {
           if (tx.status !== "pago") {
             const todayStr = new Date().toISOString().split("T")[0];
             await currentPool.query(
-              "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = ? WHERE id = ?",
-              [todayStr, tx.id]
+              "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = ?, valor = ? WHERE id = ?",
+              [todayStr, payment.value || tx.valor, tx.id]
             );
             console.log(`[Asaas Webhook] Marked transaction ${tx.id} as paid.`);
             

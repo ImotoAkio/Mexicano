@@ -96,12 +96,38 @@ export async function getOrRegisterAsaasCustomer(client: any): Promise<string> {
  * Creates a billing charge on Asaas for a transaction.
  */
 export async function createAsaasCharge(t: any, customerId: string, billingType: "PIX" | "BOLETO" | "CREDIT_CARD") {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  let finalValue = Number(t.valor);
+  let finalDueDate = t.dataVencimento;
+  let descriptionNote = "";
+
+  if (t.dataVencimento && t.dataVencimento < todayStr) {
+    // Vencido/Atrasado! Ajustar vencimento para hoje
+    finalDueDate = todayStr;
+
+    // Calcular dias de atraso
+    const due = new Date(t.dataVencimento + 'T12:00:00');
+    const todayRef = new Date(todayStr + 'T12:00:00');
+    const diffTime = todayRef.getTime() - due.getTime();
+    const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+
+    if (diffDays > 0) {
+      const fine = finalValue * 0.02; // Multa de 2%
+      const interest = finalValue * 0.01 * (diffDays / 30); // Juros de 1% ao mês proporcional
+      const totalFees = fine + interest;
+      finalValue = Number((finalValue + totalFees).toFixed(2));
+      descriptionNote = ` (Original: R$ ${Number(t.valor).toFixed(2)} + R$ ${totalFees.toFixed(2)} multa/juros)`;
+    }
+  }
+
   const payload = {
     customer: customerId,
     billingType,
-    value: Number(t.valor),
-    dueDate: t.dataVencimento,
-    description: t.descricao || `Fatura Ref #${t.id}`,
+    value: finalValue,
+    dueDate: finalDueDate,
+    description: (t.descricao || `Fatura Ref #${t.id}`) + descriptionNote,
     externalReference: t.id
   };
 
