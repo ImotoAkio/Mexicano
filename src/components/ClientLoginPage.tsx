@@ -252,7 +252,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
               Identifique-se para acessar o sistema.
             </p>
 
-            <form onSubmit={handleCheckIdentifier} className="space-y-5">
+            <form onSubmit={(e) => { e.preventDefault(); handleCheckIdentifier(e); }} className="space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">CPF ou Usuário</label>
                 <input
@@ -311,7 +311,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
               Digite sua senha para acessar sua conta.
             </p>
 
-            <form onSubmit={handleLogin} className="space-y-5">
+            <form onSubmit={(e) => { e.preventDefault(); handleLogin(e); }} className="space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">Senha secreta</label>
                 <input
@@ -366,7 +366,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
               Localizamos seu cadastro. Como este é seu primeiro acesso, crie uma senha segura.
             </p>
 
-            <form onSubmit={handleSetupPassword} className="space-y-5">
+            <form onSubmit={(e) => { e.preventDefault(); handleSetupPassword(e); }} className="space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">Criar senha</label>
                 <input
