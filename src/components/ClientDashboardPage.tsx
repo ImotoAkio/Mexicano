@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench, QrCode } from 'lucide-react';
 // @ts-ignore
 import boatImg1 from '../assets/images/1.webp';
 // @ts-ignore
@@ -23,6 +23,58 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [financeTab, setFinanceTab] = useState<'fatura' | 'extrato'>('fatura');
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [privacyTab, setPrivacyTab] = useState<'general' | 'data' | 'rights' | 'dpo'>('general');
+
+  // Asaas Pix payment states
+  const [selectedTransactionForPix, setSelectedTransactionForPix] = useState<any>(null);
+  const [isGeneratingPix, setIsGeneratingPix] = useState(false);
+  const [pixQrCode, setPixQrCode] = useState<string | null>(null);
+  const [pixPayload, setPixPayload] = useState<string | null>(null);
+  const [pixError, setPixError] = useState<string | null>(null);
+  const [copiedPix, setCopiedPix] = useState(false);
+
+  const handleOpenPixPayment = async (t: any) => {
+    setSelectedTransactionForPix(t);
+    setIsGeneratingPix(true);
+    setPixQrCode(null);
+    setPixPayload(null);
+    setPixError(null);
+    setCopiedPix(false);
+
+    try {
+      const token = localStorage.getItem('client_token');
+      const response = await fetch(`/api/financeiro/transacoes/${t.id}/gerar-asaas`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ billingType: 'PIX' })
+      });
+      
+      const resData = await response.json();
+      if (response.ok && resData.success) {
+        if (resData.qrCode) {
+          setPixQrCode(resData.qrCode.encodedImage);
+          setPixPayload(resData.qrCode.payload);
+        } else {
+          setPixError("QR Code não retornado pelo Asaas.");
+        }
+      } else {
+        setPixError(resData.message || "Erro ao gerar PIX.");
+      }
+    } catch (err) {
+      setPixError("Não foi possível conectar ao servidor.");
+    } finally {
+      setIsGeneratingPix(false);
+    }
+  };
+
+  const handleCopyPix = () => {
+    if (!pixPayload) return;
+    navigator.clipboard.writeText(pixPayload);
+    setCopiedPix(true);
+    setTimeout(() => setCopiedPix(false), 2000);
+  };
 
   // Optimistic UI states
   const [optimisticReservations, setOptimisticReservations] = useState<any[]>([]);
@@ -1075,8 +1127,17 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     </div>
 
                     {/* Ações Rápidas */}
-                    {(t.boletoUrl || t.comprovante) && (
+                    {(t.status !== 'pago' || t.boletoUrl || t.comprovante) && (
                       <div className="mt-4 pt-3 border-t border-white/5 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                        {t.status !== 'pago' && (
+                          <button 
+                            onClick={() => handleOpenPixPayment(t)}
+                            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-full text-[10px] font-semibold text-amber-400 transition-colors"
+                          >
+                            <QrCode className="w-3 h-3" />
+                            Pagar com PIX
+                          </button>
+                        )}
                         {t.boletoUrl && (
                           <a href={t.boletoUrl} target="_blank" rel="noreferrer" 
                              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-[#B69D74]/10 hover:bg-[#B69D74]/20 border border-[#B69D74]/20 rounded-full text-[10px] font-semibold text-[#B69D74] transition-colors">
@@ -1707,6 +1768,100 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             <button onClick={() => setToastMsg(null)} className="text-white/40 hover:text-white shrink-0">
               <X className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Pagamento Pix */}
+      {selectedTransactionForPix && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[110] animate-in fade-in duration-300">
+          <div className="bg-[#1A1A1A]/95 border border-white/10 rounded-3xl w-full max-w-sm p-6 relative shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-300">
+            <button 
+              onClick={() => setSelectedTransactionForPix(null)}
+              className="absolute top-4 right-4 text-white/40 hover:text-white hover:bg-white/5 p-1.5 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mt-2 mb-6">
+              <span className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Pagamento Instantâneo</span>
+              <h3 className="text-lg font-light text-white tracking-wide mt-1">Pagar com PIX</h3>
+              <p className="text-xs text-white/40 mt-1">
+                {selectedTransactionForPix.descricao || selectedTransactionForPix.categoria}
+              </p>
+              <div className="mt-3 text-2xl font-semibold text-white">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedTransactionForPix.valor)}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center justify-center min-h-[220px]">
+              {isGeneratingPix ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-[#B69D74] border-t-transparent animate-spin"></div>
+                  <p className="text-xs text-white/40 font-medium">Gerando PIX no Asaas...</p>
+                </div>
+              ) : pixError ? (
+                <div className="flex flex-col items-center text-center p-4">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-3">
+                    <X className="w-5 h-5" />
+                  </div>
+                  <p className="text-sm font-medium text-white max-w-[240px] leading-relaxed">{pixError}</p>
+                  <button 
+                    onClick={() => handleOpenPixPayment(selectedTransactionForPix)}
+                    className="mt-4 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-xs text-white transition-colors"
+                  >
+                    Tentar Novamente
+                  </button>
+                </div>
+              ) : pixQrCode ? (
+                <div className="flex flex-col items-center w-full">
+                  {/* QR Code Container */}
+                  <div className="bg-white p-3 rounded-2xl shadow-inner mb-5">
+                    <img 
+                      src={`data:image/png;base64,${pixQrCode}`} 
+                      alt="PIX QR Code" 
+                      className="w-40 h-40 object-contain"
+                    />
+                  </div>
+
+                  {/* Copia e Cola */}
+                  <div className="w-full bg-white/[0.02] border border-white/5 rounded-2xl p-3 mb-4">
+                    <p className="text-[9px] uppercase tracking-widest text-white/30 font-medium mb-1.5">Código Copia e Cola</p>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value={pixPayload || ''} 
+                        className="flex-1 bg-transparent border-none text-xs text-white/70 select-all outline-none font-mono truncate"
+                      />
+                      <button 
+                        onClick={handleCopyPix}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all shrink-0 ${
+                          copiedPix 
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                            : 'bg-[#B69D74]/20 hover:bg-[#B69D74]/30 text-[#B69D74] border border-[#B69D74]/30'
+                        }`}
+                      >
+                        {copiedPix ? 'Copiado!' : 'Copiar'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-white/40 text-center font-medium max-w-[200px] leading-relaxed">
+                    Abra o app do seu banco e escaneie o código QR acima ou utilize o Copia e Cola.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-white/5 text-center">
+              <button 
+                onClick={() => setSelectedTransactionForPix(null)}
+                className="text-xs text-white/40 hover:text-white transition-colors"
+              >
+                Voltar
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -791,7 +791,7 @@ app.post("/api/financeiro/transacoes/save", requireAdminAuth, sensitiveLimiter, 
 });
 
 // Route: Financeiro - Asaas Payment Generation
-app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, async (req, res) => {
   const { id } = req.params;
   const { billingType } = req.body; // 'PIX', 'BOLETO', 'CREDIT_CARD'
 
@@ -811,6 +811,11 @@ app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAdminAuth, sensiti
 
     if (!tx) {
       return res.status(404).json({ error: true, message: "Transação não encontrada" });
+    }
+
+    const user = (req as any).user;
+    if (user.role === "client" && tx.clienteId !== user.id) {
+      return res.status(403).json({ error: true, message: "Acesso negado: esta transação pertence a outro cliente." });
     }
     if (tx.tipo !== "receita") {
       return res.status(400).json({ error: true, message: "Apenas receitas podem ter cobranças Asaas" });
