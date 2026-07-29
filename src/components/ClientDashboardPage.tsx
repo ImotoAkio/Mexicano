@@ -1928,7 +1928,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   </div>
                   <p className="text-sm font-medium text-white max-w-[240px] leading-relaxed">{pixError}</p>
                   <button 
-                    onClick={() => handleOpenPixPayment(selectedTransactionForPix)}
+                    onClick={() => selectedTransactionForPix.id === 'bulk' ? handleOpenBulkPixPayment() : handleOpenPixPayment(selectedTransactionForPix)}
                     className="mt-4 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-xs text-white transition-colors"
                   >
                     Tentar Novamente
