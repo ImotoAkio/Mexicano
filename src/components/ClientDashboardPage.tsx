@@ -25,6 +25,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [privacyTab, setPrivacyTab] = useState<'general' | 'data' | 'rights' | 'dpo'>('general');
 
   // Asaas Pix payment states
+  const [selectedTransactionDetails, setSelectedTransactionDetails] = useState<any>(null);
   const [selectedTransactionForPix, setSelectedTransactionForPix] = useState<any>(null);
   const [isGeneratingPix, setIsGeneratingPix] = useState(false);
   const [pixQrCode, setPixQrCode] = useState<string | null>(null);
@@ -61,6 +62,43 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         }
       } else {
         setPixError(resData.message || "Erro ao gerar PIX.");
+      }
+    } catch (err) {
+      setPixError("Não foi possível conectar ao servidor.");
+    } finally {
+      setIsGeneratingPix(false);
+    }
+  };
+
+  const handleOpenBulkPixPayment = async () => {
+    setIsGeneratingPix(true);
+    setPixQrCode(null);
+    setPixPayload(null);
+    setPixError(null);
+    setCopiedPix(false);
+    setSelectedTransactionForPix({ id: 'bulk', descricao: 'Fatura Consolidada', valor: totalAberto });
+
+    try {
+      const token = localStorage.getItem('client_token');
+      const response = await fetch('/api/financeiro/fatura/gerar-asaas', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ billingType: 'PIX' })
+      });
+      
+      const resData = await response.json();
+      if (response.ok && resData.success) {
+        if (resData.qrCode) {
+          setPixQrCode(resData.qrCode.encodedImage);
+          setPixPayload(resData.qrCode.payload);
+        } else {
+          setPixError("QR Code não retornado pelo Asaas.");
+        }
+      } else {
+        setPixError(resData.message || "Erro ao gerar PIX consolidado.");
       }
     } catch (err) {
       setPixError("Não foi possível conectar ao servidor.");
@@ -1096,10 +1134,23 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             
             return (
               <div className="space-y-3">
+                {financeTab === 'fatura' && filteredTransacoes.length > 1 && totalAberto > 0 && (
+                  <button 
+                    onClick={handleOpenBulkPixPayment}
+                    className="w-full mb-2 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-[#B69D74]/20 to-[#B69D74]/10 hover:from-[#B69D74]/30 hover:to-[#B69D74]/20 border border-[#B69D74]/20 rounded-2xl text-xs font-bold uppercase tracking-widest text-[#B69D74] transition-all duration-300 shadow-lg"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    Pagar Fatura Completa
+                  </button>
+                )}
                 {filteredTransacoes.map((t: any) => (
-                  <div key={t.id} className="group relative bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl p-4 transition-all duration-300 overflow-hidden">
+                  <div 
+                    key={t.id} 
+                    onClick={() => setSelectedTransactionDetails(t)}
+                    className="group relative bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl p-4 transition-all duration-300 overflow-hidden cursor-pointer"
+                  >
                     <div className="flex items-center gap-4">
-                      {/* Ícone da Transação */}
+                      {/* \u00CDcone da Transa\u00E7\u00E3o */}
                       <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
                         {getTransactionIcon(t.categoria)}
                       </div>
@@ -1130,35 +1181,6 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                         </div>
                       </div>
                     </div>
-
-                    {/* Ações Rápidas */}
-                    {(t.status !== 'pago' || t.boletoUrl || t.comprovante) && (
-                      <div className="mt-4 pt-3 border-t border-white/5 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                        {t.status !== 'pago' && (
-                          <button 
-                            onClick={() => handleOpenPixPayment(t)}
-                            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-full text-[10px] font-semibold text-amber-400 transition-colors"
-                          >
-                            <QrCode className="w-3 h-3" />
-                            Pagar com PIX
-                          </button>
-                        )}
-                        {t.boletoUrl && (
-                          <a href={t.boletoUrl} target="_blank" rel="noreferrer" 
-                             className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-[#B69D74]/10 hover:bg-[#B69D74]/20 border border-[#B69D74]/20 rounded-full text-[10px] font-semibold text-[#B69D74] transition-colors">
-                            <FileText className="w-3 h-3" />
-                            Acessar Boleto
-                          </a>
-                        )}
-                        {t.comprovante && (
-                          <a href={t.comprovante} target="_blank" rel="noreferrer" 
-                             className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-full text-[10px] font-semibold text-emerald-400 transition-colors">
-                            <CheckCircle className="w-3 h-3" />
-                            Comprovante
-                          </a>
-                        )}
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
@@ -1773,6 +1795,100 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             <button onClick={() => setToastMsg(null)} className="text-white/40 hover:text-white shrink-0">
               <X className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalhes da Transa\u00E7\u00E3o */}
+      {selectedTransactionDetails && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[105] animate-in fade-in duration-300">
+          <div className="bg-[#1A1A1A]/95 border border-white/10 rounded-3xl w-full max-w-sm p-6 relative shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-300">
+            <button 
+              onClick={() => setSelectedTransactionDetails(null)}
+              className="absolute top-4 right-4 text-white/40 hover:text-white hover:bg-white/5 p-1.5 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="text-center mb-6">
+              <span className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Detalhes da Cobran\u00E7a</span>
+              <h3 className="text-lg font-light text-white tracking-wide mt-1">
+                {selectedTransactionDetails.descricao || selectedTransactionDetails.categoria}
+              </h3>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                <span className="text-xs text-white/40 uppercase tracking-widest">Valor</span>
+                <span className="text-sm font-semibold text-white">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedTransactionDetails.valor)}
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                <span className="text-xs text-white/40 uppercase tracking-widest">Vencimento</span>
+                <span className="text-sm font-medium text-white/80">
+                  {selectedTransactionDetails.dataVencimento ? selectedTransactionDetails.dataVencimento.split('-').reverse().join('/') : '-'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                <span className="text-xs text-white/40 uppercase tracking-widest">Status</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full ${
+                  selectedTransactionDetails.status === 'pago' ? 'bg-emerald-500/10 text-emerald-400' :
+                  selectedTransactionDetails.status === 'vencido' ? 'bg-rose-500/10 text-rose-400' :
+                  selectedTransactionDetails.status === 'cancelado' ? 'bg-white/10 text-white/50' :
+                  'bg-yellow-500/10 text-yellow-400'
+                }`}>
+                  {selectedTransactionDetails.status.replace('_', ' ')}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {selectedTransactionDetails.status !== 'pago' && (
+                <button 
+                  onClick={() => {
+                    setSelectedTransactionDetails(null);
+                    handleOpenPixPayment(selectedTransactionDetails);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-amber-400 transition-all shadow-lg"
+                >
+                  <QrCode className="w-4 h-4" />
+                  Pagar com PIX
+                </button>
+              )}
+              
+              {selectedTransactionDetails.boletoUrl && (
+                <a 
+                  href={selectedTransactionDetails.boletoUrl} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-[#B69D74]/10 hover:bg-[#B69D74]/20 border border-[#B69D74]/20 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-[#B69D74] transition-all"
+                >
+                  <FileText className="w-4 h-4" />
+                  Acessar Boleto
+                </a>
+              )}
+
+              {selectedTransactionDetails.comprovante && (
+                <a 
+                  href={selectedTransactionDetails.comprovante} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-emerald-400 transition-all"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Ver Comprovante
+                </a>
+              )}
+              
+              <button 
+                onClick={() => setSelectedTransactionDetails(null)}
+                className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-2xl text-xs font-semibold text-white/50 uppercase tracking-widest transition-colors mt-2"
+              >
+                Voltar
+              </button>
+            </div>
           </div>
         </div>
       )}
