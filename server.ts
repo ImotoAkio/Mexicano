@@ -869,6 +869,69 @@ app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAnyAuth, sensitive
   }
 });
 
+// Route: Financeiro - Asaas Bulk Payment Generation
+app.post("/api/financeiro/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (req, res) => {
+  const { billingType } = req.body; // 'PIX'
+
+  if (billingType !== "PIX") {
+    return res.status(400).json({ error: true, message: "Tipo de cobran\u00E7a inv\u00E1lido para fatura completa. Use PIX." });
+  }
+
+  const currentPool = getDbPool();
+  if (!currentPool) {
+    return res.status(500).json({ error: true, message: "Banco de dados offline" });
+  }
+
+  try {
+    const user = (req as any).user;
+    
+    // Buscar todas as transa\u00E7\u00F5es pendentes/vencidas do cliente
+    const [txRows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND status IN ('pendente', 'vencido')", [user.id]);
+    const txs = (txRows as any[]);
+
+    if (txs.length === 0) {
+      return res.status(400).json({ error: true, message: "N\u00E3o h\u00E1 faturas pendentes para gerar cobran\u00E7a." });
+    }
+
+    const [clientRows] = await currentPool.query("SELECT * FROM Clientes WHERE id = ?", [user.id]);
+    const client = (clientRows as any[])[0];
+    if (!client) {
+      return res.status(404).json({ error: true, message: "Cliente n\u00E3o encontrado" });
+    }
+
+    const asaasCustomerId = await getOrRegisterAsaasCustomer(client);
+
+    const charge = await createAsaasBulkCharge(txs, asaasCustomerId, billingType);
+
+    // Save payment ID and URL back to all transactions
+    for (const tx of txs) {
+      await currentPool.query(
+        "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ? WHERE id = ?",
+        [charge.asaasPaymentId, charge.asaasPaymentUrl, tx.id]
+      );
+    }
+
+    let qrCode = null;
+    if (billingType === "PIX") {
+      try {
+        qrCode = await getPixQrCode(charge.asaasPaymentId);
+      } catch (qrErr: any) {
+        console.error("Failed to fetch Pix QR Code from Asaas:", qrErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      asaasPaymentId: charge.asaasPaymentId,
+      asaasPaymentUrl: charge.asaasPaymentUrl,
+      qrCode
+    });
+  } catch (err: any) {
+    console.error("Error generating Asaas bulk charge:", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to generate Asaas charge" });
+  }
+});
+
 // Route: Asaas Webhook (Public Endpoint)
 app.post("/api/webhooks/asaas", async (req, res) => {
   const token = req.headers["asaas-access-token"];
@@ -892,31 +955,46 @@ app.post("/api/webhooks/asaas", async (req, res) => {
     const currentPool = getDbPool();
     if (currentPool) {
       try {
-        let tx = null;
-        if (externalRef) {
-          const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE id = ?", [externalRef]);
-          if ((rows as any[]).length > 0) tx = (rows as any[])[0];
-        }
-        if (!tx && paymentId) {
-          const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE asaasPaymentId = ?", [paymentId]);
-          if ((rows as any[]).length > 0) tx = (rows as any[])[0];
-        }
-
-        if (tx) {
-          if (tx.status !== "pago") {
-            const todayStr = new Date().toISOString().split("T")[0];
-            await currentPool.query(
-              "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = ?, valor = ? WHERE id = ?",
-              [todayStr, payment.value || tx.valor, tx.id]
-            );
-            console.log(`[Asaas Webhook] Marked transaction ${tx.id} as paid.`);
-            
-            if (tx.clienteId) {
-              await syncClientFinancialStatus(tx.clienteId);
+        if (externalRef && externalRef.startsWith("BULK-")) {
+          const [rows] = await currentPool.query("SELECT DISTINCT clienteId FROM TransacoesFinanceiras WHERE asaasPaymentId = ?", [paymentId]);
+          const todayStr = new Date().toISOString().split("T")[0];
+          await currentPool.query(
+            "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = ? WHERE asaasPaymentId = ? AND status != 'pago'",
+            [todayStr, paymentId]
+          );
+          console.log(`[Asaas Webhook] Marked BULK transactions for payment ${paymentId} as paid.`);
+          if ((rows as any[]).length > 0) {
+            for (const row of (rows as any[])) {
+              await syncClientFinancialStatus(row.clienteId);
             }
           }
         } else {
-          console.warn(`[Asaas Webhook] No matching transaction found for Asaas payment ID ${paymentId} or externalRef ${externalRef}`);
+          let tx = null;
+          if (externalRef) {
+            const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE id = ?", [externalRef]);
+            if ((rows as any[]).length > 0) tx = (rows as any[])[0];
+          }
+          if (!tx && paymentId) {
+            const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE asaasPaymentId = ?", [paymentId]);
+            if ((rows as any[]).length > 0) tx = (rows as any[])[0];
+          }
+  
+          if (tx) {
+            if (tx.status !== "pago") {
+              const todayStr = new Date().toISOString().split("T")[0];
+              await currentPool.query(
+                "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = ?, valor = ? WHERE id = ?",
+                [todayStr, payment.value || tx.valor, tx.id]
+              );
+              console.log(`[Asaas Webhook] Marked transaction ${tx.id} as paid.`);
+              
+              if (tx.clienteId) {
+                await syncClientFinancialStatus(tx.clienteId);
+              }
+            }
+          } else {
+            console.warn(`[Asaas Webhook] No matching transaction found for Asaas payment ID ${paymentId} or externalRef ${externalRef}`);
+          }
         }
       } catch (err: any) {
         console.error("[Asaas Webhook] Error processing webhook database update:", err);

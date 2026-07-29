@@ -153,3 +153,56 @@ export async function getPixQrCode(paymentId: string) {
     expirationDate: result.expirationDate
   };
 }
+
+/**
+ * Creates a single billing charge on Asaas for multiple transactions (Bulk/Consolidated Invoice).
+ */
+export async function createAsaasBulkCharge(transactions: any[], customerId: string, billingType: "PIX" | "BOLETO" | "CREDIT_CARD") {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  let totalFinalValue = 0;
+  
+  for (const t of transactions) {
+    let finalValue = Number(t.valor);
+    if (t.dataVencimento && t.dataVencimento < todayStr) {
+      const due = new Date(t.dataVencimento + 'T12:00:00');
+      const todayRef = new Date(todayStr + 'T12:00:00');
+      const diffTime = todayRef.getTime() - due.getTime();
+      const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+
+      if (diffDays > 0) {
+        const fine = finalValue * 0.02; // Multa de 2%
+        const interest = finalValue * 0.01 * (diffDays / 30); // Juros de 1% ao mês proporcional
+        const totalFees = fine + interest;
+        finalValue = Number((finalValue + totalFees).toFixed(2));
+      }
+    }
+    totalFinalValue += finalValue;
+  }
+  
+  totalFinalValue = Number(totalFinalValue.toFixed(2));
+
+  // Generate a bulk reference identifier
+  const bulkRef = `BULK-${transactions.map(t => t.id).join('-')}`;
+
+  const payload = {
+    customer: customerId,
+    billingType,
+    value: totalFinalValue,
+    dueDate: todayStr,
+    description: `Fatura Consolidada (${transactions.length} itens) - Vila Nautica`,
+    externalReference: bulkRef
+  };
+
+  const result = await asaasFetch("/payments", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+
+  return {
+    asaasPaymentId: result.id,
+    asaasPaymentUrl: result.invoiceUrl,
+    bulkRef
+  };
+}

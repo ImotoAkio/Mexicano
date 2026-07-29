@@ -116,7 +116,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
   
   const totalAberto = transacoesList
-    .filter((t: any) => (t.status === 'pendente' || t.status === 'vencido') && (t.dataVencimento ? t.dataVencimento >= todayStr : true))
+    .filter((t: any) => t.status === 'pendente' || t.status === 'vencido')
     .reduce((acc: number, t: any) => acc + (Number(t.valor) || 0), 0);
 
 
@@ -1077,7 +1077,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           {(() => {
             const filteredTransacoes = transacoes.filter(t => {
               if (financeTab === 'fatura') {
-                return t.status !== 'pago' && t.status !== 'cancelado' && (t.dataVencimento ? t.dataVencimento >= todayStr : true);
+                return t.status !== 'pago' && t.status !== 'cancelado';
               }
               return t.status === 'pago';
             });
