@@ -32,7 +32,7 @@ import {
   upsertFuncionario, deleteFuncionario,
   upsertFolga, deleteFolga
 } from "./server-db";
-import { getOrRegisterAsaasCustomer, createAsaasCharge, getPixQrCode } from "./server-asaas";
+import { getOrRegisterAsaasCustomer, createAsaasCharge, getPixQrCode, createAsaasBulkCharge } from "./server-asaas";
 
 // Load environment variables early
 dotenv.config();
@@ -885,8 +885,8 @@ app.post("/api/financeiro/fatura/gerar-asaas", requireClientAuth, sensitiveLimit
   try {
     const user = (req as any).user;
     
-    // Buscar todas as transa\u00E7\u00F5es pendentes/vencidas do cliente
-    const [txRows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND status IN ('pendente', 'vencido')", [user.id]);
+    // Buscar todas as transações pendentes/vencidas do cliente (qualquer status diferente de pago/cancelado)
+    const [txRows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado')", [user.id]);
     const txs = (txRows as any[]);
 
     if (txs.length === 0) {
