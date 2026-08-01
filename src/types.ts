@@ -37,6 +37,8 @@ export interface Embarcacao {
   emManutencao?: boolean; // Tag for maintenance
   whatsappGroupId?: string; // Evolution API group ID for notifications
   imagemUrl?: string; // URL for the boat image
+  documentoUrl?: string; // URL for the boat document PDF
+  seguroUrl?: string; // URL for the boat insurance PDF
   temSom?: boolean; // Indicates if the boat requires sound control checks
   horasMotor?: number; // Track current engine hours
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { reservationDB, boatDB, clientDB } from '../db';
+import { reservationDB, boatDB, clientDB, syncWithRemote } from '../db';
+import { io } from 'socket.io-client';
 import { 
   deleteGoogleCalendarEvent, 
   updateGoogleCalendarEvent,
@@ -785,6 +786,7 @@ export default function SchedulesPage() {
   const loadScheduleData = async () => {
     setIsLoading(true);
     try {
+      await syncWithRemote();
       // Clean up auto-generated bad observations from local storage
       const allReservations = reservationDB.getAll();
       allReservations.forEach(r => {
@@ -852,6 +854,29 @@ export default function SchedulesPage() {
     }
     loadScheduleData();
   }, [selectedDate, simMode]);
+
+  const loadScheduleDataRef = useRef(loadScheduleData);
+  useEffect(() => {
+    loadScheduleDataRef.current = loadScheduleData;
+  }, [loadScheduleData]);
+
+  useEffect(() => {
+    const socket = io(window.location.origin, {
+      auth: { token: localStorage.getItem('admin_token') }
+    });
+    
+    socket.on('marina_update', async () => {
+      // Data changed in backend, re-fetch and update UI
+      if (loadScheduleDataRef.current) {
+        await loadScheduleDataRef.current();
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
 
   useEffect(() => {
     // Sync Service Account Mode from backend

@@ -94,9 +94,16 @@ type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   
-  // Client session: JWT-based (no PII in localStorage)
+  // Client session: JWT-based with local cache for instant PWA loading
   const [clientToken, setClientToken] = useState<string | null>(() => localStorage.getItem('client_token'));
-  const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[] } | null>(null);
+  const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[] } | null>(() => {
+    try {
+      const cached = localStorage.getItem('client_data_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [clientLoading, setClientLoading] = useState(false);
 
   // Admin session: JWT-based
@@ -161,14 +168,16 @@ export default function App() {
 
   const fetchClientData = async (showLoading = false) => {
     if (!clientToken) return;
-    if (showLoading) setClientLoading(true);
+    if (showLoading && !clientData) setClientLoading(true);
     try {
       const res = await fetch('/api/client/me', {
         headers: { 'Authorization': `Bearer ${clientToken}` }
       });
       if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('client_token');
+        localStorage.removeItem('client_data_cache');
         setClientToken(null);
+        setClientData(null);
         throw new Error('Token inválido ou expirado');
       }
       if (!res.ok) {
@@ -176,6 +185,9 @@ export default function App() {
       }
       const data = await res.json();
       setClientData(data);
+      try {
+        localStorage.setItem('client_data_cache', JSON.stringify(data));
+      } catch (err) {}
     } catch (e) {
       console.error("Erro no polling do cliente:", e);
     } finally {
@@ -183,14 +195,17 @@ export default function App() {
     }
   };
 
-  // Fetch client data from API using JWT (never stored in localStorage)
+  // Fetch client data from API using JWT
   useEffect(() => {
     if (clientToken && !clientData && !clientLoading) {
       fetchClientData(true);
+    } else if (clientToken && clientData) {
+      // Re-fetch in background without blocking UI
+      fetchClientData(false);
     }
-  }, [clientToken, clientData, clientLoading]);
+  }, [clientToken]);
 
-  // Polling to keep client data updated in the background (e.g., other co-owners making reservations)
+  // Polling to keep client data updated in the background
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (clientToken) {
@@ -356,6 +371,7 @@ export default function App() {
             onRefresh={() => fetchClientData(false)}
             onLogout={() => {
               localStorage.removeItem('client_token');
+              localStorage.removeItem('client_data_cache');
               setClientToken(null);
               setClientData(null);
             }}

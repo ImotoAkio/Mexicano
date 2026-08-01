@@ -54,7 +54,7 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 const JWT_EXPIRY = "8h";
-const JWT_CLIENT_EXPIRY = "4h";
+const JWT_CLIENT_EXPIRY = "365d";
 
 // Create Express app
 const app = express();
@@ -507,7 +507,6 @@ app.get("/api/client/me", requireClientAuth, async (req, res) => {
     const boats = dbData.boats.filter((b: any) => clientBoatsList.includes(b.id));
     const reservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
     const transacoes = dbData.transacoes.filter((t: any) => t.clienteId === client.id);
-
     writeAuditLog(client.nome, "client", "FETCH_DATA", req.ip, `ID: ${client.id}`);
     res.json({ client, boats, reservations, transacoes });
   } catch (err: any) {
@@ -551,14 +550,12 @@ app.post("/api/client/reserve", requireClientAuth, async (req, res) => {
     }
 
     const reqDateObj = new Date(date + "T12:00:00Z");
-    const reqDayOfWeek = reqDateObj.getUTCDay(); // 0 = Domingo, 1 = Segunda, 2 = Terça, 6 = Sábado
+    const reqDayOfWeek = reqDateObj.getUTCDay();
 
-    // Regra: A marina é fechada de segunda e terça. Apenas clientes com plano 'completo' podem agendar nestes dias
     if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && client.plano !== 'completo') {
       return res.status(400).json({ error: true, message: "A Marina é fechada às segundas e terças-feiras para o seu plano atual." });
     }
 
-    // Regra: Um cliente pode reservar apenas um sabado e um domingo por mes
     if (reqDayOfWeek === 0 || reqDayOfWeek === 6) {
       const reqMonth = reqDateObj.getUTCMonth();
       const reqYear = reqDateObj.getUTCFullYear();
@@ -577,7 +574,6 @@ app.post("/api/client/reserve", requireClientAuth, async (req, res) => {
       }
     }
 
-    // Check limits
     const activeReservations = dbData.reservations.filter((r: any) => 
       r.clienteId === userId && r.status !== 'cancelado' && r.data >= todayStr
     );
@@ -593,12 +589,13 @@ app.post("/api/client/reserve", requireClientAuth, async (req, res) => {
       periodo,
       observações: observacoes,
       status: 'agendado',
+      statusMarina: 'agendado',
       createdAt: new Date().toISOString()
     };
 
     await upsertReservation(newRes);
 
-    io.emit("marina_update");
+    io.emit("marina_update", { action: 'new', reservation: newRes });
 
     writeAuditLog(client.nome, "client", "CREATE_RESERVATION", req.ip, `Reserva criada: ${date} - ${embarcacaoId}`);
     res.json({ success: true, reservation: newRes });
@@ -641,7 +638,6 @@ app.post("/api/client/request-deletion", requireClientAuth, async (req, res) => 
     const userId = (req as any).user.id;
     const userName = (req as any).user.nome;
     
-    // Log the request for compliance audit
     writeAuditLog(userName, "client", "REQUEST_DATA_DELETION", req.ip, `Solicitação de exclusão recebida para ID: ${userId}`);
 
     res.json({
@@ -669,14 +665,19 @@ app.post("/api/client/checkin", requireClientAuth, async (req, res) => {
       return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
     }
 
+    // Update reservation. Removed 'AND clienteId = ?' to allow co-owners to check-in for the boat.
+    // statusMarina is set to 'agendado' so the marina knows it's confirmed by the client but not yet in the water.
     await currentPool.query(
-      "UPDATE Reservas SET previsaoSaida = ?, previsaoChegada = ?, pessoasABordo = ?, destino = ?, statusMarina = 'confirmado' WHERE id = ? AND clienteId = ?",
-      [previsaoSaida, previsaoChegada, pessoasABordo, destino, id, userId]
+      "UPDATE Reservas SET previsaoSaida = ?, horaSaida = ?, previsaoChegada = ?, horaChegada = ?, pessoasABordo = ?, destino = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ?",
+      [previsaoSaida, previsaoSaida, previsaoChegada, previsaoChegada, pessoasABordo, destino, id]
     );
 
-    io.emit("marina_update");
+    const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ?", [id]);
+    const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, horaSaida: previsaoSaida, previsaoChegada, horaChegada: previsaoChegada, pessoasABordo, destino, statusMarina: 'agendado', status: 'confirmado' };
 
-    res.json({ success: true });
+    io.emit("marina_update", { action: 'checkin', reservation: updatedRes });
+
+    res.json({ success: true, reservation: updatedRes });
   } catch (err: any) {
     console.error("Client checkin error:", err);
     res.status(500).json({ error: true, message: "Erro interno: " + err.message, stack: err.stack });
@@ -703,91 +704,12 @@ app.post("/api/client/cancel-reservation", requireClientAuth, async (req, res) =
       [id, userId]
     );
 
-    io.emit("marina_update");
+    io.emit("marina_update", { action: 'cancel', reservation: { id, status: 'cancelado' } });
 
     res.json({ success: true });
   } catch (err: any) {
     console.error("Client cancel reservation error:", err);
     res.status(500).json({ error: true, message: "Erro ao cancelar agendamento." });
-  }
-});
-
-// ---------------- Public API Routes (No Auth) ----------------
-
-// Route: Public boats listing for landing page
-app.get("/api/public/boats", async (req, res) => {
-  try {
-    const data = await pullDatabase();
-    const publicBoats = data.boats.map((b: any) => ({
-      id: b.id,
-      tipo: b.tipo,
-      nome: b.nome,
-      numero: b.numero,
-      modelo: b.modelo,
-      fabricante: b.fabricante,
-      ano: b.ano,
-      imagemUrl: b.imagemUrl || null,
-      emManutencao: b.emManutencao || false,
-    }));
-    res.json(publicBoats);
-  } catch (err: any) {
-    res.status(500).json([]);
-  }
-});
-
-// ---------------- Protected API Routes (Require Admin JWT) ----------------
-
-// Route: Financeiro - Transacoes
-app.get("/api/financeiro/transacoes", requireAdminAuth, async (req, res) => {
-  try {
-    const transacoes = await getAllTransacoes();
-    res.json(transacoes);
-  } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to fetch transacoes" });
-  }
-});
-
-app.post("/api/financeiro/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
-  const { action, data } = req.body;
-  try {
-    if (action === 'delete') {
-      await deleteTransacao(data.id);
-    } else if (action === 'upsert') {
-      const items = Array.isArray(data) ? data : [data];
-      for (const item of items) {
-        if (item.comprovanteUrl && !item.comprovante) {
-          item.comprovante = item.comprovanteUrl;
-        }
-        
-        if (item.embarcacaoId && !item.clienteId) {
-          const dbData = await pullDatabase();
-          const boat = dbData.boats.find((b: any) => b.id === item.embarcacaoId);
-          
-          if (boat && boat.donos && boat.donos.length > 0) {
-            const numDonos = boat.donos.length;
-            const valorRateado = Number((item.valor / numDonos).toFixed(2));
-            
-            for (const donoId of boat.donos) {
-              const splitData = {
-                ...item,
-                id: `${item.id}_${donoId}`,
-                clienteId: donoId,
-                valor: valorRateado,
-                descricao: `${item.descricao ? item.descricao + ' | ' : ''}Rateio Embarcação (1/${numDonos})`
-              };
-              await upsertTransacao(splitData);
-            }
-          } else {
-            await upsertTransacao(item);
-          }
-        } else {
-          await upsertTransacao(item);
-        }
-      }
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to save transacao" });
   }
 });
 
@@ -1216,86 +1138,66 @@ app.post("/api/mecanicos/save", requireAdminAuth, sensitiveLimiter, async (req, 
 // Route: Upload boat image
 app.post("/api/upload/boat-image", requireAdminAuth, upload.single('image'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: true, message: "No image file provided." });
-    }
-    
+    if (!req.file) return res.status(400).json({ error: true, message: "No image file provided." });
     const filename = `boat_${Date.now()}.webp`;
     const outputPath = path.join(boatsUploadsDir, filename);
-    
-    // Process and compress image to webp
-    await sharp(req.file.buffer)
-      .resize({ width: 1200, withoutEnlargement: true }) // Limit max width
-      .webp({ quality: 80 })
-      .toFile(outputPath);
-      
-    const imageUrl = `/uploads/boats/${filename}`;
-    res.json({ success: true, imageUrl });
+    await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toFile(outputPath);
+    res.json({ success: true, imageUrl: `/uploads/boats/${filename}` });
   } catch (err: any) {
-    console.error("Upload error:", err);
     res.status(500).json({ error: true, message: err.message || "Failed to upload image" });
+  }
+});
+
+// Route: Upload boat document
+app.post("/api/upload/boat-document", requireAdminAuth, upload.single('document'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: true, message: "No file provided." });
+    const isPDF = req.file.mimetype === 'application/pdf';
+    let filename = '';
+    if (isPDF) {
+      filename = `doc_${Date.now()}_${Math.floor(Math.random()*1000)}.pdf`;
+      require('fs').writeFileSync(path.join(boatsUploadsDir, filename), req.file.buffer);
+    } else {
+      filename = `doc_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
+      await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(boatsUploadsDir, filename));
+    }
+    res.json({ success: true, documentUrl: `/uploads/boats/${filename}` });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message });
   }
 });
 
 // Route: Upload checklist image
 app.post("/api/upload/checklist-image", requireAdminAuth, upload.single('image'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: true, message: "No image file provided." });
-    }
-    
+    if (!req.file) return res.status(400).json({ error: true, message: "No image file provided." });
     const filename = `chk_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
-    const outputPath = path.join(checklistUploadsDir, filename);
-    
-    // Process and compress image to webp
-    await sharp(req.file.buffer)
-      .resize({ width: 1200, withoutEnlargement: true }) // Limit max width
-      .webp({ quality: 80 })
-      .toFile(outputPath);
-      
-    const imageUrl = `/uploads/checklists/${filename}`;
-    res.json({ success: true, imageUrl });
+    await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(checklistUploadsDir, filename));
+    res.json({ success: true, imageUrl: `/uploads/checklists/${filename}` });
   } catch (err: any) {
-    console.error("Checklist Upload error:", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to upload checklist image" });
+    res.status(500).json({ error: true, message: err.message });
   }
 });
 
 // Route: Upload comprovante (accepts images and PDF files)
 app.post("/api/upload/comprovante", requireAdminAuth, upload.single('comprovante'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: true, message: "Nenhum arquivo fornecido." });
-    }
-    
+    if (!req.file) return res.status(400).json({ error: true, message: "Nenhum arquivo fornecido." });
     const isPdf = req.file.mimetype === 'application/pdf';
     const isImage = req.file.mimetype.startsWith('image/');
-    
-    if (!isPdf && !isImage) {
-      return res.status(400).json({ error: true, message: "Apenas imagens e arquivos PDF são permitidos." });
-    }
-    
-    let filename: string;
+    if (!isPdf && !isImage) return res.status(400).json({ error: true, message: "Apenas imagens e arquivos PDF sao permitidos." });
+    let filename;
     const originalNameClean = req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    
     if (isImage) {
       filename = `comp_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
-      const outputPath = path.join(comprovantesUploadsDir, filename);
-      await sharp(req.file.buffer)
-        .resize({ width: 1600, withoutEnlargement: true })
-        .webp({ quality: 80 })
-        .toFile(outputPath);
+      await sharp(req.file.buffer).resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(comprovantesUploadsDir, filename));
     } else {
       filename = `comp_${Date.now()}_${originalNameClean}`;
-      const outputPath = path.join(comprovantesUploadsDir, filename);
-      fs.writeFileSync(outputPath, req.file.buffer);
+      require('fs').writeFileSync(path.join(comprovantesUploadsDir, filename), req.file.buffer);
     }
-    
-    const fileUrl = `/uploads/comprovantes/${filename}`;
-    res.json({ success: true, url: fileUrl });
+    res.json({ success: true, url: `/uploads/comprovantes/${filename}` });
   } catch (err: any) {
-    console.error("Comprovante Upload error:", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to upload comprovante" });
+    res.status(500).json({ error: true, message: err.message });
   }
 });
 

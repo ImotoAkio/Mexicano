@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench, QrCode } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench, QrCode, Ticket } from 'lucide-react';
 // @ts-ignore
 import boatImg1 from '../assets/images/1.webp';
 // @ts-ignore
@@ -23,6 +23,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [financeTab, setFinanceTab] = useState<'fatura' | 'extrato'>('fatura');
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [privacyTab, setPrivacyTab] = useState<'general' | 'data' | 'rights' | 'dpo'>('general');
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
 
   // Asaas Pix payment states
   const [selectedTransactionDetails, setSelectedTransactionDetails] = useState<any>(null);
@@ -132,6 +133,17 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const mergedReservations = Array.from(mergedMap.values());
 
   const myReservations = mergedReservations.filter(r => r.clienteId === client.id);
+
+  // Selected boat for calendar view
+  const [selectedCalendarBoatId, setSelectedCalendarBoatId] = useState<any>(() => {
+    return boats && boats.length > 0 ? boats[0].id : null;
+  });
+
+  useEffect(() => {
+    if (boats && boats.length > 0 && !selectedCalendarBoatId) {
+      setSelectedCalendarBoatId(boats[0].id);
+    }
+  }, [boats, selectedCalendarBoatId]);
 
   // Calendar states
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -328,8 +340,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     String(_localNow.getDate()).padStart(2, '0')
   ].join('-');
   const todayReservation = myReservations.find(r => r.data === todayStrLocal && r.status !== 'cancelado');
-  const needsCheckin = todayReservation && (!todayReservation.previsaoSaida || !todayReservation.pessoasABordo || todayReservation.statusMarina === 'agendado');
-  const isCheckedIn = todayReservation && todayReservation.statusMarina === 'confirmado';
+  const needsCheckin = todayReservation && todayReservation.status !== 'confirmado';
+  const isCheckedIn = todayReservation && todayReservation.status === 'confirmado';
 
   const handleCheckinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -392,10 +404,21 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       const doc = await generateAvisoSaidaPDF(fields, { autoPrint: false });
 
       // Atualiza o estado local para refletir o check-in imediatamente
+      const updatedResObj = { 
+        ...todayReservation, 
+        ...checkinData, 
+        statusMarina: 'confirmado',
+        status: 'confirmado' 
+      };
+
       setOptimisticReservations(prev => [
         ...prev.filter(r => r.id !== todayReservation.id),
-        { ...todayReservation, ...checkinData, statusMarina: 'confirmado' }
+        updatedResObj
       ]);
+
+      if (onRefresh) {
+        onRefresh();
+      }
 
       setPreviewFields(fields);
       setPreviewPDFDoc(doc);
@@ -506,14 +529,22 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   </summary>
                   
                   <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
-                    <div className="grid grid-cols-2 gap-4 bg-white/[0.02] border border-white/5 rounded-2xl p-3 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white/[0.02] border border-white/5 rounded-2xl p-3 text-xs">
                       <div>
                         <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Destino</span>
                         <span className="text-white font-medium truncate block">{todayReservation?.destino || 'Não informado'}</span>
                       </div>
                       <div>
                         <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Previsão Saída</span>
-                        <span className="text-white font-medium">{todayReservation?.previsaoSaida || '00:00'}</span>
+                        <span className="text-white font-medium">{todayReservation?.previsaoSaida || todayReservation?.horaSaida || '00:00'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Retorno</span>
+                        <span className="text-white font-medium">{todayReservation?.previsaoChegada || todayReservation?.horaChegada || '00:00'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Pessoas</span>
+                        <span className="text-white font-medium">{todayReservation?.pessoasABordo || '1'}</span>
                       </div>
                     </div>
 
@@ -651,7 +682,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                         src={imgSource} 
                         alt={boat.nome} 
                         className="w-full h-auto drop-shadow-[0_20px_50px_rgba(0,0,0,0.8)] [animation:luxury-float_6s_ease-in-out_infinite]"
-                        style={{ WebkitUserDrag: 'none' }}
+                        style={{ WebkitUserDrag: 'none' } as React.CSSProperties}
                       />
                     </div>
 
@@ -678,6 +709,24 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                           </span>
                         )}
                       </div>
+
+                      {/* Documentos e Seguro */}
+                      {(boat.documentoUrl || boat.seguroUrl) && (
+                        <div className="mt-4 pt-4 border-t border-white/5 flex gap-3">
+                          {boat.documentoUrl && (
+                            <a href={boat.documentoUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-white/80 transition-colors">
+                              <FileText className="w-4 h-4 text-indigo-400" />
+                              <span className="font-semibold">Doc. Embarcação</span>
+                            </a>
+                          )}
+                          {boat.seguroUrl && (
+                            <a href={boat.seguroUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-white/80 transition-colors">
+                              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                              <span className="font-semibold">Apólice Seguro</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                   </div>
@@ -805,12 +854,81 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       String(_now.getDate()).padStart(2, '0')
     ].join('-');
 
+    // Find active boat selected for calendar view
+    const activeBoat = boats.find(b => b.id === selectedCalendarBoatId) || boats[0] || null;
+    const activeBoatId = activeBoat ? activeBoat.id : null;
+
+    // Filter reservations specifically for the active boat
+    const myBoatReservations = myReservations.filter(r => !activeBoatId || r.embarcacaoId === activeBoatId);
+    const occupiedBoatReservations = mergedReservations.filter(r => (!activeBoatId || r.embarcacaoId === activeBoatId) && r.status !== 'cancelado' && r.clienteId !== client.id);
+
     return (
       <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6">
-        <div className="mb-6 mt-4">
-          <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Calendário</p>
+        <div className="mb-4 mt-4">
+          <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Agenda de Cotas</p>
           <h1 className="text-2xl font-light tracking-wide text-white mt-1">Agendamentos</h1>
         </div>
+
+        {/* Multi-Boat Selector Tabs (If client has more than 1 boat) */}
+        {boats.length > 1 && (
+          <div className="mb-5 bg-[#111] border border-white/10 rounded-2xl p-1.5 flex gap-2 overflow-x-auto subtle-scrollbar">
+            {boats.map((b) => {
+              const isSelected = (b.id === activeBoatId);
+              const isJet = b.tipo === 'jet' || (b.nome || '').toLowerCase().includes('jet');
+              const boatResCount = myReservations.filter(r => r.embarcacaoId === b.id && r.data >= todayStr && r.status !== 'cancelado').length;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => setSelectedCalendarBoatId(b.id)}
+                  className={`flex-1 min-w-[130px] flex items-center justify-between p-3 rounded-xl border transition-all duration-300 cursor-pointer ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-[#B69D74]/20 to-[#B69D74]/10 border-[#B69D74]/50 shadow-[0_0_20px_rgba(182,157,116,0.15)] text-white'
+                      : 'bg-white/[0.02] border-white/5 hover:bg-white/5 text-white/50 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${isSelected ? 'bg-[#B69D74] text-slate-900 font-bold' : 'bg-white/5 text-white/40'}`}>
+                      {isJet ? <Droplets className="w-3.5 h-3.5" /> : <Ship className="w-3.5 h-3.5" />}
+                    </div>
+                    <div className="text-left">
+                      <p className={`text-xs font-semibold truncate max-w-[90px] ${isSelected ? 'text-white' : 'text-white/70'}`}>
+                        {b.nome}
+                      </p>
+                      <p className="text-[9px] uppercase tracking-wider text-white/40">
+                        {b.numero ? `M${b.numero}` : (isJet ? 'Jetski' : 'Lancha')}
+                      </p>
+                    </div>
+                  </div>
+                  {boatResCount > 0 && (
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${isSelected ? 'bg-[#B69D74] text-slate-900' : 'bg-white/10 text-white/60'}`}>
+                      {boatResCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Active Boat Header Info Card */}
+        {activeBoat && (
+          <div className="mb-4 bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center text-[#B69D74]">
+                {activeBoat.tipo === 'jet' ? <Droplets className="w-5 h-5" /> : <Ship className="w-5 h-5" />}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white tracking-wide">{activeBoat.nome}</h3>
+                <p className="text-[10px] text-white/40 uppercase tracking-wider">
+                  Exibindo disponibilidade desta embarcação
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium uppercase tracking-wider shrink-0">
+              {activeBoat.tipo === 'jet' ? 'Jetski' : 'Lancha'}
+            </span>
+          </div>
+        )}
 
         {/* Grade do Calendário */}
         <div className="bg-[#111] border border-white/5 rounded-[2rem] p-6 shadow-2xl mb-8">
@@ -850,9 +968,9 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               const dayOfWeek = dateObj.getDay();
               const isClosed = (dayOfWeek === 1 || dayOfWeek === 2) && client.plano !== 'completo';
 
-              // Verificar se o CLIENTE tem reserva nesse dia ou se está ocupado
-              const hasMyReservation = myReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
-              const isOccupied = !hasMyReservation && mergedReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
+              // Verificar se o CLIENTE tem reserva nessa embarcação ou se está ocupada
+              const hasMyReservation = myBoatReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
+              const isOccupied = !hasMyReservation && occupiedBoatReservations.find(r => r.data === isoStr);
               
               // Evitar clicar no passado, dias ocupados ou dias fechados
               const isToday = isoStr === todayStr;
@@ -921,6 +1039,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         {(() => {
           const displayedReservations = myReservations.filter(res => {
             const isFuture = res.data >= todayStr;
+            const matchesBoat = !activeBoatId || res.embarcacaoId === activeBoatId;
+            if (!matchesBoat) return false;
             if (reservationFilter === 'upcoming') return isFuture && res.status !== 'cancelado';
             if (reservationFilter === 'past') return !isFuture;
             return true;
@@ -1337,13 +1457,112 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           {/* Spacer for Floating Button */}
           <div className="w-16"></div>
 
+          {/* Action Menu Floating Backdrop */}
+          {isActionMenuOpen && (
+            <div 
+              onClick={() => setIsActionMenuOpen(false)}
+              className="fixed inset-0 bg-black/75 backdrop-blur-md z-40 animate-in fade-in duration-300"
+            />
+          )}
+
+          {/* Action Menu Popover Sheet */}
+          {isActionMenuOpen && (
+            <div className="fixed bottom-24 left-1/2 w-[calc(100%-2rem)] max-w-[400px] z-50 animate-spring-pop">
+              <div className="bg-[#121212]/95 border border-white/10 rounded-[2rem] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.9)] backdrop-blur-2xl space-y-2.5">
+                <div className="text-center pt-1 pb-2 border-b border-white/[0.06]">
+                  <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-[#B69D74]">
+                    Menu de Solicitantes
+                  </span>
+                </div>
+
+                {/* Option 1: Agendamento */}
+                <button
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    setIsReservationModalOpen(true);
+                  }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-[#B69D74]/15 border border-white/[0.05] hover:border-[#B69D74]/30 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-1"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-[#B69D74]/10 border border-[#B69D74]/20 flex items-center justify-center text-[#B69D74] group-hover:scale-110 transition-transform duration-300">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-white group-hover:text-[#B69D74] transition-colors">
+                        Agendamento
+                      </h4>
+                      <p className="text-[11px] text-white/40 font-light">
+                        Reserve uma data para sua lancha ou jet
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-[#B69D74] group-hover:translate-x-1 transition-all" />
+                </button>
+
+                {/* Option 2: Manutenção */}
+                <button
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    showToast('Manutenção de Embarcações', 'O formulário de solicitação de manutenção será disponibilizado em breve.', 'warning');
+                  }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-amber-500/15 border border-white/[0.05] hover:border-amber-500/30 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-2"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform duration-300">
+                      <Wrench className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-white group-hover:text-amber-400 transition-colors">
+                        Manutenção
+                      </h4>
+                      <p className="text-[11px] text-white/40 font-light">
+                        Reporte reparos ou revisão da embarcação
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+                </button>
+
+                {/* Option 3: Ticket para Administração */}
+                <button
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    showToast('Ticket para Administração', 'A central de chamados com o administrador estará disponível em breve.', 'warning');
+                  }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-sky-500/15 border border-white/[0.05] hover:border-sky-500/30 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-3"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform duration-300">
+                      <Ticket className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-white group-hover:text-sky-400 transition-colors">
+                        Ticket para Administração
+                      </h4>
+                      <p className="text-[11px] text-white/40 font-light">
+                        Abra um chamado direto com a equipe
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-sky-400 group-hover:translate-x-1 transition-all" />
+                </button>
+
+              </div>
+            </div>
+          )}
+
           {/* Central Floating Action Button */}
           <div className="absolute left-1/2 -top-10 -translate-x-1/2 z-50 pointer-events-auto">
             <button 
-              onClick={() => setActiveTab('calendar')}
-              className="w-16 h-16 bg-gradient-to-tr from-[#B69D74] to-[#cbb28b] hover:from-[#a38b65] hover:to-[#B69D74] rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(182,157,116,0.4)] transition-transform hover:scale-105 active:scale-95 border-[4px] border-[#050505]"
+              onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
+              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(182,157,116,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 border-[4px] border-[#050505] cursor-pointer ${
+                isActionMenuOpen 
+                  ? 'bg-rose-600 shadow-[0_10px_30px_rgba(225,29,72,0.5)] rotate-45' 
+                  : 'bg-gradient-to-tr from-[#B69D74] to-[#cbb28b] hover:from-[#a38b65] hover:to-[#B69D74]'
+              }`}
+              title={isActionMenuOpen ? "Fechar" : "Menu de Ações"}
             >
-              <Plus className="w-7 h-7 text-slate-900" />
+              <Plus className={`w-7 h-7 transition-colors duration-300 ${isActionMenuOpen ? 'text-white' : 'text-slate-900'}`} />
             </button>
           </div>
 
@@ -1739,6 +1958,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         selectedDate={selectedDate}
         client={client}
         boats={boats}
+        preselectedBoatId={selectedCalendarBoatId}
         onSuccess={(newRes) => {
           if (newRes) {
             setOptimisticReservations(prev => [...prev, newRes]);
@@ -1756,8 +1976,24 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         isOpen={isCheckinModalOpen}
         onClose={() => setIsCheckinModalOpen(false)}
         reservation={selectedReservationForCheckin}
-        onSuccess={() => {
+        onSuccess={(checkinData) => {
           setIsCheckinModalOpen(false);
+          
+          if (selectedReservationForCheckin) {
+            const updatedResObj = { 
+              ...selectedReservationForCheckin, 
+              ...(checkinData || {}),
+              horaSaida: checkinData?.previsaoSaida || checkinData?.horaSaida || selectedReservationForCheckin.horaSaida,
+              horaChegada: checkinData?.previsaoChegada || checkinData?.horaChegada || selectedReservationForCheckin.horaChegada,
+              statusMarina: 'agendado',
+              status: 'confirmado' 
+            };
+            setOptimisticReservations(prev => [
+              ...prev.filter(r => r.id !== selectedReservationForCheckin.id),
+              updatedResObj
+            ]);
+          }
+
           showToast('Sucesso', 'Check-in confirmado com sucesso!', 'success');
           if (onRefresh) {
             onRefresh();

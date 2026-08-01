@@ -7,9 +7,23 @@
 }
 
 @layer base {
-  body {
+  html, body {
     font-family: var(--font-sans);
-    background-color: #f8fafc;
+    background-color: #020202;
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow-x: hidden;
+  }
+
+  /* Allow text selection in inputs and textareas, and enforce 16px to prevent iOS focus auto-zoom */
+  input, select, textarea, [contenteditable="true"] {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    font-size: 16px !important;
   }
 }
 
@@ -47,6 +61,52 @@
 @keyframes luxury-float {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(-10px) rotate(-1deg); }
+}
+
+/* Fluid Apple-like Spring Animations for Action Menu */
+@keyframes spring-pop-up {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 28px) scale(0.88);
+    filter: blur(8px);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -4px) scale(1.02);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+@keyframes spring-item-slide {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-spring-pop {
+  animation: spring-pop-up 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-item-stagger-1 {
+  animation: spring-item-slide 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+}
+
+.animate-item-stagger-2 {
+  animation: spring-item-slide 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.10s both;
+}
+
+.animate-item-stagger-3 {
+  animation: spring-item-slide 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
 }
 
 .subtle-scrollbar::-webkit-scrollbar {
@@ -114,7 +174,6 @@
 }
 
 /* Fix for printing clipped contents in Tailwind layouts */
-
 @media print { body * { visibility: hidden; } #print-section, #print-section *, #print-area, #print-area * { visibility: visible; }  }
 #print-section {
   display: none;
@@ -137,4 +196,3 @@
     background: white;
   }
 }
-

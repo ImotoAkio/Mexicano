@@ -9,7 +9,7 @@ interface ClientLoginPageProps {
 type ViewState = 'splash' | 'welcome' | 'identifier' | 'password' | 'setup_password';
 
 export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps) {
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(() => localStorage.getItem('client_last_cpf') || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
@@ -110,6 +110,9 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
         throw new Error(data.message || 'Erro ao realizar login.');
       }
 
+      try {
+        localStorage.setItem('client_last_cpf', identifier);
+      } catch (err) {}
       onLoginSuccess(data.token);
     } catch (err: any) {
       setError(err.message || 'Erro ao realizar login.');

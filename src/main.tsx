@@ -22,6 +22,29 @@ if (typeof window !== 'undefined') {
     }
   });
 
+  // Prevent pinch-zoom gestures and double-tap zoom for PWA native feel
+  document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) {
+      const target = e.target as HTMLElement;
+      if (target && !['INPUT', 'TEXTAREA', 'SELECT', 'A', 'BUTTON'].includes(target.tagName)) {
+        e.preventDefault();
+      }
+    }
+    lastTouchEnd = now;
+  }, { passive: false });
+
   // Global fetch interceptor to automatically attach authorization header
   const { fetch: originalFetch } = window;
   window.fetch = async (resource, config) => {
@@ -53,6 +76,7 @@ if (typeof window !== 'undefined') {
         localStorage.removeItem('admin_username');
         localStorage.removeItem('client_token');
         localStorage.removeItem('client_data');
+        localStorage.removeItem('client_data_cache');
         window.location.reload();
       }
       return response;
@@ -64,6 +88,7 @@ if (typeof window !== 'undefined') {
       localStorage.removeItem('admin_username');
       localStorage.removeItem('client_token');
       localStorage.removeItem('client_data');
+      localStorage.removeItem('client_data_cache');
       window.location.reload();
     }
     return response;

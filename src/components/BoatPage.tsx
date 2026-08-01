@@ -30,6 +30,10 @@ export default function BoatPage() {
   const [temSom, setTemSom] = useState(false);
   const [imagemUrl, setImagemUrl] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [documentoUrl, setDocumentoUrl] = useState('');
+  const [isUploadingDocumento, setIsUploadingDocumento] = useState(false);
+  const [seguroUrl, setSeguroUrl] = useState('');
+  const [isUploadingSeguro, setIsUploadingSeguro] = useState(false);
 
   // Custom Confirm State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string; name: string } | null>(null);
@@ -61,6 +65,8 @@ export default function BoatPage() {
     setEmManutencao(false);
     setTemSom(false);
     setImagemUrl('');
+    setDocumentoUrl('');
+    setSeguroUrl('');
     setIsModalOpen(true);
   };
 
@@ -93,6 +99,8 @@ export default function BoatPage() {
     setEmManutencao(boat.emManutencao || false);
     setTemSom(boat.temSom || false);
     setImagemUrl(boat.imagemUrl || '');
+    setDocumentoUrl(boat.documentoUrl || '');
+    setSeguroUrl(boat.seguroUrl || '');
     setIsModalOpen(true);
   };
 
@@ -224,6 +232,42 @@ export default function BoatPage() {
     }
   };
 
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'documento' | 'seguro') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (type === 'documento') setIsUploadingDocumento(true);
+    else setIsUploadingSeguro(true);
+
+    const formData = new FormData();
+    formData.append('document', file);
+
+    try {
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch('/api/upload/boat-document', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (type === 'documento') setDocumentoUrl(data.documentUrl);
+        else setSeguroUrl(data.documentUrl);
+        showToast('Arquivo carregado com sucesso!');
+      } else {
+        showToast(data.message || 'Erro ao fazer upload do arquivo', 'error');
+      }
+    } catch (err: any) {
+      showToast('Falha na comunicação com o servidor', 'error');
+    } finally {
+      if (type === 'documento') setIsUploadingDocumento(false);
+      else setIsUploadingSeguro(false);
+    }
+  };
+
   const handleToggleOwner = (clientId: string) => {
     if (selectedDonos.includes(clientId)) {
       setSelectedDonos(selectedDonos.filter(id => id !== clientId));
@@ -265,7 +309,9 @@ export default function BoatPage() {
           whatsappGroupId: whatsappGroupId.trim() || undefined,
           emManutencao,
           temSom,
-          imagemUrl: imagemUrl || undefined
+          imagemUrl: imagemUrl || undefined,
+          documentoUrl: documentoUrl || undefined,
+          seguroUrl: seguroUrl || undefined
         });
         showToast('Embarcação atualizada com sucesso!');
       } else {
@@ -281,7 +327,9 @@ export default function BoatPage() {
           whatsappGroupId: whatsappGroupId.trim() || undefined,
           emManutencao,
           temSom,
-          imagemUrl: imagemUrl || undefined
+          imagemUrl: imagemUrl || undefined,
+          documentoUrl: documentoUrl || undefined,
+          seguroUrl: seguroUrl || undefined
         });
         showToast('Embarcação cadastrada com sucesso!');
       }
@@ -585,6 +633,73 @@ export default function BoatPage() {
                     <span className="text-[10px] mt-1 text-slate-400 font-medium">JPG, PNG ou WEBP (Max 5MB)</span>
                   </div>
                 )}
+              </div>
+
+              {/* Documentos Upload Area */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
+                  <input 
+                    type="file" 
+                    accept="application/pdf, image/png, image/jpeg" 
+                    onChange={(e) => handleDocumentUpload(e, 'documento')}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    title="Anexar Documento da Embarcação"
+                  />
+                  {isUploadingDocumento ? (
+                    <div className="flex flex-col items-center py-2">
+                      <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin mb-1" />
+                      <span className="text-[10px] font-semibold text-slate-600">Enviando...</span>
+                    </div>
+                  ) : documentoUrl ? (
+                    <div className="flex flex-col items-center space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                        <Check className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-semibold text-emerald-700">Documento Anexado</span>
+                      <div className="flex gap-3 mt-1">
+                        <a href={documentoUrl} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600 hover:underline z-20 relative">Ver Arquivo</a>
+                        <button type="button" onClick={() => setDocumentoUrl('')} className="text-[10px] font-semibold text-rose-600 hover:underline z-20 relative">Remover</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center py-2 text-slate-500 group-hover:text-indigo-500 transition-colors">
+                      <Upload className="w-5 h-5 mb-2" />
+                      <span className="text-[11px] font-semibold uppercase tracking-wider">Documento do Barco</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
+                  <input 
+                    type="file" 
+                    accept="application/pdf, image/png, image/jpeg" 
+                    onChange={(e) => handleDocumentUpload(e, 'seguro')}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    title="Anexar Apólice de Seguro"
+                  />
+                  {isUploadingSeguro ? (
+                    <div className="flex flex-col items-center py-2">
+                      <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin mb-1" />
+                      <span className="text-[10px] font-semibold text-slate-600">Enviando...</span>
+                    </div>
+                  ) : seguroUrl ? (
+                    <div className="flex flex-col items-center space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                        <Check className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-semibold text-emerald-700">Seguro Anexado</span>
+                      <div className="flex gap-3 mt-1">
+                        <a href={seguroUrl} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600 hover:underline z-20 relative">Ver Arquivo</a>
+                        <button type="button" onClick={() => setSeguroUrl('')} className="text-[10px] font-semibold text-rose-600 hover:underline z-20 relative">Remover</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center py-2 text-slate-500 group-hover:text-indigo-500 transition-colors">
+                      <Upload className="w-5 h-5 mb-2" />
+                      <span className="text-[11px] font-semibold uppercase tracking-wider">Apólice de Seguro</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

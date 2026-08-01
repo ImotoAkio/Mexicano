@@ -5,7 +5,7 @@ interface ClientCheckinModalProps {
   isOpen: boolean;
   onClose: () => void;
   reservation: any;
-  onSuccess: () => void;
+  onSuccess: (checkinData?: any) => void;
 }
 
 export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuccess }: ClientCheckinModalProps) {
@@ -77,7 +77,12 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
         throw new Error(data.message || 'Erro ao confirmar reserva.');
       }
 
-      onSuccess();
+      onSuccess(data?.reservation || {
+        previsaoSaida,
+        previsaoChegada,
+        pessoasABordo: pessoasABordo.toString(),
+        destino
+      });
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {

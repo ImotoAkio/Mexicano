@@ -9,6 +9,7 @@ interface ClientReservationModalProps {
   selectedDate: string;
   client: any;
   boats: any[];
+  preselectedBoatId?: any;
   onSuccess: (newRes?: any) => void;
 }
 
@@ -25,9 +26,23 @@ export default function ClientReservationModal({
   selectedDate, 
   client, 
   boats,
+  preselectedBoatId,
   onSuccess 
 }: ClientReservationModalProps) {
-  const [selectedBoatId, setSelectedBoatId] = useState(boats.length === 1 ? boats[0].id : '');
+  const [selectedBoatId, setSelectedBoatId] = useState(() => {
+    if (preselectedBoatId) return preselectedBoatId;
+    return boats.length > 0 ? boats[0].id : '';
+  });
+
+  React.useEffect(() => {
+    if (isOpen) {
+      if (preselectedBoatId) {
+        setSelectedBoatId(preselectedBoatId);
+      } else if (boats.length > 0) {
+        setSelectedBoatId(boats[0].id);
+      }
+    }
+  }, [isOpen, preselectedBoatId, boats]);
   const [observacoes, setObservacoes] = useState('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -208,7 +223,7 @@ export default function ClientReservationModal({
               <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-[#B69D74]/20 to-transparent border border-[#B69D74]/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(182,157,116,0.15)]">
                 <Anchor className="w-8 h-8 text-[#B69D74]" />
               </div>
-              <h2 className="text-2xl font-light text-white tracking-wide">Sua reserva está confirmada!</h2>
+              <h2 className="text-2xl font-light text-white tracking-wide">Sua reserva foi realizada!</h2>
               <p className="text-sm text-white/60 max-w-sm mx-auto leading-relaxed">
                 A embarcação <strong className="text-white font-medium">{b?.nome}</strong> foi agendada para o dia <strong className="text-[#B69D74]">{formatDateBR(selectedDate)}</strong>.
               </p>

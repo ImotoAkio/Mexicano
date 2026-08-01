@@ -217,6 +217,12 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN temSom TINYINT(1) DEFAULT 0;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN documentoUrl VARCHAR(255);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN seguroUrl VARCHAR(255);`);
+    } catch (e) {}
 
     // 3. Reservas Table
     await connection.query(`
@@ -858,8 +864,8 @@ export async function upsertBoat(boat: any) {
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -872,7 +878,9 @@ export async function upsertBoat(boat: any) {
       whatsappGroupId = VALUES(whatsappGroupId),
       emManutencao = VALUES(emManutencao),
       imagemUrl = VALUES(imagemUrl),
-      temSom = VALUES(temSom)
+      temSom = VALUES(temSom),
+      documentoUrl = VALUES(documentoUrl),
+      seguroUrl = VALUES(seguroUrl)
   `;
 
   await currentPool.query(query, [
@@ -888,7 +896,9 @@ export async function upsertBoat(boat: any) {
     boat.whatsappGroupId || null,
     boat.emManutencao ? 1 : 0,
     boat.imagemUrl || null,
-    boat.temSom ? 1 : 0
+    boat.temSom ? 1 : 0,
+    boat.documentoUrl || null,
+    boat.seguroUrl || null
   ]);
 }
 
@@ -1006,16 +1016,17 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
     for (const boat of payload.boats) {
       const donosJson = boat.donos ? JSON.stringify(boat.donos) : JSON.stringify([]);
       await connection.query(`
-        INSERT INTO Embarcacoes (id, tipo, nome, numero, modelo, fabricante, ano, donos, googleCalendarId, whatsappGroupId, emManutencao, temSom)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO Embarcacoes (id, tipo, nome, numero, modelo, fabricante, ano, donos, googleCalendarId, whatsappGroupId, emManutencao, temSom, imagemUrl, documentoUrl, seguroUrl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           tipo = VALUES(tipo), nome = VALUES(nome), numero = VALUES(numero),
           modelo = VALUES(modelo), fabricante = VALUES(fabricante),
           ano = VALUES(ano), donos = VALUES(donos), googleCalendarId = VALUES(googleCalendarId),
-          whatsappGroupId = VALUES(whatsappGroupId), emManutencao = VALUES(emManutencao), temSom = VALUES(temSom)
+          whatsappGroupId = VALUES(whatsappGroupId), emManutencao = VALUES(emManutencao), temSom = VALUES(temSom),
+          imagemUrl = VALUES(imagemUrl), documentoUrl = VALUES(documentoUrl), seguroUrl = VALUES(seguroUrl)
       `, [
         boat.id, boat.tipo, boat.nome, boat.numero, boat.modelo, boat.fabricante,
-        boat.ano, donosJson, boat.googleCalendarId || null, boat.whatsappGroupId || null, boat.emManutencao ? 1 : 0, boat.temSom ? 1 : 0
+        boat.ano, donosJson, boat.googleCalendarId || null, boat.whatsappGroupId || null, boat.emManutencao ? 1 : 0, boat.temSom ? 1 : 0, boat.imagemUrl || null, boat.documentoUrl || null, boat.seguroUrl || null
       ]);
     }
 
