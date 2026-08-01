@@ -1290,10 +1290,11 @@ app.post("/api/db/save", requireAdminAuth, sensitiveLimiter, async (req, res) =>
     } else if (type === "reservations") {
       if (action === "delete") {
         await deleteReservation(data.id || data);
+        io.emit("marina_update", { action: 'delete', reservation: data });
       } else {
         await upsertReservation(data);
+        io.emit("marina_update", { action: 'upsert', reservation: data });
       }
-      io.emit("marina_update");
     } else if (type === "controles_som") {
       if (action === "upsert") {
         const { upsertControleSom } = await import('./server-db');

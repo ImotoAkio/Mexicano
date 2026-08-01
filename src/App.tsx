@@ -301,6 +301,14 @@ export default function App() {
     setIsAuthenticated(false);
   };
 
+  useEffect(() => {
+    const handler = () => {
+      handleLogout();
+    };
+    window.addEventListener('auth-expired', handler);
+    return () => window.removeEventListener('auth-expired', handler);
+  }, []);
+
   const isFeedbackRoute = currentPath === '/feedback' || currentPath.startsWith('/feedback');
   const isAdminRoute = currentPath.startsWith('/admin');
   const isPortalRoute = currentPath.startsWith('/portal');

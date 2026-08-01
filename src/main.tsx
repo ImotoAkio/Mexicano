@@ -77,7 +77,7 @@ if (typeof window !== 'undefined') {
         localStorage.removeItem('client_token');
         localStorage.removeItem('client_data');
         localStorage.removeItem('client_data_cache');
-        window.location.reload();
+        window.dispatchEvent(new CustomEvent('auth-expired'));
       }
       return response;
     }
@@ -89,7 +89,7 @@ if (typeof window !== 'undefined') {
       localStorage.removeItem('client_token');
       localStorage.removeItem('client_data');
       localStorage.removeItem('client_data_cache');
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('auth-expired'));
     }
     return response;
   };
