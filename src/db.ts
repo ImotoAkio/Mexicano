@@ -133,13 +133,13 @@ export const clientDB = {
     const clientToDelete = memoryClients.find(c => c.id === id);
     memoryClients = memoryClients.filter(c => c.id !== id);
 
-    let boatsChanged = false;
+    const updatedBoatIds: string[] = [];
     if (clientToDelete) {
       // Remove ownership from ALL boats
       memoryBoats.forEach(b => {
         if (b.donos.includes(id)) {
           b.donos = b.donos.filter(d => d !== id);
-          boatsChanged = true;
+          updatedBoatIds.push(b.id);
         }
       });
     }
@@ -150,9 +150,11 @@ export const clientDB = {
 
     // Remote sync deletion & relations update
     saveToRemoteDB('clients', 'delete', { id });
-    if (clientToDelete && boatsChanged) {
+    if (clientToDelete && updatedBoatIds.length > 0) {
       memoryBoats.forEach(b => {
-        saveToRemoteDB('boats', 'update', b);
+        if (updatedBoatIds.includes(b.id)) {
+          saveToRemoteDB('boats', 'update', b);
+        }
       });
     }
 
@@ -216,12 +218,11 @@ export const boatDB = {
     memoryBoats[idx] = updatedBoat;
 
     // Sync client records of their ownerships
-    let clientsChanged = false;
+    const modifiedClientIds = new Set<string>();
     if (updatedFields.donos) {
       const newDonos = updatedFields.donos;
 
       memoryClients.forEach(c => {
-        let isUpdated = false;
         if (!c.embarcacoes) {
           c.embarcacoes = [{ embarcacaoId: c.embarcacaoId, cota: c.cota }];
         }
@@ -231,20 +232,20 @@ export const boatDB = {
 
         if (!ownsThisBoat && shouldOwnThisBoat) {
           c.embarcacoes.push({ embarcacaoId: id, cota: '1/4' }); // default cota
-          clientsChanged = true;
-          isUpdated = true;
+          modifiedClientIds.add(c.id);
         } else if (ownsThisBoat && !shouldOwnThisBoat) {
           c.embarcacoes = c.embarcacoes.filter(eb => eb.embarcacaoId !== id);
-          clientsChanged = true;
-          isUpdated = true;
+          modifiedClientIds.add(c.id);
         }
       });
     }
 
     saveToRemoteDB('boats', 'update', updatedBoat);
-    if (clientsChanged) {
+    if (modifiedClientIds.size > 0) {
       memoryClients.forEach(c => {
-        saveToRemoteDB('clients', 'update', c);
+        if (modifiedClientIds.has(c.id)) {
+          saveToRemoteDB('clients', 'update', c);
+        }
       });
     }
 
@@ -258,7 +259,7 @@ export const boatDB = {
     memoryReservations = memoryReservations.filter(r => r.embarcacaoId !== id);
     
     // Also update any clients that were linked to this boat
-    let clientsChanged = false;
+    const modifiedClientIds = new Set<string>();
     memoryClients.forEach(c => {
       if (!c.embarcacoes) {
         c.embarcacoes = [{ embarcacaoId: c.embarcacaoId, cota: c.cota }];
@@ -274,18 +275,20 @@ export const boatDB = {
           c.embarcacaoId = '';
           c.cota = '';
         }
-        clientsChanged = true;
+        modifiedClientIds.add(c.id);
       } else if (c.embarcacaoId === id) {
         c.embarcacaoId = '';
         c.cota = '';
-        clientsChanged = true;
+        modifiedClientIds.add(c.id);
       }
     });
 
     saveToRemoteDB('boats', 'delete', { id });
-    if (clientsChanged) {
+    if (modifiedClientIds.size > 0) {
       memoryClients.forEach(c => {
-        saveToRemoteDB('clients', 'update', c);
+        if (modifiedClientIds.has(c.id)) {
+          saveToRemoteDB('clients', 'update', c);
+        }
       });
     }
     if (reservationsToDelete.length > 0) {

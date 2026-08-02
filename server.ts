@@ -87,7 +87,7 @@ app.use(helmet({
   hsts: false,
 }));
 
-// CORS configuration - allow standard local development origins
+// CORS configuration - allow standard local development origins and production domain
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -97,13 +97,17 @@ const allowedOrigins = [
 ];
 if (process.env.APP_URL) {
   allowedOrigins.push(process.env.APP_URL);
+  if (process.env.APP_URL.startsWith("https://")) {
+    allowedOrigins.push(process.env.APP_URL.replace("https://", "http://"));
+  }
 }
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://192.168.")) {
+    if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://192.168.") || origin.includes("echo.dev.br")) {
       callback(null, true);
     } else {
-      callback(new Error("CORS access denied."));
+      callback(null, false);
     }
   },
   credentials: true
@@ -137,14 +141,12 @@ if (!fs.existsSync(comprovantesUploadsDir)) fs.mkdirSync(comprovantesUploadsDir,
 if (!fs.existsSync(driveUploadsDir)) fs.mkdirSync(driveUploadsDir, { recursive: true });
 if (!fs.existsSync(boletosUploadsDir)) fs.mkdirSync(boletosUploadsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
-
 const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
 
-
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 600, // Permite navegação fluida e sincronização sem estourar limites
   message: { error: true, message: "Taxa de requisições excedida." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -153,13 +155,13 @@ app.use('/api/', apiLimiter);
 
 const sensitiveLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
+  max: 200,
   message: { error: true, message: "Taxa excedida para operação sensível." },
 });
 
 const whatsappLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 300,
   message: { error: true, message: "Taxa excedida para disparos de WhatsApp." },
 });
 
@@ -242,9 +244,6 @@ async function getGoogleAuthClient(): Promise<JWT | null> {
   return client;
 }
 
-// ---------------- Auth Middleware ----------------
-
-// Middleware: Require admin JWT token
 function requireAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -1305,7 +1304,7 @@ app.get("/api/db/pull", requireAdminAuth, async (req, res) => {
 });
 
 // Route: Save/Upsert single client, boat, or reservation record
-app.post("/api/db/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+app.post("/api/db/save", requireAdminAuth, async (req, res) => {
   const { type, action, data } = req.body;
   
   if (!type || !action || !data) {
@@ -1350,7 +1349,7 @@ app.post("/api/db/save", requireAdminAuth, sensitiveLimiter, async (req, res) =>
 });
 
 // Route: Bulk save / upload full state to MariaDB/MySQL database
-app.post("/api/db/bulk-save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+app.post("/api/db/bulk-save", requireAdminAuth, async (req, res) => {
   try {
     const { clients, boats, reservations } = req.body;
     await bulkSyncDatabase({ 
@@ -1599,7 +1598,7 @@ app.get("/api/whatsapp/status", requireAdminAuth, async (req, res) => {
     const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
-      return res.status(500).json({ error: true, message: "Evolution API not configured" });
+      return res.json({ instance: { state: "not_configured" }, message: "Evolution API (EVOLUTION_API_URL / EVOLUTION_API_KEY) não configurada nas variáveis de ambiente." });
     }
 
     const response = await fetch(`${apiUrl}/instance/connectionState/${instance}`, {
@@ -1618,7 +1617,8 @@ app.get("/api/whatsapp/status", requireAdminAuth, async (req, res) => {
     const data = await response.json();
     res.json(data);
   } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to fetch status" });
+    console.error("Error checking WhatsApp status:", err);
+    res.status(502).json({ error: true, message: err.message || "Failed to fetch WhatsApp status" });
   }
 });
 
@@ -1630,7 +1630,7 @@ app.get("/api/whatsapp/connect", requireAdminAuth, async (req, res) => {
     const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
-      return res.status(500).json({ error: true, message: "Evolution API not configured" });
+      return res.status(503).json({ error: true, message: "Evolution API não configurada nas variáveis de ambiente." });
     }
 
     const response = await fetch(`${apiUrl}/instance/connect/${instance}`, {
@@ -1645,7 +1645,8 @@ app.get("/api/whatsapp/connect", requireAdminAuth, async (req, res) => {
     const data = await response.json();
     res.json(data);
   } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to connect" });
+    console.error("Error connecting WhatsApp:", err);
+    res.status(502).json({ error: true, message: err.message || "Failed to connect" });
   }
 });
 
@@ -2548,6 +2549,18 @@ async function setupViteAndListen() {
     // Production mode serves the compiled final static package
     const distPath = path.join(process.cwd(), "dist");
     
+    // Global JSON error handler for API routes
+    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      console.error("Express API Error:", err);
+      if (req.path.startsWith("/api/")) {
+        return res.status(err.status || 500).json({
+          error: true,
+          message: err.message || "Erro interno do servidor."
+        });
+      }
+      next(err);
+    });
+
     app.use(express.static(distPath));
     
     app.get("*", (req, res) => {

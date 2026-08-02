@@ -4,15 +4,21 @@ services:
   app-mexicano:
     # Substitua 'seu_usuario' e 'nome_do_repo' pelo nome real do seu github e repositório
     image: ghcr.io/imotoakio/mexicano:latest 
+    env_file:
+      - .env
     environment:
       - PORT=3000
       - NODE_ENV=production
-      # Você pode mapear as variáveis do .env diretamente pela interface do Portainer (Aba Env)
-      # ou descomentar abaixo e preencher:
-      # - DB_HOST=ip-do-banco-ou-nome-do-container
-      # - DB_USER=usuario
-      # - DB_PASSWORD=senha
-      # - DB_NAME=gestao_nautica
+      - DB_HOST=${DB_HOST:-84.247.143.102}
+      - DB_PORT=${DB_PORT:-13306}
+      - DB_USER=${DB_USER:-nautico_user}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-gestao_nautica}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL:-https://api.echo.dev.br}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-mexicano}
+      - JWT_SECRET=${JWT_SECRET}
+      - APP_URL=${APP_URL}
     networks:
       - echonet
     volumes:

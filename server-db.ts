@@ -7,15 +7,17 @@ let pool: mysql.Pool | null = null;
 let connectionError: string | null = null;
 let isInitialized = false;
 
+const cleanEnv = (val?: string) => val ? val.replace(/^['"]|['"]$/g, '').trim() : '';
+
 // Initialize standard lazy-loaded MySQL/MariaDB database connection pool
 export function getDbPool(): mysql.Pool | null {
   if (pool) return pool;
 
-  const host = process.env.DB_HOST;
-  const port = parseInt(process.env.DB_PORT || "3306", 10);
-  const user = process.env.DB_USER;
-  const password = process.env.DB_PASSWORD;
-  const database = process.env.DB_NAME;
+  const host = cleanEnv(process.env.DB_HOST);
+  const port = parseInt(cleanEnv(process.env.DB_PORT) || "3306", 10);
+  const user = cleanEnv(process.env.DB_USER);
+  const password = cleanEnv(process.env.DB_PASSWORD);
+  const database = cleanEnv(process.env.DB_NAME);
 
   if (!host || !user || !database) {
     connectionError = "Database environment credentials missing (DB_HOST, DB_USER, or DB_NAME is empty). Running in local device fallback mode.";
@@ -82,11 +84,11 @@ export async function getDbStatus() {
 
 // Automatically create tables if they do not exist when connection is verified
 export async function initializeDatabase() {
-  const host = process.env.DB_HOST;
-  const port = parseInt(process.env.DB_PORT || "3306", 10);
-  const user = process.env.DB_USER;
-  const password = process.env.DB_PASSWORD;
-  const database = process.env.DB_NAME;
+  const host = cleanEnv(process.env.DB_HOST);
+  const port = parseInt(cleanEnv(process.env.DB_PORT) || "3306", 10);
+  const user = cleanEnv(process.env.DB_USER);
+  const password = cleanEnv(process.env.DB_PASSWORD);
+  const database = cleanEnv(process.env.DB_NAME);
 
   if (!host || !user || !database) {
     console.log("MySQL/MariaDB connection settings missing. Skipping database auto-creation.");
@@ -1694,4 +1696,22 @@ export async function deleteFolga(id: string) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query("DELETE FROM Folgas WHERE id = ?", [id]);
+}
+
+export async function upsertCatalogoEPI(item: any) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query(`
+    INSERT INTO CatalogoEPIs (id, nome, caPadrao, createdAt)
+    VALUES (?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      nome = VALUES(nome),
+      caPadrao = VALUES(caPadrao)
+  `, [item.id, item.nome, item.caPadrao || item.ca || null, item.createdAt || new Date().toISOString()]);
+}
+
+export async function deleteCatalogoEPI(id: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM CatalogoEPIs WHERE id = ?", [id]);
 }
