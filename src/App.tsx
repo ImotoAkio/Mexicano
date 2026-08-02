@@ -2,6 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Logo from './components/Logo';
 import { loadFromRemote } from './db';
 import ErrorBoundary from './components/shared/ErrorBoundary';
+import { STORAGE_KEYS, UI } from './utils/constants';
 
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'));
@@ -108,7 +109,7 @@ export default function App() {
 
   // Admin session: JWT-based
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return !!localStorage.getItem('admin_token');
+    return !!localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
   });
   const [adminRole, setAdminRole] = useState<'admin' | 'marina' | 'financeiro' | 'pecas_servicos' | null>(null);
   const [adminName, setAdminName] = useState<string>('');
@@ -116,13 +117,13 @@ export default function App() {
   const [isAdminDbLoaded, setIsAdminDbLoaded] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabType>(() => {
-    return (localStorage.getItem('admin_active_tab') as TabType) || 'schedules';
+    return (localStorage.getItem(STORAGE_KEYS.ADMIN_ACTIVE_TAB) as TabType) || 'schedules';
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('admin_active_tab', activeTab);
+    localStorage.setItem(STORAGE_KEYS.ADMIN_ACTIVE_TAB, activeTab);
   }, [activeTab]);
 
   useEffect(() => {
@@ -159,10 +160,16 @@ export default function App() {
     }
   }, [isAuthenticated, adminRole, isRoleLoading]);
 
-  // Load DB into memory
+  // Load DB into memory (com AbortController para evitar race conditions)
   useEffect(() => {
     if (isAuthenticated && !isAdminDbLoaded) {
-      loadFromRemote().then(() => setIsAdminDbLoaded(true));
+      const controller = new AbortController();
+      loadFromRemote().then(() => {
+        if (!controller.signal.aborted) {
+          setIsAdminDbLoaded(true);
+        }
+      });
+      return () => controller.abort();
     }
   }, [isAuthenticated, isAdminDbLoaded]);
 
@@ -297,7 +304,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_token');
+    localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
     setIsAuthenticated(false);
   };
 

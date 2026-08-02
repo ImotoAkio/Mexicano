@@ -1,16 +1,17 @@
-import { Cliente, Embarcacao, Reserva, Manutencao, Funcionario, Folga } from './types';
+import { Cliente, Embarcacao, Reserva, Manutencao, Funcionario, Folga, Mecanico, EpiEntrega, CatalogoEpi, HistoricoEPIMensal } from './types';
 
 // In-Memory Database Arrays (No LocalStorage)
 let memoryClients: Cliente[] = [];
 let memoryBoats: Embarcacao[] = [];
 let memoryReservations: Reserva[] = [];
 let memoryManutencoes: Manutencao[] = [];
-let memoryMecanicos: any[] = [];
+let memoryMecanicos: Mecanico[] = [];
 let memoryFuncionarios: Funcionario[] = [];
 let memoryFolgas: Folga[] = [];
-let memoryEpis: any[] = [];
-let memoryCatalogoEpis: any[] = [];
-let memoryHistoricoEpis: any[] = [];
+let memoryEpis: EpiEntrega[] = [];
+let memoryCatalogoEpis: CatalogoEpi[] = [];
+let memoryHistoricoEpis: HistoricoEPIMensal[] = [];
+
 
 // Helper: Get admin JWT token for authenticated API calls
 export function getAdminToken(): string | null {

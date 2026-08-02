@@ -51,9 +51,9 @@ export default function UsersPage() {
       }
       const data = await res.json();
       setUsers(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'Erro de conexão com o servidor.');
+      setError(err instanceof Error ? err.message : 'Erro de conexão com o servidor.');
       
       // Error handled. No localStorage fallback for admin auth.
     } finally {
@@ -130,8 +130,8 @@ export default function UsersPage() {
       // Refresh list
       await fetchUsers();
       setIsModalOpen(false);
-    } catch (err: any) {
-      setFormError(err.message || 'Falha ao salvar usuário.');
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Falha ao salvar usuário.');
       
       setIsModalOpen(false);
     } finally {
@@ -164,8 +164,8 @@ export default function UsersPage() {
       }
 
       await fetchUsers();
-    } catch (err: any) {
-      // Do nothing on failure, user already sees console error.
+    } catch (err: unknown) {
+      console.error('Erro ao deletar usuário:', err);
     }
   };
 

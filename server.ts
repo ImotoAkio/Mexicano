@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { createServer as createViteServer } from "vite";
 import { Server as SocketIOServer } from "socket.io";
 import http from "http";
+import https from "https";
 import { JWT } from "google-auth-library";
 import dotenv from "dotenv";
 import helmet from "helmet";
@@ -37,6 +38,12 @@ import { getOrRegisterAsaasCustomer, createAsaasCharge, getPixQrCode, createAsaa
 // Load environment variables early
 dotenv.config();
 
+const cleanEnvStr = (val?: string) => val ? val.replace(/^['"]|['"]$/g, '').trim() : '';
+if (process.env.EVOLUTION_API_URL) process.env.EVOLUTION_API_URL = cleanEnvStr(process.env.EVOLUTION_API_URL);
+if (process.env.EVOLUTION_API_KEY) process.env.EVOLUTION_API_KEY = cleanEnvStr(process.env.EVOLUTION_API_KEY);
+if (process.env.EVOLUTION_INSTANCE) process.env.EVOLUTION_INSTANCE = cleanEnvStr(process.env.EVOLUTION_INSTANCE);
+if (process.env.APP_URL) process.env.APP_URL = cleanEnvStr(process.env.APP_URL);
+
 process.on("uncaughtException", (err) => {
   console.error("FATAL UNCAUGHT EXCEPTION:", err);
 });
@@ -44,8 +51,14 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("FATAL UNHANDLED REJECTION:", reason);
 });
 
-// Ignore SSL certificate errors (due to Evolution API cert issues)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+// HTTPS agent for Evolution API (may use self-signed cert) - scoped to avoid disabling SSL globally
+const evolutionHttpsAgent = new https.Agent({ rejectUnauthorized: false });
+
+// Helper: fetch com agente HTTPS tolerante para a Evolution API
+async function evolutionFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const { agent: _unused, ...rest } = options as any;
+  return fetch(url, { ...rest, agent: evolutionHttpsAgent } as any);
+}
 
 // JWT secret — use env var or generate a random fallback (should be set in production)
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -54,7 +67,7 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 const JWT_EXPIRY = "8h";
-const JWT_CLIENT_EXPIRY = "365d";
+const JWT_CLIENT_EXPIRY = "30d";
 
 // Create Express app
 const app = express();
@@ -679,7 +692,7 @@ app.post("/api/client/checkin", requireClientAuth, async (req, res) => {
     res.json({ success: true, reservation: updatedRes });
   } catch (err: any) {
     console.error("Client checkin error:", err);
-    res.status(500).json({ error: true, message: "Erro interno: " + err.message, stack: err.stack });
+    res.status(500).json({ error: true, message: "Erro ao processar check-in." });
   }
 });
 
@@ -720,6 +733,126 @@ app.get("/api/financeiro/transacoes", requireAdminAuth, async (req, res) => {
   } catch (err: any) {
     console.error("Error fetching transacoes:", err);
     res.status(500).json({ error: true, message: err.message || "Failed to fetch transacoes" });
+  }
+});
+
+// Route: Operacional - Folgas
+app.post("/api/folgas/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteFolga(data.id);
+    } else if (action === 'upsert') {
+      await upsertFolga(data);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save folga" });
+  }
+});
+
+// Route: Operacional/Financeiro - Manutencoes
+app.post("/api/manutencoes/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteManutencao(data.id);
+    } else if (action === 'upsert') {
+      await upsertManutencao(data);
+
+      const pool = getDbPool();
+      if (!pool) throw new Error("MySQL Connection pool is offline.");
+      const [existingTrans] = await pool.query(
+        "SELECT id, clienteId FROM TransacoesFinanceiras WHERE id LIKE ?",
+        [`fin_manut_${data.id}%`]
+      );
+      const hasExisting = (existingTrans as any[]).length > 0;
+
+      if (data.gerarFinanceiro || hasExisting) {
+        const baseValor = Number(data.valorRepassado) || Number(data.custo) || 0;
+        if (baseValor > 0) {
+          const clientsToSync = new Set<string>();
+          for (const t of existingTrans as any[]) {
+            if (t.clienteId) clientsToSync.add(t.clienteId);
+          }
+
+          // ─── Transação SQL: garante atomicidade entre DELETE e INSERTs ───
+          const connection = await pool.getConnection();
+          try {
+            await connection.beginTransaction();
+
+            await connection.query(
+              "DELETE FROM TransacoesFinanceiras WHERE id LIKE ?",
+              [`fin_manut_${data.id}%`]
+            );
+
+            const transacaoBaseId = `fin_manut_${data.id}`;
+            const transacaoBase = {
+              id: transacaoBaseId,
+              tipo: 'receita',
+              categoria: 'Serviços/Manutenção',
+              valor: baseValor,
+              dataVencimento: data.dataSaida,
+              status: 'pendente',
+              descricao: data.descricaoServico || `Manutenção Embarcação`,
+              embarcacaoId: data.embarcacaoId,
+              createdAt: new Date().toISOString()
+            };
+
+            const dbData = await pullDatabase();
+            const boat = dbData.boats.find((b: any) => b.id === data.embarcacaoId);
+
+            if (boat && boat.donos && boat.donos.length > 0) {
+              const numDonos = boat.donos.length;
+              const valorRateado = Number((baseValor / numDonos).toFixed(2));
+
+              for (const donoId of boat.donos) {
+                const splitData = {
+                  ...transacaoBase,
+                  id: `${transacaoBaseId}_${donoId}`,
+                  clienteId: donoId,
+                  valor: valorRateado,
+                  descricao: `${transacaoBase.descricao} | Rateio (1/${numDonos})`
+                };
+                await upsertTransacao(splitData);
+                clientsToSync.add(donoId);
+              }
+            } else {
+              await upsertTransacao(transacaoBase);
+            }
+
+            await connection.commit();
+          } catch (txErr) {
+            await connection.rollback();
+            throw txErr;
+          } finally {
+            connection.release();
+          }
+
+          for (const clienteId of clientsToSync) {
+            await syncClientFinancialStatus(clienteId);
+          }
+        }
+      }
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save manutencao" });
+  }
+});
+
+// Route: Operacional - Mecanicos
+app.post("/api/mecanicos/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteMecanico(data.id);
+    } else if (action === 'upsert') {
+      await upsertMecanico(data);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save mecanico" });
   }
 });
 
@@ -1065,112 +1198,6 @@ app.post("/api/funcionarios/save", requireAdminAuth, sensitiveLimiter, async (re
   }
 });
 
-// Route: Operacional - Folgas
-app.post("/api/folgas/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
-  const { action, data } = req.body;
-  try {
-    if (action === 'delete') {
-      await deleteFolga(data.id);
-    } else if (action === 'upsert') {
-      await upsertFolga(data);
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to save folga" });
-  }
-});
-
-// Route: Operacional/Financeiro - Manutencoes
-app.post("/api/manutencoes/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
-  const { action, data } = req.body;
-  try {
-    if (action === 'delete') {
-      await deleteManutencao(data.id);
-    } else if (action === 'upsert') {
-      await upsertManutencao(data);
-
-      const pool = getDbPool();
-      if (!pool) throw new Error("MySQL Connection pool is offline.");
-      const [existingTrans] = await pool.query(
-        "SELECT id, clienteId FROM TransacoesFinanceiras WHERE id LIKE ?",
-        [`fin_manut_${data.id}%`]
-      );
-      const hasExisting = (existingTrans as any[]).length > 0;
-
-      if (data.gerarFinanceiro || hasExisting) {
-        const baseValor = Number(data.valorRepassado) || Number(data.custo) || 0;
-        if (baseValor > 0) {
-          const clientsToSync = new Set<string>();
-          for (const t of existingTrans as any[]) {
-            if (t.clienteId) clientsToSync.add(t.clienteId);
-          }
-
-          await pool.query(
-            "DELETE FROM TransacoesFinanceiras WHERE id LIKE ?",
-            [`fin_manut_${data.id}%`]
-          );
-
-          const transacaoBaseId = `fin_manut_${data.id}`;
-          const transacaoBase = {
-            id: transacaoBaseId,
-            tipo: 'receita',
-            categoria: 'Serviços/Manutenção',
-            valor: baseValor,
-            dataVencimento: data.dataSaida,
-            status: 'pendente',
-            descricao: data.descricaoServico || `Manutenção Embarcação`,
-            embarcacaoId: data.embarcacaoId,
-            createdAt: new Date().toISOString()
-          };
-
-          const dbData = await pullDatabase();
-          const boat = dbData.boats.find((b: any) => b.id === data.embarcacaoId);
-          
-          if (boat && boat.donos && boat.donos.length > 0) {
-            const numDonos = boat.donos.length;
-            const valorRateado = Number((baseValor / numDonos).toFixed(2));
-            
-            for (const donoId of boat.donos) {
-              const splitData = {
-                ...transacaoBase,
-                id: `${transacaoBaseId}_${donoId}`,
-                clienteId: donoId,
-                valor: valorRateado,
-                descricao: `${transacaoBase.descricao} | Rateio (1/${numDonos})`
-              };
-              await upsertTransacao(splitData);
-              clientsToSync.add(donoId);
-            }
-          } else {
-            await upsertTransacao(transacaoBase);
-          }
-
-          for (const clienteId of clientsToSync) {
-            await syncClientFinancialStatus(clienteId);
-          }
-        }
-      }
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to save manutencao" });
-  }
-});
-
-// Route: Operacional - Mecanicos
-app.post("/api/mecanicos/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
-  const { action, data } = req.body;
-  try {
-    if (action === 'delete') {
-      await deleteMecanico(data.id);
-    } else if (action === 'upsert') {
-      await upsertMecanico(data);
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to save mecanico" });
-  }
-});
 
 // Route: Upload boat image
 app.post("/api/upload/boat-image", requireAdminAuth, upload.single('image'), async (req, res) => {
@@ -1601,7 +1628,7 @@ app.get("/api/whatsapp/status", requireAdminAuth, async (req, res) => {
       return res.json({ instance: { state: "not_configured" }, message: "Evolution API (EVOLUTION_API_URL / EVOLUTION_API_KEY) não configurada nas variáveis de ambiente." });
     }
 
-    const response = await fetch(`${apiUrl}/instance/connectionState/${instance}`, {
+    const response = await evolutionFetch(`${apiUrl}/instance/connectionState/${instance}`, {
       method: "GET",
       headers: { "apikey": apiKey },
       signal: AbortSignal.timeout(10000)
@@ -1633,7 +1660,7 @@ app.get("/api/whatsapp/connect", requireAdminAuth, async (req, res) => {
       return res.status(503).json({ error: true, message: "Evolution API não configurada nas variáveis de ambiente." });
     }
 
-    const response = await fetch(`${apiUrl}/instance/connect/${instance}`, {
+    const response = await evolutionFetch(`${apiUrl}/instance/connect/${instance}`, {
       method: "GET",
       headers: { "apikey": apiKey }
     });
@@ -1661,7 +1688,7 @@ app.delete("/api/whatsapp/logout", requireAdminAuth, async (req, res) => {
       return res.status(500).json({ error: true, message: "Evolution API not configured" });
     }
 
-    const response = await fetch(`${apiUrl}/instance/logout/${instance}`, {
+    const response = await evolutionFetch(`${apiUrl}/instance/logout/${instance}`, {
       method: "DELETE",
       headers: { "apikey": apiKey }
     });
@@ -1691,7 +1718,7 @@ app.post("/api/whatsapp/instance/create", requireAdminAuth, async (req, res) => 
       return res.status(500).json({ error: true, message: "Evolution API not configured" });
     }
 
-    const response = await fetch(`${apiUrl}/instance/create`, {
+    const response = await evolutionFetch(`${apiUrl}/instance/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
       body: JSON.stringify({ instanceName, qrcode: true, integration: "WHATSAPP-BAILEYS" })
@@ -1720,7 +1747,7 @@ app.delete("/api/whatsapp/instance/delete/:instanceName", requireAdminAuth, asyn
       return res.status(500).json({ error: true, message: "Evolution API not configured" });
     }
 
-    const response = await fetch(`${apiUrl}/instance/delete/${instanceName}`, {
+    const response = await evolutionFetch(`${apiUrl}/instance/delete/${instanceName}`, {
       method: 'DELETE',
       headers: { 'apikey': apiKey }
     });
@@ -1747,7 +1774,7 @@ app.get("/api/whatsapp/groups", requireAnyAuth, async (req, res) => {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
     }
 
-    const response = await fetch(`${apiUrl}/group/fetchAllGroups/${instance}?getParticipants=false`, {
+    const response = await evolutionFetch(`${apiUrl}/group/fetchAllGroups/${instance}?getParticipants=false`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -1778,7 +1805,7 @@ app.get("/api/whatsapp/contacts", requireAnyAuth, async (req, res) => {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
     }
 
-    const response = await fetch(`${apiUrl}/chat/findContacts/${instance}`, {
+    const response = await evolutionFetch(`${apiUrl}/chat/findContacts/${instance}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1831,7 +1858,7 @@ app.post("/api/whatsapp/send-text", requireAdminAuth, whatsappLimiter, async (re
       text: text
     };
 
-    const response = await fetch(`${apiUrl}/message/sendText/${instance}`, {
+    const response = await evolutionFetch(`${apiUrl}/message/sendText/${instance}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1891,7 +1918,7 @@ app.post("/api/whatsapp/finance/send-message", requireAdminAuth, whatsappLimiter
         fileName: fileName || "arquivo"
       };
 
-      const response = await fetch(`${apiUrl}/message/sendMedia/${instanceName}`, {
+      const response = await evolutionFetch(`${apiUrl}/message/sendMedia/${instanceName}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "apikey": apiKey },
         body: JSON.stringify(payload)
@@ -1905,7 +1932,7 @@ app.post("/api/whatsapp/finance/send-message", requireAdminAuth, whatsappLimiter
       // Send Text only
       const payload = { number: cleanedNumber, text };
 
-      const response = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
+      const response = await evolutionFetch(`${apiUrl}/message/sendText/${instanceName}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "apikey": apiKey },
         body: JSON.stringify(payload)
@@ -1953,7 +1980,7 @@ app.post("/api/whatsapp/send-calendar", requireAnyAuth, whatsappLimiter, async (
       media: base64Data
     };
 
-    const response = await fetch(`${apiUrl}/message/sendMedia/${instance}`, {
+    const response = await evolutionFetch(`${apiUrl}/message/sendMedia/${instance}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2065,8 +2092,8 @@ app.post("/api/boletos/upload", upload.array('boletos', 50), async (req, res) =>
     res.json({ success: true, boletos: results });
   } catch (err: any) {
     console.error("Error processing boletos:", err);
-    fs.writeFileSync('boleto-debug.log', err.message + '\n' + err.stack);
-    res.status(500).json({ error: true, message: "Erro ao processar boletos.", details: err.message, stack: err.stack });
+    fs.appendFileSync('boleto-debug.log', new Date().toISOString() + ' | ' + err.message + '\n' + err.stack + '\n---\n');
+    res.status(500).json({ error: true, message: "Erro ao processar boletos. Verifique o arquivo boleto-debug.log no servidor." });
   }
 });
 

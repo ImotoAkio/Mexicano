@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
 import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download } from 'lucide-react';
@@ -329,7 +329,7 @@ export default function ClientPage() {
     }
   };
 
-  const filteredClients = clients
+  const filteredClients = useMemo(() => clients
     .filter(c => {
       // 1. Text search
       const matchesSearch = !search ? true : (
@@ -360,7 +360,7 @@ export default function ClientPage() {
         const clientBoatsList = c.embarcacoes && c.embarcacoes.length > 0
           ? c.embarcacoes.map(eb => eb.embarcacaoId)
           : [c.embarcacaoId || ''];
-        
+
         matchesBoatType = clientBoatsList.some(boatId => {
           const b = boats.find(boat => boat.id === boatId);
           return b?.tipo === filterBoatType;
@@ -386,7 +386,7 @@ export default function ClientPage() {
         return new Date(a.dataCadastro).getTime() - new Date(b.dataCadastro).getTime();
       }
       return 0;
-    });
+    }), [clients, boats, search, filterBoat, filterFinance, filterBoatType, filterPlano, sortBy]);
 
   const hasActiveFilters = filterBoat !== 'all' || filterFinance !== 'all' || filterBoatType !== 'all' || search.trim() !== '' || filterPlano !== 'all';
 
