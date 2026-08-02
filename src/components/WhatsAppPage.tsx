@@ -3,7 +3,7 @@ import { reservationDB, boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente, Reserva } from '../types';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { ShieldAlert, Smartphone, UserCheck, UserX, QrCode, LogOut, CheckCircle, MessageSquare, Calendar as CalendarIcon, Check, AlertTriangle, 
-  RefreshCw, Search, Send, Clock, Ship, CalendarDays 
+  RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet 
 } from 'lucide-react';
 
 const formatFirstName = (fullName: string): string => {
@@ -686,11 +686,19 @@ const fetchWaStatus = async () => {
                              <div className="flex items-center gap-2">
                                <span className="font-bold text-xs bg-slate-200 px-1.5 py-0.5 rounded">{boatCode}</span>
                                <span className="font-bold text-sm text-slate-800">{client?.nome || 'Desconhecido'}</span>
-                               {client?.statusFinanceiro === 'inadimplente' && (
+                               {client?.statusFinanceiro === 'inadimplente' ? (
                                  <span className="font-bold text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-wider" title="Cliente inadimplente não pode usufruir da embarcação">
                                     <AlertTriangle className="w-3 h-3"/> Inadimplente
                                  </span>
-                               )}
+                               ) : (client?.temValoresEmAberto || client?.statusFinanceiro === 'pendente') ? (
+                                 <span className="font-bold text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-wider" title="Possui valores lançados em aberto">
+                                    <Wallet className="w-3 h-3"/> Possui Lançamentos
+                                 </span>
+                               ) : client?.temLancamentos ? (
+                                 <span className="font-bold text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-wider" title="Possui lançamentos no sistema">
+                                    <Wallet className="w-3 h-3"/> Com Lançamentos
+                                 </span>
+                               ) : null}
                              </div>
                             <div className="mt-1">
                               {hasPhone ? <span className="text-xs text-slate-500">{client.telefone}</span> : <span className="text-xs text-rose-600 font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> Sem telefone</span>}

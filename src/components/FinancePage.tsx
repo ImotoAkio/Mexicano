@@ -161,7 +161,9 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
       let transacoesData: any[] = [];
       if (res.ok) {
         transacoesData = await res.json();
-        setTransacoes(transacoesData);
+        if (Array.isArray(transacoesData)) {
+          setTransacoes(transacoesData);
+        }
       }
       
       const resDb = await fetch('/api/db/pull', {
@@ -169,6 +171,10 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
       });
       if (resDb.ok) {
         const dbData = await resDb.json();
+        if ((!res.ok || transacoesData.length === 0) && Array.isArray(dbData.transacoes)) {
+          transacoesData = dbData.transacoes;
+          setTransacoes(transacoesData);
+        }
         const clientsArray = dbData.clients || [];
         const todayStr = new Date().toISOString().split('T')[0];
         let clientsUpdated = false;

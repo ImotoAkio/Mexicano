@@ -18,7 +18,9 @@ export interface Cliente {
   bairro?: string;
   cidade?: string;
   estado?: string;
-  statusFinanceiro?: 'em_dia' | 'inadimplente';
+  statusFinanceiro?: 'em_dia' | 'inadimplente' | 'pendente';
+  temLancamentos?: boolean;
+  temValoresEmAberto?: boolean;
   observacoesFinanceiras?: string;
   plano?: 'normal' | 'completo';
   asaasCustomerId?: string;

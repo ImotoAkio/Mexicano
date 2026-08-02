@@ -1318,6 +1318,27 @@ export default function SchedulesPage() {
               </span>
             </div>
 
+            {(() => {
+              const overdueCount = filteredDailyReservations.filter(r => {
+                const client = clientDB.getById(r.clienteId);
+                return client?.statusFinanceiro === 'inadimplente';
+              }).length;
+              if (overdueCount === 0) return null;
+              return (
+                <div className="mx-4 mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-3 text-rose-900 shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 animate-pulse" />
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-rose-800">Alerta de Inadimplência</h4>
+                      <p className="text-xs text-rose-700 font-semibold mt-0.5">
+                        Atenção: Existe(m) <strong className="font-extrabold text-rose-900">{overdueCount} agendamento(s)</strong> de cliente(s) com débitos em atraso nesta data.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {dailyReservations.length === 0 ? (
               <div className="p-12 text-center text-slate-400 space-y-2">
                 <p className="text-sm font-sans font-medium">Nenhum agendamento registrado nesta data.</p>

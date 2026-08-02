@@ -139,20 +139,46 @@ export default function ScheduleCard({
               </span>
             )}
 
-            {client?.statusFinanceiro === 'inadimplente' && (
+            {client?.statusFinanceiro === 'inadimplente' ? (
               <span 
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowFinanceModal(true);
                   loadTransactions();
                 }}
-                className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-rose-100 text-rose-800 border border-rose-200 flex items-center shadow-xs shrink-0 cursor-pointer hover:bg-rose-200 transition-colors"
-                title="Clique para ver o resumo financeiro"
+                className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-md bg-rose-600 text-white border border-rose-700 flex items-center shadow-xs shrink-0 cursor-pointer hover:bg-rose-700 transition-colors animate-pulse"
+                title="Cliente em atraso. Clique para ver o extrato financeiro"
               >
-                <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
-                {client.observacoesFinanceiras ? 'Pendente' : 'Inadimplente'}
+                <AlertTriangle className="w-3 h-3 mr-1 text-white" />
+                <span>Em Atraso (Inadimplente)</span>
               </span>
-            )}
+            ) : (client?.temValoresEmAberto || client?.statusFinanceiro === 'pendente') ? (
+              <span 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowFinanceModal(true);
+                  loadTransactions();
+                }}
+                className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-md bg-amber-500 text-white border border-amber-600 flex items-center shadow-xs shrink-0 cursor-pointer hover:bg-amber-600 transition-colors"
+                title="Cliente possui valores em aberto. Clique para ver o resumo financeiro"
+              >
+                <Wallet className="w-3 h-3 mr-1 text-white" />
+                <span>Possui Lançamentos em Aberto</span>
+              </span>
+            ) : client?.temLancamentos ? (
+              <span 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowFinanceModal(true);
+                  loadTransactions();
+                }}
+                className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center shadow-2xs shrink-0 cursor-pointer hover:bg-slate-200 transition-colors"
+                title="Cliente possui lançamentos no sistema. Clique para ver o histórico"
+              >
+                <Wallet className="w-3 h-3 mr-1 text-slate-500" />
+                <span>Com Lançamentos</span>
+              </span>
+            ) : null}
           </div>
 
           {isConfirmed && clientPhone && (
@@ -303,12 +329,14 @@ function FinanceSummaryModal({
     return `${day}/${month}/${year}`;
   };
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const totalAtrasado = transactions
-    .filter(t => t.status === 'atrasado')
+    .filter(t => t.status === 'atrasado' || t.status === 'vencido' || (t.status === 'lancado' && t.dataVencimento < todayStr))
     .reduce((sum, t) => sum + Number(t.valor), 0);
 
   const totalPendente = transactions
-    .filter(t => t.status === 'pendente')
+    .filter(t => t.status === 'pendente' || (t.status === 'lancado' && t.dataVencimento >= todayStr))
     .reduce((sum, t) => sum + Number(t.valor), 0);
 
   const totalPago = transactions

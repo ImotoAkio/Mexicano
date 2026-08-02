@@ -713,6 +713,44 @@ app.post("/api/client/cancel-reservation", requireClientAuth, async (req, res) =
   }
 });
 
+// Route: Financeiro - Transacoes (List & Save)
+app.get("/api/financeiro/transacoes", requireAdminAuth, async (req, res) => {
+  try {
+    const transacoes = await getAllTransacoes();
+    res.json(transacoes);
+  } catch (err: any) {
+    console.error("Error fetching transacoes:", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch transacoes" });
+  }
+});
+
+app.post("/api/financeiro/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteTransacao(data.id || data);
+    } else if (action === 'delete_all') {
+      await deleteAllTransacoes();
+    } else if (action === 'delete_by_clients') {
+      await deleteTransacoesByClientIds(data.clientIds || data);
+    } else if (action === 'upsert') {
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          await upsertTransacao(item);
+        }
+      } else {
+        await upsertTransacao(data);
+      }
+    } else {
+      return res.status(400).json({ error: true, message: `Unsupported action: ${action}` });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[Transacao Save Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to save transacao" });
+  }
+});
+
 // Route: Financeiro - Asaas Payment Generation
 app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, async (req, res) => {
   const { id } = req.params;

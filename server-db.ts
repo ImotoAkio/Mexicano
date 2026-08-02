@@ -695,15 +695,25 @@ export async function pullDatabase() {
   const [catalogoEPIs] = await currentPool.query("SELECT * FROM CatalogoEPIs ORDER BY nome ASC");
 
 
-  const [overdueCounts] = await currentPool.query(`
-    SELECT clienteId, COUNT(*) as cnt 
+  const [finCounts] = await currentPool.query(`
+    SELECT clienteId, 
+           COUNT(*) as totalCnt,
+           SUM(CASE WHEN status NOT IN ('pago', 'cancelado') THEN 1 ELSE 0 END) as openCnt,
+           SUM(CASE WHEN status IN ('vencido', 'atrasado') OR (status NOT IN ('pago', 'cancelado') AND dataVencimento < ?) THEN 1 ELSE 0 END) as overdueCnt
     FROM TransacoesFinanceiras 
-    WHERE tipo = 'receita' AND (status = 'atrasado' OR (status = 'pendente' AND dataVencimento < ?))
+    WHERE tipo = 'receita'
     GROUP BY clienteId
   `, [todayStr]);
-  const overdueMap = new Map();
-  (overdueCounts as any[]).forEach(row => {
-    if (row.clienteId) overdueMap.set(row.clienteId, row.cnt > 0);
+
+  const finMap = new Map<string, { totalCnt: number; openCnt: number; overdueCnt: number }>();
+  (finCounts as any[]).forEach(row => {
+    if (row.clienteId) {
+      finMap.set(row.clienteId, {
+        totalCnt: Number(row.totalCnt) || 0,
+        openCnt: Number(row.openCnt) || 0,
+        overdueCnt: Number(row.overdueCnt) || 0
+      });
+    }
   });
 
   // Parse JSON serializations back to rich arrays/objects
@@ -716,11 +726,13 @@ export async function pullDatabase() {
         list = undefined;
       }
     }
-    const isOverdue = overdueMap.get(c.id);
+    const fin = finMap.get(c.id) || { totalCnt: 0, openCnt: 0, overdueCnt: 0 };
     return {
       ...c,
       embarcacoes: list,
-      statusFinanceiro: isOverdue ? 'inadimplente' : 'em_dia',
+      temLancamentos: fin.totalCnt > 0,
+      temValoresEmAberto: fin.openCnt > 0,
+      statusFinanceiro: fin.overdueCnt > 0 ? 'inadimplente' : (fin.openCnt > 0 ? 'pendente' : 'em_dia'),
       observacoesFinanceiras: c.observacoesFinanceiras || '',
     };
   });
@@ -1438,7 +1450,9 @@ export async function syncClientFinancialStatus(clienteId: string) {
 
   const [rows] = await currentPool.query(
     `SELECT COUNT(*) as cnt FROM TransacoesFinanceiras 
-     WHERE clienteId = ? AND tipo = 'receita' AND (status = 'atrasado' OR (status = 'pendente' AND dataVencimento < ?))`,
+     WHERE clienteId = ? AND tipo = 'receita' 
+       AND status NOT IN ('pago', 'cancelado') 
+       AND (status IN ('vencido', 'atrasado') OR dataVencimento < ?)`,
     [clienteId, todayStr]
   );
   
