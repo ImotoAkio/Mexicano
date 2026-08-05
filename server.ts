@@ -37,6 +37,7 @@ import { getOrRegisterAsaasCustomer, createAsaasCharge, getPixQrCode, createAsaa
 
 // Load environment variables early
 dotenv.config();
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const cleanEnvStr = (val?: string) => val ? val.replace(/^['"]|['"]$/g, '').trim() : '';
 if (process.env.EVOLUTION_API_URL) process.env.EVOLUTION_API_URL = cleanEnvStr(process.env.EVOLUTION_API_URL);
@@ -51,13 +52,56 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("FATAL UNHANDLED REJECTION:", reason);
 });
 
-// HTTPS agent for Evolution API (may use self-signed cert) - scoped to avoid disabling SSL globally
+// HTTPS agent for Evolution API (may use self-signed cert)
 const evolutionHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-// Helper: fetch com agente HTTPS tolerante para a Evolution API
-async function evolutionFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const { agent: _unused, ...rest } = options as any;
-  return fetch(url, { ...rest, agent: evolutionHttpsAgent } as any);
+// Helper: fetch com tolerância a certificados SSL autoassinados para a Evolution API (Usando https nativo para evitar bugs do undici/vite-node)
+async function evolutionFetch(urlStr: string, options: RequestInit = {}): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    try {
+      const url = new URL(urlStr);
+      const isHttps = url.protocol === 'https:';
+      const reqOptions = {
+        method: options.method || 'GET',
+        headers: options.headers as any || {},
+        agent: isHttps ? evolutionHttpsAgent : undefined,
+      };
+
+      const req = (isHttps ? https : http).request(url, reqOptions, (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const bodyBuffer = Buffer.concat(chunks);
+          const response = {
+            ok: res.statusCode && res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode || 500,
+            statusText: res.statusMessage || '',
+            headers: {
+              get: (name: string) => res.headers[name.toLowerCase()]
+            },
+            text: async () => bodyBuffer.toString('utf-8'),
+            json: async () => JSON.parse(bodyBuffer.toString('utf-8'))
+          } as unknown as Response;
+          resolve(response);
+        });
+      });
+
+      req.on('error', reject);
+
+      if (options.signal) {
+        options.signal.addEventListener('abort', () => {
+          req.destroy(new Error('Aborted'));
+        });
+      }
+
+      if (options.body) {
+        req.write(options.body);
+      }
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
 
 // JWT secret — use env var or generate a random fallback (should be set in production)
