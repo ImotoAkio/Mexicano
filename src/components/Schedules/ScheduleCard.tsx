@@ -77,8 +77,69 @@ export default function ScheduleCard({
   const isClosed = false;
   const isCanceled = res.status === 'cancelado';
   const isConfirmed = res.status === 'confirmado';
-  const currentStatus = isConfirmed ? 'Confirmado' : isCanceled ? 'Cancelado' : 'Agendado';
   
+  let currentStatus = isConfirmed ? 'Confirmado' : isCanceled ? 'Cancelado' : 'Agendado';
+  let statusClasses = 'bg-slate-50 text-slate-700 border-slate-200';
+  let dotClasses = 'bg-slate-400';
+
+  if (isCanceled) {
+    currentStatus = 'Cancelado';
+    statusClasses = 'bg-rose-50 text-rose-700 border-rose-200';
+    dotClasses = 'bg-rose-500';
+  } else if (res.statusMarina) {
+    switch (res.statusMarina) {
+      case 'agendado':
+        if (isConfirmed) {
+          currentStatus = 'Confirmado';
+          statusClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs font-extrabold';
+          dotClasses = 'bg-emerald-500';
+        } else {
+          currentStatus = 'Agendado';
+          statusClasses = 'bg-slate-50 text-slate-700 border-slate-200';
+          dotClasses = 'bg-slate-400';
+        }
+        break;
+      case 'descida':
+        currentStatus = 'Em Descida';
+        statusClasses = 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs font-extrabold';
+        dotClasses = 'bg-blue-500';
+        break;
+      case 'pier':
+        currentStatus = 'No Pier';
+        statusClasses = 'bg-indigo-50 text-indigo-700 border-indigo-200 shadow-2xs font-extrabold';
+        dotClasses = 'bg-indigo-500';
+        break;
+      case 'saida':
+        currentStatus = 'Navegando';
+        statusClasses = 'bg-amber-50 text-amber-700 border-amber-200 shadow-2xs font-extrabold';
+        dotClasses = 'bg-amber-500';
+        break;
+      case 'chegada':
+        currentStatus = 'Chegou';
+        statusClasses = 'bg-teal-50 text-teal-700 border-teal-200 shadow-2xs font-extrabold';
+        dotClasses = 'bg-teal-500';
+        break;
+      case 'guardada':
+        currentStatus = 'Guardada';
+        statusClasses = 'bg-green-50 text-green-800 border-green-300 shadow-2xs font-extrabold';
+        dotClasses = 'bg-green-600';
+        break;
+      default:
+        currentStatus = 'Confirmado';
+        statusClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs font-extrabold';
+        dotClasses = 'bg-emerald-500';
+        break;
+    }
+  } else if (isConfirmed) {
+    currentStatus = 'Confirmado';
+    statusClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs font-extrabold';
+    dotClasses = 'bg-emerald-500';
+  } else {
+    currentStatus = 'Agendado';
+    statusClasses = 'bg-slate-50 text-slate-700 border-slate-200';
+    dotClasses = 'bg-slate-400';
+  }
+
   const summary = `${boatCode} - ${ownerName}`;
 
   return (
@@ -119,16 +180,8 @@ export default function ScheduleCard({
               {summary}
             </span>
             
-            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold font-sans uppercase flex items-center gap-1 border ${
-              isConfirmed
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs font-extrabold'
-                : isCanceled
-                  ? 'bg-rose-50 text-rose-700 border-rose-200'
-                  : 'bg-slate-50 text-slate-700 border-slate-200'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                isConfirmed ? 'bg-emerald-500' : isCanceled ? 'bg-rose-500' : 'bg-slate-400'
-              }`} />
+            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold font-sans uppercase flex items-center gap-1 border ${statusClasses}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${dotClasses}`} />
               {currentStatus}
             </span>
 

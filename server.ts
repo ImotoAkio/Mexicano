@@ -637,6 +637,9 @@ app.post("/api/client/update-reservation", requireClientAuth, async (req, res) =
       [googleEventId, id, userId]
     );
 
+    // Emit event to update Marina/Admin panels automatically
+    io.emit("marina_update", { action: 'upsert', reservation: { id, googleEventId } });
+
     res.json({ success: true });
   } catch (err: any) {
     console.error("Client update reservation error:", err);
@@ -677,15 +680,14 @@ app.post("/api/client/checkin", requireClientAuth, async (req, res) => {
       return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
     }
 
-    // Update reservation. Removed 'AND clienteId = ?' to allow co-owners to check-in for the boat.
-    // statusMarina is set to 'agendado' so the marina knows it's confirmed by the client but not yet in the water.
+    // Update reservation. Removed setting horaSaida and horaChegada during check-in so operational status isn't corrupted.
     await currentPool.query(
-      "UPDATE Reservas SET previsaoSaida = ?, horaSaida = ?, previsaoChegada = ?, horaChegada = ?, pessoasABordo = ?, destino = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ?",
-      [previsaoSaida, previsaoSaida, previsaoChegada, previsaoChegada, pessoasABordo, destino, id]
+      "UPDATE Reservas SET previsaoSaida = ?, previsaoChegada = ?, pessoasABordo = ?, destino = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ?",
+      [previsaoSaida, previsaoChegada, pessoasABordo, destino, id]
     );
 
     const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ?", [id]);
-    const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, horaSaida: previsaoSaida, previsaoChegada, horaChegada: previsaoChegada, pessoasABordo, destino, statusMarina: 'agendado', status: 'confirmado' };
+    const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, previsaoChegada, pessoasABordo, destino, statusMarina: 'agendado', status: 'confirmado' };
 
     io.emit("marina_update", { action: 'checkin', reservation: updatedRes });
 
@@ -1404,6 +1406,30 @@ app.get("/api/calendar/config", requireAnyAuth, async (req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: true, message: error.message || "Unknown config read error." });
+  }
+});
+
+// Route: Save an activity log (Audit)
+app.post("/api/logs/action", requireAnyAuth, async (req, res) => {
+  const { operadorNome, acao, detalhes, embarcacaoId } = req.body;
+  
+  if (!acao) {
+    return res.status(400).json({ error: "Missing required parameter: acao" });
+  }
+
+  try {
+    const { upsertRegistroAtividade } = await import('./server-db');
+    await upsertRegistroAtividade({
+      operadorNome,
+      acao,
+      detalhes,
+      embarcacaoId,
+      createdAt: new Date().toISOString()
+    });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error saving action log:", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to save action log." });
   }
 });
 

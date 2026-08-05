@@ -41,6 +41,13 @@ export default function ClientReservationModal({
       } else if (boats.length > 0) {
         setSelectedBoatId(boats[0].id);
       }
+      setIsSuccessState(false);
+      setSuccessMsg(null);
+      setErrorMsg(null);
+      setObservacoes('');
+      setCreatedReservation(null);
+      setWhatsappStatus('idle');
+      setSyncResult(null);
     }
   }, [isOpen, preselectedBoatId, boats]);
   const [observacoes, setObservacoes] = useState('');

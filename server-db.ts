@@ -297,6 +297,15 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN litrosAbastecidos VARCHAR(50);`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN horaSubida VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN operadorSubida VARCHAR(100);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN fotosChecklistSubida TEXT;`);
+    } catch (e) {}
 
     // 4. ControlesSom Table
     await connection.query(`
@@ -611,6 +620,18 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // 21. RegistrosAtividades Table (Audit Logs)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS RegistrosAtividades (
+        id VARCHAR(50) PRIMARY KEY,
+        operadorNome VARCHAR(255) NOT NULL,
+        acao VARCHAR(255) NOT NULL,
+        detalhes TEXT,
+        embarcacaoId VARCHAR(50),
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     try {
       const [existingEPIs] = await connection.query("SELECT COUNT(*) as cnt FROM CatalogoEPIs");
       const epiCount = (existingEPIs as any[])[0]?.cnt || 0;
@@ -666,8 +687,19 @@ export async function initializeDatabase() {
 
 // ---------------- DB Operations ----------------
 
+let dbCache: { data: any; timestamp: number } | null = null;
+const CACHE_TTL_MS = 15000; // 15 seconds cache
+
+export function invalidateDbCache() {
+  dbCache = null;
+}
+
 // Fetch entire database records
-export async function pullDatabase() {
+export async function pullDatabase(forceFresh = false) {
+  if (!forceFresh && dbCache && (Date.now() - dbCache.timestamp < CACHE_TTL_MS)) {
+    return dbCache.data;
+  }
+
   const currentPool = getDbPool();
   if (!currentPool) {
     throw new Error("MySQL Connection pool is offline.");
@@ -695,6 +727,7 @@ export async function pullDatabase() {
   const [funcionarios] = await currentPool.query("SELECT * FROM Funcionarios ORDER BY createdAt DESC");
   const [folgas] = await currentPool.query("SELECT * FROM Folgas ORDER BY data DESC");
   const [catalogoEPIs] = await currentPool.query("SELECT * FROM CatalogoEPIs ORDER BY nome ASC");
+  const [registrosAtividades] = await currentPool.query("SELECT * FROM RegistrosAtividades ORDER BY createdAt DESC LIMIT 500");
 
 
   const [finCounts] = await currentPool.query(`
@@ -786,7 +819,7 @@ export async function pullDatabase() {
   const [funcionariosEPIs] = await currentPool.query("SELECT * FROM FuncionariosEPIs ORDER BY geradoEm DESC");
   const [historicoEPIMensal] = await currentPool.query("SELECT * FROM HistoricoEPIMensal ORDER BY mesAno DESC");
 
-  return {
+  const result = {
     clients: parsedClients,
     boats: parsedBoats,
     reservations: parsedReservations,
@@ -797,12 +830,20 @@ export async function pullDatabase() {
     funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : [], primeiroEmprego: f.primeiroEmprego === 1})),
     folgas: folgas as any[],
     catalogoEPIs: catalogoEPIs as any[],
+    registrosAtividades: registrosAtividades as any[],
     epis: (funcionariosEPIs as any[]).map(e => ({
       ...e,
       historicoTrocas: e.historicoTrocas ? (typeof e.historicoTrocas === 'string' ? JSON.parse(e.historicoTrocas) : e.historicoTrocas) : []
     })),
     historicoEpis: historicoEPIMensal as any[]
   };
+
+  dbCache = {
+    data: result,
+    timestamp: Date.now()
+  };
+
+  return result;
 }
 
 // Upsert a single client record
@@ -869,6 +910,34 @@ export async function deleteClient(id: string) {
   await currentPool.query("DELETE FROM Clientes WHERE id = ?", [id]);
 }
 
+export async function deleteControleSom(id: string) {
+  const currentPool = getDbPool();
+  if (currentPool) {
+    await currentPool.query("DELETE FROM ControlesSom WHERE id = ?", [id]);
+    invalidateDbCache();
+  }
+}
+
+export async function upsertRegistroAtividade(data: any) {
+  const currentPool = getDbPool();
+  if (!currentPool) return;
+  
+  const id = data.id || `log_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+  const operadorNome = data.operadorNome || 'Sistema';
+  const acao = data.acao || '';
+  const detalhes = data.detalhes || '';
+  const embarcacaoId = data.embarcacaoId || null;
+  const createdAt = data.createdAt || new Date().toISOString();
+
+  await currentPool.query(
+    `INSERT INTO RegistrosAtividades (id, operadorNome, acao, detalhes, embarcacaoId, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, operadorNome, acao, detalhes, embarcacaoId, createdAt]
+  );
+  
+  invalidateDbCache();
+}
+
 // Upsert a single boat record
 export async function upsertBoat(boat: any) {
   const currentPool = getDbPool();
@@ -925,6 +994,7 @@ export async function deleteBoat(id: string) {
 
 // Upsert a single reservation record
 export async function upsertReservation(reserva: any) {
+  invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
@@ -933,13 +1003,14 @@ export async function upsertReservation(reserva: any) {
   const fotosChecklistDescidaStr = reserva.fotosChecklistDescida ? JSON.stringify(reserva.fotosChecklistDescida) : null;
   const fotosChecklistSaidaStr = reserva.fotosChecklistSaida ? JSON.stringify(reserva.fotosChecklistSaida) : null;
   const fotosChecklistChegadaStr = reserva.fotosChecklistChegada ? JSON.stringify(reserva.fotosChecklistChegada) : null;
+  const fotosChecklistSubidaStr = reserva.fotosChecklistSubida ? JSON.stringify(reserva.fotosChecklistSubida) : null;
 
   const query = `
     INSERT INTO Reservas (
       id, embarcacaoId, clienteId, data, periodo, observacoes, googleEventId, status, createdAt,
       somRetirado, somTesteSaida, somTesteRetorno, horaSaida, horaChegada, fotosChecklistSaida, fotosChecklistChegada,
-      previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada, litrosAbastecidos
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada, litrosAbastecidos, horaSubida, operadorSubida, fotosChecklistSubida
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       embarcacaoId = VALUES(embarcacaoId),
       clienteId = VALUES(clienteId),
@@ -966,7 +1037,10 @@ export async function upsertReservation(reserva: any) {
       destino = VALUES(destino),
       pessoasABordo = VALUES(pessoasABordo),
       confirmacaoEnviada = VALUES(confirmacaoEnviada),
-      litrosAbastecidos = VALUES(litrosAbastecidos)
+      litrosAbastecidos = VALUES(litrosAbastecidos),
+      horaSubida = VALUES(horaSubida),
+      operadorSubida = VALUES(operadorSubida),
+      fotosChecklistSubida = VALUES(fotosChecklistSubida)
   `;
 
   const values = [
@@ -997,7 +1071,10 @@ export async function upsertReservation(reserva: any) {
     reserva.destino || null,
     reserva.pessoasABordo || null,
     reserva.confirmacaoEnviada ? 1 : 0,
-    reserva.litrosAbastecidos || null
+    reserva.litrosAbastecidos || null,
+    reserva.horaSubida || null,
+    reserva.operadorSubida || null,
+    fotosChecklistSubidaStr
   ];
 
   await currentPool.query(query, values);

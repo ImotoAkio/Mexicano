@@ -11,6 +11,7 @@ let memoryFolgas: Folga[] = [];
 let memoryEpis: EpiEntrega[] = [];
 let memoryCatalogoEpis: CatalogoEpi[] = [];
 let memoryHistoricoEpis: HistoricoEPIMensal[] = [];
+let memoryRegistrosAtividades: any[] = [];
 
 
 // Helper: Get admin JWT token for authenticated API calls
@@ -18,25 +19,37 @@ export function getAdminToken(): string | null {
   return localStorage.getItem('admin_token');
 }
 
+const pendingSaves: Promise<any>[] = [];
+
 // Shared remote background synchronizer helper (with JWT auth)
 async function saveToRemoteDB(type: 'clients' | 'boats' | 'reservations' | 'manutencoes', action: 'create' | 'update' | 'delete', data: any) {
-  try {
-    const token = getAdminToken();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+  const p = (async () => {
+    try {
+      const token = getAdminToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
-    const res = await fetch('/api/db/save', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ type, action, data })
-    });
-    if (!res.ok) {
-      console.warn(`[Remote DB Sync Error] Failed to ${action} ${type} on server.`);
+      const res = await fetch('/api/db/save', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ type, action, data })
+      });
+      if (!res.ok) {
+        console.warn(`[Remote DB Sync Error] Failed to ${action} ${type} on server.`);
+      }
+    } catch (err) {
+      console.warn(`[Remote DB Connection Error] Could not reach server to ${action} ${type}:`, err);
     }
-  } catch (err) {
-    console.warn(`[Remote DB Connection Error] Could not reach server to ${action} ${type}:`, err);
+  })();
+  
+  pendingSaves.push(p);
+  try {
+    await p;
+  } finally {
+    const idx = pendingSaves.indexOf(p);
+    if (idx !== -1) pendingSaves.splice(idx, 1);
   }
 }
 
@@ -610,6 +623,11 @@ export async function loadFromRemote() {
   }
 
   try {
+    // Wait for any in-flight saves to finish before fetching, to avoid race condition where we fetch old data
+    if (pendingSaves.length > 0) {
+      await Promise.allSettled(pendingSaves);
+    }
+
     const token = getAdminToken();
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -642,6 +660,7 @@ export async function loadFromRemote() {
     memoryEpis = remoteData.epis || [];
     memoryCatalogoEpis = remoteData.catalogoEPIs || [];
     memoryHistoricoEpis = remoteData.historicoEpis || [];
+    memoryRegistrosAtividades = remoteData.registrosAtividades || [];
 
     return { 
       connected: true,
@@ -733,10 +752,51 @@ export const historicoEpiDB = {
       if (res.ok) {
         const newLog = { ...log, funcionarioId, createdAt: log.createdAt || new Date().toISOString() };
         memoryHistoricoEpis.push(newLog);
-        return newLog;
       }
     } catch(e) {
       console.error(e);
     }
   }
 };
+
+export const registrosAtividadesDB = {
+  getAll: () => {
+    return memoryRegistrosAtividades;
+  }
+};
+
+export async function logAction(acao: string, detalhes?: string, embarcacaoId?: string, operadorNome?: string) {
+  try {
+    const token = getAdminToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Usaremos "Sistema" ou o adminName caso venha vazio, mas operadorNome é injetado via props
+    const res = await fetch('/api/logs/action', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ 
+        acao, 
+        detalhes, 
+        embarcacaoId, 
+        operadorNome: operadorNome || localStorage.getItem('adminName') || 'Sistema'
+      })
+    });
+    
+    if (res.ok) {
+      // Local push to reflect immediately
+      memoryRegistrosAtividades.unshift({
+        id: `log_${Date.now()}`,
+        operadorNome: operadorNome || localStorage.getItem('adminName') || 'Sistema',
+        acao,
+        detalhes,
+        embarcacaoId,
+        createdAt: new Date().toISOString()
+      });
+    }
+  } catch(e) {
+    console.error("Failed to log action:", e);
+  }
+}

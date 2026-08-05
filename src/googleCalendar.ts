@@ -1177,7 +1177,7 @@ export async function deleteGoogleCalendarEvent(eventId: string, boatCode?: stri
           method: 'DELETE',
           headers: { 'Authorization': getAuthHeader() }
         });
-        if (response.ok || response.status === 404) boatDeleted = true;
+        if (response.ok || response.status === 404 || response.status === 410) boatDeleted = true;
       } catch (e) {}
     }
 
@@ -1190,7 +1190,7 @@ export async function deleteGoogleCalendarEvent(eventId: string, boatCode?: stri
           method: 'DELETE',
           headers: { 'Authorization': getAuthHeader() }
         });
-        if (response2.ok || response2.status === 404) marinaDeleted = true;
+        if (response2.ok || response2.status === 404 || response2.status === 410) marinaDeleted = true;
       }
     } catch (e) {}
 
@@ -1200,7 +1200,7 @@ export async function deleteGoogleCalendarEvent(eventId: string, boatCode?: stri
         method: 'DELETE',
         headers: { 'Authorization': getAuthHeader() }
       });
-      if (!response3.ok && response3.status !== 404) {
+      if (!response3.ok && response3.status !== 404 && response3.status !== 410) {
         throw new Error(`Google Calendar API delete error: ${response3.statusText}`);
       }
     }

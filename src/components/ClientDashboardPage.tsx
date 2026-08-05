@@ -154,11 +154,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [reservationFilter, setReservationFilter] = useState<'all' | 'upcoming' | 'past'>('upcoming');
 
   // Check-in states
-  const [showCheckinModal, setShowCheckinModal] = useState(false);
-  const [checkinData, setCheckinData] = useState({ previsaoSaida: '', previsaoChegada: '', pessoasABordo: '', destino: '' });
-  const [isSubmittingCheckin, setIsSubmittingCheckin] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{title: string, msg: string, type: 'error'|'success'|'warning'} | null>(null);
 
   const transacoesList = (client as any)?.transacoes || transacoes || [];
@@ -339,102 +336,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     String(_localNow.getMonth() + 1).padStart(2, '0'),
     String(_localNow.getDate()).padStart(2, '0')
   ].join('-');
-  const todayReservation = myReservations.find(r => r.data === todayStrLocal && r.status !== 'cancelado');
-  const needsCheckin = todayReservation && todayReservation.status !== 'confirmado';
-  const isCheckedIn = todayReservation && todayReservation.status === 'confirmado';
+  const todayReservations = myReservations.filter(r => r.data === todayStrLocal && r.status !== 'cancelado');
 
-  const handleCheckinSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!todayReservation) return;
-
-    // Validate 40 mins gap
-    if (checkinData.previsaoSaida) {
-      const now = new Date();
-      const [hours, minutes] = checkinData.previsaoSaida.split(':').map(Number);
-      const outputTime = new Date();
-      outputTime.setHours(hours, minutes, 0, 0);
-
-      const diffInMinutes = (outputTime.getTime() - now.getTime()) / (1000 * 60);
-
-      if (diffInMinutes < 40) {
-        showToast('Horário Inválido', 'A previsão de saída deve ter pelo menos 40 minutos de antecedência para a preparação da embarcação.', 'warning');
-        return;
-      }
-    }
-
-    setIsSubmittingCheckin(true);
-    try {
-      const token = localStorage.getItem('client_token');
-      const res = await fetch('/api/client/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          id: todayReservation.id,
-          ...checkinData
-        })
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || 'Falha ao realizar check-in');
-      }
-
-      // Generate PDF
-      const boat = boats.find(b => b.id === todayReservation.embarcacaoId);
-      const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome.split(' ')[0]) : 'M00';
-      const boatType = boat ? (boat.tipo === 'jet' ? 'Jetski' : 'Lancha') : 'Lancha';
-      
-      let finalDate = todayReservation.data;
-      if (finalDate.includes('-')) {
-        const p = finalDate.split('-');
-        finalDate = `${p[2]} / ${p[1]} / ${p[0]}`;
-      }
-
-      const fields = {
-        data: finalDate,
-        nome: client.nome,
-        tipo: boatType,
-        nomeEmbarcacao: boatCode,
-        pessoasABordo: checkinData.pessoasABordo,
-        destino: checkinData.destino,
-        previsaoSaida: checkinData.previsaoSaida,
-        previsaoChegada: checkinData.previsaoChegada,
-        observacao: todayReservation.observações || 'Nenhuma'
-      };
-
-      const doc = await generateAvisoSaidaPDF(fields, { autoPrint: false });
-
-      // Atualiza o estado local para refletir o check-in imediatamente
-      const updatedResObj = { 
-        ...todayReservation, 
-        ...checkinData, 
-        statusMarina: 'confirmado',
-        status: 'confirmado' 
-      };
-
-      setOptimisticReservations(prev => [
-        ...prev.filter(r => r.id !== todayReservation.id),
-        updatedResObj
-      ]);
-
-      if (onRefresh) {
-        onRefresh();
-      }
-
-      setPreviewFields(fields);
-      setPreviewPDFDoc(doc);
-      setShowPreviewModal(true);
-      setShowCheckinModal(false);
-
-      showToast('Sucesso', 'Check-in realizado com sucesso!', 'success');
-    } catch (err: any) {
-      showToast('Erro', err.message || 'Erro ao comunicar com o servidor.', 'error');
-    } finally {
-      setIsSubmittingCheckin(false);
-    }
-  };
 
   const handleCancelReservation = async (reservationId?: string) => {
-    const idToCancel = typeof reservationId === 'string' ? reservationId : todayReservation?.id;
+    const idToCancel = reservationId;
     if (!idToCancel) return;
     setIsCanceling(true);
     try {
@@ -456,7 +362,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       showToast('Erro', err.message || 'Erro ao comunicar com o servidor.', 'error');
     } finally {
       setIsCanceling(false);
-      setShowCancelConfirm(false);
+      setCancelConfirmId(null);
     }
   };
 
@@ -504,146 +410,151 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         </button>
       </div>
 
-      {/* Dynamic Check-in Banner */}
-      {(needsCheckin || isCheckedIn) && (
-        <div className="px-6 mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className={`bg-gradient-to-br ${isCheckedIn ? 'from-[#121c15] to-[#070b08] border-emerald-500/30' : 'from-[#1c1a16] to-[#0a0907] border-[#B69D74]/30'} border rounded-3xl p-5 shadow-2xl relative overflow-hidden`}>
-            <div className={`absolute top-0 right-0 w-32 h-32 ${isCheckedIn ? 'bg-emerald-500/10' : 'bg-[#B69D74]/20'} rounded-full blur-[40px] translate-x-1/2 -translate-y-1/2 pointer-events-none`}></div>
-            
-            <div className="relative z-10">
-              {isCheckedIn ? (
-                <details className="group">
-                  <summary className="flex items-center justify-between list-none cursor-pointer select-none">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                        <Check className="w-4 h-4 text-emerald-400" />
-                      </div>
-                      <div>
-                        <h2 className="text-sm font-semibold text-white tracking-wide">Passeio hoje confirmado!</h2>
-                        <p className="text-[10px] text-white/50 mt-0.5">Toque para ver detalhes</p>
-                      </div>
-                    </div>
-                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
-                      <ChevronDown className="w-4 h-4 text-white/50 group-open:rotate-180 transition-transform duration-300" />
-                    </div>
-                  </summary>
-                  
-                  <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white/[0.02] border border-white/5 rounded-2xl p-3 text-xs">
-                      <div>
-                        <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Destino</span>
-                        <span className="text-white font-medium truncate block">{todayReservation?.destino || 'Não informado'}</span>
-                      </div>
-                      <div>
-                        <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Previsão Saída</span>
-                        <span className="text-white font-medium">{todayReservation?.previsaoSaida || todayReservation?.horaSaida || '00:00'}</span>
-                      </div>
-                      <div>
-                        <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Retorno</span>
-                        <span className="text-white font-medium">{todayReservation?.previsaoChegada || todayReservation?.horaChegada || '00:00'}</span>
-                      </div>
-                      <div>
-                        <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Pessoas</span>
-                        <span className="text-white font-medium">{todayReservation?.pessoasABordo || '1'}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => handleDownloadPDF(todayReservation)}
-                        className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Baixar NORMAM
-                      </button>
-
-                      {showCancelConfirm ? (
-                        <div className="flex-1 flex gap-2">
-                          <button 
-                            onClick={() => setShowCancelConfirm(false)}
-                            className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors"
-                          >
-                            Voltar
-                          </button>
-                          <button 
-                            onClick={() => handleCancelReservation()}
-                            disabled={isCanceling}
-                            className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg disabled:opacity-50"
-                          >
-                            {isCanceling ? '...' : 'Cancelar'}
-                          </button>
+      {/* Dynamic Check-in Banners */}
+      {todayReservations.map((reservation) => {
+        const isCheckedIn = reservation.status === 'confirmado';
+        const boatInfo = boats.find(b => b.id === reservation.embarcacaoId);
+        
+        return (
+          <div key={reservation.id} className="px-6 mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className={`bg-gradient-to-br ${isCheckedIn ? 'from-[#121c15] to-[#070b08] border-emerald-500/30' : 'from-[#1c1a16] to-[#0a0907] border-[#B69D74]/30'} border rounded-3xl p-5 shadow-2xl relative overflow-hidden`}>
+              <div className={`absolute top-0 right-0 w-32 h-32 ${isCheckedIn ? 'bg-emerald-500/10' : 'bg-[#B69D74]/20'} rounded-full blur-[40px] translate-x-1/2 -translate-y-1/2 pointer-events-none`}></div>
+              
+              <div className="relative z-10">
+                {isCheckedIn ? (
+                  <details className="group">
+                    <summary className="flex items-center justify-between list-none cursor-pointer select-none">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                          <Check className="w-4 h-4 text-emerald-400" />
                         </div>
-                      ) : (
-                        <button 
-                          onClick={() => setShowCancelConfirm(true)}
-                          className="px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors"
-                        >
-                          Cancelar
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </details>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#B69D74]/20 flex items-center justify-center">
-                        <Anchor className="w-4 h-4 text-[#B69D74] animate-pulse" />
+                        <div>
+                          <h2 className="text-sm font-semibold text-white tracking-wide">Passeio confirmado! {boatInfo ? `- ${boatInfo.nome}` : ''}</h2>
+                          <p className="text-[10px] text-white/50 mt-0.5">Toque para ver detalhes</p>
+                        </div>
                       </div>
-                      <h2 className="text-sm font-semibold text-white tracking-wide">Seu passeio é hoje!</h2>
-                    </div>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                      {showCancelConfirm ? (
-                        <div className="flex-1 animate-in zoom-in-95 duration-300 bg-rose-500/10 border border-rose-500/30 p-4 rounded-2xl">
-                          <p className="text-xs text-rose-300 font-medium mb-3">Tem certeza que deseja CANCELAR o passeio de hoje?</p>
-                          <div className="flex gap-2">
+                      <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
+                        <ChevronDown className="w-4 h-4 text-white/50 group-open:rotate-180 transition-transform duration-300" />
+                      </div>
+                    </summary>
+                    
+                    <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white/[0.02] border border-white/5 rounded-2xl p-3 text-xs">
+                        <div>
+                          <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Destino</span>
+                          <span className="text-white font-medium truncate block">{reservation?.destino || 'Não informado'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Previsão Saída</span>
+                          <span className="text-white font-medium">{reservation?.previsaoSaida || reservation?.horaSaida || '00:00'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Retorno</span>
+                          <span className="text-white font-medium">{reservation?.previsaoChegada || reservation?.horaChegada || '00:00'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Pessoas</span>
+                          <span className="text-white font-medium">{reservation?.pessoasABordo || '1'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleDownloadPDF(reservation)}
+                          className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Baixar NORMAM
+                        </button>
+
+                        {cancelConfirmId === reservation.id ? (
+                          <div className="flex-1 flex gap-2">
                             <button 
-                              onClick={() => setShowCancelConfirm(false)}
+                              onClick={() => setCancelConfirmId(null)}
                               className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors"
                             >
                               Voltar
                             </button>
                             <button 
-                              onClick={() => handleCancelReservation()}
+                              onClick={() => handleCancelReservation(reservation.id)}
                               disabled={isCanceling}
                               className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg disabled:opacity-50"
                             >
-                              {isCanceling ? 'Aguarde...' : 'Sim, Cancelar'}
+                              {isCanceling ? '...' : 'Cancelar'}
                             </button>
                           </div>
-                        </div>
-                      ) : (
-                        <>
+                        ) : (
                           <button 
-                            onClick={() => {
-                              if (totalAberto > 0) {
-                                showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para confirmar.', 'warning');
-                                return;
-                              }
-                              setSelectedReservationForCheckin(todayReservation);
-                              setIsCheckinModalOpen(true);
-                            }}
-                            className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg"
-                          >
-                            Confirmar Saída
-                          </button>
-                          <button 
-                            onClick={() => setShowCancelConfirm(true)}
-                            className="py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors"
+                            onClick={() => setCancelConfirmId(reservation.id)}
+                            className="px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors"
                           >
                             Cancelar
                           </button>
-                        </>
-                      )}
+                        )}
+                      </div>
                     </div>
-                </>
-              )}
+                  </details>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-[#B69D74]/20 flex items-center justify-center">
+                          <Anchor className="w-4 h-4 text-[#B69D74] animate-pulse" />
+                        </div>
+                        <h2 className="text-sm font-semibold text-white tracking-wide">Seu passeio é hoje! {boatInfo ? `- ${boatInfo.nome}` : ''}</h2>
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        {cancelConfirmId === reservation.id ? (
+                          <div className="flex-1 animate-in zoom-in-95 duration-300 bg-rose-500/10 border border-rose-500/30 p-4 rounded-2xl">
+                            <p className="text-xs text-rose-300 font-medium mb-3">Tem certeza que deseja CANCELAR o passeio de hoje?</p>
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => setCancelConfirmId(null)}
+                                className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors"
+                              >
+                                Voltar
+                              </button>
+                              <button 
+                                onClick={() => handleCancelReservation(reservation.id)}
+                                disabled={isCanceling}
+                                className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg disabled:opacity-50"
+                              >
+                                {isCanceling ? 'Aguarde...' : 'Sim, Cancelar'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <button 
+                              onClick={() => {
+                                if (totalAberto > 0) {
+                                  showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para confirmar.', 'warning');
+                                  return;
+                                }
+                                setSelectedReservationForCheckin(reservation);
+                                setIsCheckinModalOpen(true);
+                              }}
+                              className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg"
+                            >
+                              Confirmar Saída
+                            </button>
+                            <button 
+                              onClick={() => setCancelConfirmId(reservation.id)}
+                              className="py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })}
 
       {/* Central Vehicle Display Carousel */}
       <div className="flex-1 w-full relative mt-2">
@@ -1085,13 +996,13 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     <span className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
                       res.status === 'cancelado' 
                         ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                        : res.statusMarina === 'confirmado'
+                        : res.status === 'confirmado'
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                     }`}>
-                      {res.status === 'cancelado' ? 'Cancelado' : (res.statusMarina === 'confirmado' ? 'Confirmado' : 'Agendado')}
+                      {res.status === 'cancelado' ? 'Cancelado' : (res.status === 'confirmado' ? 'Confirmado' : 'Agendado')}
                     </span>
-                    {res.statusMarina === 'confirmado' && (
+                    {res.status === 'confirmado' && (
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1117,7 +1028,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                         Cancelar
                       </button>
                     )}
-                    {res.data === todayStrLocal && res.status !== 'cancelado' && res.statusMarina !== 'confirmado' && (
+                    {res.data === todayStrLocal && res.status !== 'cancelado' && res.status !== 'confirmado' && (
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1983,8 +1894,6 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             const updatedResObj = { 
               ...selectedReservationForCheckin, 
               ...(checkinData || {}),
-              horaSaida: checkinData?.previsaoSaida || checkinData?.horaSaida || selectedReservationForCheckin.horaSaida,
-              horaChegada: checkinData?.previsaoChegada || checkinData?.horaChegada || selectedReservationForCheckin.horaChegada,
               statusMarina: 'agendado',
               status: 'confirmado' 
             };

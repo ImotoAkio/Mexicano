@@ -22,8 +22,8 @@ const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
 const MaintenancePage = lazy(() => import('./components/MaintenancePage'));
 const PortalInterno = lazy(() => import('./components/finance/PortalInterno'));
-const MarinaChecklistsView = lazy(() => import('./components/MarinaChecklistsView'));
-const MarinaFuelView = lazy(() => import('./components/MarinaFuelView'));
+const AdminChecklistsPage = lazy(() => import('./components/AdminChecklistsPage'));
+const AdminFuelPage = lazy(() => import('./components/AdminFuelPage'));
 const WhatsAppPage = lazy(() => import('./components/WhatsAppPage'));
 const FinanceWhatsAppPage = lazy(() => import('./components/FinanceWhatsAppPage'));
 const FinanceSchedulesPage = lazy(() => import('./components/FinanceSchedulesPage'));
@@ -33,28 +33,45 @@ const ControleEpiPage = lazy(() => import('./components/ControleEpiPage'));
 const DPPage = lazy(() => import('./components/DP/DPPage'));
 const BoletosPage = lazy(() => import('./components/finance/BoletosPage'));
 const RetroativoPage = lazy(() => import('./components/RetroativoPage').then(m => ({ default: m.RetroativoPage })));
-import { clientDB, boatDB, reservationDB } from './db';
+const AuditLogsPage = lazy(() => import('./components/AuditLogsPage'));
+import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
 
 // Wrappers para reuso dos componentes da Marina no Admin
 const AdminChecklistsWrapper = () => {
   const [data, setData] = useState<any>({ clients: [], boats: [], reservations: [] });
-  useEffect(() => {
+
+  const loadData = () => {
     setData({
       clients: clientDB.getAll(),
       boats: boatDB.getAll(),
       reservations: reservationDB.getAll()
     });
+    // Buscando dados reais do servidor para manter atualizado (opcionalmente)
+    fetch('/api/db/pull', { headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` } })
+      .then(res => res.json())
+      .then(serverData => {
+        if (serverData && serverData.reservations) {
+          setData(prev => ({ ...prev, reservations: serverData.reservations }));
+        }
+      }).catch(console.error);
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
-  return <MarinaChecklistsView data={data} />;
+
+  return <AdminChecklistsPage data={data} setData={setData} reloadData={loadData} />;
 };
 
 const AdminFuelWrapper = () => {
-  const [data, setData] = useState<any>({ clients: [], boats: [], transacoes: [] });
-  useEffect(() => {
+  const [data, setData] = useState<any>({ clients: [], boats: [], transacoes: [], reservations: [] });
+
+  const loadData = () => {
     setData({
       clients: clientDB.getAll(),
       boats: boatDB.getAll(),
-      transacoes: []
+      transacoes: [],
+      reservations: reservationDB.getAll()
     });
     fetch('/api/financeiro/transacoes', {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
@@ -62,8 +79,13 @@ const AdminFuelWrapper = () => {
     .then(r => r.json())
     .then(transacoes => setData(prev => ({ ...prev, transacoes })))
     .catch(console.error);
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
-  return <MarinaFuelView data={data} />;
+
+  return <AdminFuelPage data={data} setData={setData} reloadData={loadData} />;
 };
 import { 
   Compass, 
@@ -86,11 +108,11 @@ import {
   MessageSquare,
   CheckCircle,
   Wrench,
-  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt
+  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History
 } from 'lucide-react';
 
 
-type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi';
+type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -115,6 +137,7 @@ export default function App() {
   const [adminName, setAdminName] = useState<string>('');
   const [isRoleLoading, setIsRoleLoading] = useState(false);
   const [isAdminDbLoaded, setIsAdminDbLoaded] = useState(false);
+  const [dbData, setDbData] = useState<any>({});
 
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     return (localStorage.getItem(STORAGE_KEYS.ADMIN_ACTIVE_TAB) as TabType) || 'schedules';
@@ -164,8 +187,9 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated && !isAdminDbLoaded) {
       const controller = new AbortController();
-      loadFromRemote().then(() => {
+      loadFromRemote().then((data) => {
         if (!controller.signal.aborted) {
+          setDbData(data);
           setIsAdminDbLoaded(true);
         }
       });
@@ -237,6 +261,8 @@ export default function App() {
       items: [
         { id: 'schedules' as TabType, label: 'Agenda de Reservas', icon: CalendarIcon },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
+        { id: 'checklists' as TabType, label: 'Checklists Diários', icon: ClipboardList },
+        { id: 'fuel' as TabType, label: 'Abastecimento', icon: Droplets },
         { id: 'sound' as TabType, label: 'Vistoria de Som', icon: Speaker },
         { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
         { id: 'manutencoes' as TabType, label: 'Manutenções', icon: Wrench },
@@ -275,6 +301,7 @@ export default function App() {
         { id: 'feedback' as TabType, label: 'Central de Feedback', icon: MessageSquare },
         { id: 'users' as TabType, label: 'Gestão de Usuários', icon: Shield },
         { id: 'integrations' as TabType, label: 'Configurações & Integrações', icon: Settings },
+        { id: 'audit-logs' as TabType, label: 'Registro de Atividades', icon: History },
         { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
       ]
     }
@@ -576,6 +603,7 @@ export default function App() {
                 {activeTab === 'dp-dashboard' && <DPPage />}
                 {activeTab === 'controle-folgas' && <ControleFolgasPage />}
                 {activeTab === 'controle-epi' && <ControleEpiPage />}
+                {activeTab === 'audit-logs' && <AuditLogsPage logs={registrosAtividadesDB.getAll() || []} boats={boatDB.getAll() || []} />}
               </Suspense>
             </ErrorBoundary>
           </div>

@@ -783,8 +783,40 @@ export default function SchedulesPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const loadScheduleData = async () => {
-    setIsLoading(true);
+  const renderLocalData = (targetDate: string) => {
+    const boats = boatDB.getAll();
+    const isNotM04 = (r: Reserva) => {
+      const boat = boats.find(b => b.id === r.embarcacaoId);
+      const boatCode = boat ? boat.nome : '';
+      return boatCode.toUpperCase() !== 'M04';
+    };
+
+    // 1. Fetch Local DB Reservations for selected date (excluding M04)
+    const localRes = reservationDB.getByDate(targetDate).filter(isNotM04);
+    setActiveReservations(localRes);
+    setDailyReservations(localRes);
+
+    // 2. Fetch local reservations in the 14-day range (excluding M04)
+    const dStart = new Date(targetDate);
+    const dEnd = new Date(targetDate);
+    dEnd.setDate(dEnd.getDate() + 14);
+    const startStr = getLocalDateStr(dStart);
+    const endStr = getLocalDateStr(dEnd);
+
+    const localResRange = reservationDB.getAll().filter(r => 
+      r.status === 'confirmado' && 
+      r.data >= startStr && 
+      r.data <= endStr &&
+      isNotM04(r)
+    );
+
+    setRangeReservations(localResRange);
+  };
+
+  const loadScheduleData = async (isInitial = false) => {
+    if (isInitial || reservationDB.getAll().length === 0) {
+      setIsLoading(true);
+    }
     try {
       await syncWithRemote();
       // Clean up auto-generated bad observations from local storage
@@ -811,33 +843,7 @@ export default function SchedulesPage() {
         }
       });
 
-      const boats = boatDB.getAll();
-      const isNotM04 = (r: Reserva) => {
-        const boat = boats.find(b => b.id === r.embarcacaoId);
-        const boatCode = boat ? boat.nome : '';
-        return boatCode.toUpperCase() !== 'M04';
-      };
-
-      // 1. Fetch Local DB Reservations for selected date (excluding M04)
-      const localRes = reservationDB.getByDate(selectedDate).filter(isNotM04);
-      setActiveReservations(localRes);
-      setDailyReservations(localRes);
-
-      // 2. Fetch local reservations in the 14-day range (excluding M04)
-      const dStart = new Date(selectedDate);
-      const dEnd = new Date(selectedDate);
-      dEnd.setDate(dEnd.getDate() + 14);
-      const startStr = getLocalDateStr(dStart);
-      const endStr = getLocalDateStr(dEnd);
-
-      const localResRange = reservationDB.getAll().filter(r => 
-        r.status === 'confirmado' && 
-        r.data >= startStr && 
-        r.data <= endStr &&
-        isNotM04(r)
-      );
-
-      setRangeReservations(localResRange);
+      renderLocalData(selectedDate);
     } catch (err: any) {
       console.error('Erro ao recarregar agenda:', err);
       showToast('Erro ao recarregar agendamentos.', 'error');
@@ -852,7 +858,10 @@ export default function SchedulesPage() {
       setSelectedDate(getLocalDateStr());
       return;
     }
-    loadScheduleData();
+    // Instant 0ms render from memory on date switch
+    renderLocalData(selectedDate);
+    // Background sync with remote
+    loadScheduleData(false);
   }, [selectedDate, simMode]);
 
   const loadScheduleDataRef = useRef(loadScheduleData);
@@ -1063,7 +1072,7 @@ export default function SchedulesPage() {
         
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={loadScheduleData}
+            onClick={() => loadScheduleData(true)}
             disabled={isLoading}
             className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm transition-all cursor-pointer disabled:opacity-50"
             title="Atualizar Tabela"

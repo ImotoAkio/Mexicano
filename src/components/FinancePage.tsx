@@ -29,10 +29,10 @@ const cleanDescription = (desc: string) => {
 
 export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab?: 'dashboard' | 'lancamentos' | 'atividades' | 'agenda' | 'cobranca' }) {
   const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>(() => clientDB.getAll());
   const [embarcacoes, setEmbarcacoes] = useState<Embarcacao[]>([]);
   const [reservas, setReservas] = useState<Reserva[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => clientDB.getAll().length === 0);
   
   // Tabs state: 'dashboard' | 'lancamentos' | 'atividades' | 'agenda' | 'cobranca'
   const [activeTab, setActiveTab] = useState<'dashboard' | 'lancamentos' | 'atividades' | 'agenda' | 'cobranca'>(initialTab as any);
@@ -152,7 +152,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
   };
 
   const fetchData = async (showLoading = false) => {
-    if (showLoading) setLoading(true);
+    if (showLoading && clientes.length === 0) setLoading(true);
     try {
       const token = localStorage.getItem('admin_token');
       const res = await fetch('/api/financeiro/transacoes', {
