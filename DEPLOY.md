@@ -33,22 +33,20 @@ ssh root@84.247.143.102
 cd ~/mexicano-app
 ```
 
-### Passo 3: Fazer login no GitHub Packages (Caso necessário ou credenciais expirem)
-Para baixar a imagem privada do GitHub Container Registry (`ghcr.io`), faça o login no Docker da VPS utilizando um Personal Access Token (PAT) do GitHub:
+### Passo 3: Fazer login no GitHub Packages (Caso as credenciais expirem)
+Insira o Token do GitHub (`PAT`) correspondente:
 ```bash
 echo "SEU_GITHUB_TOKEN" | docker login ghcr.io -u ImotoAkio --password-stdin
 ```
-*(Nota: O login precisa ser feito apenas na primeira vez ou quando o token expirar, pois o Docker salva as credenciais no servidor).*
 
 ### Passo 4: Atualizar o serviço do Swarm
-Execute a atualização da imagem do serviço no Swarm:
+**NÃO** utilize `docker compose up -d`. O serviço é gerenciado pelo Swarm, portanto execute:
 ```bash
-docker service update --image ghcr.io/imotoakio/mexicano:latest mexicano_app-mexicano
+# Atualiza o container do serviço com a imagem mais recente
+docker service update --image ghcr.io/imotoakio/mexicano:latest mexicano-app_app-mexicano
 ```
 
-*(Caso queira verificar a lista de serviços ativos na VPS, utilize `docker service ls`).*
-
-*Se a stack ainda não tiver sido criada ou se houver mudanças nos arquivos `docker-compose.yml` ou `.env`, faça o deploy da Stack inteira:*
+*Se houver mudanças estruturais nos arquivos `docker-compose.yml` ou `.env`, faça o deploy da Stack inteira:*
 ```bash
 docker stack deploy -c docker-compose.yml mexicano-app
 ```

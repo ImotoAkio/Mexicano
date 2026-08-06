@@ -19,7 +19,7 @@ import compression from "compression";
 import { PDFParse } from "pdf-parse";
 import { PDFDocument } from "pdf-lib";
 import {
-  getDbPool, getDbStatus, initializeDatabase, pullDatabase, invalidateDbCache,
+  getDbPool, getDbStatus, initializeDatabase, pullDatabase,
   upsertClient, deleteClient, upsertBoat, deleteBoat,
   upsertReservation, deleteReservation, bulkSyncDatabase,
   getConfigValue, setConfigValue, getClientByCpf,
@@ -1311,145 +1311,6 @@ app.post("/api/upload/comprovante", requireAdminAuth, upload.single('comprovante
   }
 });
 
-// Helper function to calculate directory size recursively
-async function getDirSize(dirPath: string): Promise<number> {
-  const fs = require('fs');
-  const path = require('path');
-  let size = 0;
-  try {
-    const files = await fs.promises.readdir(dirPath);
-    for (const file of files) {
-      const filePath = path.join(dirPath, file);
-      const stat = await fs.promises.stat(filePath);
-      if (stat.isDirectory()) {
-        size += await getDirSize(filePath);
-      } else {
-        size += stat.size;
-      }
-    }
-  } catch (err) {
-    // Ignore errors for non-existent directories
-  }
-  return size;
-}
-
-// Route: Cleanup old checklists (older than 3 months)
-app.post("/api/admin/cleanup-checklists", requireAdminAuth, async (req, res) => {
-  try {
-    const { password } = req.body;
-    if (!password) {
-      return res.status(400).json({ error: true, message: "Senha não fornecida." });
-    }
-
-    const admin = await getAdminByUsername((req as any).user.username);
-    if (!admin) {
-      return res.status(403).json({ error: true, message: "Administrador não encontrado." });
-    }
-
-    const valid = await bcrypt.compare(password, admin.passwordHash);
-    if (!valid) {
-      return res.status(401).json({ error: true, message: "Senha incorreta." });
-    }
-
-    // 90 days ago in milliseconds
-    const cutoffDateMs = Date.now() - (90 * 24 * 60 * 60 * 1000);
-    const cutoffDateStr = new Date(cutoffDateMs).toISOString().split('T')[0];
-    
-    const checklistsDir = path.join(process.cwd(), 'uploads', 'checklists');
-    
-    let freedBytes = 0;
-    const filesToDelete: string[] = [];
-
-    if (fs.existsSync(checklistsDir)) {
-      const files = await fs.promises.readdir(checklistsDir);
-      for (const file of files) {
-        const filePath = path.join(checklistsDir, file);
-        const stat = await fs.promises.stat(filePath);
-        if (stat.isFile() && stat.mtimeMs < cutoffDateMs) {
-          freedBytes += stat.size;
-          filesToDelete.push(filePath);
-        }
-      }
-    }
-
-    // Prepare response to send a ZIP file
-    res.attachment(`checklists_backup_${cutoffDateStr}.zip`);
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('X-Freed-Bytes', freedBytes.toString());
-
-    const archiver = (await import('archiver')).default;
-    const archive = archiver('zip', {
-      zlib: { level: 9 }
-    });
-
-    archive.on('error', (err: any) => {
-      console.error("Archive error:", err);
-      if (!res.headersSent) res.status(500).json({ error: true, message: "Erro ao gerar ZIP" });
-    });
-
-    // Delete files and clear DB AFTER the archive finishes piping
-    res.on('finish', async () => {
-      for (const filePath of filesToDelete) {
-        try {
-          await fs.promises.unlink(filePath);
-        } catch(e) {}
-      }
-      
-      const pool = getDbPool();
-      if (pool) {
-        await pool.promise().query(`
-          UPDATE Reservas 
-          SET fotosChecklistDescida = NULL, 
-              fotosChecklistSaida = NULL, 
-              fotosChecklistChegada = NULL, 
-              fotosChecklistSubida = NULL 
-          WHERE data < ?
-        `, [cutoffDateStr]);
-        
-        try {
-          invalidateDbCache();
-        } catch(e) {}
-      }
-    });
-
-    archive.pipe(res);
-
-    for (const filePath of filesToDelete) {
-      archive.file(filePath, { name: path.basename(filePath) });
-    }
-
-    await archive.finalize();
-
-  } catch (err: any) {
-    console.error("Cleanup error:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: true, message: err.message });
-    }
-  }
-});
-
-// Route: Get storage size stats
-app.get("/api/admin/storage-size", requireAdminAuth, async (req, res) => {
-  try {
-    const path = require('path');
-    const uploadsDir = path.join(process.cwd(), 'uploads');
-    const checklistsDir = path.join(uploadsDir, 'checklists');
-    
-    const [totalSize, checklistsSize] = await Promise.all([
-      getDirSize(uploadsDir),
-      getDirSize(checklistsDir)
-    ]);
-    
-    res.json({
-      success: true,
-      totalBytes: totalSize,
-      checklistsBytes: checklistsSize
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message });
-  }
-});
-
 // Route: Get all admin users
 app.get("/api/admin/users", requireAdminAuth, async (req, res) => {
   try {
@@ -1512,33 +1373,6 @@ app.get("/api/db/pull", requireAdminAuth, async (req, res) => {
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Failed to pull remote database." });
-  }
-});
-
-// Route: Public endpoint to fetch checklist by ID
-app.get("/api/public/checklist/:id", async (req, res) => {
-  try {
-    const pool = await import('./server-db').then(m => m.getDbPool());
-    if (!pool) throw new Error("Database not initialized");
-
-    const [reservas]: any = await pool.query(`
-      SELECT 
-        r.id, r.data as dataAgendamento, r.statusMarina, r.horaDescida, r.horaChegada, r.horaSubida,
-        r.fotosChecklistDescida, r.fotosChecklistSaida, r.fotosChecklistChegada, r.fotosChecklistSubida,
-        c.nome as clienteNome, b.nome as embarcacaoNome, b.numero as embarcacaoNumero
-      FROM Reservas r
-      LEFT JOIN Clientes c ON r.clienteId = c.id
-      LEFT JOIN Embarcacoes b ON r.embarcacaoId = b.id
-      WHERE r.id = ?
-    `, [req.params.id]);
-
-    if (!reservas || reservas.length === 0) {
-      return res.status(404).json({ error: true, message: "Checklist não encontrado" });
-    }
-
-    res.json({ success: true, checklist: reservas[0] });
-  } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to fetch checklist" });
   }
 });
 

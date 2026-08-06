@@ -56,7 +56,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   // Checklist state
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistMode, setChecklistMode] = useState<'descida' | 'chegada' | 'subida'>('descida');
-  const [checklistFotos, setChecklistFotos] = useState<Record<string, string>>({});
+  const [checklistFotos, setChecklistFotos] = useState<Record<string, string[]>>({});
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
 
   const [filterType, setFilterType] = useState<'agendadas' | 'confirmadas' | 'prontas' | 'retornaram'>('agendadas');
@@ -218,7 +218,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       const json = await res.json();
       if (!json.success) throw new Error(json.message);
 
-      setChecklistFotos(prev => ({ ...prev, [angleId]: json.imageUrl }));
+      setChecklistFotos(prev => ({ ...prev, [angleId]: [...(prev[angleId] || []), json.imageUrl] }));
     } catch (err) {
       alert('Erro ao fazer upload da foto.');
     } finally {
@@ -253,7 +253,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   };
 
   const proceedChecklist = () => {
-    const fotosArray = Object.values(checklistFotos);
+    const fotosArray = Object.values(checklistFotos).flat();
     
     if (checklistMode === 'descida') {
       executeRegistrarDescida(fotosArray);
@@ -867,41 +867,50 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               <div className="grid grid-cols-2 gap-3">
                 {CHECKLIST_ANGLES.map(angle => {
                   const Icon = angle.icon;
-                  const isUploaded = !!checklistFotos[angle.id];
+                  const fotos = checklistFotos[angle.id] || [];
+                  const isUploaded = fotos.length > 0;
                   const isUploading = uploadingAngle === angle.id;
 
                   return (
-                    <div key={angle.id} className="relative">
-                      {/* Hidden File Input */}
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        capture="environment"
-                        onChange={(e) => handleUploadPhoto(e, angle.id)}
-                        className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
-                        disabled={isUploading}
-                      />
-                      
-                      <div className={`border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center text-center gap-2 h-32 transition-colors ${
-                        isUploaded 
-                          ? 'border-green-200 bg-green-50' 
-                          : 'border-slate-200 bg-slate-50 active:bg-slate-100'
-                      }`}>
-                        {isUploading ? (
-                          <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-                        ) : isUploaded ? (
-                          <CheckCircle2 className="w-8 h-8 text-green-500" />
-                        ) : (
-                          <Icon className="w-8 h-8 text-slate-400" />
-                        )}
+                    <div key={angle.id} className="relative flex flex-col gap-2">
+                      {fotos.length > 0 && (
+                        <div className="flex overflow-x-auto gap-2 pb-1 subtle-scrollbar">
+                          {fotos.map((url, i) => (
+                            <img key={i} src={url} className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0" alt="Miniatura" />
+                          ))}
+                        </div>
+                      )}
+                      <div className="relative">
+                        {/* Hidden File Input */}
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          capture="environment"
+                          onChange={(e) => handleUploadPhoto(e, angle.id)}
+                          className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
+                          disabled={isUploading}
+                        />
                         
-                        <div>
-                          <span className={`block text-xs font-bold ${isUploaded ? 'text-green-700' : 'text-slate-700'}`}>
-                            {angle.label}
-                          </span>
-                          {!isUploaded && !isUploading && (
-                            <span className="block text-[10px] text-slate-400 mt-0.5">Tocar p/ Câmera</span>
+                        <div className={`border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center text-center gap-2 h-24 transition-colors ${
+                          isUploaded 
+                            ? 'border-blue-200 bg-blue-50 active:bg-blue-100' 
+                            : 'border-slate-200 bg-slate-50 active:bg-slate-100'
+                        }`}>
+                          {isUploading ? (
+                            <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                          ) : (
+                            <Icon className={`w-6 h-6 ${isUploaded ? 'text-blue-500' : 'text-slate-400'}`} />
                           )}
+                          
+                          <div>
+                            <span className={`block text-[11px] font-bold leading-tight ${isUploaded ? 'text-blue-700' : 'text-slate-700'}`}>
+                              {isUploaded ? `${angle.label} (${fotos.length})` : angle.label}
+                            </span>
+                            {isUploaded && <span className="block text-[10px] text-blue-600 font-medium mt-0.5">Adicionar +</span>}
+                            {!isUploaded && !isUploading && (
+                              <span className="block text-[10px] text-slate-400 mt-0.5">Tocar p/ Câmera</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
