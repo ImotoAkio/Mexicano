@@ -252,3 +252,5 @@ export interface CatalogoEpi {
   caPadrao?: string;
   createdAt: string;
 }
+
+// trigger action
