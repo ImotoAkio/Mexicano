@@ -16,7 +16,6 @@ import cors from "cors";
 import fs from "fs";
 import crypto from "crypto";
 import compression from "compression";
-import { ZipArchive } from "archiver";
 import { PDFParse } from "pdf-parse";
 import { PDFDocument } from "pdf-lib";
 import {
@@ -1378,6 +1377,7 @@ app.post("/api/admin/cleanup-checklists", requireAdminAuth, async (req, res) => 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('X-Freed-Bytes', freedBytes.toString());
 
+    const archiver = (await import('archiver')).default;
     const archive = archiver('zip', {
       zlib: { level: 9 }
     });
