@@ -18,6 +18,10 @@ export default function BoatPage() {
   const [modelo, setModelo] = useState('');
   const [fabricante, setFabricante] = useState('');
   const [ano, setAno] = useState<number>(new Date().getFullYear());
+  const [chassi, setChassi] = useState('');
+  const [inscricao, setInscricao] = useState('');
+  const [tipoPropulsao, setTipoPropulsao] = useState('MOTOR');
+  const [potencia, setPotencia] = useState('');
   const [selectedDonos, setSelectedDonos] = useState<string[]>([]); // client IDs (unlimited)
   const [ownerSearch, setOwnerSearch] = useState('');
   const [googleCalendarId, setGoogleCalendarId] = useState(''); // Google Calendar ID directly linked to the boat
@@ -58,6 +62,10 @@ export default function BoatPage() {
     setModelo('');
     setFabricante('');
     setAno(new Date().getFullYear());
+    setChassi('');
+    setInscricao('');
+    setTipoPropulsao('MOTOR');
+    setPotencia('');
     setSelectedDonos([]);
     setOwnerSearch('');
     setGoogleCalendarId('');
@@ -78,6 +86,10 @@ export default function BoatPage() {
     setModelo(boat.modelo);
     setFabricante(boat.fabricante);
     setAno(boat.ano);
+    setChassi(boat.chassi || '');
+    setInscricao(boat.inscricao || '');
+    setTipoPropulsao(boat.tipo_propulsao || 'MOTOR');
+    setPotencia(boat.potencia || '');
     setSelectedDonos(boat.donos);
     setOwnerSearch('');
     
@@ -304,6 +316,10 @@ export default function BoatPage() {
           modelo,
           fabricante,
           ano,
+          chassi: chassi.trim() || undefined,
+          inscricao: inscricao.trim() || undefined,
+          tipo_propulsao: tipoPropulsao.trim() || undefined,
+          potencia: potencia.trim() || undefined,
           donos: selectedDonos,
           googleCalendarId: googleCalendarId.trim() || undefined,
           whatsappGroupId: whatsappGroupId.trim() || undefined,
@@ -322,6 +338,10 @@ export default function BoatPage() {
           modelo,
           fabricante,
           ano,
+          chassi: chassi.trim() || undefined,
+          inscricao: inscricao.trim() || undefined,
+          tipo_propulsao: tipoPropulsao.trim() || undefined,
+          potencia: potencia.trim() || undefined,
           donos: selectedDonos,
           googleCalendarId: googleCalendarId.trim() || undefined,
           whatsappGroupId: whatsappGroupId.trim() || undefined,
@@ -530,7 +550,7 @@ export default function BoatPage() {
                   </div>
 
                   {/* Vessel Specs */}
-                  <div className="mt-5 grid grid-cols-2 gap-4 text-xs bg-slate-50/50 p-3 rounded-lg border border-slate-50">
+                  <div className="mt-5 grid grid-cols-2 gap-3 text-xs bg-slate-50/50 p-3 rounded-lg border border-slate-100">
                     <div>
                       <span className="text-slate-400 block font-light">Fabricante</span>
                       <span className="font-medium text-slate-800">{boat.fabricante || 'Não informado'}</span>
@@ -540,12 +560,20 @@ export default function BoatPage() {
                       <span className="font-medium text-slate-800">{boat.modelo || 'Não informado'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block font-light">Ano de Fabricação</span>
-                      <span className="font-medium text-slate-800 font-mono">{boat.ano}</span>
+                      <span className="text-slate-400 block font-light">Ano / Numeração</span>
+                      <span className="font-medium text-slate-800 font-mono">{boat.ano} (#{boat.numero})</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block font-light">Numeração Original</span>
-                      <span className="font-medium text-slate-800 font-mono">#{boat.numero}</span>
+                      <span className="text-slate-400 block font-light">N° Inscrição (Marinha)</span>
+                      <span className="font-medium text-slate-800 font-mono">{boat.inscricao || 'Não informada'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-light">N° do Chassi</span>
+                      <span className="font-medium text-slate-800 font-mono">{boat.chassi || 'Não informado'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-light">Propulsão / Potência</span>
+                      <span className="font-medium text-slate-800">{boat.tipo_propulsao || 'MOTOR'} {boat.potencia ? `(${boat.potencia})` : ''}</span>
                     </div>
                   </div>
                 </div>
@@ -558,23 +586,20 @@ export default function BoatPage() {
                     </span>
                   </div>
 
-                  {ownerNames.length === 0 ? (
-                    <p className="text-xs text-rose-500 italic">Nenhum proprietário associado! Adicione pelo menos 1.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {ownerNames.map(owner => (
-                        <div key={owner.id} className="flex items-center space-x-2 p-1.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center font-medium text-[10px] text-slate-600 uppercase shrink-0">
-                            {owner.nome.charAt(0)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium text-slate-800 truncate leading-none">{owner.nome}</p>
-                            <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{owner.telefone}</span>
-                          </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto subtle-scrollbar pr-1">
+                    {ownerNames.length > 0 ? (
+                      ownerNames.map((owner, idx) => (
+                        <div key={idx} className="flex items-center space-x-1 px-2.5 py-1 bg-slate-50 hover:bg-slate-100 rounded-md text-slate-700 text-xs border border-slate-100 transition-colors">
+                          <User className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="font-medium truncate max-w-[140px]">{owner.nome}</span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      ))
+                    ) : (
+                      <span className="text-xs text-rose-500 italic bg-rose-50 px-2 py-1 rounded border border-rose-100">
+                        Nenhum proprietário associado!
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -582,20 +607,23 @@ export default function BoatPage() {
         </div>
       )}
 
-      {/* Modal - Create/Edit Vessel */}
+      {/* Modal: Cadastro / Edição de Embarcação */}
       {isModalOpen && (
-        <div id="boat-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-100 max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-150">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h3 className="text-lg font-medium text-slate-900">
-                {editingId ? 'Editar Embarcação' : 'Cadastrar Nova Embarcação'}
-              </h3>
-              <button
-                id="close-boat-modal"
+        <div id="boat-modal" className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+            
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="flex items-center space-x-2">
+                <Anchor className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-semibold text-slate-900">
+                  {editingId ? 'Editar Embarcação' : 'Nova Embarcação'}
+                </h3>
+              </div>
+              <button 
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-1 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -779,6 +807,57 @@ export default function BoatPage() {
                     onChange={(e) => setAno(Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Dados Técnicos para Contratos */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Especificações Técnicas (Contratos)</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">N° do Chassi</label>
+                    <input
+                      id="input-boat-chassi"
+                      type="text"
+                      placeholder="Ex: BR-MEX12345678"
+                      value={chassi}
+                      onChange={(e) => setChassi(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">N° de Inscrição (Marinha)</label>
+                    <input
+                      id="input-boat-inscricao"
+                      type="text"
+                      placeholder="Ex: 401-123456-7"
+                      value={inscricao}
+                      onChange={(e) => setInscricao(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Tipo de Propulsão</label>
+                    <input
+                      id="input-boat-propulsao"
+                      type="text"
+                      placeholder="Ex: MOTOR"
+                      value={tipoPropulsao}
+                      onChange={(e) => setTipoPropulsao(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Potência (HP / CV)</label>
+                    <input
+                      id="input-boat-potencia"
+                      type="text"
+                      placeholder="Ex: 250 HP"
+                      value={potencia}
+                      onChange={(e) => setPotencia(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
                 </div>
               </div>
 

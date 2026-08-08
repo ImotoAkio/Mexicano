@@ -24,6 +24,7 @@
     user-select: text !important;
     -webkit-user-select: text !important;
     font-size: 16px !important;
+    color: #0f172a !important; /* Ensure high contrast text on inputs */
   }
 }
 
@@ -67,17 +68,17 @@
 @keyframes spring-pop-up {
   0% {
     opacity: 0;
-    transform: translate(-50%, 28px) scale(0.88);
+    transform: translateY(28px) scale(0.88);
     filter: blur(8px);
   }
   60% {
     opacity: 1;
-    transform: translate(-50%, -4px) scale(1.02);
+    transform: translateY(-4px) scale(1.02);
     filter: blur(0px);
   }
   100% {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: translateY(0) scale(1);
     filter: blur(0px);
   }
 }

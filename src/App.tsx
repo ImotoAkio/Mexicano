@@ -17,6 +17,7 @@ import ClientLoginPage from './components/ClientLoginPage';
 const ClientDashboardPage = lazy(() => import('./components/ClientDashboardPage'));
 import LandingPage from './components/LandingPage';
 const MarinaDashboard = lazy(() => import('./components/MarinaDashboard'));
+const ComercialDashboard = lazy(() => import('./components/ComercialDashboard'));
 const UsersPage = lazy(() => import('./components/UsersPage'));
 const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
@@ -34,6 +35,7 @@ const DPPage = lazy(() => import('./components/DP/DPPage'));
 const BoletosPage = lazy(() => import('./components/finance/BoletosPage'));
 const RetroativoPage = lazy(() => import('./components/RetroativoPage').then(m => ({ default: m.RetroativoPage })));
 const AuditLogsPage = lazy(() => import('./components/AuditLogsPage'));
+const SharedChecklistPage = lazy(() => import('./components/SharedChecklistPage'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -347,13 +349,24 @@ export default function App() {
   const isAdminRoute = currentPath.startsWith('/admin');
   const isPortalRoute = currentPath.startsWith('/portal');
   const isSimuladorRoute = currentPath === '/simulador-epi';
-  const isLandingRoute = !isAdminRoute && !isPortalRoute && !isFeedbackRoute && !isSimuladorRoute;
+  const isSharedChecklistRoute = currentPath.startsWith('/checklist/share/');
+  const isLandingRoute = !isAdminRoute && !isPortalRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute;
 
   // ═══════════ FEEDBACK PUBLIC PAGE (/feedback) ═══════════
   if (isFeedbackRoute) {
     return (
       <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
         <FeedbackForm />
+      </Suspense>
+    );
+  }
+
+  // ═══════════ SHARED CHECKLIST PAGE (/checklist/share/:id) ═══════════
+  if (isSharedChecklistRoute) {
+    const checklistId = currentPath.split('/')[3];
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-[#050505]"><div className="w-8 h-8 border-4 border-[#B69D74] border-t-transparent rounded-full animate-spin"></div></div>}>
+        <SharedChecklistPage checklistId={checklistId} />
       </Suspense>
     );
   }
@@ -456,6 +469,14 @@ export default function App() {
     return (
       <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
         <MarinaDashboard onLogout={handleLogout} operadorNome={adminName} />
+      </Suspense>
+    );
+  }
+
+  if (adminRole === 'comercial') {
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <ComercialDashboard onLogout={handleLogout} />
       </Suspense>
     );
   }

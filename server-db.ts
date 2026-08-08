@@ -168,6 +168,15 @@ export async function initializeDatabase() {
         cidade VARCHAR(100),
         estado VARCHAR(10),
         embarcacoes TEXT,
+        cnh_cha VARCHAR(50),
+        profissao VARCHAR(100),
+        estadoCivil VARCHAR(50),
+        rg VARCHAR(50),
+        orgaoEmissor VARCHAR(100),
+        numeroHabilitacao VARCHAR(50),
+        validadeHabilitacao VARCHAR(50),
+        orgaoEmissorHabilitacao VARCHAR(100),
+        categoriaHabilitacao VARCHAR(50),
         statusFinanceiro VARCHAR(50) DEFAULT 'em_dia',
         observacoesFinanceiras TEXT,
         plano VARCHAR(20) DEFAULT 'normal',
@@ -175,10 +184,17 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    try {
-      await connection.query(`ALTER TABLE Clientes ADD COLUMN statusFinanceiro VARCHAR(50) DEFAULT 'em_dia';`);
-      await connection.query(`ALTER TABLE Clientes ADD COLUMN observacoesFinanceiras TEXT;`);
-    } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN statusFinanceiro VARCHAR(50) DEFAULT 'em_dia';`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN observacoesFinanceiras TEXT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN cnh_cha VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN profissao VARCHAR(100);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN estadoCivil VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN rg VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN orgaoEmissor VARCHAR(100);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN numeroHabilitacao VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN validadeHabilitacao VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN orgaoEmissorHabilitacao VARCHAR(100);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN categoriaHabilitacao VARCHAR(50);`); } catch (e) {}
 
     try {
       await connection.query(`ALTER TABLE Clientes ADD COLUMN plano VARCHAR(20) DEFAULT 'normal';`);
@@ -198,6 +214,10 @@ export async function initializeDatabase() {
         modelo VARCHAR(255),
         fabricante VARCHAR(255),
         ano INT,
+        chassi VARCHAR(100),
+        inscricao VARCHAR(100),
+        tipo_propulsao VARCHAR(100),
+        potencia VARCHAR(100),
         donos TEXT,
         googleCalendarId VARCHAR(100),
         whatsappGroupId VARCHAR(255),
@@ -224,6 +244,18 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN seguroUrl VARCHAR(255);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN chassi VARCHAR(100);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN inscricao VARCHAR(100);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN tipo_propulsao VARCHAR(100);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN potencia VARCHAR(100);`);
     } catch (e) {}
 
     // 3. Reservas Table
@@ -352,6 +384,17 @@ export async function initializeDatabase() {
         clienteId VARCHAR(50) PRIMARY KEY,
         passwordHash VARCHAR(255) NOT NULL,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 7b. UserPreferences Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS UserPreferences (
+        userId INT PRIMARY KEY,
+        logoUrl VARCHAR(500),
+        backgroundUrl VARCHAR(500),
+        greetingText VARCHAR(500),
+        FOREIGN KEY (userId) REFERENCES AdminUsers(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -783,6 +826,10 @@ export async function pullDatabase(forceFresh = false) {
     }
     return {
       ...b,
+      chassi: b.chassi || '',
+      inscricao: b.inscricao || '',
+      tipo_propulsao: b.tipo_propulsao || '',
+      potencia: b.potencia || '',
       donos: donosList,
       emManutencao: b.emManutencao === 1 || b.emManutencao === true,
       whatsappGroupId: b.whatsappGroupId || undefined,
@@ -856,8 +903,8 @@ export async function upsertClient(client: any) {
   const query = `
     INSERT INTO Clientes (
       id, nome, embarcacaoId, cota, telefone, email, cpf, dataCadastro, 
-      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId, cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       nome = VALUES(nome),
       embarcacaoId = VALUES(embarcacaoId),
@@ -876,7 +923,16 @@ export async function upsertClient(client: any) {
       statusFinanceiro = VALUES(statusFinanceiro),
       observacoesFinanceiras = VALUES(observacoesFinanceiras),
       plano = VALUES(plano),
-      asaasCustomerId = VALUES(asaasCustomerId)
+      asaasCustomerId = VALUES(asaasCustomerId),
+      cnh_cha = VALUES(cnh_cha),
+      profissao = VALUES(profissao),
+      estadoCivil = VALUES(estadoCivil),
+      rg = VALUES(rg),
+      orgaoEmissor = VALUES(orgaoEmissor),
+      numeroHabilitacao = VALUES(numeroHabilitacao),
+      validadeHabilitacao = VALUES(validadeHabilitacao),
+      orgaoEmissorHabilitacao = VALUES(orgaoEmissorHabilitacao),
+      categoriaHabilitacao = VALUES(categoriaHabilitacao)
   `;
 
   await currentPool.query(query, [
@@ -899,7 +955,16 @@ export async function upsertClient(client: any) {
     client.statusFinanceiro || 'em_dia',
     client.observacoesFinanceiras || null,
     client.plano || 'normal',
-    client.asaasCustomerId || null
+    client.asaasCustomerId || null,
+    client.cnh_cha || null,
+    client.profissao || null,
+    client.estadoCivil || null,
+    client.rg || null,
+    client.orgaoEmissor || null,
+    client.numeroHabilitacao || null,
+    client.validadeHabilitacao || null,
+    client.orgaoEmissorHabilitacao || null,
+    client.categoriaHabilitacao || null
   ]);
 }
 
@@ -947,8 +1012,8 @@ export async function upsertBoat(boat: any) {
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -956,6 +1021,10 @@ export async function upsertBoat(boat: any) {
       modelo = VALUES(modelo),
       fabricante = VALUES(fabricante),
       ano = VALUES(ano),
+      chassi = VALUES(chassi),
+      inscricao = VALUES(inscricao),
+      tipo_propulsao = VALUES(tipo_propulsao),
+      potencia = VALUES(potencia),
       donos = VALUES(donos),
       googleCalendarId = VALUES(googleCalendarId),
       whatsappGroupId = VALUES(whatsappGroupId),
@@ -974,6 +1043,10 @@ export async function upsertBoat(boat: any) {
     boat.modelo || null,
     boat.fabricante || null,
     boat.ano || null,
+    boat.chassi || null,
+    boat.inscricao || null,
+    boat.tipo_propulsao || null,
+    boat.potencia || null,
     donosJson,
     boat.googleCalendarId || null,
     boat.whatsappGroupId || null,
@@ -1107,17 +1180,19 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
     for (const boat of payload.boats) {
       const donosJson = boat.donos ? JSON.stringify(boat.donos) : JSON.stringify([]);
       await connection.query(`
-        INSERT INTO Embarcacoes (id, tipo, nome, numero, modelo, fabricante, ano, donos, googleCalendarId, whatsappGroupId, emManutencao, temSom, imagemUrl, documentoUrl, seguroUrl)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO Embarcacoes (id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, temSom, imagemUrl, documentoUrl, seguroUrl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           tipo = VALUES(tipo), nome = VALUES(nome), numero = VALUES(numero),
-          modelo = VALUES(modelo), fabricante = VALUES(fabricante),
-          ano = VALUES(ano), donos = VALUES(donos), googleCalendarId = VALUES(googleCalendarId),
+          modelo = VALUES(modelo), fabricante = VALUES(fabricante), ano = VALUES(ano),
+          chassi = VALUES(chassi), inscricao = VALUES(inscricao), tipo_propulsao = VALUES(tipo_propulsao), potencia = VALUES(potencia),
+          donos = VALUES(donos), googleCalendarId = VALUES(googleCalendarId),
           whatsappGroupId = VALUES(whatsappGroupId), emManutencao = VALUES(emManutencao), temSom = VALUES(temSom),
           imagemUrl = VALUES(imagemUrl), documentoUrl = VALUES(documentoUrl), seguroUrl = VALUES(seguroUrl)
       `, [
-        boat.id, boat.tipo, boat.nome, boat.numero, boat.modelo, boat.fabricante,
-        boat.ano, donosJson, boat.googleCalendarId || null, boat.whatsappGroupId || null, boat.emManutencao ? 1 : 0, boat.temSom ? 1 : 0, boat.imagemUrl || null, boat.documentoUrl || null, boat.seguroUrl || null
+        boat.id, boat.tipo, boat.nome, boat.numero, boat.modelo, boat.fabricante, boat.ano,
+        boat.chassi || null, boat.inscricao || null, boat.tipo_propulsao || null, boat.potencia || null,
+        donosJson, boat.googleCalendarId || null, boat.whatsappGroupId || null, boat.emManutencao ? 1 : 0, boat.temSom ? 1 : 0, boat.imagemUrl || null, boat.documentoUrl || null, boat.seguroUrl || null
       ]);
     }
 
@@ -1127,22 +1202,31 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
       await connection.query(`
         INSERT INTO Clientes (
           id, nome, embarcacaoId, cota, telefone, email, cpf, dataCadastro, 
-          cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras,
+          cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           nome = VALUES(nome), embarcacaoId = VALUES(embarcacaoId), cota = VALUES(cota),
           telefone = VALUES(telefone), email = VALUES(email), cpf = VALUES(cpf),
           cep = VALUES(cep), logradouro = VALUES(logradouro), numeroEnd = VALUES(numeroEnd),
           complemento = VALUES(complemento), bairro = VALUES(bairro), cidade = VALUES(cidade),
           estado = VALUES(estado), embarcacoes = VALUES(embarcacoes),
-          statusFinanceiro = VALUES(statusFinanceiro), observacoesFinanceiras = VALUES(observacoesFinanceiras)
+          statusFinanceiro = VALUES(statusFinanceiro), observacoesFinanceiras = VALUES(observacoesFinanceiras),
+          cnh_cha = VALUES(cnh_cha), profissao = VALUES(profissao), estadoCivil = VALUES(estadoCivil),
+          rg = VALUES(rg), orgaoEmissor = VALUES(orgaoEmissor), numeroHabilitacao = VALUES(numeroHabilitacao),
+          validadeHabilitacao = VALUES(validadeHabilitacao), orgaoEmissorHabilitacao = VALUES(orgaoEmissorHabilitacao),
+          categoriaHabilitacao = VALUES(categoriaHabilitacao)
       `, [
         client.id, client.nome, client.embarcacaoId || null, client.cota || null,
         client.telefone || null, client.email || null, client.cpf || null,
         client.dataCadastro || null, client.cep || null, client.logradouro || null,
         client.numeroEnd || null, client.complemento || null, client.bairro || null,
         client.cidade || null, client.estado || null, embarcacoesJson,
-        client.statusFinanceiro || 'em_dia', client.observacoesFinanceiras || null
+        client.statusFinanceiro || 'em_dia', client.observacoesFinanceiras || null,
+        client.cnh_cha || null, client.profissao || null, client.estadoCivil || null,
+        client.rg || null, client.orgaoEmissor || null, client.numeroHabilitacao || null,
+        client.validadeHabilitacao || null, client.orgaoEmissorHabilitacao || null,
+        client.categoriaHabilitacao || null
       ]);
     }
 
@@ -1791,4 +1875,36 @@ export async function deleteCatalogoEPI(id: string) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query("DELETE FROM CatalogoEPIs WHERE id = ?", [id]);
+}
+
+// ---------------- User Preferences ----------------
+
+export async function getUserPreferences(userId: number): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) return null;
+  const [rows] = await currentPool.query(
+    "SELECT * FROM UserPreferences WHERE userId = ?",
+    [userId]
+  );
+  const data = rows as any[];
+  return data.length > 0 ? data[0] : null;
+}
+
+export async function upsertUserPreferences(userId: number, preferences: any) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  await currentPool.query(`
+    INSERT INTO UserPreferences (userId, logoUrl, backgroundUrl, greetingText)
+    VALUES (?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      logoUrl = VALUES(logoUrl),
+      backgroundUrl = VALUES(backgroundUrl),
+      greetingText = VALUES(greetingText)
+  `, [
+    userId,
+    preferences.logoUrl || null,
+    preferences.backgroundUrl || null,
+    preferences.greetingText || null
+  ]);
 }

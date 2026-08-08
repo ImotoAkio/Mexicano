@@ -30,6 +30,19 @@ interface BoatData {
   potencia?: string;
 }
 
+export interface PaymentData {
+  valorTotal?: string;
+  valorEntrada?: string;
+  valorRemanescente?: string;
+  valorRemanescenteExtenso?: string;
+  numParcelas?: string;
+  numParcelasExtenso?: string;
+  valorParcela?: string;
+  valorParcelaExtenso?: string;
+  formaPagamento?: string;
+  diaVencimento?: string;
+}
+
 // Helper to load image
 const getLogoImage = async (): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
@@ -40,7 +53,7 @@ const getLogoImage = async (): Promise<HTMLImageElement> => {
   });
 };
 
-export async function generateContract(type: 'adm' | 'aquisicao', clientData: ClientData, boatData: BoatData) {
+export async function generateContract(type: 'adm' | 'aquisicao', clientData: ClientData, boatData: BoatData, paymentData?: PaymentData) {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -64,8 +77,6 @@ export async function generateContract(type: 'adm' | 'aquisicao', clientData: Cl
     if (cursorY + neededHeight > pageHeight - margins.bottom) {
       doc.addPage();
       cursorY = margins.top;
-      // Add logo on new pages too if it's the Adm contract? Usually logo is only first page.
-      // But let's leave it simple.
     }
   };
 
@@ -91,7 +102,6 @@ export async function generateContract(type: 'adm' | 'aquisicao', clientData: Cl
     doc.setFont("helvetica", isBold ? "bold" : "normal");
     doc.setFontSize(fontSize);
     
-    // For justification to work in jsPDF properly, it needs a specific configuration, but let's stick to standard text wrapping.
     const lines = doc.splitTextToSize(text, textWidth);
     
     for (let i = 0; i < lines.length; i++) {
@@ -114,6 +124,38 @@ export async function generateContract(type: 'adm' | 'aquisicao', clientData: Cl
     writeParagraph(vendorStr);
     writeParagraph(introStr);
 
+    const cotaPercentual = clientData.cota || '25%';
+    let cotaExtenso = 'vinte e cinco por cento';
+    if (cotaPercentual === '12.5%' || cotaPercentual === '12,5%') {
+      cotaExtenso = 'doze vírgula cinco por cento';
+    } else if (cotaPercentual === '50%') {
+      cotaExtenso = 'cinquenta por cento';
+    } else if (cotaPercentual === '100%') {
+      cotaExtenso = 'cem por cento';
+    }
+
+    const formatR$ = (val?: string) => {
+      if (!val) return '';
+      const trimmed = val.trim();
+      if (trimmed.startsWith('R$')) return trimmed;
+      return `R$ ${trimmed}`;
+    };
+
+    const vTotal = formatR$(paymentData?.valorTotal || '55.000,00');
+    const vEntrada = formatR$(paymentData?.valorEntrada || '12.040,00');
+    const vRemanescente = formatR$(paymentData?.valorRemanescente || '42.960,00');
+    const vRemExtenso = paymentData?.valorRemanescenteExtenso || 'QUARENTA E DOIS MIL NOVECENTOS E SESSENTA REAIS';
+    const nParc = paymentData?.numParcelas || '24';
+    const nParcExtenso = paymentData?.numParcelasExtenso || 'VINTE E QUATRO';
+    const vParcela = formatR$(paymentData?.valorParcela || '1.790,00');
+    const vParcExtenso = paymentData?.valorParcelaExtenso || 'MIL E SETECENTOS E NOVENTA REAIS';
+    const formaPag = paymentData?.formaPagamento || 'boleto/transferência bancária/depósito/espécie';
+    const diaVenc = paymentData?.diaVencimento || '10';
+
+    const clause3_1 = `3.1. O COMPRADOR pagará pela aquisição de ${cotaPercentual} (${cotaExtenso}) da propriedade da embarcação, objeto deste contrato, o valor de ${vTotal} a ser efetuado da seguinte forma:`;
+    const clause3_1_a = `a) Pagamento de ${vEntrada} a título de entrada, que será pago à vista no momento da assinatura do presente contrato.`;
+    const clause3_1_b = `b) O valor remanescente de ${vRemanescente} (${vRemExtenso}), deverá ser pago em ${nParc} (${nParcExtenso}) parcelas de ${vParcela} (${vParcExtenso}), mediante ${formaPag}, com o vencimento para o dia ${diaVenc} de cada mês, servindo comprovante de pagamento/transferência como recibo de quitação.`;
+
     const clauses = [
       "1. OBJETO",
       `1.1. Este contrato tem como objeto a aquisição de copropriedade de embarcação, correspondente a ${clientData.cota || '25%'} do total, pelo COMPRADOR, qual seja: ${boatData.nome || 'N/A'} modelo: ${boatData.modelo || 'N/A'}, Nº do chassi: ${boatData.chassi || 'N/A'}.`,
@@ -126,11 +168,13 @@ export async function generateContract(type: 'adm' | 'aquisicao', clientData: Cl
       "2.4. Ao firmar o presente contrato, o COMPRADOR garante que cumprirá todas as normas internas de utilização da embarcação e do Estatuto dos Cotistas, passadas pela ADMINISTRADORA e/ou VENDEDOR.",
       "2.5. O COMPRADOR tem ciência que para utilização de Moto Aquática, deverá obrigatoriamente possuir Carteira de Habilitação de Motonauta (MTA), devendo estar regular e adimplente perante os órgãos fiscalizadores, estando seu acesso ao sistema de agendamento/reservas condicionado a apresentação da referida habilitação.",
       "2.5.1. Caso o COMPRADOR ainda não possua a carteira de habilitação de Motonauta (MTA), poderá adquirir a cota, porém só terá seu acesso ao sistema de agendamento liberado após apresentação do referido documento de habilitação.",
-      "2.6. É vedado a qualquer COPROPRIETÁRIO da embarcação: (i)remover a embarcação da marina ou da água para transitar por terra; (ii) uso da embarcação para fins comerciais/exploração econômica ou qualquer fim ilícito; (iv) cessão ou empréstimo da embarcação para terceiros sem a presença do COMPRADOR ou alguns de seus dependentes, devidamente identificados junto a ADMINISTRADORA; (vii) uso para empurrar, puxar ou rebocar outra embarcação ;(viii)uso para transporte de produtos inflamáveis ou explosivos; (ix)permitir que a pilotagem ou condução da embarcação em estado de embriagues, por si ou por teceiros; (x)uso ou porte de substância psicotrópica, narcótica ou similar.",
+      "2.6. É vedado a qualquer COPROPRIETÁRIO da embarcação: (i)remover a embarcação da marina ou da água para transitar por terra; (ii) uso da embarcação para fins comerciais/exploração econômica ou qualquer fim ilícito; (iv) cessão ou empréstimo da embarcação para terceiros sem a presença do COMPRADOR ou alguns de seus dependentes, devidamente identificados junto a ADMINISTRADORA; (vii) uso para empurrar, puxar ou rebocer outra embarcação ;(viii)uso para transporte de produtos inflamáveis ou explosivos; (ix)permitir que a pilotagem ou condução da embarcação em estado de embriagues, por si ou por teceiros; (x)uso ou porte de substância psicotrópica, narcótica ou similar.",
       "2.6.1. Em caso de descumprimento dos itens elencados no item 2.6, a parte infratora arcará com multa no valor de 2 (dois) salários mínimos vigentes a época, que serão destinados a ADMINISTRADORA para custos de manutenção e conservação da embarcação.",
       "2.6.2. Além da multa acima prevista, eventuais danos ocasionados ao bem ou a terceiros pela prática de algum dos itens descritos no item 2.6, a parte infratora arcará individualmente com estes, sem direito a ressarcimento pelos demais coproprietários.",
       "3. DO PREÇO, FORMA DE PAGAMENTO E INADIMPLÊNCIA",
-      "3.1. O COMPRADOR pagará pela aquisição de 25% (vinte e cinco por cento) da propriedade da embarcação, objeto deste contrato, os valores acordados comercialmente no momento do fechamento.",
+      clause3_1,
+      clause3_1_a,
+      clause3_1_b,
       "3.2. Em caso de inadimplência incidirá multa no importe de 10% (dez por cento) do valor da parcela e juros de mora correspondente a 1% (um por cento) ao mês.",
       "3.3. Caso a inadimplência persista por prazo superior a 30(trinta) dias, será facultado ao VENDEDOR, visando assegurar o seu crédito, independente de notificação prévia, inscrever o nome do inadimplente em bancos de dados cadastrais (SPC/SERASA/DPC ou órgão equivalente), protestar o débito, valer-se de firma especializada ou contratar advogados. Sendo que, neste caso, o COMPRADOR responderá pelos honorários destes profissionais.",
       "3.4. A falta de pagamento por prazo superior a 60 (sessenta) dias, poderá acarretar na rescisão deste contrato, por liberalidade do VENDEDOR.",

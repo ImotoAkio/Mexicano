@@ -19,6 +19,12 @@ export default function ClientPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [cpf, setCpf] = useState('');
+  const [rg, setRg] = useState('');
+  const [orgaoEmissor, setOrgaoEmissor] = useState('');
+  const [numeroHabilitacao, setNumeroHabilitacao] = useState('');
+  const [validadeHabilitacao, setValidadeHabilitacao] = useState('');
+  const [orgaoEmissorHabilitacao, setOrgaoEmissorHabilitacao] = useState('');
+  const [categoriaHabilitacao, setCategoriaHabilitacao] = useState('');
   
   // Address States
   const [cep, setCep] = useState('');
@@ -142,6 +148,12 @@ export default function ClientPage() {
     setEmail('');
     setPhone('');
     setCpf('');
+    setRg('');
+    setOrgaoEmissor('');
+    setNumeroHabilitacao('');
+    setValidadeHabilitacao('');
+    setOrgaoEmissorHabilitacao('');
+    setCategoriaHabilitacao('');
     
     // Reset address states
     setCep('');
@@ -171,6 +183,12 @@ export default function ClientPage() {
     setEmail(client.email || '');
     setPhone(client.telefone || '');
     setCpf(client.cpf || '');
+    setRg(client.rg || '');
+    setOrgaoEmissor(client.orgaoEmissor || '');
+    setNumeroHabilitacao(client.numeroHabilitacao || client.cnh_cha || '');
+    setValidadeHabilitacao(client.validadeHabilitacao || '');
+    setOrgaoEmissorHabilitacao(client.orgaoEmissorHabilitacao || '');
+    setCategoriaHabilitacao(client.categoriaHabilitacao || '');
     
     // Set address states
     setCep(client.cep || '');
@@ -265,6 +283,13 @@ export default function ClientPage() {
           email,
           telefone: phone,
           cpf,
+          rg,
+          orgaoEmissor,
+          numeroHabilitacao,
+          cnh_cha: numeroHabilitacao,
+          validadeHabilitacao,
+          orgaoEmissorHabilitacao,
+          categoriaHabilitacao,
           cep,
           logradouro,
           numeroEnd,
@@ -288,6 +313,13 @@ export default function ClientPage() {
           email,
           telefone: phone,
           cpf,
+          rg,
+          orgaoEmissor,
+          numeroHabilitacao,
+          cnh_cha: numeroHabilitacao,
+          validadeHabilitacao,
+          orgaoEmissorHabilitacao,
+          categoriaHabilitacao,
           cep,
           logradouro,
           numeroEnd,
@@ -919,6 +951,84 @@ export default function ClientPage() {
                       value={cpf}
                       onChange={(e) => setCpf(e.target.value)}
                       className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Documentação & Habilitação Náutica */}
+              <div className="border border-slate-100 p-3.5 rounded-lg bg-slate-50/50 space-y-3">
+                <p className="text-[11px] font-semibold text-slate-800 uppercase tracking-wider">Documentação & Habilitação Náutica</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">RG</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 12.345.678-9"
+                      value={rg}
+                      onChange={(e) => setRg(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Órgão Emissor do RG</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: SSP/SP"
+                      value={orgaoEmissor}
+                      onChange={(e) => setOrgaoEmissor(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Nº Habilitação Náutica (Arrais/CHA)</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 381M2021005"
+                      value={numeroHabilitacao}
+                      onChange={(e) => setNumeroHabilitacao(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Categoria da Habilitação</label>
+                    <select
+                      value={categoriaHabilitacao}
+                      onChange={(e) => setCategoriaHabilitacao(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="Arrais-Amador">Arrais-Amador</option>
+                      <option value="Motonauta">Motonauta</option>
+                      <option value="Arrais e Motonauta">Arrais e Motonauta</option>
+                      <option value="Mestre-Amador">Mestre-Amador</option>
+                      <option value="Capitão-Amador">Capitão-Amador</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Data de Expiração / Validade</label>
+                    <input
+                      type="date"
+                      value={validadeHabilitacao}
+                      onChange={(e) => setValidadeHabilitacao(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Órgão Emissor da Habilitação</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Marinha do Brasil / Capitania"
+                      value={orgaoEmissorHabilitacao}
+                      onChange={(e) => setOrgaoEmissorHabilitacao(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
                     />
                   </div>
                 </div>

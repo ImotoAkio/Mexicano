@@ -8,3 +8,5 @@ coverage/
 !.env.example
 mingit*
 backup-nautica-epi.zip
+scratch/
+*.zip

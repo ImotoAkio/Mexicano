@@ -83,7 +83,7 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-      allowedHosts: ['.tunnelmole.net', '.ngrok.app', '.ngrok-free.app', '.loca.lt', 'localhost', '127.0.0.1']
+      allowedHosts: true as true
     },
     optimizeDeps: {
       include: ['lucide-react', 'react', 'react-dom']

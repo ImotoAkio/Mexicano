@@ -24,6 +24,15 @@ export interface Cliente {
   observacoesFinanceiras?: string;
   plano?: 'normal' | 'completo';
   asaasCustomerId?: string;
+  rg?: string;
+  orgaoEmissor?: string;
+  cnh_cha?: string;
+  profissao?: string;
+  estadoCivil?: string;
+  numeroHabilitacao?: string;
+  validadeHabilitacao?: string;
+  orgaoEmissorHabilitacao?: string;
+  categoriaHabilitacao?: string;
 }
 
 export interface Embarcacao {
@@ -34,6 +43,10 @@ export interface Embarcacao {
   modelo: string;
   fabricante: string;
   ano: number;
+  chassi?: string; // N° do Chassi
+  inscricao?: string; // N° de Inscrição na Marinha
+  tipo_propulsao?: string; // Tipo de propulsão (ex: MOTOR, JET)
+  potencia?: string; // Potência (ex: 250 HP)
   donos: string[]; // List of Cliente IDs (unlimited)
   googleCalendarId?: string; // Optional Google Calendar ID directly linked to the boat
   emManutencao?: boolean; // Tag for maintenance

@@ -310,7 +310,7 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
   const token = authHeader.substring(7);
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    if (decoded.role !== "admin" && decoded.role !== "marina" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos") {
+    if (decoded.role !== "admin" && decoded.role !== "marina" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
       return res.status(403).json({ error: true, message: "Acesso negado. Permissão insuficiente." });
     }
     (req as any).user = decoded;
@@ -345,7 +345,7 @@ function requireAnyAuth(req: express.Request, res: express.Response, next: expre
   }
   try {
     const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
-    if (decoded.role !== "admin" && decoded.role !== "client" && decoded.role !== "marina" && decoded.role !== "financeiro") {
+    if (decoded.role !== "admin" && decoded.role !== "client" && decoded.role !== "marina" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
       return res.status(403).json({ error: true, message: "Acesso negado." });
     }
     (req as any).user = decoded;
@@ -2577,7 +2577,7 @@ io.use((socket, next) => {
   }
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    if (decoded.role !== "admin" && decoded.role !== "financeiro" && decoded.role !== "marina") {
+    if (decoded.role !== "admin" && decoded.role !== "financeiro" && decoded.role !== "marina" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
       return next(new Error("Permission denied"));
     }
     (socket as any).user = decoded;
@@ -2676,4 +2676,63 @@ async function setupViteAndListen() {
 // Start Server Setup
 setupViteAndListen().catch((error) => {
   console.error("Vite/Express Setup failed crash:", error);
+});
+
+
+// ---------------- Comercial User Preferences ----------------
+
+app.get("/api/comercial/preferences", requireAdminAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    if (!user || !user.id) return res.status(401).json({ error: true, message: "Unauthorized" });
+    const { getUserPreferences } = await import("./server-db.js");
+    const prefs = await getUserPreferences(user.id);
+    res.json(prefs || {});
+  } catch(err: any) {
+    res.status(500).json({ error: true, message: err.message || "Error fetching preferences" });
+  }
+});
+
+app.post("/api/comercial/preferences", requireAdminAuth, upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'background', maxCount: 1 }]), async (req, res) => {
+  try {
+    const user = (req as any).user;
+    if (!user || !user.id) return res.status(401).json({ error: true, message: "Unauthorized" });
+    
+    const { greetingText } = req.body;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    
+    let logoUrl = req.body.logoUrl || null;
+    let backgroundUrl = req.body.backgroundUrl || null;
+
+    if (files && files['logo'] && files['logo'][0]) {
+      const file = files['logo'][0];
+      const filename = `logo_${Date.now()}_${file.originalname}`;
+      const fsModule = await import("fs");
+      const pathModule = await import("path");
+      fsModule.writeFileSync(pathModule.join(uploadsDir, filename), file.buffer);
+      logoUrl = `/uploads/${filename}`;
+    }
+
+    if (files && files['background'] && files['background'][0]) {
+      const file = files['background'][0];
+      const filename = `bg_${Date.now()}_${file.originalname}`;
+      const fsModule = await import("fs");
+      const pathModule = await import("path");
+      fsModule.writeFileSync(pathModule.join(uploadsDir, filename), file.buffer);
+      backgroundUrl = `/uploads/${filename}`;
+    }
+
+    const { getUserPreferences, upsertUserPreferences } = await import("./server-db.js");
+    const prefs = await getUserPreferences(user.id);
+    await upsertUserPreferences(user.id, {
+      logoUrl: logoUrl !== undefined ? logoUrl : (prefs?.logoUrl || null),
+      backgroundUrl: backgroundUrl !== undefined ? backgroundUrl : (prefs?.backgroundUrl || null),
+      greetingText: greetingText !== undefined ? greetingText : (prefs?.greetingText || null)
+    });
+
+    res.json({ success: true, logoUrl, backgroundUrl, greetingText });
+  } catch(err: any) {
+    console.error(err);
+    res.status(500).json({ error: true, message: err.message || "Error saving preferences" });
+  }
 });

@@ -819,29 +819,7 @@ export default function SchedulesPage() {
     }
     try {
       await syncWithRemote();
-      // Clean up auto-generated bad observations from local storage
-      const allReservations = reservationDB.getAll();
-      allReservations.forEach(r => {
-        const obs = r.observações || '';
-        const cleanObs = obs.trim();
-        if (
-          cleanObs === 'Nenhuma' ||
-          cleanObs === 'Nenhuma.' ||
-          cleanObs === 'Nenhuma observação' ||
-          cleanObs === 'Nenhuma observacao' ||
-          cleanObs === 'Nenhuma observação.' ||
-          cleanObs === 'Nenhuma observacao.' ||
-          cleanObs === 'Atualizado via Google Agenda' ||
-          cleanObs === 'Atualizado via Google Agenda.' ||
-          cleanObs === 'Nenhuma descrição relevante' ||
-          cleanObs === 'Nenhuma descrição relevante.' ||
-          cleanObs === 'Nenhuma descricao relevante' ||
-          cleanObs === 'Nenhuma descricao relevante.' ||
-          /^M\d{2}\s*-/i.test(cleanObs)
-        ) {
-          reservationDB.update(r.id, { observações: '' });
-        }
-      });
+      // Removed problematic frontend DB migration script that caused infinite update loops
 
       renderLocalData(selectedDate);
     } catch (err: any) {
