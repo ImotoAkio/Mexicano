@@ -26,6 +26,12 @@
     font-size: 16px !important;
     color: #0f172a !important; /* Ensure high contrast text on inputs */
   }
+
+  /* Permitir seleção de texto no painel administrativo */
+  .admin-panel, .admin-panel * {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+  }
 }
 
 /* Premium luxury minimal animations */

@@ -152,7 +152,7 @@ export default function ClientPage() {
     setOrgaoEmissor('');
     setNumeroHabilitacao('');
     setValidadeHabilitacao('');
-    setOrgaoEmissorHabilitacao('');
+    setOrgaoEmissorHabilitacao('Capitania Fluvial de Juazeiro');
     setCategoriaHabilitacao('');
     
     // Reset address states
@@ -187,7 +187,7 @@ export default function ClientPage() {
     setOrgaoEmissor(client.orgaoEmissor || '');
     setNumeroHabilitacao(client.numeroHabilitacao || client.cnh_cha || '');
     setValidadeHabilitacao(client.validadeHabilitacao || '');
-    setOrgaoEmissorHabilitacao(client.orgaoEmissorHabilitacao || '');
+    setOrgaoEmissorHabilitacao(client.orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro');
     setCategoriaHabilitacao(client.categoriaHabilitacao || '');
     
     // Set address states
@@ -288,7 +288,7 @@ export default function ClientPage() {
           numeroHabilitacao,
           cnh_cha: numeroHabilitacao,
           validadeHabilitacao,
-          orgaoEmissorHabilitacao,
+          orgaoEmissorHabilitacao: orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro',
           categoriaHabilitacao,
           cep,
           logradouro,
@@ -318,7 +318,7 @@ export default function ClientPage() {
           numeroHabilitacao,
           cnh_cha: numeroHabilitacao,
           validadeHabilitacao,
-          orgaoEmissorHabilitacao,
+          orgaoEmissorHabilitacao: orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro',
           categoriaHabilitacao,
           cep,
           logradouro,
@@ -1025,7 +1025,7 @@ export default function ClientPage() {
                     <label className="block text-xs font-medium text-slate-700 mb-1">Órgão Emissor da Habilitação</label>
                     <input
                       type="text"
-                      placeholder="Ex: Marinha do Brasil / Capitania"
+                      placeholder="Ex: Capitania Fluvial de Juazeiro"
                       value={orgaoEmissorHabilitacao}
                       onChange={(e) => setOrgaoEmissorHabilitacao(e.target.value)}
                       className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"

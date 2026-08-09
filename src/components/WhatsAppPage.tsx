@@ -3,7 +3,7 @@ import { reservationDB, boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente, Reserva } from '../types';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { ShieldAlert, Smartphone, UserCheck, UserX, QrCode, LogOut, CheckCircle, MessageSquare, Calendar as CalendarIcon, Check, AlertTriangle, 
-  RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet 
+  RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet, Paperclip, FileText, Users, Plus, Trash2, Play, Pause, X, CheckSquare, Square, File, Image as ImageIcon, Sparkles, Filter
 } from 'lucide-react';
 
 const formatFirstName = (fullName: string): string => {
@@ -41,7 +41,7 @@ const getQuando = (targetDateStr: string): string => {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function WhatsAppPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'calendars' | 'config'>('confirmations');
+  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'calendars' | 'custom' | 'config'>('confirmations');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [confTemplate1, setConfTemplate1] = useState(() => {
@@ -106,6 +106,326 @@ export default function WhatsAppPage() {
   const [boats, setBoats] = useState<any[]>([]);
 
   
+
+  // --- CUSTOM MESSAGES LOGIC ---
+  const [customTargetType, setCustomTargetType] = useState<'clients' | 'groups' | 'custom_number'>('clients');
+  const [customClientFilterBoatId, setCustomClientFilterBoatId] = useState<string>('all');
+  const [customSearch, setCustomSearch] = useState('');
+  
+  // Selected IDs
+  const [customSelectedClientIds, setCustomSelectedClientIds] = useState<string[]>([]);
+  const [customSelectedGroupIds, setCustomSelectedGroupIds] = useState<string[]>([]);
+  const [customManualNumbers, setCustomManualNumbers] = useState<string>('');
+  
+  // Message Content & Media
+  const [customText, setCustomText] = useState('');
+  const [customMedia, setCustomMedia] = useState<{ base64: string; mimetype: string; fileName: string } | null>(null);
+  
+  // Templates
+  const [customTemplates, setCustomTemplates] = useState<Array<{ id: string; title: string; text: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('whatsapp_custom_templates');
+      return saved ? JSON.parse(saved) : [
+        { id: '1', title: 'Comunicado Geral', text: 'Prezado(a) *{cliente}*,\n\nInformamos que ...\n\nQualquer dúvida estamos à disposição! ⚓' },
+        { id: '2', title: 'Aviso de Manutenção', text: 'Atenção cotistas da embarcação *{barco}* ⚠️\n\nA embarcação passará por manutenção preventiva no período de ...\n\nAgradecemos a compreensão!' }
+      ];
+    } catch {
+      return [];
+    }
+  });
+  const [newTemplateTitle, setNewTemplateTitle] = useState('');
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+
+  // Send Execution & Delay
+  const [customDelaySeconds, setCustomDelaySeconds] = useState<number>(3);
+  const [customSendingStatus, setCustomSendingStatus] = useState<'idle' | 'sending' | 'paused' | 'completed'>('idle');
+  const [customSendQueue, setCustomSendQueue] = useState<Array<{
+    id: string;
+    name: string;
+    target: string;
+    status: 'pending' | 'sending' | 'success' | 'error';
+    error?: string;
+    clientObj?: Cliente;
+  }>>([]);
+  const [cancelSendingRef, setCancelSendingRef] = useState<boolean>(false);
+
+  const handleSaveCustomTemplate = () => {
+    if (!newTemplateTitle.trim() || !customText.trim()) {
+      showToast('Preencha o título e o texto da mensagem.', 'error');
+      return;
+    }
+    const newT = { id: Date.now().toString(), title: newTemplateTitle.trim(), text: customText };
+    const updated = [...customTemplates, newT];
+    setCustomTemplates(updated);
+    localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_custom_templates: JSON.stringify(updated) }) }).catch(console.warn);
+    setNewTemplateTitle('');
+    setShowSaveTemplateModal(false);
+    showToast('Modelo salvo com sucesso!');
+  };
+
+  const handleDeleteCustomTemplate = (id: string) => {
+    const updated = customTemplates.filter(t => t.id !== id);
+    setCustomTemplates(updated);
+    localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
+    showToast('Modelo removido.');
+  };
+
+  const handleCustomMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('O arquivo deve ter no máximo 10MB.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const base64 = evt.target?.result as string;
+      setCustomMedia({
+        base64,
+        mimetype: file.type,
+        fileName: file.name
+      });
+      showToast(`Arquivo "${file.name}" anexado!`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleClearCustomMedia = () => {
+    setCustomMedia(null);
+    showToast('Anexo removido.');
+  };
+
+  const handleInsertVariable = (variableStr: string) => {
+    setCustomText(prev => prev + variableStr);
+  };
+
+  // Helper lists for custom selection
+  const filteredCustomClients = clients.filter(c => {
+    if (!c.telefone) return false;
+    if (customSearch) {
+      const s = customSearch.toLowerCase();
+      const matchName = c.nome.toLowerCase().includes(s);
+      const matchPhone = c.telefone.includes(s);
+      if (!matchName && !matchPhone) return false;
+    }
+    if (customClientFilterBoatId !== 'all') {
+      const boat = boats.find(b => b.id === customClientFilterBoatId);
+      if (!boat || !boat.cotistas?.some((cot: any) => cot.clienteId === c.id)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const handleToggleSelectClient = (id: string) => {
+    setCustomSelectedClientIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAllClients = () => {
+    const visibleIds = filteredCustomClients.map(c => c.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => customSelectedClientIds.includes(id));
+    if (allSelected) {
+      setCustomSelectedClientIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      const combined = new Set([...customSelectedClientIds, ...visibleIds]);
+      setCustomSelectedClientIds(Array.from(combined));
+    }
+  };
+
+  // Groups selection helper
+  const allAvailableGroupsList = () => {
+    const list: Array<{ id: string; name: string; boatName?: string }> = [];
+    // Mapped boat groups
+    boats.forEach(b => {
+      if (b.whatsappGroupId) {
+        list.push({
+          id: b.whatsappGroupId,
+          name: `Grupo ${b.nome} (${b.numero ? 'M' + b.numero : 'Lancha'})`,
+          boatName: b.nome
+        });
+      }
+    });
+    // Fetched groups from VPS
+    availableGroups.forEach(g => {
+      if (g.id && !list.some(l => l.id === g.id)) {
+        list.push({
+          id: g.id,
+          name: g.subject || g.name || g.id
+        });
+      }
+    });
+    return list;
+  };
+
+  const filteredCustomGroups = allAvailableGroupsList().filter(g => {
+    if (!customSearch) return true;
+    const s = customSearch.toLowerCase();
+    return g.name.toLowerCase().includes(s) || g.id.toLowerCase().includes(s);
+  });
+
+  const handleToggleSelectGroup = (id: string) => {
+    setCustomSelectedGroupIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAllGroups = () => {
+    const visibleIds = filteredCustomGroups.map(g => g.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => customSelectedGroupIds.includes(id));
+    if (allSelected) {
+      setCustomSelectedGroupIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      const combined = new Set([...customSelectedGroupIds, ...visibleIds]);
+      setCustomSelectedGroupIds(Array.from(combined));
+    }
+  };
+
+  const handlePrepareCustomSend = () => {
+    if (!customText.trim() && !customMedia) {
+      showToast('Digite uma mensagem ou selecione um anexo.', 'error');
+      return;
+    }
+
+    const queue: Array<{ id: string; name: string; target: string; status: 'pending' | 'sending' | 'success' | 'error'; clientObj?: Cliente }> = [];
+
+    if (customTargetType === 'clients') {
+      if (customSelectedClientIds.length === 0) {
+        showToast('Selecione pelo menos um cliente com WhatsApp.', 'error');
+        return;
+      }
+      for (const clientId of customSelectedClientIds) {
+        const client = clients.find(c => c.id === clientId);
+        if (client && client.telefone) {
+          queue.push({
+            id: client.id,
+            name: client.nome,
+            target: client.telefone,
+            status: 'pending',
+            clientObj: client
+          });
+        }
+      }
+    } else if (customTargetType === 'groups') {
+      if (customSelectedGroupIds.length === 0) {
+        showToast('Selecione pelo menos um grupo de WhatsApp.', 'error');
+        return;
+      }
+      for (const groupId of customSelectedGroupIds) {
+        const groupInfo = allAvailableGroupsList().find(g => g.id === groupId);
+        queue.push({
+          id: groupId,
+          name: groupInfo ? groupInfo.name : groupId,
+          target: groupId,
+          status: 'pending'
+        });
+      }
+    } else if (customTargetType === 'custom_number') {
+      const numbers = customManualNumbers
+        .split(/[\n,;]+/)
+        .map(n => n.trim())
+        .filter(n => n.length >= 8);
+      if (numbers.length === 0) {
+        showToast('Digite ao menos um número válido.', 'error');
+        return;
+      }
+      numbers.forEach((num, idx) => {
+        queue.push({
+          id: `manual_${idx}`,
+          name: `Contato (${num})`,
+          target: num,
+          status: 'pending'
+        });
+      });
+    }
+
+    if (queue.length === 0) {
+      showToast('Nenhum destinatário válido encontrado.', 'error');
+      return;
+    }
+
+    setCustomSendQueue(queue);
+    setCancelSendingRef(false);
+    setCustomSendingStatus('sending');
+    startSendingCustomQueue(queue);
+  };
+
+  const startSendingCustomQueue = async (initialQueue: typeof customSendQueue) => {
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    for (let i = 0; i < initialQueue.length; i++) {
+      if (cancelSendingRef) {
+        showToast('Envio de mensagens cancelado pelo usuário.', 'error');
+        setCustomSendingStatus('idle');
+        return;
+      }
+
+      const item = initialQueue[i];
+
+      // Build custom message variables
+      let finalMsg = customText;
+      if (item.clientObj) {
+        const clientFirstName = formatFirstName(item.clientObj.nome);
+        const clientBoats = boats.filter(b => b.cotistas?.some((c: any) => c.clienteId === item.clientObj?.id));
+        const boatName = clientBoats.map(b => b.nome).join(', ') || 'Vila Náutica';
+        finalMsg = finalMsg
+          .replace(/{cliente}/g, item.clientObj.nome)
+          .replace(/{primeiro_nome}/g, clientFirstName)
+          .replace(/{barco}/g, boatName);
+      } else {
+        finalMsg = finalMsg
+          .replace(/{cliente}/g, item.name)
+          .replace(/{primeiro_nome}/g, item.name.split(' ')[0])
+          .replace(/{barco}/g, 'Vila Náutica');
+      }
+
+      setCustomSendQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sending' } : q));
+
+      try {
+        const res = await fetch('/api/whatsapp/send-custom', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            number: item.target,
+            text: finalMsg,
+            media: customMedia?.base64,
+            mimetype: customMedia?.mimetype,
+            fileName: customMedia?.fileName
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || 'Erro no envio');
+        }
+
+        setCustomSendQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'success' } : q));
+      } catch (err: any) {
+        setCustomSendQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', error: err.message } : q));
+      }
+
+      // Delay between sending items
+      if (i < initialQueue.length - 1) {
+        await sleep(customDelaySeconds * 1000);
+      }
+    }
+
+    setCustomSendingStatus('completed');
+    showToast('Processo de disparo concluído!', 'success');
+  };
+
+  const handleStopCustomSend = () => {
+    setCancelSendingRef(true);
+    setCustomSendingStatus('idle');
+    showToast('Interrompendo envios...');
+  };
 
   // --- CONFIRMATIONS LOGIC ---
   const [confDate, setConfDate] = useState(() => {
@@ -568,6 +888,14 @@ const fetchWaStatus = async () => {
           <CalendarIcon className="w-4 h-4" /> Calendários Mensais
         </button>
         <button 
+          onClick={() => setActiveMainTab('custom')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+            activeMainTab === 'custom' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+          }`}
+        >
+          <Send className="w-4 h-4 text-emerald-600" /> Envio Avulso / Personalizado
+        </button>
+        <button 
           onClick={() => setActiveMainTab('config')}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
             activeMainTab === 'config' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
@@ -836,6 +1164,446 @@ const fetchWaStatus = async () => {
                 {calSendingStatus === 'sending' ? `Enviando...` : `Disparar Calendário p/ ${calSelectedIds.length} grupos`}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* CUSTOM MESSAGES TAB */}
+        {activeMainTab === 'custom' && (
+          <div className="flex flex-col h-full space-y-4 overflow-hidden">
+            {/* Top Bar / Target Selector */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full overflow-hidden">
+              
+              {/* LEFT COLUMN: Recipient Selector */}
+              <div className="lg:col-span-5 flex flex-col h-full border border-slate-200 rounded-2xl p-4 bg-slate-50/50 overflow-hidden">
+                <div className="flex items-center justify-between mb-3 shrink-0">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-emerald-600" /> Destinatários
+                  </h3>
+                  <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full">
+                    {customTargetType === 'clients' ? `${customSelectedClientIds.length} selecionados` :
+                     customTargetType === 'groups' ? `${customSelectedGroupIds.length} grupos selecionados` :
+                     'Inserção manual'}
+                  </span>
+                </div>
+
+                {/* Target Type Switcher */}
+                <div className="flex bg-slate-200/60 p-1 rounded-xl mb-3 shrink-0">
+                  <button
+                    onClick={() => setCustomTargetType('clients')}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      customTargetType === 'clients' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Clientes
+                  </button>
+                  <button
+                    onClick={() => setCustomTargetType('groups')}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      customTargetType === 'groups' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Grupos
+                  </button>
+                  <button
+                    onClick={() => setCustomTargetType('custom_number')}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      customTargetType === 'custom_number' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Nº Avulso
+                  </button>
+                </div>
+
+                {/* CLIENTS RECIPIENT MODE */}
+                {customTargetType === 'clients' && (
+                  <div className="flex flex-col flex-1 h-0 overflow-hidden space-y-3">
+                    <div className="flex gap-2 shrink-0">
+                      <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Buscar cliente por nome ou telefone..."
+                          value={customSearch}
+                          onChange={e => setCustomSearch(e.target.value)}
+                          className="w-full text-xs py-2 pl-9 pr-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+                      <select
+                        value={customClientFilterBoatId}
+                        onChange={e => setCustomClientFilterBoatId(e.target.value)}
+                        className="text-xs py-2 px-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none max-w-[130px]"
+                      >
+                        <option value="all">Todas as Lanchas</option>
+                        {boats.map(b => (
+                          <option key={b.id} value={b.id}>{b.nome}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex justify-between items-center px-1 shrink-0">
+                      <button
+                        onClick={handleToggleSelectAllClients}
+                        className="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        {filteredCustomClients.length > 0 && filteredCustomClients.every(c => customSelectedClientIds.includes(c.id))
+                          ? 'Desmarcar Todos'
+                          : 'Selecionar Todos'}
+                      </button>
+                      <span className="text-[11px] text-slate-400">{filteredCustomClients.length} disponíveis</span>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl bg-white divide-y divide-slate-100">
+                      {filteredCustomClients.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-400">Nenhum cliente com WhatsApp encontrado neste filtro.</div>
+                      ) : (
+                        filteredCustomClients.map(client => {
+                          const isSelected = customSelectedClientIds.includes(client.id);
+                          return (
+                            <div
+                              key={client.id}
+                              onClick={() => handleToggleSelectClient(client.id)}
+                              className={`p-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors ${
+                                isSelected ? 'bg-emerald-50/70' : ''
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                                  isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300'
+                                }`}>
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold text-slate-900">{client.nome}</p>
+                                  <p className="text-[11px] text-slate-500">{client.telefone}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* GROUPS RECIPIENT MODE */}
+                {customTargetType === 'groups' && (
+                  <div className="flex flex-col flex-1 h-0 overflow-hidden space-y-3">
+                    <div className="relative shrink-0">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar grupo..."
+                        value={customSearch}
+                        onChange={e => setCustomSearch(e.target.value)}
+                        className="w-full text-xs py-2 pl-9 pr-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center px-1 shrink-0">
+                      <button
+                        onClick={handleToggleSelectAllGroups}
+                        className="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        {filteredCustomGroups.length > 0 && filteredCustomGroups.every(g => customSelectedGroupIds.includes(g.id))
+                          ? 'Desmarcar Todos'
+                          : 'Selecionar Todos'}
+                      </button>
+                      <span className="text-[11px] text-slate-400">{filteredCustomGroups.length} grupos</span>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl bg-white divide-y divide-slate-100">
+                      {filteredCustomGroups.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-400">Nenhum grupo encontrado. Certifique-se de sincronizar grupos na aba Configurações.</div>
+                      ) : (
+                        filteredCustomGroups.map(group => {
+                          const isSelected = customSelectedGroupIds.includes(group.id);
+                          return (
+                            <div
+                              key={group.id}
+                              onClick={() => handleToggleSelectGroup(group.id)}
+                              className={`p-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors ${
+                                isSelected ? 'bg-emerald-50/70' : ''
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                                  isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300'
+                                }`}>
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold text-slate-900">{group.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">{group.id}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* MANUAL NUMBER RECIPIENT MODE */}
+                {customTargetType === 'custom_number' && (
+                  <div className="flex flex-col flex-1 h-0 space-y-2">
+                    <label className="block text-xs font-semibold text-slate-700">Digite ou cole os números (um por linha ou separados por vírgula):</label>
+                    <textarea
+                      value={customManualNumbers}
+                      onChange={e => setCustomManualNumbers(e.target.value)}
+                      placeholder="Ex:&#10;5541999999999&#10;5541888888888"
+                      className="flex-1 w-full p-3 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none font-mono resize-none"
+                    />
+                    <p className="text-[11px] text-slate-400">Insira com DDD. Exemplo: 41999998888 ou 5541999998888.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT COLUMN: Message Composer & Send Controls */}
+              <div className="lg:col-span-7 flex flex-col h-full border border-slate-200 rounded-2xl p-4 bg-white overflow-hidden space-y-3">
+                
+                {/* Templates & Variables Header */}
+                <div className="flex flex-wrap justify-between items-center gap-2 pb-2 border-b border-slate-100 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700">Modelos:</span>
+                    <select
+                      onChange={e => {
+                        const t = customTemplates.find(tmpl => tmpl.id === e.target.value);
+                        if (t) setCustomText(t.text);
+                      }}
+                      defaultValue=""
+                      className="text-xs py-1.5 px-3 border border-slate-300 rounded-xl bg-slate-50 focus:ring-2 focus:ring-emerald-500 outline-none max-w-[200px]"
+                    >
+                      <option value="" disabled>Carregar modelo salvo...</option>
+                      {customTemplates.map(tmpl => (
+                        <option key={tmpl.id} value={tmpl.id}>{tmpl.title}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setShowSaveTemplateModal(true)}
+                      className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-xl font-semibold transition-colors"
+                      title="Salvar mensagem atual como modelo"
+                    >
+                      + Salvar Modelo
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] font-semibold text-slate-400">Variáveis:</span>
+                    <button
+                      onClick={() => handleInsertVariable(' {cliente}')}
+                      className="text-[11px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-mono px-2 py-1 rounded-lg border border-emerald-200 transition-colors"
+                    >
+                      {`{cliente}`}
+                    </button>
+                    <button
+                      onClick={() => handleInsertVariable(' {primeiro_nome}')}
+                      className="text-[11px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-mono px-2 py-1 rounded-lg border border-emerald-200 transition-colors"
+                    >
+                      {`{primeiro_nome}`}
+                    </button>
+                    <button
+                      onClick={() => handleInsertVariable(' {barco}')}
+                      className="text-[11px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-mono px-2 py-1 rounded-lg border border-emerald-200 transition-colors"
+                    >
+                      {`{barco}`}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Message Text Area */}
+                <div className="flex-1 flex flex-col min-h-0">
+                  <textarea
+                    value={customText}
+                    onChange={e => setCustomText(e.target.value)}
+                    placeholder="Digite a mensagem personalizada aqui... Ex: Olá *{primeiro_nome}*, seu agendamento na *{barco}* está confirmado!"
+                    className="w-full flex-1 p-3 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans leading-relaxed"
+                  />
+                </div>
+
+                {/* Media Attachment section */}
+                <div className="shrink-0 flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  {customMedia ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                        {customMedia.mimetype.includes('image') ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                      </div>
+                      <div className="truncate max-w-[250px]">
+                        <p className="text-xs font-semibold text-slate-900 truncate">{customMedia.fileName}</p>
+                        <p className="text-[10px] text-emerald-600 font-medium">Anexo pronto</p>
+                      </div>
+                      <button
+                        onClick={handleClearCustomMedia}
+                        className="text-rose-600 hover:text-rose-700 text-xs ml-2 p-1 font-bold"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer hover:text-slate-900">
+                      <Paperclip className="w-4 h-4 text-emerald-600" />
+                      <span>Anexar Imagem ou Documento (PDF/PNG/JPG)</span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={handleCustomMediaUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500 font-medium">Intervalo:</span>
+                    <select
+                      value={customDelaySeconds}
+                      onChange={e => setCustomDelaySeconds(Number(e.target.value))}
+                      className="text-xs py-1 px-2 border border-slate-300 rounded-lg bg-white outline-none"
+                    >
+                      <option value={2}>2 seg</option>
+                      <option value={3}>3 seg</option>
+                      <option value={5}>5 seg</option>
+                      <option value={8}>8 seg</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Submit / Trigger Button */}
+                <div className="shrink-0 pt-2 border-t border-slate-100 flex justify-end items-center gap-3">
+                  {customSendingStatus === 'sending' ? (
+                    <button
+                      onClick={handleStopCustomSend}
+                      className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-xs transition-colors"
+                    >
+                      <Pause className="w-4 h-4" /> Cancelar Envios
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handlePrepareCustomSend}
+                      disabled={
+                        customTargetType === 'clients' && customSelectedClientIds.length === 0 ||
+                        customTargetType === 'groups' && customSelectedGroupIds.length === 0 ||
+                        customTargetType === 'custom_number' && !customManualNumbers.trim()
+                      }
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 shadow-md hover:shadow-lg disabled:opacity-50 transition-all"
+                    >
+                      <Send className="w-4 h-4" />
+                      Disparar Mensagem Avulsa
+                    </button>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* SENDING EXECUTION MODAL / PANEL */}
+            {customSendingStatus !== 'idle' && (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 flex flex-col space-y-4 animate-in fade-in zoom-in-95">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                      <Send className="w-5 h-5 text-emerald-600" />
+                      {customSendingStatus === 'sending' ? 'Disparando Mensagens...' : 'Disparo Concluído'}
+                    </h3>
+                    {customSendingStatus === 'completed' && (
+                      <button
+                        onClick={() => setCustomSendingStatus('idle')}
+                        className="text-slate-400 hover:text-slate-600 p-1"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs font-semibold">
+                      <span className="text-slate-600">Progresso dos envios</span>
+                      <span className="text-emerald-700 font-bold">
+                        {customSendQueue.filter(q => q.status === 'success' || q.status === 'error').length} / {customSendQueue.length}
+                      </span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 transition-all duration-300"
+                        style={{
+                          width: `${(customSendQueue.filter(q => q.status === 'success' || q.status === 'error').length / (customSendQueue.length || 1)) * 100}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Log List */}
+                  <div className="max-h-60 overflow-y-auto subtle-scrollbar border border-slate-100 rounded-xl divide-y divide-slate-100 bg-slate-50/50">
+                    {customSendQueue.map(item => (
+                      <div key={item.id} className="p-2.5 flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-900 truncate max-w-[240px]">{item.name}</span>
+                        <div>
+                          {item.status === 'pending' && <span className="text-slate-400 font-medium">Aguardando</span>}
+                          {item.status === 'sending' && <span className="text-blue-600 font-bold flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Enviando</span>}
+                          {item.status === 'success' && <span className="text-emerald-600 font-bold">✅ Enviado</span>}
+                          {item.status === 'error' && <span className="text-rose-600 font-bold" title={item.error}>❌ Falha</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    {customSendingStatus === 'sending' ? (
+                      <button
+                        onClick={handleStopCustomSend}
+                        className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl text-xs font-bold"
+                      >
+                        Pausar / Interromper
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setCustomSendingStatus('idle')}
+                        className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-xl text-xs font-bold"
+                      >
+                        Fechar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SAVE TEMPLATE MODAL */}
+            {showSaveTemplateModal && (
+              <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+                  <h4 className="text-sm font-bold text-slate-900">Salvar como Modelo</h4>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Título do Modelo</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Comunicado de Manutenção"
+                      value={newTemplateTitle}
+                      onChange={e => setNewTemplateTitle(e.target.value)}
+                      className="w-full text-xs p-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      onClick={() => setShowSaveTemplateModal(false)}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleSaveCustomTemplate}
+                      className="px-4 py-2 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl"
+                    >
+                      Salvar Modelo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         )}
 

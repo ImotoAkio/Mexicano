@@ -3,10 +3,11 @@ import {
   LogOut, Settings, FileText, Users, Search, 
   X, CheckCircle, FileSignature, Home, Bell, 
   MoreHorizontal, Plus, Edit2, Trash2, ChevronRight,
-  Filter, Download, Upload, Menu, Printer, Anchor, Save, Check, User
+  Filter, Download, Upload, Menu, Printer, Anchor, Save, Check, User, Eye
 } from 'lucide-react';
 import { clientDB, boatDB } from '../db';
 import { generateContract } from './ContractGenerator';
+import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { numeroParaExtenso, parseMoney, formatMoney } from '../utils/numberToWords';
 
 interface ComercialDashboardProps {
@@ -396,7 +397,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
     cep: '', logradouro: '', numeroEnd: '', complemento: '',
     bairro: '', cidade: '', estado: '', profissao: '', estadoCivil: '',
     rg: '', orgaoEmissor: '', numeroHabilitacao: '', validadeHabilitacao: '',
-    orgaoEmissorHabilitacao: '', categoriaHabilitacao: ''
+    orgaoEmissorHabilitacao: 'Capitania Fluvial de Juazeiro', categoriaHabilitacao: ''
   };
   const [formData, setFormData] = useState(initialForm);
 
@@ -422,12 +423,31 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
   const [selectedClientData, setSelectedClientData] = useState<any | null>(null);
   const [isSavingClientInline, setIsSavingClientInline] = useState(false);
   const [clientSaveSuccess, setClientSaveSuccess] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'aquisicao' | 'adm'>('aquisicao');
+  const [showClientDetailsEdit, setShowClientDetailsEdit] = useState(false);
+  const [showBoatDetailsEdit, setShowBoatDetailsEdit] = useState(false);
 
   useEffect(() => {
     if (contractData.clienteId) {
       const found = clients.find(c => c.id === contractData.clienteId);
       if (found) {
-        setSelectedClientData(prev => (prev && prev.id === found.id ? prev : { ...found }));
+        setSelectedClientData(prev => {
+          const defaultOrgao = (found.orgaoEmissorHabilitacao && found.orgaoEmissorHabilitacao.trim() !== '')
+            ? found.orgaoEmissorHabilitacao
+            : 'Capitania Fluvial de Juazeiro';
+          if (prev && prev.id === found.id) {
+            return {
+              ...prev,
+              orgaoEmissorHabilitacao: prev.orgaoEmissorHabilitacao && prev.orgaoEmissorHabilitacao.trim() !== ''
+                ? prev.orgaoEmissorHabilitacao
+                : defaultOrgao
+            };
+          }
+          return {
+            ...found,
+            orgaoEmissorHabilitacao: defaultOrgao
+          };
+        });
       } else {
         setSelectedClientData(null);
       }
@@ -440,15 +460,21 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
     if (!selectedClientData || !selectedClientData.id) return;
     setIsSavingClientInline(true);
     setClientSaveSuccess(false);
+    const dataToSave = {
+      ...selectedClientData,
+      orgaoEmissorHabilitacao: (selectedClientData.orgaoEmissorHabilitacao && selectedClientData.orgaoEmissorHabilitacao.trim() !== '')
+        ? selectedClientData.orgaoEmissorHabilitacao
+        : 'Capitania Fluvial de Juazeiro'
+    };
     try {
-      clientDB.update(selectedClientData.id, selectedClientData);
+      clientDB.update(dataToSave.id, dataToSave);
       await fetch('/api/db/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         },
-        body: JSON.stringify({ type: 'clients', action: 'upsert', data: selectedClientData })
+        body: JSON.stringify({ type: 'clients', action: 'upsert', data: dataToSave })
       });
       loadData();
       setClientSaveSuccess(true);
@@ -730,14 +756,21 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
       return;
     }
     
-    const selectedClient = (selectedClientData && selectedClientData.id === contractData.clienteId)
+    const selectedClientRaw = (selectedClientData && selectedClientData.id === contractData.clienteId)
       ? selectedClientData
       : clients.find(c => c.id === contractData.clienteId);
     const selectedBoat = (selectedBoatData && selectedBoatData.id === contractData.embarcacaoId)
       ? selectedBoatData
       : boats.find(b => b.id === contractData.embarcacaoId);
     
-    if (!selectedClient) return;
+    if (!selectedClientRaw) return;
+
+    const selectedClient = {
+      ...selectedClientRaw,
+      orgaoEmissorHabilitacao: (selectedClientRaw.orgaoEmissorHabilitacao && selectedClientRaw.orgaoEmissorHabilitacao.trim() !== '')
+        ? selectedClientRaw.orgaoEmissorHabilitacao
+        : 'Capitania Fluvial de Juazeiro'
+    };
 
     const mergedData = { ...selectedClient, cota: contractData.cota };
 
@@ -1262,563 +1295,407 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
 
           {/* TAB: CONTRATOS */}
           {activeTab === 'contratos' && (
-            <div className="max-w-4xl mx-auto">
-              <h1 className="text-2xl font-bold text-slate-900 mb-2">Emissão de Contratos</h1>
-              <p className="text-slate-500 text-sm mb-6">Gere os documentos em PDF baseados no cliente cadastrado.</p>
-              
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-                <form onSubmit={handleGenerateContract} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="md:col-span-2">
-                      <SearchableClientSelect
-                        clients={clients}
-                        value={contractData.clienteId}
-                        onChange={id => setContractData({...contractData, clienteId: id})}
-                      />
-                    </div>
-                    <div>
-                      <SearchableBoatSelect
-                        boats={boats}
-                        value={contractData.embarcacaoId}
-                        onChange={id => setContractData({...contractData, embarcacaoId: id})}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tamanho da Cota</label>
-                      <select value={contractData.cota} onChange={e => setContractData({...contractData, cota: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-sm transition-all text-slate-700">
-                        <option value="25%">25% (4 Sócios)</option>
-                        <option value="12.5%">12,5% (8 Sócios)</option>
-                        <option value="50%">50% (2 Sócios)</option>
-                        <option value="100%">100% (Proprietário Único)</option>
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tipo de Contrato</label>
-                      <select value={contractData.type} onChange={e => setContractData({...contractData, type: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-sm transition-all text-slate-700">
-                        <option value="ambos">Ambos (Administração + Aquisição)</option>
-                        <option value="adm">Apenas Administração</option>
-                        <option value="aquisicao">Apenas Aquisição</option>
-                      </select>
-                    </div>
-                  </div>
+            <div className="max-w-7xl mx-auto space-y-6">
+              {/* PAGE HEADER */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                    <FileSignature className="w-6 h-6 text-emerald-600" />
+                    Emissão & Prévia de Contratos
+                  </h1>
+                  <p className="text-slate-500 text-sm mt-1">
+                    Configure os dados do cliente e da embarcação para visualizar e gerar os documentos oficiais em tempo real.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateContract}
+                  className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center justify-center transition-all shadow-md shrink-0"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Gerar e Baixar PDF
+                </button>
+              </div>
 
-                  {/* PAINEL DE INFORMAÇÕES DO CLIENTE SELECIONADO */}
-                  {selectedClientData && (
-                    <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-5 mt-6 space-y-5 animate-spring-pop">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
-                        <div className="flex items-center space-x-2">
-                          <User className="w-5 h-5 text-emerald-600" />
-                          <div>
-                            <h3 className="font-bold text-slate-800 text-sm">Informações do Cliente Selecionado</h3>
-                            <p className="text-xs text-slate-500">Exibindo dados para conferência e edição antes de emitir o contrato</p>
-                          </div>
+              {/* SPLIT 2-COLUMN LAYOUT */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* LEFT COLUMN: FORM CONTROLS (6 cols) */}
+                <div className="lg:col-span-6 space-y-5">
+                  <form onSubmit={handleGenerateContract} className="space-y-5">
+                    {/* CARD 1: SELEÇÃO DO CONTRATO */}
+                    <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-5 space-y-4">
+                      <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2.5 flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-slate-900 text-white text-xs flex items-center justify-center font-mono">1</span>
+                        Seleção Principal
+                      </h3>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Cliente</label>
+                          <SearchableClientSelect
+                            clients={clients}
+                            value={contractData.clienteId}
+                            onChange={id => setContractData({...contractData, clienteId: id})}
+                          />
                         </div>
-                        <button
-                          type="button"
-                          onClick={handleSaveClientInline}
-                          disabled={isSavingClientInline}
-                          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center transition-all shadow-sm ${
-                            clientSaveSuccess 
-                              ? 'bg-emerald-600 text-white' 
-                              : 'bg-slate-900 hover:bg-slate-800 text-white'
-                          }`}
-                        >
-                          {clientSaveSuccess ? (
-                            <>
-                              <Check className="w-4 h-4 mr-1.5" /> Salvo com sucesso!
-                            </>
-                          ) : (
-                            <>
-                              <Save className="w-4 h-4 mr-1.5" /> {isSavingClientInline ? 'Salvando...' : 'Salvar Alterações do Cliente'}
-                            </>
-                          )}
-                        </button>
-                      </div>
 
-                      {/* Seção 1: Dados Pessoais & Contato */}
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Dados Pessoais & Contato</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Nome Completo</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.nome || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, nome: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">CPF</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.cpf || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, cpf: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium font-mono"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">RG</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.rg || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, rg: e.target.value})}
-                              placeholder="Ex: 12.345.678-9"
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Órgão Emissor do RG</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.orgaoEmissor || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, orgaoEmissor: e.target.value})}
-                              placeholder="Ex: SSP/PE"
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Email</label>
-                            <input
-                              type="email"
-                              value={selectedClientData.email || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, email: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Telefone / WhatsApp</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.telefone || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, telefone: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Profissão</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.profissao || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, profissao: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Estado Civil</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.estadoCivil || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, estadoCivil: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Embarcação</label>
+                          <SearchableBoatSelect
+                            boats={boats}
+                            value={contractData.embarcacaoId}
+                            onChange={id => setContractData({...contractData, embarcacaoId: id})}
+                          />
                         </div>
-                      </div>
 
-                      {/* Seção 2: Habilitação Náutica */}
-                      <div className="pt-3 border-t border-slate-200/60">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Habilitação Náutica (CHA)</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                        <div className="grid grid-cols-2 gap-3 pt-1">
                           <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Nº Habilitação Náutica (CHA)</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.numeroHabilitacao || selectedClientData.cnh_cha || ''}
-                              onChange={e => setSelectedClientData({
-                                ...selectedClientData, 
-                                numeroHabilitacao: e.target.value,
-                                cnh_cha: e.target.value
-                              })}
-                              placeholder="Ex: 381M2021005"
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium font-mono"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Categoria</label>
-                            <select
-                              value={selectedClientData.categoriaHabilitacao || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, categoriaHabilitacao: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            >
-                              <option value="">Selecione...</option>
-                              <option value="Arrais-Amador">Arrais-Amador</option>
-                              <option value="Motonauta">Motonauta</option>
-                              <option value="Arrais e Motonauta">Arrais e Motonauta</option>
-                              <option value="Mestre-Amador">Mestre-Amador</option>
-                              <option value="Capitão-Amador">Capitão-Amador</option>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Cota</label>
+                            <select value={contractData.cota} onChange={e => setContractData({...contractData, cota: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-xs font-medium transition-all text-slate-700">
+                              <option value="25%">25% (4 Sócios)</option>
+                              <option value="12.5%">12,5% (8 Sócios)</option>
+                              <option value="50%">50% (2 Sócios)</option>
+                              <option value="100%">100% (Proprietário Único)</option>
                             </select>
                           </div>
                           <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Data de Validade (CHA)</label>
-                            <input
-                              type="date"
-                              value={selectedClientData.validadeHabilitacao || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, validadeHabilitacao: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium font-mono"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Órgão Emissor (CHA)</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.orgaoEmissorHabilitacao || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, orgaoEmissorHabilitacao: e.target.value})}
-                              placeholder="Ex: Marinha do Brasil"
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Seção 3: Endereço */}
-                      <div className="pt-3 border-t border-slate-200/60">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Endereço de Faturamento</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">CEP</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.cep || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, cep: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div className="md:col-span-2">
-                            <label className="block font-semibold text-slate-600 mb-1">Logradouro (Rua, Av)</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.logradouro || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, logradouro: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Número</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.numeroEnd || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, numeroEnd: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Complemento</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.complemento || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, complemento: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Bairro</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.bairro || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, bairro: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">Cidade</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.cidade || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, cidade: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-600 mb-1">UF (Estado)</label>
-                            <input
-                              type="text"
-                              value={selectedClientData.estado || ''}
-                              onChange={e => setSelectedClientData({...selectedClientData, estado: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium uppercase"
-                            />
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">Tipo de Contrato</label>
+                            <select value={contractData.type} onChange={e => setContractData({...contractData, type: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-xs font-medium transition-all text-slate-700">
+                              <option value="ambos">Ambos (Adm + Aquisição)</option>
+                              <option value="adm">Apenas Administração</option>
+                              <option value="aquisicao">Apenas Aquisição</option>
+                            </select>
                           </div>
                         </div>
                       </div>
                     </div>
-                  )}
 
-                  {/* PAINEL DE INFORMAÇÕES DA EMBARCAÇÃO SELECIONADA */}
-                  {selectedBoatData && (
-                    <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-5 mt-6 space-y-4 animate-spring-pop">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
-                        <div className="flex items-center space-x-2">
-                          <Anchor className="w-5 h-5 text-blue-600" />
-                          <div>
-                            <h3 className="font-bold text-slate-800 text-sm">Informações da Embarcação Selecionada</h3>
-                            <p className="text-xs text-slate-500">Exibindo dados para conferência e edição antes de emitir o contrato</p>
+                    {/* CARD 2: DADOS DO CLIENTE SELECIONADO */}
+                    {selectedClientData && (
+                      <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-5 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                          <div className="flex items-center space-x-2">
+                            <User className="w-4 h-4 text-emerald-600" />
+                            <h3 className="font-bold text-slate-800 text-sm">Dados do Cliente</h3>
                           </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleSaveBoat}
-                          disabled={isSavingBoat}
-                          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center transition-all shadow-sm ${
-                            boatSaveSuccess 
-                              ? 'bg-emerald-600 text-white' 
-                              : 'bg-slate-900 hover:bg-slate-800 text-white'
-                          }`}
-                        >
-                          {boatSaveSuccess ? (
-                            <>
-                              <Check className="w-4 h-4 mr-1.5" /> Salvo com sucesso!
-                            </>
-                          ) : (
-                            <>
-                              <Save className="w-4 h-4 mr-1.5" /> {isSavingBoat ? 'Salvando...' : 'Salvar Alterações da Embarcação'}
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Nome da Embarcação</label>
-                          <input
-                            type="text"
-                            value={selectedBoatData.nome || ''}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, nome: e.target.value})}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Tipo de Embarcação</label>
-                          <select
-                            value={selectedBoatData.tipo || 'lancha'}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, tipo: e.target.value})}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
+                          <button
+                            type="button"
+                            onClick={() => setShowClientDetailsEdit(!showClientDetailsEdit)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1"
                           >
-                            <option value="lancha">Lancha</option>
-                            <option value="jet">Jet Ski</option>
-                          </select>
+                            <Edit2 className="w-3.5 h-3.5" />
+                            {showClientDetailsEdit ? 'Ocultar Edição' : 'Editar Dados'}
+                          </button>
                         </div>
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Modelo</label>
-                          <input
-                            type="text"
-                            value={selectedBoatData.modelo || ''}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, modelo: e.target.value})}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Fabricante / Estaleiro</label>
-                          <input
-                            type="text"
-                            value={selectedBoatData.fabricante || ''}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, fabricante: e.target.value})}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Ano</label>
-                          <input
-                            type="number"
-                            value={selectedBoatData.ano || ''}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, ano: parseInt(e.target.value) || 0})}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Nº de Inscrição na Marinha</label>
-                          <input
-                            type="text"
-                            value={selectedBoatData.inscricao || ''}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, inscricao: e.target.value})}
-                            placeholder="Ex: 401M2023001"
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Nº do Chassi (HIN)</label>
-                          <input
-                            type="text"
-                            value={selectedBoatData.chassi || ''}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, chassi: e.target.value})}
-                            placeholder="Ex: BR-MEX12345678"
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Tipo de Propulsão</label>
-                          <input
-                            type="text"
-                            value={selectedBoatData.tipo_propulsao || ''}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, tipo_propulsao: e.target.value})}
-                            placeholder="Ex: MOTOR / POPA / CENTRO"
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-semibold text-slate-600 mb-1">Potência do Motor</label>
-                          <input
-                            type="text"
-                            value={selectedBoatData.potencia || ''}
-                            onChange={e => setSelectedBoatData({...selectedBoatData, potencia: e.target.value})}
-                            placeholder="Ex: 250 HP"
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 text-slate-800 font-medium"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
-                  {/* SEÇÃO DO ITEM 3.1: PREÇO, ENTRADA E PARCELAMENTO */}
-                  {(contractData.type === 'aquisicao' || contractData.type === 'ambos') && (
-                    <div className="border-t border-slate-200 pt-6 mt-6 space-y-6">
-                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h3 className="text-sm font-bold text-slate-900 mb-1 flex items-center">
-                          <FileSignature className="w-4 h-4 mr-2 text-blue-600" />
-                          Cláusula 3.1 - Condições Financeiras da Aquisição
+                        {/* COMPACT SUMMARY PILLS */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">Nome</span>
+                            <span className="font-semibold text-slate-800 truncate block">{selectedClientData.nome || '-'}</span>
+                          </div>
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">CPF</span>
+                            <span className="font-mono text-slate-800 font-medium block">{selectedClientData.cpf || '-'}</span>
+                          </div>
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">Órgão CHA</span>
+                            <span className="font-medium text-emerald-700 truncate block">{selectedClientData.orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro'}</span>
+                          </div>
+                        </div>
+
+                        {/* EXPANDABLE EDITABLE FIELDS */}
+                        {showClientDetailsEdit && (
+                          <div className="pt-3 border-t border-slate-100 space-y-3 text-xs">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={handleSaveClientInline}
+                                disabled={isSavingClientInline}
+                                className={`px-3 py-1 rounded text-xs font-semibold flex items-center transition-all ${
+                                  clientSaveSuccess ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'
+                                }`}
+                              >
+                                <Save className="w-3 h-3 mr-1" />
+                                {clientSaveSuccess ? 'Salvo!' : isSavingClientInline ? 'Salvando...' : 'Salvar Alterações'}
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">Nome Completo</label>
+                                <input type="text" value={selectedClientData.nome || ''} onChange={e => setSelectedClientData({...selectedClientData, nome: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-800 font-medium" />
+                              </div>
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">CPF</label>
+                                <input type="text" value={selectedClientData.cpf || ''} onChange={e => setSelectedClientData({...selectedClientData, cpf: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded font-mono text-slate-800" />
+                              </div>
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">RG</label>
+                                <input type="text" value={selectedClientData.rg || ''} onChange={e => setSelectedClientData({...selectedClientData, rg: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-800" />
+                              </div>
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">Órgão Emissor CHA</label>
+                                <input type="text" value={selectedClientData.orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro'} onChange={e => setSelectedClientData({...selectedClientData, orgaoEmissorHabilitacao: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-800 font-medium" />
+                              </div>
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">Telefone/WhatsApp</label>
+                                <input type="text" value={selectedClientData.telefone || ''} onChange={e => setSelectedClientData({...selectedClientData, telefone: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-800" />
+                              </div>
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">Estado Civil</label>
+                                <input type="text" value={selectedClientData.estadoCivil || ''} onChange={e => setSelectedClientData({...selectedClientData, estadoCivil: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-800" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* CARD 3: DADOS DA EMBARCAÇÃO SELECIONADA */}
+                    {selectedBoatData && (
+                      <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-5 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                          <div className="flex items-center space-x-2">
+                            <Anchor className="w-4 h-4 text-blue-600" />
+                            <h3 className="font-bold text-slate-800 text-sm">Dados da Embarcação</h3>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowBoatDetailsEdit(!showBoatDetailsEdit)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            {showBoatDetailsEdit ? 'Ocultar Edição' : 'Editar Dados'}
+                          </button>
+                        </div>
+
+                        {/* COMPACT SUMMARY PILLS */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">Embarcação</span>
+                            <span className="font-semibold text-slate-800 truncate block">{selectedBoatData.nome || '-'}</span>
+                          </div>
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">Inscrição</span>
+                            <span className="font-mono text-slate-800 font-medium block">{selectedBoatData.inscricao || '-'}</span>
+                          </div>
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">Chassi</span>
+                            <span className="font-mono text-slate-800 font-medium block truncate">{selectedBoatData.chassi || '-'}</span>
+                          </div>
+                        </div>
+
+                        {/* EXPANDABLE EDITABLE FIELDS */}
+                        {showBoatDetailsEdit && (
+                          <div className="pt-3 border-t border-slate-100 space-y-3 text-xs">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={handleSaveBoat}
+                                disabled={isSavingBoat}
+                                className={`px-3 py-1 rounded text-xs font-semibold flex items-center transition-all ${
+                                  boatSaveSuccess ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'
+                                }`}
+                              >
+                                <Save className="w-3 h-3 mr-1" />
+                                {boatSaveSuccess ? 'Salvo!' : isSavingBoat ? 'Salvando...' : 'Salvar Alterações'}
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">Nome</label>
+                                <input type="text" value={selectedBoatData.nome || ''} onChange={e => setSelectedBoatData({...selectedBoatData, nome: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-800 font-medium" />
+                              </div>
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">Modelo</label>
+                                <input type="text" value={selectedBoatData.modelo || ''} onChange={e => setSelectedBoatData({...selectedBoatData, modelo: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-800" />
+                              </div>
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">Nº Inscrição</label>
+                                <input type="text" value={selectedBoatData.inscricao || ''} onChange={e => setSelectedBoatData({...selectedBoatData, inscricao: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded font-mono text-slate-800" />
+                              </div>
+                              <div>
+                                <label className="block font-semibold text-slate-600 mb-1">Chassi (HIN)</label>
+                                <input type="text" value={selectedBoatData.chassi || ''} onChange={e => setSelectedBoatData({...selectedBoatData, chassi: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded font-mono text-slate-800" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* CARD 4: CONDIÇÕES FINANCEIRAS (Item 3.1) */}
+                    {(contractData.type === 'aquisicao' || contractData.type === 'ambos') && (
+                      <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-5 space-y-4">
+                        <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2.5 flex items-center justify-between">
+                          <span>Cláusula 3.1 - Condições Financeiras</span>
+                          <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">✨ Cálculo Automático</span>
                         </h3>
-                        <p className="text-xs text-slate-500">
-                          Preencha os valores para gerar automaticamente a redação exata do Item 3.1 no PDF.
-                        </p>
-                      </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Valor Total da Cota (R$)</label>
-                          <input
-                            type="text"
-                            value={contractData.valorTotal}
-                            onChange={e => recalculatePayment(e.target.value, contractData.valorEntrada, contractData.numParcelas)}
-                            placeholder="Ex: 55.000,00"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 font-semibold focus:ring-2 focus:ring-slate-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Valor da Entrada (Item A) (R$)</label>
-                          <input
-                            type="text"
-                            value={contractData.valorEntrada}
-                            onChange={e => recalculatePayment(contractData.valorTotal, e.target.value, contractData.numParcelas)}
-                            placeholder="Ex: 12.040,00"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 font-semibold focus:ring-2 focus:ring-slate-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nº de Parcelas (Item B)</label>
-                          <input
-                            type="text"
-                            value={contractData.numParcelas}
-                            onChange={e => recalculatePayment(contractData.valorTotal, contractData.valorEntrada, e.target.value)}
-                            placeholder="Ex: 24"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 font-semibold focus:ring-2 focus:ring-slate-900"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Valor Remanescente Saldo (R$)</label>
-                          <input
-                            type="text"
-                            value={contractData.valorRemanescente}
-                            onChange={e => handleRemanescenteChange(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Valor da Parcela (R$)</label>
-                          <input
-                            type="text"
-                            value={contractData.valorParcela}
-                            onChange={e => handleParcelaChange(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 font-medium"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label className="block text-xs font-semibold text-slate-600">Valor Remanescente por Extenso</label>
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">✨ Auto-convertido</span>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Valor Total (R$)</label>
+                            <input type="text" value={contractData.valorTotal} onChange={e => recalculatePayment(e.target.value, contractData.valorEntrada, contractData.numParcelas)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
                           </div>
-                          <input
-                            type="text"
-                            value={contractData.valorRemanescenteExtenso}
-                            onChange={e => setContractData({...contractData, valorRemanescenteExtenso: e.target.value})}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label className="block text-xs font-semibold text-slate-600">Valor da Parcela por Extenso</label>
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">✨ Auto-convertido</span>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Entrada (R$)</label>
+                            <input type="text" value={contractData.valorEntrada} onChange={e => recalculatePayment(contractData.valorTotal, e.target.value, contractData.numParcelas)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
                           </div>
-                          <input
-                            type="text"
-                            value={contractData.valorParcelaExtenso}
-                            onChange={e => setContractData({...contractData, valorParcelaExtenso: e.target.value})}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium"
-                          />
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nº Parcelas</label>
+                            <input type="text" value={contractData.numParcelas} onChange={e => recalculatePayment(contractData.valorTotal, contractData.valorEntrada, e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Saldo Remanescente (R$)</label>
+                            <input type="text" value={contractData.valorRemanescente} onChange={e => handleRemanescenteChange(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Valor Parcela (R$)</label>
+                            <input type="text" value={contractData.valorParcela} onChange={e => handleParcelaChange(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vencimento (Dia)</label>
+                            <input type="text" value={contractData.diaVencimento} onChange={e => setContractData({...contractData, diaVencimento: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Forma de Pagamento</label>
+                            <input type="text" value={contractData.formaPagamento} onChange={e => setContractData({...contractData, formaPagamento: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                          </div>
                         </div>
                       </div>
+                    )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label className="block text-xs font-semibold text-slate-600">Nº Parcelas por Extenso</label>
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">✨ Auto</span>
-                          </div>
-                          <input
-                            type="text"
-                            value={contractData.numParcelasExtenso}
-                            onChange={e => setContractData({...contractData, numParcelasExtenso: e.target.value})}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Dia de Vencimento</label>
-                          <input
-                            type="text"
-                            value={contractData.diaVencimento}
-                            onChange={e => setContractData({...contractData, diaVencimento: e.target.value})}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Forma de Pagamento</label>
-                          <input
-                            type="text"
-                            value={contractData.formaPagamento}
-                            onChange={e => setContractData({...contractData, formaPagamento: e.target.value})}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700"
-                          />
-                        </div>
+                    <button type="submit" className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold flex items-center justify-center transition-all shadow-md">
+                      <FileSignature className="w-4 h-4 mr-2 text-emerald-400" />
+                      Gerar e Baixar Contrato em PDF
+                    </button>
+                  </form>
+                </div>
+
+                {/* RIGHT COLUMN: LIVE DOCUMENT PREVIEW (6 cols) */}
+                <div className="lg:col-span-6 sticky top-6">
+                  {/* PREVIEW CONTAINER */}
+                  <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                    {/* HEADER BAR */}
+                    <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Prévia do Contrato (Ao Vivo)</span>
                       </div>
 
-                      {/* Prévia ao Vivo da Cláusula 3.1 */}
-                      <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-slate-700 space-y-2">
-                        <p className="font-bold text-blue-900 uppercase tracking-wider text-[10px]">Prévia do Item 3.1 no Contrato PDF:</p>
-                        <p className="font-medium">
-                          <strong>3. DO PREÇO, FORMA DE PAGAMENTO E INADIMPLÊNCIA</strong><br />
-                          <strong>3.1.</strong> O COMPRADOR pagará pela aquisição de {contractData.cota} da propriedade da embarcação, objeto deste contrato, o valor de R$ {contractData.valorTotal} a ser efetuado da seguinte forma:
-                        </p>
-                        <p className="pl-4">
-                          <strong>a)</strong> Pagamento de R$ {contractData.valorEntrada} a título de entrada, que será pago à vista no momento da assinatura do presente contrato.
-                        </p>
-                        <p className="pl-4">
-                          <strong>b)</strong> O valor remanescente de R$ {contractData.valorRemanescente} ({contractData.valorRemanescenteExtenso}), deverá ser pago em {contractData.numParcelas} ({contractData.numParcelasExtenso}) parcelas de R$ {contractData.valorParcela} ({contractData.valorParcelaExtenso}), mediante {contractData.formaPagamento}, com o vencimento para o dia {contractData.diaVencimento} de cada mês, servindo comprovante de pagamento/transferência como recibo de quitação.
-                        </p>
+                      {contractData.type === 'ambos' && (
+                        <div className="flex bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewTab('aquisicao')}
+                            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${
+                              previewTab === 'aquisicao' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Aquisição
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewTab('adm')}
+                            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${
+                              previewTab === 'adm' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Administração
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* PAPER PREVIEW AREA */}
+                    <div className="p-4 sm:p-6 bg-slate-100/80 max-h-[720px] overflow-y-auto custom-scrollbar">
+                      <div className="bg-white rounded shadow-md border border-slate-200 p-6 sm:p-8 max-w-[595px] mx-auto text-slate-800 font-serif text-[10.5px] leading-relaxed space-y-4">
+                        {/* LOGO */}
+                        <div className="text-center pb-2 border-b border-slate-200">
+                          <img src={logoSrc} alt="Logo" className="h-10 mx-auto mb-2 object-contain" />
+                          <h2 className="font-bold text-xs uppercase tracking-wider text-slate-900 font-sans">
+                            {(contractData.type === 'adm' || (contractData.type === 'ambos' && previewTab === 'adm'))
+                              ? 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE ADMINISTRAÇÃO E GUARDA DE EMBARCAÇÃO'
+                              : 'CONTRATO DE AQUISIÇÃO DE COPROPRIEDADE DE EMBARCAÇÃO'}
+                          </h2>
+                        </div>
+
+                        {/* PARTES CONTRATANTES */}
+                        {(contractData.type === 'adm' || (contractData.type === 'ambos' && previewTab === 'adm')) ? (
+                          <>
+                            <p className="text-justify font-sans text-[10px]">
+                              <strong>CONTRATANTE:</strong> Nome: <span className="underline decoration-emerald-500 font-semibold">{selectedClientData?.nome || '___________________'}</span>, Estado civil: {selectedClientData?.estadoCivil || '___'}, Profissão: {selectedClientData?.profissao || '___'}, inscrito no CPF sob o nº <span className="font-mono">{selectedClientData?.cpf || '___'}</span>, portador do RG nº {selectedClientData?.rg || '___'}, Habilitação Náutica (CHA): <span className="font-mono">{selectedClientData?.numeroHabilitacao || selectedClientData?.cnh_cha || '___'}</span>, Órgão Emissor CHA: <span className="font-medium text-emerald-800 bg-emerald-50 px-1 rounded">{selectedClientData?.orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro'}</span>, residente em {selectedClientData?.logradouro || '___'}, nº {selectedClientData?.numeroEnd || '___'}, {selectedClientData?.bairro || '___'}, {selectedClientData?.cidade || '___'}/{selectedClientData?.estado || '___'}, CEP: {selectedClientData?.cep || '___'}, WhatsApp: {selectedClientData?.telefone || '___'}.
+                            </p>
+                            <p className="text-justify font-sans text-[10px]">
+                              <strong>CONTRATADA:</strong> MEXICANO LANCHAS LTDA, CNPJ nº 42.206.594/0001-31, situada na cidade de Petrolina-PE, Estrada da Tapera, Lote 190, CEP 56334-899.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-justify font-sans text-[10px]">
+                              <strong>COMPRADOR:</strong> Nome: <span className="underline decoration-emerald-500 font-semibold">{selectedClientData?.nome || '___________________'}</span>, Estado civil: {selectedClientData?.estadoCivil || '___'}, Profissão: {selectedClientData?.profissao || '___'}, inscrito no CPF sob o nº <span className="font-mono">{selectedClientData?.cpf || '___'}</span>, portador do RG nº {selectedClientData?.rg || '___'}, Endereço: {selectedClientData?.logradouro || '___'}, nº {selectedClientData?.numeroEnd || '___'}, Bairro: {selectedClientData?.bairro || '___'}, Cidade/UF: {selectedClientData?.cidade || '___'}/{selectedClientData?.estado || '___'}, CEP: {selectedClientData?.cep || '___'}, WhatsApp: {selectedClientData?.telefone || '___'}.
+                            </p>
+                            <p className="text-justify font-sans text-[10px]">
+                              <strong>VENDEDOR:</strong> MEXICANO LANCHAS LTDA, CNPJ nº 42.206.594/0001-31, situada na cidade de Petrolina-PE, Estrada da Tapera, Lote 190, CEP 56334-899.
+                            </p>
+                          </>
+                        )}
+
+                        {/* CLÁUSULA 1 - OBJETO */}
+                        <div className="pt-2 border-t border-slate-100 font-sans text-[10px] space-y-1.5">
+                          <p className="font-bold text-slate-900">1. OBJETO</p>
+                          <p className="text-justify">
+                            1.1. O presente contrato tem por objeto a {(contractData.type === 'adm' || (contractData.type === 'ambos' && previewTab === 'adm')) ? 'prestação de serviços de guarda e administração da embarcação' : `aquisição de copropriedade de embarcação correspondente a ${contractData.cota} do total`}:
+                          </p>
+                          <div className="bg-slate-50 p-2.5 rounded border border-slate-200 text-[9.5px] font-mono grid grid-cols-2 gap-1 text-slate-700">
+                            <div><strong>Embarcação:</strong> {selectedBoatData?.nome || 'N/A'}</div>
+                            <div><strong>Modelo:</strong> {selectedBoatData?.modelo || 'N/A'}</div>
+                            <div><strong>Nº Inscrição:</strong> {selectedBoatData?.inscricao || 'N/A'}</div>
+                            <div><strong>Chassi (HIN):</strong> {selectedBoatData?.chassi || 'N/A'}</div>
+                            <div><strong>Propulsão:</strong> {selectedBoatData?.tipo_propulsao || 'MOTOR'}</div>
+                            <div><strong>Potência:</strong> {selectedBoatData?.potencia || 'N/A'}</div>
+                          </div>
+                        </div>
+
+                        {/* CLÁUSULA FINANCEIRA (Se Aquisição) */}
+                        {(contractData.type === 'aquisicao' || (contractData.type === 'ambos' && previewTab === 'aquisicao')) && (
+                          <div className="pt-2 border-t border-slate-100 font-sans text-[10px] space-y-1.5">
+                            <p className="font-bold text-slate-900">3. DO PREÇO E FORMA DE PAGAMENTO</p>
+                            <p className="text-justify">
+                              <strong>3.1.</strong> O COMPRADOR pagará pela aquisição de <strong>{contractData.cota}</strong> da propriedade da embarcação o valor de <strong>R$ {contractData.valorTotal}</strong>:
+                            </p>
+                            <div className="pl-3 border-l-2 border-emerald-500 space-y-1 bg-emerald-50/40 p-2 rounded text-[9.5px]">
+                              <p><strong>a)</strong> Entrada de R$ <strong>{contractData.valorEntrada}</strong> no ato da assinatura.</p>
+                              <p><strong>b)</strong> Saldo remanescente de R$ <strong>{contractData.valorRemanescente}</strong> ({contractData.valorRemanescenteExtenso}) em <strong>{contractData.numParcelas}</strong> ({contractData.numParcelasExtenso}) parcelas de R$ <strong>{contractData.valorParcela}</strong> ({contractData.valorParcelaExtenso}), via {contractData.formaPagamento}, vencimento no dia <strong>{contractData.diaVencimento}</strong> de cada mês.</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ASSINATURAS MOCKUP */}
+                        <div className="pt-6 border-t border-slate-200 font-sans text-[9px] text-center grid grid-cols-2 gap-6">
+                          <div>
+                            <div className="border-b border-slate-400 pb-1 mb-1 font-semibold text-slate-900">
+                              {selectedClientData?.nome ? selectedClientData.nome.toUpperCase() : 'COMPRADOR / CONTRATANTE'}
+                            </div>
+                            <p className="text-slate-500">CPF: {selectedClientData?.cpf || '___'}</p>
+                          </div>
+                          <div>
+                            <div className="border-b border-slate-400 pb-1 mb-1 font-semibold text-slate-900">
+                              MEXICANO LANCHAS LTDA
+                            </div>
+                            <p className="text-slate-500">CNPJ: 42.206.594/0001-31</p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  )}
-                  
-                  <div className="pt-6 border-t border-slate-100 flex justify-end">
-                    <button type="submit" className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center transition-all shadow-md">
-                      <FileSignature className="w-4 h-4 mr-2" />
-                      Gerar e Baixar PDF
-                    </button>
                   </div>
-                </form>
+                </div>
               </div>
             </div>
           )}
@@ -1907,7 +1784,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1.5">Órgão Emissor da Habilitação</label>
-                      <input type="text" value={formData.orgaoEmissorHabilitacao} onChange={e => setFormData({...formData, orgaoEmissorHabilitacao: e.target.value})} placeholder="Ex: Marinha do Brasil / Capitania" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
+                      <input type="text" value={formData.orgaoEmissorHabilitacao} onChange={e => setFormData({...formData, orgaoEmissorHabilitacao: e.target.value})} placeholder="Ex: Capitania Fluvial de Juazeiro" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
                     </div>
                   </div>
                 </div>
@@ -2000,7 +1877,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                     <div><span className="block text-slate-400 font-semibold mb-0.5">Nº da Habilitação</span><span className="font-bold text-slate-800 font-mono">{selectedClientView.numeroHabilitacao || selectedClientView.cnh_cha || 'Não informada'}</span></div>
                     <div><span className="block text-slate-400 font-semibold mb-0.5">Categoria</span><span className="font-bold text-slate-800">{selectedClientView.categoriaHabilitacao || 'Não informada'}</span></div>
                     <div><span className="block text-slate-400 font-semibold mb-0.5">Data de Expiração / Validade</span><span className="font-bold text-slate-800 font-mono">{selectedClientView.validadeHabilitacao || 'Não informada'}</span></div>
-                    <div><span className="block text-slate-400 font-semibold mb-0.5">Órgão Emissor</span><span className="font-bold text-slate-800">{selectedClientView.orgaoEmissorHabilitacao || 'Marinha do Brasil'}</span></div>
+                    <div><span className="block text-slate-400 font-semibold mb-0.5">Órgão Emissor</span><span className="font-bold text-slate-800">{selectedClientView.orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro'}</span></div>
                   </div>
                 </div>
                 

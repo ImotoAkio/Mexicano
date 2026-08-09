@@ -1911,16 +1911,13 @@ app.post("/api/whatsapp/send-text", requireAdminAuth, whatsappLimiter, async (re
     const apiKey = process.env.EVOLUTION_API_KEY;
     const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
 
-    if (!apiUrl || !apiKey) {
-      return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
-    }
-
-    // Clean number to ensure only digits
-    let cleanedNumber = number.replace(/\D/g, "");
-    
-    // If the number doesn't start with 55 (and length is 10 or 11, typical Brazilian phone number), prepend 55
-    if (cleanedNumber.length >= 10 && cleanedNumber.length <= 11 && !cleanedNumber.startsWith("55")) {
-      cleanedNumber = `55${cleanedNumber}`;
+    // Clean number unless it's a group JID (@g.us)
+    let cleanedNumber = number.trim();
+    if (!cleanedNumber.includes('@g.us')) {
+      cleanedNumber = cleanedNumber.replace(/\D/g, "");
+      if (cleanedNumber.length >= 10 && cleanedNumber.length <= 11 && !cleanedNumber.startsWith("55")) {
+        cleanedNumber = `55${cleanedNumber}`;
+      }
     }
 
     const payload = {
@@ -1947,6 +1944,83 @@ app.post("/api/whatsapp/send-text", requireAdminAuth, whatsappLimiter, async (re
   } catch (err: any) {
     console.error("Error sending WhatsApp message:", err);
     res.status(500).json({ error: true, message: err.message || "Failed to send WhatsApp message" });
+  }
+});
+
+// Route: Custom flexible send message (Text and/or Media for individuals or groups)
+app.post("/api/whatsapp/send-custom", requireAdminAuth, whatsappLimiter, async (req, res) => {
+  try {
+    const { number, text, media, mimetype, fileName } = req.body;
+    
+    if (!number || (!text && !media)) {
+      return res.status(400).json({ error: true, message: "É necessário informar o número/grupo e o texto ou mídia." });
+    }
+
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+
+    if (!apiUrl || !apiKey) {
+      return res.status(500).json({ error: true, message: "Evolution API não configurada na VPS." });
+    }
+
+    let targetRecipient = number.trim();
+    if (!targetRecipient.includes('@g.us')) {
+      let cleanedNumber = targetRecipient.replace(/\D/g, "");
+      if (cleanedNumber.length >= 10 && cleanedNumber.length <= 11 && !cleanedNumber.startsWith("55")) {
+        cleanedNumber = `55${cleanedNumber}`;
+      }
+      targetRecipient = cleanedNumber;
+    }
+
+    if (media && mimetype) {
+      let mediatype = "document";
+      if (mimetype.startsWith("image/")) mediatype = "image";
+      else if (mimetype.startsWith("video/")) mediatype = "video";
+
+      const base64Data = media.replace(/^data:.*?;base64,/, "");
+
+      const payload = {
+        number: targetRecipient,
+        mediatype,
+        mimetype,
+        caption: text || "",
+        media: base64Data,
+        fileName: fileName || "arquivo"
+      };
+
+      const response = await evolutionFetch(`${apiUrl}/message/sendMedia/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": apiKey },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(502).json({ error: true, message: `Erro ao enviar mídia via Evolution API: ${errorText}` });
+      }
+    } else {
+      const payload = {
+        number: targetRecipient,
+        text: text
+      };
+
+      const response = await evolutionFetch(`${apiUrl}/message/sendText/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": apiKey },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(502).json({ error: true, message: `Erro ao enviar mensagem via Evolution API: ${errorText}` });
+      }
+    }
+
+    res.json({ success: true, message: "Mensagem enviada com sucesso!" });
+  } catch (err: any) {
+    console.error("Error sending custom WhatsApp message:", err);
+    res.status(500).json({ error: true, message: err.message || "Falha ao enviar mensagem no WhatsApp" });
   }
 });
 
