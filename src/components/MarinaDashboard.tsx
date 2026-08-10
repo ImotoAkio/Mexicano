@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
 import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
+import MarinaTanksView from './MarinaTanksView';
 
 interface MarinaDashboardProps {
   onLogout: () => void;
@@ -73,7 +74,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
 
   // Bottom Navigation Tab
-  const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'combustivel'>('operacao');
+  const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'combustivel' | 'tanques'>('operacao');
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
@@ -564,9 +565,14 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           <div className="flex items-center gap-2">
             <Logo className="h-6 w-auto text-[#B69D74]" />
             <div>
-              <h1 className="font-extrabold text-[13px] tracking-widest uppercase leading-none">Operação Marina</h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-extrabold text-[13px] tracking-widest uppercase leading-none">Operação Marina</h1>
+                <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 text-[9px] font-black tracking-wider uppercase">
+                  Gerente
+                </span>
+              </div>
               {activeTab === 'operacao' && (
-                <p className="text-[10px] text-slate-400 font-medium mt-1">{reservasDoDia.length} desida(s) no dia</p>
+                <p className="text-[10px] text-slate-400 font-medium mt-1">{reservasDoDia.length} descida(s) no dia</p>
               )}
             </div>
           </div>
@@ -869,6 +875,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             reloadData={fetchData}
           />
         )}
+
+        {activeTab === 'tanques' && (
+          <MarinaTanksView 
+            operadorNome={operadorNome}
+            showToast={showToast}
+          />
+        )}
       </div>
 
       {/* Toast Notification */}
@@ -913,8 +926,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             onClick={() => setActiveTab('combustivel')}
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors cursor-pointer ${activeTab === 'combustivel' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
           >
-            <Droplets className={`w-6 h-6 ${activeTab === 'combustivel' ? 'fill-blue-100' : ''}`} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Combustível</span>
+            <Droplets className={`w-5 h-5 ${activeTab === 'combustivel' ? 'fill-blue-100' : ''}`} />
+            <span className="text-[9px] font-bold uppercase tracking-wider">Abastecimento</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('tanques')}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors cursor-pointer ${activeTab === 'tanques' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <Truck className={`w-5 h-5 ${activeTab === 'tanques' ? 'fill-blue-100' : ''}`} />
+            <span className="text-[9px] font-bold uppercase tracking-wider">Tanques</span>
           </button>
         </div>
       </div>
