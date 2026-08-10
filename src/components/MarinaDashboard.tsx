@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
@@ -73,8 +73,9 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
 
-  // Bottom Navigation Tab
-  const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'combustivel' | 'tanques'>('operacao');
+  // Bottom Navigation Tab & Sidebar state
+  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques'>('home');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
@@ -558,31 +559,328 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const displayDateStr = new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-900 pb-24 flex flex-col h-screen overflow-hidden">
-      {/* Header Compacto Mobile-First */}
-      <div className="bg-slate-950 text-white p-3 shadow-md z-10 flex flex-col gap-2 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Logo className="h-6 w-auto text-[#B69D74]" />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="font-extrabold text-[13px] tracking-widest uppercase leading-none">Operação Marina</h1>
-                <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 text-[9px] font-black tracking-wider uppercase">
-                  Gerente
-                </span>
+    <div className="min-h-screen w-full flex bg-[#f4f5f7] font-sans text-slate-800">
+      
+      {/* Sidebar - Light Theme Executiva (Desktop & Tablet) */}
+      <aside className={`bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0 transition-all duration-300 overflow-hidden z-30 shrink-0 ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+        <div className="min-h-[4.5rem] flex items-center justify-between px-4 border-b border-slate-100">
+          <div className="flex items-center gap-3 min-w-0">
+            <Logo className="h-7 w-auto text-[#B69D74] shrink-0" />
+            {isSidebarOpen && (
+              <div className="min-w-0">
+                <h1 className="font-extrabold text-sm text-slate-900 tracking-tight leading-none truncate">Marina ERP</h1>
+                <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider block mt-0.5">Painel Gerencial</span>
               </div>
-              {activeTab === 'operacao' && (
-                <p className="text-[10px] text-slate-400 font-medium mt-1">{reservasDoDia.length} descida(s) no dia</p>
-              )}
-            </div>
+            )}
           </div>
-          <button onClick={onLogout} className="p-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-700 rounded-lg transition-colors cursor-pointer">
-            <LogOut className="w-5 h-5 text-red-400" />
+          <button 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors hidden sm:block cursor-pointer"
+            title={isSidebarOpen ? "Recolher Menu" : "Expandir Menu"}
+          >
+            <Menu className="w-4 h-4" />
           </button>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto subtle-scrollbar relative">
+        <div className="flex-1 overflow-y-auto py-5 px-3 space-y-6 subtle-scrollbar">
+          <div>
+            {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Visão Geral</p>}
+            <nav className="space-y-1">
+              <button 
+                onClick={() => setActiveTab('home')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'home' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Visão Geral"
+              >
+                <Home className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Visão Geral</span>}
+              </button>
+            </nav>
+          </div>
+
+          <div>
+            {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Operação do Píer</p>}
+            <nav className="space-y-1">
+              <button 
+                onClick={() => setActiveTab('operacao')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'operacao' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Fila do Píer"
+              >
+                <Ship className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && (
+                  <div className="flex items-center justify-between w-full">
+                    <span>Fila do Píer</span>
+                    <span className="px-1.5 py-0.2 bg-blue-500/20 text-blue-600 rounded-full text-[10px]">{countTodas}</span>
+                  </div>
+                )}
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('checklists')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'checklists' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Auditoria de Checklists"
+              >
+                <ClipboardList className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Auditoria Checklists</span>}
+              </button>
+            </nav>
+          </div>
+
+          <div>
+            {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Insumos & Combustível</p>}
+            <nav className="space-y-1">
+              <button 
+                onClick={() => setActiveTab('combustivel')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'combustivel' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Vendas de Combustível"
+              >
+                <Droplets className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Abastecimentos</span>}
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('tanques')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'tanques' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Estoque de Tanques"
+              >
+                <Truck className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Estoque de Tanques</span>}
+              </button>
+            </nav>
+          </div>
+        </div>
+
+        {/* Sidebar Footer User Info */}
+        <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+          <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
+            {isSidebarOpen && (
+              <div className="min-w-0 flex items-center space-x-2">
+                <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                  {(operadorNome || 'Gerente').substring(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-900 truncate leading-none">{operadorNome || 'Gerente'}</p>
+                  <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">Gerente de Marina</p>
+                </div>
+              </div>
+            )}
+            <button 
+              onClick={onLogout}
+              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+              title="Sair do sistema"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Area Principal com Topbar Executiva */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        
+        {/* Topbar Superior Executiva */}
+        <header className="bg-white border-b border-slate-200 min-h-[4.5rem] px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 shadow-xs">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors sm:hidden cursor-pointer"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-extrabold text-base text-slate-900 tracking-tight">
+                  {activeTab === 'home' && 'Visão Geral Executiva'}
+                  {activeTab === 'operacao' && 'Operação & Fila do Píer'}
+                  {activeTab === 'checklists' && 'Auditoria de Checklists & Fotos'}
+                  {activeTab === 'combustivel' && 'Lançamentos de Abastecimento'}
+                  {activeTab === 'tanques' && 'Estoque & Tanques da Marina'}
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-extrabold uppercase tracking-wider hidden sm:inline-block">
+                  Gerente de Marina
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 font-medium hidden sm:block">
+                Controle centralizado da marina, frota na água e suprimentos
+              </p>
+            </div>
+          </div>
+
+          {/* Controls: Date Navigator & Status */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-2xs">
+              <button onClick={handlePrevDay} className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-white transition-all cursor-pointer">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-2 text-xs font-bold text-slate-700 capitalize">{displayDateStr}</span>
+              <button onClick={handleNextDay} className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-white transition-all cursor-pointer">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Content Body com Scroll Interno */}
+        <main className="flex-1 overflow-y-auto subtle-scrollbar p-3 sm:p-6 bg-[#f4f5f7]">
+          
+          {/* ABA HOME: VISÃO GERAL EXECUTIVA */}
+          {activeTab === 'home' && (
+            <div className="space-y-6 max-w-7xl mx-auto">
+              {/* Banner Executivo */}
+              <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-slate-800">
+                <div className="space-y-1.5 z-10">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-400/30 rounded-full text-[10px] font-black uppercase tracking-wider">
+                      Painel Gerencial
+                    </span>
+                    <span className="text-xs font-medium text-slate-300">{displayDateStr}</span>
+                  </div>
+                  <h2 className="text-2xl font-black tracking-tight">Bem-vindo, {operadorNome || 'Gerente'}!</h2>
+                  <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                    Painel administrativo em tempo real para monitorar a operação do píer, conferir checklists fotográficos dos marinheiros e controlar o estoque de combustível da marina.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 z-10">
+                  <button 
+                    onClick={() => setActiveTab('operacao')}
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <Ship className="w-4 h-4" />
+                    <span>Ver Fila do Píer</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Metric Cards Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Na Água Agora</span>
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                      <Anchor className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-3xl font-black text-slate-900">{countProntas}</span>
+                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Embarcações</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">Barcos prontos no píer / em água</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Agendados no Dia</span>
+                    <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-3xl font-black text-slate-900">{countAgendadas + countConfirmadas}</span>
+                    <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Agendamentos</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">Na fila para descida na data</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Retornaram / Concluídos</span>
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-3xl font-black text-slate-900">{countRetornaram}</span>
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Finalizados</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">Barcos que retornaram e foram guardados</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Operações Totais</span>
+                    <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                      <Ship className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-3xl font-black text-slate-900">{countTodas}</span>
+                    <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">No Dia</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">Movimentações programadas hoje</p>
+                </div>
+              </div>
+
+              {/* Quick Shortcuts Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Tanques de Combustível Summary Widget */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Droplets className="w-5 h-5 text-blue-600" />
+                      <h3 className="font-extrabold text-base text-slate-900">Estoque dos Tanques da Marina</h3>
+                    </div>
+                    <button 
+                      onClick={() => setActiveTab('tanques')}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Gerenciar Tanques</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Gasolina Podium</span>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xl font-black text-slate-900 font-mono">7.650 L</span>
+                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">76%</span>
+                      </div>
+                      <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: '76%' }} />
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Diesel Náutico</span>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xl font-black text-slate-900 font-mono">4.200 L</span>
+                        <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">42%</span>
+                      </div>
+                      <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                        <div className="bg-amber-500 h-full rounded-full" style={{ width: '42%' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Auditoria de Checklists Summary Widget */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ClipboardList className="w-5 h-5 text-blue-600" />
+                      <h3 className="font-extrabold text-base text-slate-900">Auditoria & Registros Fotográficos</h3>
+                    </div>
+                    <button 
+                      onClick={() => setActiveTab('checklists')}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Ver Checklists</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-2 text-slate-700 text-xs">
+                    <div className="flex items-center gap-2 text-blue-900 font-bold">
+                      <Layers className="w-4 h-4 text-blue-600" />
+                      <span>Ângulo do Casco & Inspeção Inferior Ativados</span>
+                    </div>
+                    <p className="text-slate-600 leading-relaxed">
+                      Os marinheiros estão registrando fotos nos 6 ângulos (Proa, Popa, Lateral Esquerda, Lateral Direita, Painel e Casco) em cada descida e subida.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         {activeTab === 'operacao' && (
           <div className="w-full p-2 space-y-3 pb-24">
             {/* Date Navigator */}
@@ -882,6 +1180,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             showToast={showToast}
           />
         )}
+        </main>
       </div>
 
       {/* Toast Notification */}
@@ -905,29 +1204,36 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         </div>
       )}
 
-      {/* Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-[40] safe-area-bottom">
-        <div className="flex justify-around items-center h-16 max-w-md mx-auto">
+      {/* Bottom Navigation Bar (Mobile Only) */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-[40] safe-area-bottom">
+        <div className="flex justify-around items-center h-16 max-w-md mx-auto px-1">
+          <button 
+            onClick={() => setActiveTab('home')}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors cursor-pointer ${activeTab === 'home' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <Home className={`w-5 h-5 ${activeTab === 'home' ? 'fill-blue-100' : ''}`} />
+            <span className="text-[9px] font-bold uppercase tracking-wider">Início</span>
+          </button>
           <button 
             onClick={() => setActiveTab('operacao')}
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors cursor-pointer ${activeTab === 'operacao' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
           >
-            <Ship className={`w-6 h-6 ${activeTab === 'operacao' ? 'fill-blue-100' : ''}`} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Painel</span>
+            <Ship className={`w-5 h-5 ${activeTab === 'operacao' ? 'fill-blue-100' : ''}`} />
+            <span className="text-[9px] font-bold uppercase tracking-wider">Fila</span>
           </button>
           <button 
             onClick={() => setActiveTab('checklists')}
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors cursor-pointer ${activeTab === 'checklists' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
           >
-            <ClipboardList className={`w-6 h-6 ${activeTab === 'checklists' ? 'fill-blue-100' : ''}`} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Checklists</span>
+            <ClipboardList className={`w-5 h-5 ${activeTab === 'checklists' ? 'fill-blue-100' : ''}`} />
+            <span className="text-[9px] font-bold uppercase tracking-wider">Checklist</span>
           </button>
           <button 
             onClick={() => setActiveTab('combustivel')}
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors cursor-pointer ${activeTab === 'combustivel' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
           >
             <Droplets className={`w-5 h-5 ${activeTab === 'combustivel' ? 'fill-blue-100' : ''}`} />
-            <span className="text-[9px] font-bold uppercase tracking-wider">Abastecimento</span>
+            <span className="text-[9px] font-bold uppercase tracking-wider">Posto</span>
           </button>
           <button 
             onClick={() => setActiveTab('tanques')}
