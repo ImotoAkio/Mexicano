@@ -17,6 +17,7 @@ import ClientLoginPage from './components/ClientLoginPage';
 const ClientDashboardPage = lazy(() => import('./components/ClientDashboardPage'));
 import LandingPage from './components/LandingPage';
 const MarinaDashboard = lazy(() => import('./components/MarinaDashboard'));
+const MarinaOperadorDashboard = lazy(() => import('./components/MarinaOperadorDashboard'));
 const ComercialDashboard = lazy(() => import('./components/ComercialDashboard'));
 const UsersPage = lazy(() => import('./components/UsersPage'));
 const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
@@ -36,6 +37,7 @@ const BoletosPage = lazy(() => import('./components/finance/BoletosPage'));
 const RetroativoPage = lazy(() => import('./components/RetroativoPage').then(m => ({ default: m.RetroativoPage })));
 const AuditLogsPage = lazy(() => import('./components/AuditLogsPage'));
 const SharedChecklistPage = lazy(() => import('./components/SharedChecklistPage'));
+const ContractGeneratorPage = lazy(() => import('./components/ContractGeneratorPage'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -114,7 +116,7 @@ import {
 } from 'lucide-react';
 
 
-type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs';
+type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -135,7 +137,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return !!localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
   });
-  const [adminRole, setAdminRole] = useState<'admin' | 'marina' | 'financeiro' | 'pecas_servicos' | null>(null);
+  const [adminRole, setAdminRole] = useState<'admin' | 'marina' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial' | null>(null);
   const [adminName, setAdminName] = useState<string>('');
   const [isRoleLoading, setIsRoleLoading] = useState(false);
   const [isAdminDbLoaded, setIsAdminDbLoaded] = useState(false);
@@ -169,12 +171,14 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (data.valid) {
-          setAdminRole(data.role as 'admin' | 'marina' | 'financeiro' | 'pecas_servicos');
+          setAdminRole(data.role as any);
           setAdminName(data.nome || data.username || 'Operador');
           if (data.role === 'financeiro') {
             setActiveTab('finance-lancamentos');
           } else if (data.role === 'pecas_servicos') {
             setActiveTab('manutencoes');
+          } else if (data.role === 'comercial') {
+            setActiveTab('contratos');
           }
         } else {
           handleLogout();
@@ -251,16 +255,11 @@ export default function App() {
     };
   }, [clientToken]);
 
-  const navGroups = [
+  const menuGroups = [
     {
-      group: 'Visão Geral',
+      group: 'Visão Geral & Operação',
       items: [
         { id: 'dashboard' as TabType, label: 'Painel Geral', icon: Compass },
-      ]
-    },
-    {
-      group: 'Operacional',
-      items: [
         { id: 'schedules' as TabType, label: 'Agenda de Reservas', icon: CalendarIcon },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
         { id: 'checklists' as TabType, label: 'Checklists Diários', icon: ClipboardList },
@@ -271,8 +270,9 @@ export default function App() {
       ]
     },
     {
-      group: 'Cadastros',
+      group: 'Comercial & Cadastros',
       items: [
+        { id: 'contratos' as TabType, label: 'Gerador de Contratos', icon: FileText },
         { id: 'clients' as TabType, label: 'Cadastro de Clientes', icon: Users },
         { id: 'boats' as TabType, label: 'Cadastro de Embarcações', icon: Ship },
       ]
@@ -314,6 +314,8 @@ export default function App() {
         return ['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id);
       } else if (adminRole === 'pecas_servicos') {
         return ['manutencoes', 'finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(item.id);
+      } else if (adminRole === 'comercial') {
+        return ['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(item.id);
       }
       return true;
     })
@@ -324,6 +326,8 @@ export default function App() {
       setActiveTab('finance-lancamentos');
     } else if (adminRole === 'pecas_servicos' && !['manutencoes', 'finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(activeTab)) {
       setActiveTab('manutencoes');
+    } else if (adminRole === 'comercial' && !['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(activeTab)) {
+      setActiveTab('contratos');
     }
   }, [adminRole, activeTab]);
 
@@ -465,7 +469,17 @@ export default function App() {
     );
   }
 
-  if (adminRole === 'marina') {
+  if (adminRole === 'marina_operador') {
+    return (
+      <div className="admin-panel h-full w-full">
+        <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin"></div></div>}>
+          <MarinaOperadorDashboard onLogout={handleLogout} operadorNome={adminName} />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (adminRole === 'marina' || adminRole === 'marina_gerente') {
     return (
       <div className="admin-panel h-full w-full">
         <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
@@ -543,7 +557,7 @@ export default function App() {
 
         {/* Navigation Links */}
         <div className="flex-1 overflow-y-auto subtle-scrollbar py-4 px-3 space-y-6">
-          {navGroups.map((group, groupIdx) => (
+          {menuGroups.map((group, groupIdx) => (
             <div key={groupIdx} className="space-y-1">
               {/* Group Title */}
               <div className={`px-3 mb-2 transition-all duration-200 ${isSidebarOpen ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden m-0 p-0'}`}>
@@ -612,6 +626,7 @@ export default function App() {
                 {activeTab === 'reports' && <SchedulesReportPage />}
                 {activeTab === 'clients' && <ClientPage />}
                 {activeTab === 'boats' && <BoatPage />}
+                {activeTab === 'contratos' && <ContractGeneratorPage />}
                 {activeTab === 'sound' && <SoundControlsPage />}
                 {activeTab === 'manutencoes' && <MaintenancePage />}
                 {activeTab === 'finance-lancamentos' && <FinancePage initialTab="lancamentos" />}

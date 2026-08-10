@@ -3,6 +3,7 @@ import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
 import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download } from 'lucide-react';
 import ClientProfileModal from './ClientProfileModal';
+import { generateContract } from './ContractGenerator';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -10,6 +11,12 @@ export default function ClientPage() {
   const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll());
   const [boats, setBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
   const [search, setSearch] = useState('');
+  
+  // Contract Modal State
+  const [contractModalClient, setContractModalClient] = useState<Cliente | null>(null);
+  const [contractType, setContractType] = useState<'aquisicao' | 'adm'>('aquisicao');
+  const [selectedBoatForContract, setSelectedBoatForContract] = useState<string>('');
+  const [isGeneratingContract, setIsGeneratingContract] = useState<boolean>(false);
   
   // Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -61,6 +68,59 @@ export default function ClientPage() {
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleOpenContractModal = (client: Cliente) => {
+    setContractModalClient(client);
+    setContractType('aquisicao');
+    const linkedBoatId = client.embarcacoes?.[0]?.embarcacaoId || client.embarcacaoId || '';
+    setSelectedBoatForContract(linkedBoatId);
+  };
+
+  const handleGenerateContractPDF = async () => {
+    if (!contractModalClient) return;
+    setIsGeneratingContract(true);
+    try {
+      const boat = boats.find(b => b.id === selectedBoatForContract) || boats[0];
+      const cotaCode = contractModalClient.embarcacoes?.find(e => e.embarcacaoId === selectedBoatForContract)?.cota || contractModalClient.cota || 'C1';
+      
+      await generateContract(
+        contractType,
+        {
+          nome: contractModalClient.nome,
+          cpf: contractModalClient.cpf,
+          rg: (contractModalClient as any).rg,
+          cnh_cha: (contractModalClient as any).cnh_cha,
+          estadoCivil: (contractModalClient as any).estadoCivil,
+          profissao: (contractModalClient as any).profissao,
+          logradouro: contractModalClient.logradouro,
+          numeroEnd: contractModalClient.numeroEnd,
+          complemento: contractModalClient.complemento,
+          bairro: contractModalClient.bairro,
+          cidade: contractModalClient.cidade,
+          estado: contractModalClient.estado,
+          cep: contractModalClient.cep,
+          telefone: contractModalClient.telefone,
+          email: contractModalClient.email,
+          cota: cotaCode,
+        },
+        {
+          nome: boat?.nome || 'Embarcação',
+          modelo: boat?.modelo || 'Modelo',
+          chassi: (boat as any)?.chassi || boat?.numero || '',
+          inscricao: (boat as any)?.inscricao || '',
+          tipo_propulsao: (boat as any)?.tipo_propulsao || 'Motor',
+          potencia: (boat as any)?.potencia || '',
+        }
+      );
+      showToast('Contrato gerado e baixado com sucesso!');
+      setContractModalClient(null);
+    } catch (err) {
+      console.error('Erro ao gerar contrato PDF:', err);
+      showToast('Erro ao gerar contrato em PDF.', 'error');
+    } finally {
+      setIsGeneratingContract(false);
+    }
   };
 
   const handleRefresh = () => {
@@ -646,6 +706,14 @@ export default function ClientPage() {
                         title="Ver Perfil e Documentos"
                       >
                         <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        id={`contract-client-${client.id}`}
+                        onClick={() => handleOpenContractModal(client)}
+                        className="p-1.5 hover:bg-amber-50 rounded-lg text-amber-600 hover:text-amber-700 transition-colors cursor-pointer"
+                        title="Gerar Contrato (PDF)"
+                      >
+                        <FileText className="w-4 h-4" />
                       </button>
                       <button
                         id={`edit-client-${client.id}`}
@@ -1305,6 +1373,87 @@ export default function ClientPage() {
                 className="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold text-white transition-colors cursor-pointer"
               >
                 Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contract Generation Modal */}
+      {contractModalClient && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-5 h-5 text-amber-600" />
+                <h3 className="font-bold text-slate-900 text-sm">Gerar Contrato Oficial (PDF)</h3>
+              </div>
+              <button
+                onClick={() => setContractModalClient(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/50 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Cliente Selecionado</span>
+                <p className="font-bold text-slate-900 text-sm">{contractModalClient.nome}</p>
+                <p className="text-slate-500 text-xs">CPF: {contractModalClient.cpf || 'Não informado'} | Tel: {contractModalClient.telefone || 'Não informado'}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Tipo de Contrato</label>
+                <select
+                  value={contractType}
+                  onChange={(e) => setContractType(e.target.value as 'aquisicao' | 'adm')}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white text-slate-800 font-semibold"
+                >
+                  <option value="aquisicao">1. Contrato de Compra e Venda / Aquisição de Cota</option>
+                  <option value="adm">2. Contrato de Gestão e Administração de Embarcação</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Embarcação Vinculada</label>
+                <select
+                  value={selectedBoatForContract}
+                  onChange={(e) => setSelectedBoatForContract(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white text-slate-800 font-semibold"
+                >
+                  {boats.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nome} ({b.modelo}) - {b.tipo === 'jet' ? 'Jet' : 'Lancha'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border-t border-slate-100 p-4 flex gap-3">
+              <button
+                onClick={() => setContractModalClient(null)}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGenerateContractPDF}
+                disabled={isGeneratingContract}
+                className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-4 py-2.5 text-xs font-bold text-white transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+              >
+                {isGeneratingContract ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Gerando PDF...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Gerar e Baixar PDF
+                  </>
+                )}
               </button>
             </div>
           </div>

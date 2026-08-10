@@ -12,16 +12,18 @@ import {
   Loader2,
   ShieldAlert
 } from 'lucide-react';
-import { Usuario } from '../types';
+import { Usuario, Funcionario } from '../types';
+import { funcionarioDB, getAdminToken } from '../db';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<Usuario[]>([]);
+  const [colaboradores, setColaboradores] = useState<Funcionario[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'marina' | 'financeiro' | 'pecas_servicos' | 'comercial'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'marina' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('all');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,22 +32,52 @@ export default function UsersPage() {
   
   // Form Fields
   const [formUsername, setFormUsername] = useState('');
+  const [formFuncionarioId, setFormFuncionarioId] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formConfirmPassword, setFormConfirmPassword] = useState('');
-  const [formRole, setFormRole] = useState<'admin' | 'marina' | 'financeiro' | 'pecas_servicos' | 'comercial'>('admin');
+  const [formRole, setFormRole] = useState<'admin' | 'marina' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('admin');
   const [formError, setFormError] = useState<string | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
 
-  // Load users on mount
+  // Load users and colaboradores on mount
   useEffect(() => {
     fetchUsers();
+    fetchColaboradores();
   }, []);
+
+  const fetchColaboradores = async () => {
+    try {
+      const token = getAdminToken();
+      const res = await fetch('/api/funcionarios', {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setColaboradores(data);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch funcionarios from API, using local memory:", e);
+    }
+    setColaboradores(funcionarioDB.getAll());
+  };
 
   const fetchUsers = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/users');
+      const token = getAdminToken();
+      const res = await fetch('/api/admin/users', {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
       if (!res.ok) {
         throw new Error('Não foi possível obter a lista de usuários da VPS.');
       }
@@ -54,8 +86,6 @@ export default function UsersPage() {
     } catch (err: unknown) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Erro de conexão com o servidor.');
-      
-      // Error handled. No localStorage fallback for admin auth.
     } finally {
       setIsLoading(false);
     }
@@ -65,10 +95,12 @@ export default function UsersPage() {
     setModalMode('create');
     setSelectedUser(null);
     setFormUsername('');
+    setFormFuncionarioId('');
     setFormPassword('');
     setFormConfirmPassword('');
     setFormRole('admin');
     setFormError(null);
+    fetchColaboradores();
     setIsModalOpen(true);
   };
 
@@ -76,10 +108,12 @@ export default function UsersPage() {
     setModalMode('edit');
     setSelectedUser(user);
     setFormUsername(user.username || '');
+    setFormFuncionarioId(user.funcionarioId || '');
     setFormPassword('');
     setFormConfirmPassword('');
-    setFormRole((user.role as 'admin' | 'marina' | 'financeiro' | 'pecas_servicos' | 'comercial') || 'admin');
+    setFormRole((user.role as any) || 'admin');
     setFormError(null);
+    fetchColaboradores();
     setIsModalOpen(true);
   };
 
@@ -90,6 +124,11 @@ export default function UsersPage() {
     // Basic Validation
     if (!formUsername.trim()) {
       setFormError('O nome de usuário é obrigatório.');
+      return;
+    }
+
+    if (!formFuncionarioId) {
+      setFormError('É obrigatório selecionar um colaborador do Departamento Pessoal.');
       return;
     }
 
@@ -110,15 +149,20 @@ export default function UsersPage() {
       data: {
         id: selectedUser?.id || undefined,
         username: formUsername.trim(),
+        funcionarioId: formFuncionarioId,
         password: formPassword || undefined,
         role: formRole
       }
     };
 
     try {
+      const token = getAdminToken();
       const res = await fetch('/api/admin/users/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(payload)
       });
 
@@ -150,9 +194,13 @@ export default function UsersPage() {
     }
 
     try {
+      const token = getAdminToken();
       const res = await fetch('/api/admin/users/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           action: 'delete',
           data: { id: user.id }
@@ -227,8 +275,10 @@ export default function UsersPage() {
             className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white transition-all font-semibold text-slate-700"
           >
             <option value="all">Todos os Tipos</option>
-            <option value="admin">Admin</option>
-            <option value="marina">Marina</option>
+            <option value="admin">Administrador</option>
+            <option value="marina_operador">Marina - Marinheiro / Operador</option>
+            <option value="marina_gerente">Marina - Gerente / Supervisor</option>
+            <option value="marina">Marina (Geral)</option>
             <option value="financeiro">Financeiro</option>
             <option value="pecas_servicos">Peças e Serviços</option>
             <option value="comercial">Comercial</option>
@@ -253,63 +303,96 @@ export default function UsersPage() {
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-500 font-semibold uppercase tracking-wider">
                   <th className="px-6 py-4">Usuário</th>
+                  <th className="px-6 py-4">Colaborador (DP)</th>
                   <th className="px-6 py-4">Perfil</th>
                   <th className="px-6 py-4">Data de Cadastro</th>
                   <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50/30 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-900 flex items-center gap-2">
-                      <div className="w-7 h-7 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 border border-slate-200">
-                        <User className="w-3.5 h-3.5" />
-                      </div>
-                      {user.username}
-                    </td>
-                    <td className="px-6 py-4 text-slate-600">
-                      <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                        user.role === 'marina' 
-                          ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-                          : user.role === 'financeiro'
-                          ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                          : user.role === 'pecas_servicos'
-                          ? 'bg-orange-100 text-orange-700 border border-orange-200'
-                          : 'bg-amber-100 text-amber-700 border border-amber-200'
-                      }`}>
-                        {user.role === 'marina' ? 'Marina' : user.role === 'financeiro' ? 'Financeiro' : user.role === 'pecas_servicos' ? 'Peças/Serviços' : user.role === 'comercial' ? 'Comercial' : 'Admin'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 font-mono">
-                      {user.createdAt ? new Date(user.createdAt).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      }) : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end space-x-2">
-                        <button
-                          onClick={() => handleOpenEditModal(user)}
-                          className="p-1.5 hover:bg-slate-100 hover:text-slate-900 rounded-lg text-slate-400 transition-colors cursor-pointer"
-                          title="Editar Usuário"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(user)}
-                          className="p-1.5 hover:bg-red-50 hover:text-red-600 rounded-lg text-slate-400 transition-colors cursor-pointer"
-                          title="Remover Usuário"
-                          disabled={users.length <= 1}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredUsers.map((user) => {
+                  const matchedColab = colaboradores.find(c => c.id === user.funcionarioId);
+                  const displayNome = user.funcionarioNome || matchedColab?.nome;
+                  const displayCargo = user.funcionarioCargo || matchedColab?.cargo;
+
+                  return (
+                    <tr key={user.id} className="hover:bg-slate-50/30 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-slate-900 flex items-center gap-2">
+                        <div className="w-7 h-7 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 border border-slate-200">
+                          <User className="w-3.5 h-3.5" />
+                        </div>
+                        {user.username}
+                      </td>
+                      <td className="px-6 py-4 text-slate-800">
+                        {displayNome ? (
+                          <div>
+                            <span className="font-semibold text-slate-900 block">{displayNome}</span>
+                            {displayCargo && <span className="text-[11px] text-slate-400 block">{displayCargo}</span>}
+                          </div>
+                        ) : (
+                          <span className="text-amber-600 text-[11px] font-semibold flex items-center gap-1">
+                            <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Sem colaborador vinculado
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">
+                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                          user.role === 'marina' || user.role === 'marina_gerente'
+                            ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                            : user.role === 'marina_operador'
+                            ? 'bg-cyan-100 text-cyan-700 border border-cyan-200'
+                            : user.role === 'financeiro'
+                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                            : user.role === 'pecas_servicos'
+                            ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                            : user.role === 'comercial'
+                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                            : 'bg-amber-100 text-amber-700 border border-amber-200'
+                        }`}>
+                          {user.role === 'marina_operador' 
+                            ? 'Marinheiro / Operador' 
+                            : user.role === 'marina_gerente' || user.role === 'marina'
+                            ? 'Gerente de Marina' 
+                            : user.role === 'financeiro' 
+                            ? 'Financeiro' 
+                            : user.role === 'pecas_servicos' 
+                            ? 'Peças/Serviços' 
+                            : user.role === 'comercial' 
+                            ? 'Comercial' 
+                            : 'Admin'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 font-mono">
+                        {user.createdAt ? new Date(user.createdAt).toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        }) : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => handleOpenEditModal(user)}
+                            className="p-1.5 hover:bg-slate-100 hover:text-slate-900 rounded-lg text-slate-400 transition-colors cursor-pointer"
+                            title="Editar Usuário"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(user)}
+                            className="p-1.5 hover:bg-red-50 hover:text-red-600 rounded-lg text-slate-400 transition-colors cursor-pointer"
+                            title="Remover Usuário"
+                            disabled={users.length <= 1}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -346,7 +429,7 @@ export default function UsersPage() {
 
                 {/* Username */}
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">Nome de Usuário</label>
+                  <label className="block text-xs font-semibold text-slate-700">Nome de Usuário *</label>
                   <input
                     type="text"
                     required
@@ -357,19 +440,43 @@ export default function UsersPage() {
                   />
                 </div>
 
+                {/* Colaborador DP */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">Colaborador Vinculado (DP) *</label>
+                  <select
+                    required
+                    value={formFuncionarioId}
+                    onChange={(e) => setFormFuncionarioId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white transition-all"
+                  >
+                    <option value="">Selecione o colaborador do DP...</option>
+                    {colaboradores.map((colab) => (
+                      <option key={colab.id} value={colab.id}>
+                        {colab.nome} {colab.cargo ? `(${colab.cargo} - ${colab.setor})` : `(${colab.setor})`}
+                      </option>
+                    ))}
+                  </select>
+                  {colaboradores.length === 0 && (
+                    <p className="text-[11px] text-amber-600 font-medium mt-1">
+                      ⚠️ Nenhum colaborador encontrado. Cadastre um colaborador no Departamento Pessoal primeiro.
+                    </p>
+                  )}
+                </div>
+
                 {/* Role Selection */}
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">Perfil de Acesso</label>
+                  <label className="block text-xs font-semibold text-slate-700">Perfil de Acesso *</label>
                   <select
                     value={formRole}
-                    onChange={(e) => setFormRole(e.target.value as 'admin' | 'marina' | 'financeiro' | 'pecas_servicos' | 'comercial')}
+                    onChange={(e) => setFormRole(e.target.value as any)}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white transition-all appearance-none"
                   >
                     <option value="admin">Administrador (Acesso Total)</option>
-                    <option value="marina">Marina (Painel de Píer e Abastecimento)</option>
+                    <option value="marina_operador">Marina - Marinheiro / Operador (Checklists e Abastecimento no Píer)</option>
+                    <option value="marina_gerente">Marina - Gerente / Supervisor (Gestão da Marina, Tanques e Auditoria)</option>
                     <option value="financeiro">Financeiro (Acesso Exclusivo Financeiro)</option>
                     <option value="pecas_servicos">Peças e Serviços (Manutenção, Agenda e Financeiro)</option>
-                    <option value="comercial">Comercial (Dashboard Comercial)</option>
+                    <option value="comercial">Comercial (Clientes, Cotas, Embarcações e Contratos)</option>
                   </select>
                 </div>
 

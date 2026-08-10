@@ -378,6 +378,10 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE AdminUsers ADD COLUMN role VARCHAR(50) DEFAULT 'admin';`);
     } catch (e) {}
 
+    try {
+      await connection.query(`ALTER TABLE AdminUsers ADD COLUMN funcionarioId VARCHAR(50) NULL;`);
+    } catch (e) {}
+
     // 7. ClienteAuth Table (Security Phase 1)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS ClienteAuth (
@@ -1428,13 +1432,13 @@ export async function getAdminByUsername(username: string) {
 }
 
 // Create a new admin user
-export async function createAdmin(username: string, passwordHash: string, role: string = 'admin') {
+export async function createAdmin(username: string, passwordHash: string, role: string = 'admin', funcionarioId?: string | null) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
   await currentPool.query(
-    "INSERT INTO AdminUsers (username, passwordHash, role) VALUES (?, ?, ?)",
-    [username, passwordHash, role]
+    "INSERT INTO AdminUsers (username, passwordHash, role, funcionarioId) VALUES (?, ?, ?, ?)",
+    [username, passwordHash, role, funcionarioId || null]
   );
 }
 
@@ -1444,7 +1448,10 @@ export async function getAllAdmins() {
   if (!currentPool) return [];
 
   const [rows] = await currentPool.query(
-    "SELECT id, username, role, createdAt FROM AdminUsers ORDER BY createdAt DESC"
+    `SELECT a.id, a.username, a.role, a.funcionarioId, f.nome as funcionarioNome, f.cargo as funcionarioCargo, f.setor as funcionarioSetor, a.createdAt 
+     FROM AdminUsers a 
+     LEFT JOIN Funcionarios f ON a.funcionarioId = f.id 
+     ORDER BY a.createdAt DESC`
   );
   return rows as any[];
 }
@@ -1458,29 +1465,31 @@ export async function deleteAdmin(id: number) {
 }
 
 // Update an administrative user
-export async function updateAdmin(id: number, username: string, passwordHash?: string, role?: string) {
+export async function updateAdmin(id: number, username: string, passwordHash?: string, role?: string, funcionarioId?: string | null) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
+  const fId = funcionarioId !== undefined ? funcionarioId : null;
+
   if (passwordHash && role) {
     await currentPool.query(
-      "UPDATE AdminUsers SET username = ?, passwordHash = ?, role = ? WHERE id = ?",
-      [username, passwordHash, role, id]
+      "UPDATE AdminUsers SET username = ?, passwordHash = ?, role = ?, funcionarioId = ? WHERE id = ?",
+      [username, passwordHash, role, fId, id]
     );
   } else if (passwordHash) {
     await currentPool.query(
-      "UPDATE AdminUsers SET username = ?, passwordHash = ? WHERE id = ?",
-      [username, passwordHash, id]
+      "UPDATE AdminUsers SET username = ?, passwordHash = ?, funcionarioId = ? WHERE id = ?",
+      [username, passwordHash, fId, id]
     );
   } else if (role) {
     await currentPool.query(
-      "UPDATE AdminUsers SET username = ?, role = ? WHERE id = ?",
-      [username, role, id]
+      "UPDATE AdminUsers SET username = ?, role = ?, funcionarioId = ? WHERE id = ?",
+      [username, role, fId, id]
     );
   } else {
     await currentPool.query(
-      "UPDATE AdminUsers SET username = ? WHERE id = ?",
-      [username, id]
+      "UPDATE AdminUsers SET username = ?, funcionarioId = ? WHERE id = ?",
+      [username, fId, id]
     );
   }
 }
@@ -1786,6 +1795,18 @@ export async function deleteManutencao(id: string) {
   for (const clienteId of clienteIds) {
     await syncClientFinancialStatus(clienteId);
   }
+}
+
+export async function getFuncionarios() {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  const [rows] = await currentPool.query("SELECT * FROM Funcionarios ORDER BY createdAt DESC");
+  return (rows as any[]).map(f => ({
+    ...f,
+    turnos: f.turnos ? JSON.parse(f.turnos) : [],
+    primeiroEmprego: f.primeiroEmprego === 1
+  }));
 }
 
 export async function upsertFuncionario(f: any) {

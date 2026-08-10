@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Camera, ChevronLeft, ChevronRight, CheckCircle2, Ship, User as UserIcon, Droplets, MapPin, Clock, ChevronDown, ChevronUp, Plus, Navigation, Anchor, Loader2, ArrowRight, Check, ArrowUpCircle } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, CheckCircle2, Ship, User as UserIcon, Droplets, MapPin, Clock, ChevronDown, ChevronUp, Plus, Navigation, Anchor, Loader2, ArrowRight, Check, ArrowUpCircle, Layers } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
 import { logAction } from '../db';
 
@@ -8,7 +8,8 @@ const CHECKLIST_ANGLES = [
   { id: 'popa', label: 'Popa (Motor/Traseira)', icon: Anchor },
   { id: 'bombordo', label: 'Lateral Esquerda', icon: Camera },
   { id: 'estibordo', label: 'Lateral Direita', icon: Camera },
-  { id: 'painel', label: 'Interior / Painel', icon: Ship }
+  { id: 'painel', label: 'Interior / Painel', icon: Ship },
+  { id: 'casco', label: 'Casco (Ângulo Inferior)', icon: Layers }
 ];
 
 interface MarinaChecklistsViewProps {

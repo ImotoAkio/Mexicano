@@ -310,7 +310,7 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
   const token = authHeader.substring(7);
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    if (decoded.role !== "admin" && decoded.role !== "marina" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
+    if (decoded.role !== "admin" && decoded.role !== "marina" && decoded.role !== "marina_operador" && decoded.role !== "marina_gerente" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
       return res.status(403).json({ error: true, message: "Acesso negado. Permissão insuficiente." });
     }
     (req as any).user = decoded;
@@ -345,7 +345,7 @@ function requireAnyAuth(req: express.Request, res: express.Response, next: expre
   }
   try {
     const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
-    if (decoded.role !== "admin" && decoded.role !== "client" && decoded.role !== "marina" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
+    if (decoded.role !== "admin" && decoded.role !== "client" && decoded.role !== "marina" && decoded.role !== "marina_operador" && decoded.role !== "marina_gerente" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
       return res.status(403).json({ error: true, message: "Acesso negado." });
     }
     (req as any).user = decoded;
@@ -782,6 +782,33 @@ app.get("/api/financeiro/transacoes", requireAdminAuth, async (req, res) => {
   }
 });
 
+// Route: Save admin user
+app.post("/api/admin/users/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteAdmin(data.id);
+    } else if (action === 'upsert') {
+      if (!data.funcionarioId) {
+        return res.status(400).json({ error: true, message: "É obrigatório associar um colaborador do DP ao usuário." });
+      }
+      if (data.id) {
+        let hash;
+        if (data.password) {
+          hash = await bcrypt.hash(data.password, 12);
+        }
+        await updateAdmin(data.id, data.username, hash, data.role, data.funcionarioId);
+      } else {
+        const hash = await bcrypt.hash(data.password, 12);
+        await createAdmin(data.username, hash, data.role || 'admin', data.funcionarioId);
+      }
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save admin user" });
+  }
+});
+
 // Route: Operacional - Folgas
 app.post("/api/folgas/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   const { action, data } = req.body;
@@ -928,6 +955,23 @@ app.post("/api/financeiro/transacoes/save", requireAdminAuth, sensitiveLimiter, 
     res.status(500).json({ error: true, message: err.message || "Failed to save transacao" });
   }
 });
+
+// Route: Operacional - Funcionarios
+app.get("/api/funcionarios", requireAdminAuth, async (req, res) => {
+  try {
+    const { getFuncionarios } = await import('./server-db');
+    const list = await getFuncionarios();
+    res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch funcionarios" });
+  }
+});
+
+app.post("/api/funcionarios/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteFuncionario(data.id);
 
 // Route: Financeiro - Asaas Payment Generation
 app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, async (req, res) => {
@@ -1228,12 +1272,6 @@ app.delete("/api/catalogo-epis/:id", requireAdminAuth, sensitiveLimiter, async (
   }
 });
 
-// Route: Operacional - Funcionarios
-app.post("/api/funcionarios/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
-  const { action, data } = req.body;
-  try {
-    if (action === 'delete') {
-      await deleteFuncionario(data.id);
     } else if (action === 'upsert') {
       await upsertFuncionario(data);
     }

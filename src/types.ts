@@ -116,6 +116,10 @@ export interface Usuario {
   username: string;
   senha?: string;
   role?: string;
+  funcionarioId?: string;
+  funcionarioNome?: string;
+  funcionarioCargo?: string;
+  funcionarioSetor?: string;
   createdAt: string;
 }
 

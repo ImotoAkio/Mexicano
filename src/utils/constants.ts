@@ -32,8 +32,11 @@ export const UI = {
 export const USER_ROLES = {
   ADMIN: 'admin',
   MARINA: 'marina',
+  MARINA_OPERADOR: 'marina_operador',
+  MARINA_GERENTE: 'marina_gerente',
   FINANCEIRO: 'financeiro',
   PECAS_SERVICOS: 'pecas_servicos',
+  COMERCIAL: 'comercial',
   CLIENT: 'client',
 } as const;
 
