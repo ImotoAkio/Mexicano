@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
@@ -76,6 +76,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   // Bottom Navigation Tab & Sidebar state
   const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques'>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
@@ -920,6 +921,27 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 )}
               </div>
 
+              {/* View Mode Switcher: Kanban vs Lista */}
+              <div className="flex bg-white border border-slate-200 rounded-xl p-1 shadow-sm shrink-0 items-center gap-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 hidden sm:inline">Visão:</span>
+                <button
+                  onClick={() => setViewMode('kanban')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewMode === 'kanban' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                  title="Quadro Kanban (Estágios Lado a Lado)"
+                >
+                  <Kanban className="w-3.5 h-3.5" />
+                  <span>Kanban</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('lista')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewMode === 'lista' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                  title="Lista em Fila"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Lista</span>
+                </button>
+              </div>
+
               {/* Sort selector buttons */}
               <div className="flex bg-white border border-slate-200 rounded-xl p-1 shadow-sm shrink-0 items-center justify-between sm:justify-start gap-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 hidden xs:inline">Ordenar:</span>
@@ -942,27 +964,201 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               </div>
             </div>
 
-            {/* Status Filter Tabs with Badge Counts */}
-            <div className="flex bg-white shadow-sm border border-slate-200 rounded-xl p-1 gap-1 overflow-x-auto subtle-scrollbar mb-4">
-              {[
-                { id: 'agendadas', label: 'Agendadas', count: countAgendadas },
-                { id: 'confirmadas', label: 'Confirmadas', count: countConfirmadas },
-                { id: 'prontas', label: 'Prontas', count: countProntas },
-                { id: 'retornaram', label: 'Retornaram', count: countRetornaram },
-                { id: 'todas', label: 'Todas', count: countTodas }
-              ].map(t => (
-                <button 
-                  key={t.id}
-                  onClick={() => setFilterType(t.id as any)}
-                  className={`flex-1 min-w-[75px] py-2 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 ${filterType === t.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
-                >
-                  <span>{t.label}</span>
-                  <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold ${filterType === t.id ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                    {t.count}
-                  </span>
-                </button>
-              ))}
-            </div>
+            {/* Status Filter Tabs with Badge Counts (Only visible in Lista view) */}
+            {viewMode === 'lista' && (
+              <div className="flex bg-white shadow-sm border border-slate-200 rounded-xl p-1 gap-1 overflow-x-auto subtle-scrollbar mb-4">
+                {[
+                  { id: 'agendadas', label: 'Agendadas', count: countAgendadas },
+                  { id: 'confirmadas', label: 'Confirmadas', count: countConfirmadas },
+                  { id: 'prontas', label: 'Prontas', count: countProntas },
+                  { id: 'retornaram', label: 'Retornaram', count: countRetornaram },
+                  { id: 'todas', label: 'Todas', count: countTodas }
+                ].map(t => (
+                  <button 
+                    key={t.id}
+                    onClick={() => setFilterType(t.id as any)}
+                    className={`flex-1 min-w-[75px] py-2 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 ${filterType === t.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                  >
+                    <span>{t.label}</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold ${filterType === t.id ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                      {t.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* VISÃO KANBAN: QUADRO POR ESTÁGIOS */}
+            {viewMode === 'kanban' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                
+                {/* Coluna 1: Agendadas & Confirmadas */}
+                <div className="bg-slate-100/80 rounded-2xl p-3 border border-slate-200 space-y-3 flex flex-col min-h-[400px]">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="font-extrabold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                      <span>Agendadas / Fila</span>
+                    </span>
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-extrabold rounded-full text-[10px]">
+                      {countAgendadas + countConfirmadas}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5 flex-1">
+                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && !r.horaDescida && r.status !== 'cancelado') || []).map((reserva: any) => {
+                      const barco = getEmbarcacao(reserva.embarcacaoId);
+                      const cliente = getCliente(reserva.clienteId);
+                      return (
+                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
+                          <div className="flex items-start justify-between">
+                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
+                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">
+                              {reserva.previsaoSaida || '08:00'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                            <span className="text-slate-400 font-medium">Vaga: {barco?.vaga || 'N/A'}</span>
+                            <button
+                              onClick={() => {
+                                setSelectedReserva(reserva);
+                                setChecklistFotos({});
+                                setChecklistMode('descida');
+                                setChecklistOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors"
+                            >
+                              Baixar Barco
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Coluna 2: Na Água / Prontas */}
+                <div className="bg-blue-50/50 rounded-2xl p-3 border border-blue-200/60 space-y-3 flex flex-col min-h-[400px]">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="font-extrabold text-xs text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                      <span>Na Água / Píer</span>
+                    </span>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 font-extrabold rounded-full text-[10px]">
+                      {countProntas}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5 flex-1">
+                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && r.horaDescida && !r.horaSubida && r.statusMarina !== 'chegada' && r.statusMarina !== 'guardada') || []).map((reserva: any) => {
+                      const barco = getEmbarcacao(reserva.embarcacaoId);
+                      const cliente = getCliente(reserva.clienteId);
+                      return (
+                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                          <div className="flex items-start justify-between">
+                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
+                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md">
+                              {reserva.horaDescida}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                            <span className="text-slate-400 font-medium">Op: {reserva.operadorDescida || 'Operador'}</span>
+                            <button
+                              onClick={() => handleRegistrarChegada(reserva)}
+                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                            >
+                              Abastecer / Chegada
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Coluna 3: Retornaram / Abastecendo */}
+                <div className="bg-emerald-50/50 rounded-2xl p-3 border border-emerald-200/60 space-y-3 flex flex-col min-h-[400px]">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="font-extrabold text-xs text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                      <span>Retornaram</span>
+                    </span>
+                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded-full text-[10px]">
+                      {countRetornaram}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5 flex-1">
+                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.statusMarina === 'chegada' || (r.horaChegada && !r.horaSubida))) || []).map((reserva: any) => {
+                      const barco = getEmbarcacao(reserva.embarcacaoId);
+                      const cliente = getCliente(reserva.clienteId);
+                      return (
+                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                          <div className="flex items-start justify-between">
+                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
+                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md">
+                              {reserva.horaChegada || 'Chegou'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                            <span className="text-emerald-700 font-bold">{reserva.combustivelAbastecido ? `${reserva.combustivelAbastecido}L Abastecido` : 'Retornado'}</span>
+                            <button
+                              onClick={() => {
+                                setSelectedReserva(reserva);
+                                setChecklistFotos({});
+                                setChecklistMode('subida');
+                                setChecklistOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                            >
+                              Subir Barco
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Coluna 4: Guardadas na Vaga */}
+                <div className="bg-slate-100/60 rounded-2xl p-3 border border-slate-200 space-y-3 flex flex-col min-h-[400px]">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="font-extrabold text-xs text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                      <span>Guardadas</span>
+                    </span>
+                    <span className="px-2 py-0.5 bg-slate-200 text-slate-700 font-extrabold rounded-full text-[10px]">
+                      {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.statusMarina === 'guardada' || r.horaSubida)) || []).length}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5 flex-1">
+                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.statusMarina === 'guardada' || r.horaSubida)) || []).map((reserva: any) => {
+                      const barco = getEmbarcacao(reserva.embarcacaoId);
+                      const cliente = getCliente(reserva.clienteId);
+                      return (
+                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-slate-200 opacity-90 space-y-2">
+                          <div className="flex items-start justify-between">
+                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
+                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">
+                              {reserva.horaSubida || 'Guardado'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100 text-slate-400">
+                            <span>Vaga Seca: {barco?.vaga || 'N/A'}</span>
+                            <span className="font-bold text-slate-600">Concluído</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+            )}
 
             {reservasDoDia.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center mt-4 mx-2">
