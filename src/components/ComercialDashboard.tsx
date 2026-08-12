@@ -9,6 +9,7 @@ import { clientDB, boatDB } from '../db';
 import { generateContract } from './ContractGenerator';
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { numeroParaExtenso, parseMoney, formatMoney } from '../utils/numberToWords';
+import { formatBoatName } from '../utils/constants';
 
 interface ComercialDashboardProps {
   onLogout: () => void;
@@ -223,7 +224,7 @@ function SearchableBoatSelect({ boats, value, onChange }: SearchableBoatSelectPr
             )}
             <div className="min-w-0">
               <div className="flex items-center space-x-2">
-                <p className="text-sm font-semibold text-slate-900 truncate leading-none">{selectedBoat.nome}</p>
+                <p className="text-sm font-semibold text-slate-900 truncate leading-none">{formatBoatName(selectedBoat.nome)}</p>
                 <span className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-sm">
                   M{selectedBoat.numero?.toString().padStart(2, '0') || '00'}
                 </span>
@@ -314,7 +315,7 @@ function SearchableBoatSelect({ boats, value, onChange }: SearchableBoatSelectPr
                       )}
                       <div className="min-w-0">
                         <div className="flex items-center space-x-2">
-                          <p className={`text-sm font-semibold truncate ${isSelected ? 'text-white' : 'text-slate-900'}`}>{b.nome}</p>
+                          <p className={`text-sm font-semibold truncate ${isSelected ? 'text-white' : 'text-slate-900'}`}>{formatBoatName(b.nome)}</p>
                           <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-sm ${
                             isSelected ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700'
                           }`}>
@@ -1029,7 +1030,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                       >
                         <option value="">Todas as embarcações</option>
                         {boats.map(b => (
-                          <option key={b.id} value={b.id}>{b.nome}</option>
+                          <option key={b.id} value={b.id}>{formatBoatName(b.nome)}</option>
                         ))}
                       </select>
                     </div>
@@ -1190,7 +1191,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                               )}
                               <div>
                                 <div className="flex items-center space-x-2">
-                                  <h3 className="font-bold text-slate-900 text-lg">{boat.nome}</h3>
+                                  <h3 className="font-bold text-slate-900 text-lg">{formatBoatName(boat.nome)}</h3>
                                   <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${
                                     boat.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
                                   }`}>
@@ -1473,7 +1474,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
                           <div className="bg-slate-50 p-2 rounded border border-slate-100">
                             <span className="text-slate-400 block text-[10px] uppercase font-bold">Embarcação</span>
-                            <span className="font-semibold text-slate-800 truncate block">{selectedBoatData.nome || '-'}</span>
+                            <span className="font-semibold text-slate-800 truncate block">{formatBoatName(selectedBoatData.nome) || '-'}</span>
                           </div>
                           <div className="bg-slate-50 p-2 rounded border border-slate-100">
                             <span className="text-slate-400 block text-[10px] uppercase font-bold">Inscrição</span>
@@ -1654,7 +1655,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                             1.1. O presente contrato tem por objeto a {(contractData.type === 'adm' || (contractData.type === 'ambos' && previewTab === 'adm')) ? 'prestação de serviços de guarda e administração da embarcação' : `aquisição de copropriedade de embarcação correspondente a ${contractData.cota} do total`}:
                           </p>
                           <div className="bg-slate-50 p-2.5 rounded border border-slate-200 text-[9.5px] font-mono grid grid-cols-2 gap-1 text-slate-700">
-                            <div><strong>Embarcação:</strong> {selectedBoatData?.nome || 'N/A'}</div>
+                            <div><strong>Embarcação:</strong> {formatBoatName(selectedBoatData?.nome) || 'N/A'}</div>
                             <div><strong>Modelo:</strong> {selectedBoatData?.modelo || 'N/A'}</div>
                             <div><strong>Nº Inscrição:</strong> {selectedBoatData?.inscricao || 'N/A'}</div>
                             <div><strong>Chassi (HIN):</strong> {selectedBoatData?.chassi || 'N/A'}</div>
@@ -1940,7 +1941,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col animate-spring-pop">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h3 className="text-lg font-bold text-slate-800 flex items-center">
-                <Anchor className="w-5 h-5 mr-2 text-blue-600" /> Ficha da Embarcação - {selectedBoatModalView.nome}
+                <Anchor className="w-5 h-5 mr-2 text-blue-600" /> Ficha da Embarcação - {formatBoatName(selectedBoatModalView.nome)}
               </h3>
               <button onClick={() => setSelectedBoatModalView(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
                 <X className="w-5 h-5" />
@@ -1959,7 +1960,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                   </div>
                 )}
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900">{selectedBoatModalView.nome}</h2>
+                  <h2 className="text-2xl font-bold text-slate-900">{formatBoatName(selectedBoatModalView.nome)}</h2>
                   <div className="flex items-center space-x-2 mt-1">
                     <span className={`px-2.5 py-0.5 text-xs font-bold uppercase rounded-md ${
                       selectedBoatModalView.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
@@ -2194,7 +2195,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
           <h2 className="text-2xl font-bold">Relatório de Clientes</h2>
           <p className="text-sm text-slate-500">
             {filterEmbarcacao 
-              ? `Filtrado por Embarcação: ${boats.find(b => b.id === filterEmbarcacao)?.nome}` 
+              ? `Filtrado por Embarcação: ${formatBoatName(boats.find(b => b.id === filterEmbarcacao)?.nome)}` 
               : 'Todos os Clientes'}
           </p>
         </div>
@@ -2216,7 +2217,7 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                 <td className="py-2 px-4 border-b border-slate-200">{c.telefone || '-'}</td>
                 <td className="py-2 px-4 border-b border-slate-200">{c.profissao || '-'}</td>
                 <td className="py-2 px-4 border-b border-slate-200">
-                  {boats.find(b => b.id === c.embarcacaoId)?.nome || '-'}
+                  {formatBoatName(boats.find(b => b.id === c.embarcacaoId)?.nome) || '-'}
                 </td>
               </tr>
             ))}

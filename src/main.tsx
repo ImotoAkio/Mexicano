@@ -58,14 +58,37 @@ if (typeof window !== 'undefined') {
       const newConfig = { ...(config || {}) };
       const headers = { ...(newConfig.headers || {}) } as Record<string, string>;
 
+      // Clean up invalid Bearer null / Bearer undefined headers
+      for (const k of Object.keys(headers)) {
+        if (k.toLowerCase() === 'authorization') {
+          const val = headers[k];
+          if (!val || val === 'Bearer null' || val === 'Bearer undefined' || val === 'Bearer ') {
+            delete headers[k];
+          }
+        }
+      }
+
       const hasAuth = Object.keys(headers).some(k => k.toLowerCase() === 'authorization');
       const isProxyWithServiceAccount = url.startsWith('/api/calendar-proxy/') && headers['Authorization'] === 'Bearer service_account_active';
 
       if (!hasAuth || isProxyWithServiceAccount) {
         const adminToken = localStorage.getItem('admin_token');
         const clientToken = localStorage.getItem('client_token');
-        const token = adminToken || clientToken;
-        if (token) {
+
+        const isAdminRoute = url.startsWith('/api/db/') || 
+                             url.startsWith('/api/admin/') || 
+                             url.startsWith('/api/financeiro/') || 
+                             url.startsWith('/api/funcionarios') ||
+                             url.startsWith('/api/folgas') ||
+                             url.startsWith('/api/manutencoes') ||
+                             url.startsWith('/api/mecanicos') ||
+                             url.startsWith('/api/catalogo-epis') ||
+                             url.startsWith('/api/whatsapp/') ||
+                             url.startsWith('/api/config') ||
+                             url.startsWith('/api/comercial/');
+
+        const token = isAdminRoute ? adminToken : (adminToken || clientToken);
+        if (token && token !== 'null' && token !== 'undefined') {
           headers['Authorization'] = `Bearer ${token}`;
         }
       }

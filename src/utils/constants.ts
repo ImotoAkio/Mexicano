@@ -41,3 +41,20 @@ export const USER_ROLES = {
 } as const;
 
 export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
+
+// ─── Formatação de Nomes de Embarcações ─────────────────────────────────
+/**
+ * Formata o nome da embarcação para exibição comercial e em documentos.
+ * Converte "M00", "M01", "M02", "M-00", "M 00" para "EL MEXICANO 00", "EL MEXICANO 01", etc.
+ */
+export function formatBoatName(nome?: string): string {
+  if (!nome) return '';
+  const trimmed = nome.trim();
+  const match = trimmed.match(/^M[-_\s]*(\d+)(.*)$/i);
+  if (match) {
+    const num = match[1];
+    const rest = match[2] ? match[2] : '';
+    return `EL MEXICANO ${num}${rest}`;
+  }
+  return trimmed;
+}

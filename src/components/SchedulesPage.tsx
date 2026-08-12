@@ -848,8 +848,13 @@ export default function SchedulesPage() {
   }, [loadScheduleData]);
 
   useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token || token === 'null' || token === 'undefined') return;
+
     const socket = io(window.location.origin, {
-      auth: { token: localStorage.getItem('admin_token') }
+      auth: { token },
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 5
     });
     
     socket.on('marina_update', async () => {

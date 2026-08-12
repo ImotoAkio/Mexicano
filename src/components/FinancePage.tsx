@@ -155,6 +155,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
     if (showLoading && clientes.length === 0) setLoading(true);
     try {
       const token = localStorage.getItem('admin_token');
+      if (!token || token === 'null' || token === 'undefined') return;
       const res = await fetch('/api/financeiro/transacoes', {
         headers: { 'Authorization': `Bearer ${token}` }
       });

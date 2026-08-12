@@ -3,6 +3,7 @@ import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
 import { generateContract } from './ContractGenerator';
 import { FileText, Download, UserCheck, Anchor, Sparkles, RefreshCw, CheckCircle2, ShieldCheck, FileCheck, ArrowRight, Loader2 } from 'lucide-react';
+import { formatBoatName } from '../utils/constants';
 
 export default function ContractGeneratorPage() {
   const [clients, setClients] = useState<Cliente[]>([]);
@@ -86,7 +87,7 @@ export default function ContractGeneratorPage() {
 
   const fillBoatData = (boat: Embarcacao) => {
     setSelectedBoatId(boat.id);
-    setBoatNome(boat.nome || '');
+    setBoatNome(formatBoatName(boat.nome) || '');
     setBoatModelo(boat.modelo || '');
     setBoatChassi((boat as any).chassi || boat.numero || '');
     setBoatInscricao((boat as any).inscricao || '');
@@ -300,7 +301,7 @@ export default function ContractGeneratorPage() {
                   <option value="custom">+ Digitação Manual (Nova Embarcação)</option>
                   {boats.map(b => (
                     <option key={b.id} value={b.id}>
-                      {b.nome} ({b.modelo})
+                      {formatBoatName(b.nome)} ({b.modelo})
                     </option>
                   ))}
                 </select>
@@ -600,7 +601,7 @@ export default function ContractGeneratorPage() {
 
               <div className="border-t border-slate-200/60 pt-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Embarcação Objeto</span>
-                <p className="font-bold text-slate-900">{boatNome || '[Nome da Embarcação]'} - {boatModelo || '[Modelo]'}</p>
+                <p className="font-bold text-slate-900">{formatBoatName(boatNome) || '[Nome da Embarcação]'} - {boatModelo || '[Modelo]'}</p>
                 <p className="text-slate-600 text-[11px]">Chassi: {boatChassi || 'N/A'} | Cota: <span className="font-bold text-amber-700">{clientCota}</span></p>
               </div>
 

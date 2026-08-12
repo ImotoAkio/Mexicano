@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { formatBoatName } from '../utils/constants';
 // @ts-ignore
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
 
@@ -158,7 +159,7 @@ export async function generateContract(type: 'adm' | 'aquisicao', clientData: Cl
 
     const clauses = [
       "1. OBJETO",
-      `1.1. Este contrato tem como objeto a aquisição de copropriedade de embarcação, correspondente a ${clientData.cota || '25%'} do total, pelo COMPRADOR, qual seja: ${boatData.nome || 'N/A'} modelo: ${boatData.modelo || 'N/A'}, Nº do chassi: ${boatData.chassi || 'N/A'}.`,
+      `1.1. Este contrato tem como objeto a aquisição de copropriedade de embarcação, correspondente a ${clientData.cota || '25%'} do total, pelo COMPRADOR, qual seja: ${formatBoatName(boatData.nome) || 'N/A'} modelo: ${boatData.modelo || 'N/A'}, Nº do chassi: ${boatData.chassi || 'N/A'}.`,
       `1.2. NÚMERO DE INSCRIÇÃO: ${boatData.inscricao || 'N/A'}, Tipo de propulsão: ${boatData.tipo_propulsao || 'MOTOR'}, potencia: ${boatData.potencia || 'N/A'}.`,
       "2. DAS CONDIÇÕES DE AQUISIÇÃO E UTILIZAÇÃO DA EMBARCAÇÃO",
       "2.1. O COMPRADOR está ciente que a presente compra se dará de modo compartilhado, juntamente com mais 3 (três) coproprietários, não possuindo o COMPRADOR nenhum poder de intervir na escolha dos demais coproprietários, sendo estes escolhidos por liberalidade única e exclusiva do VENDEDOR, os quais firmarão individualmente negócio jurídico com a MEXICANO LANCHAS.",
