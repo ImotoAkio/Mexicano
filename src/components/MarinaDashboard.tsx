@@ -102,8 +102,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   useEffect(() => {
     fetchData(true);
 
+    const token = localStorage.getItem('admin_token');
+    if (!token || token === 'null' || token === 'undefined') return;
+
     const socket = io(window.location.origin, {
-      auth: { token: localStorage.getItem('admin_token') }
+      auth: { token },
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 5
     });
     
     socket.on('connect', () => {
@@ -1165,200 +1170,249 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             )}
           </div>
         ) : (
-          reservasDoDia.map((reserva: any) => {
-            const boat = getEmbarcacao(reserva.embarcacaoId);
-            const client = getCliente(reserva.clienteId);
-            const isSaida = !!reserva.horaSaida;
-            const isChegada = !!reserva.horaChegada;
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden divide-y divide-slate-100 mb-6">
+            {/* Table Header - Visible on Desktop/Tablet */}
+            <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-3 bg-slate-50/90 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 items-center">
+              <div className="col-span-4 lg:col-span-3">Embarcação & Cliente</div>
+              <div className="col-span-3 lg:col-span-3">Horários Previstos</div>
+              <div className="col-span-2 lg:col-span-3">Estágio & Horários Reais</div>
+              <div className="col-span-3 lg:col-span-3 text-right">Operações & Ações</div>
+            </div>
 
-            return (
-              <div key={reserva.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 relative overflow-hidden active:bg-slate-50 transition-colors">
-                <div className={`absolute top-0 left-0 w-1.5 h-full ${isChegada ? 'bg-green-500' : isSaida ? 'bg-amber-500' : 'bg-blue-500'}`}></div>
-                
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-black text-xl text-slate-900 leading-none">
-                        {boat?.nome || 'Desc.'}
-                      </h3>
-                      {boat?.numero && (
-                        <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md text-xs font-bold font-mono">
-                          {boat.numero}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-slate-500 text-sm flex items-center gap-1.5 font-medium">
-                      <UserIcon className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span className="truncate max-w-[180px]">{client?.nome || 'Cliente'}</span>
-                    </p>
-                  </div>
-                  <div className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${reserva.status === 'confirmado' ? 'bg-green-100 text-green-700' : reserva.status === 'cancelado' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                    {reserva.status}
-                  </div>
-                </div>
+            {/* List Rows */}
+            {reservasDoDia.map((reserva: any) => {
+              const boat = getEmbarcacao(reserva.embarcacaoId);
+              const client = getCliente(reserva.clienteId);
+              const isSaida = !!reserva.horaSaida;
+              const isChegada = !!reserva.horaChegada;
+              const isSubida = !!reserva.horaSubida;
 
+              return (
                 <div 
-                  className="cursor-pointer active:opacity-70 transition-opacity"
+                  key={reserva.id} 
+                  className="p-3 sm:p-4 hover:bg-slate-50/80 transition-colors flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center relative group cursor-pointer"
                   onClick={() => {
                     setDetailsReserva(reserva);
                     setDetailsModalOpen(true);
                   }}
                 >
-                  <div className="flex bg-slate-50 rounded-xl p-3 mb-4 gap-3 border border-slate-100 relative group">
-                    <div className="absolute right-2 top-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                      <ArrowRight className="w-4 h-4 text-slate-400" />
+                  {/* Left accent bar */}
+                  <div className={`absolute top-0 left-0 bottom-0 w-1 ${
+                    isSubida ? 'bg-emerald-500' : 
+                    isChegada ? 'bg-teal-500' : 
+                    isSaida ? 'bg-sky-500' : 
+                    reserva.horaDescida ? 'bg-blue-500' : 
+                    'bg-amber-500'
+                  }`} />
+
+                  {/* Col 1: Embarcação & Cliente */}
+                  <div className="md:col-span-4 lg:col-span-3 min-w-0 pl-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
+                        {boat?.nome || 'Embarcação'}
+                      </span>
+                      {boat?.numero && (
+                        <span className="bg-slate-900 text-white px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">
+                          {boat.numero}
+                        </span>
+                      )}
+                      {boat?.vaga && (
+                        <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                          Vaga {boat.vaga}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Prev. Saída</span>
-                      <div className={`font-mono font-bold text-base ${reserva.previsaoSaida ? 'text-slate-700' : 'text-slate-400 text-sm'}`}>
-                        {reserva.previsaoSaida ? reserva.previsaoSaida : 'Não informada'}
+                    <div className="text-xs text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                      <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate max-w-[200px]">{client?.nome || 'Cliente'}</span>
+                    </div>
+                  </div>
+
+                  {/* Col 2: Horários Previstos */}
+                  <div className="md:col-span-3 lg:col-span-3">
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg text-slate-700">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Saída:</span>
+                        <span className="font-mono font-bold">{reserva.previsaoSaida || '08:00'}</span>
                       </div>
-                    </div>
-                    <div className="w-px bg-slate-200"></div>
-                    <div className="flex-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Prev. Chegada</span>
-                      <div className={`font-mono font-bold text-base ${reserva.previsaoChegada ? 'text-slate-700' : 'text-slate-400 text-sm'}`}>
-                        {reserva.previsaoChegada ? reserva.previsaoChegada : 'Não informada'}
+                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg text-slate-700">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Chegada:</span>
+                        <span className="font-mono font-bold">{reserva.previsaoChegada || '18:00'}</span>
                       </div>
                     </div>
                   </div>
-                  
-                  {/* Status Reais */}
-                  {(reserva.horaDescida || reserva.horaSaida || reserva.horaChegada) && (
-                    <div className="flex bg-blue-50/50 rounded-xl p-3 mb-4 gap-2 border border-blue-100/50 text-[10px] text-blue-800 font-medium overflow-x-auto subtle-scrollbar">
-                      {reserva.horaDescida && (
-                        <div className="whitespace-nowrap flex items-center gap-1 font-mono">
-                          <ArrowRight className="w-3 h-3 text-blue-500"/> Pier: {reserva.horaDescida}
+
+                  {/* Col 3: Estágio & Horários Reais */}
+                  <div className="md:col-span-2 lg:col-span-3">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                          isSubida ? 'bg-emerald-100 text-emerald-800' :
+                          isChegada ? 'bg-teal-100 text-teal-800' :
+                          isSaida ? 'bg-sky-100 text-sky-800' :
+                          reserva.horaDescida ? 'bg-blue-100 text-blue-800' :
+                          reserva.status === 'cancelado' ? 'bg-red-100 text-red-700' :
+                          'bg-amber-100 text-amber-800'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            isSubida ? 'bg-emerald-500' :
+                            isChegada ? 'bg-teal-500' :
+                            isSaida ? 'bg-sky-500' :
+                            reserva.horaDescida ? 'bg-blue-500' :
+                            reserva.status === 'cancelado' ? 'bg-red-500' :
+                            'bg-amber-500'
+                          }`} />
+                          {isSubida ? 'Guardada' :
+                           isChegada ? 'Retornou' :
+                           isSaida ? 'Navegando' :
+                           reserva.horaDescida ? 'No Píer' :
+                           reserva.status === 'cancelado' ? 'Cancelado' :
+                           'Agendado'}
+                        </span>
+                      </div>
+
+                      {(reserva.horaDescida || reserva.horaSaida || reserva.horaChegada || reserva.horaSubida) && (
+                        <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 flex-wrap">
+                          {reserva.horaDescida && <span>Píer: <b>{reserva.horaDescida}</b></span>}
+                          {reserva.horaSaida && <span>• Mar: <b>{reserva.horaSaida}</b></span>}
+                          {reserva.horaChegada && <span>• Chegou: <b>{reserva.horaChegada}</b></span>}
+                          {reserva.horaSubida && <span>• Subiu: <b>{reserva.horaSubida}</b></span>}
                         </div>
                       )}
-                      {reserva.horaSaida && (
-                        <>
-                          <div className="w-px bg-blue-200 shrink-0"></div>
-                          <div className="whitespace-nowrap flex items-center gap-1 font-mono">
-                            <Navigation className="w-3 h-3 text-blue-500"/> Mar: {reserva.horaSaida}
-                          </div>
-                        </>
-                      )}
-                      {reserva.horaChegada && (
-                        <>
-                          <div className="w-px bg-blue-200 shrink-0"></div>
-                          <div className="whitespace-nowrap flex items-center gap-1 font-mono">
-                            <CheckCircle2 className="w-3 h-3 text-blue-500"/> Chegou: {reserva.horaChegada}
-                          </div>
-                        </>
-                      )}
-                      {reserva.horaSubida && (
-                        <>
-                          <div className="w-px bg-blue-200 shrink-0"></div>
-                          <div className="whitespace-nowrap flex items-center gap-1 font-mono">
-                            <ClipboardList className="w-3 h-3 text-blue-500"/> Subiu: {reserva.horaSubida}
-                          </div>
-                        </>
-                      )}
                     </div>
-                  )}
-                </div>
-
-                {/* Botões Grandes e Tap-friendly */}
-                {reserva.status !== 'cancelado' && !reserva.horaDescida && (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        if (confirm("Confirmar descida rápida sem fotos?")) {
-                          executeRegistrarDescida([], reserva);
-                        }
-                      }}
-                      className="w-1/3 py-3 bg-amber-100 active:bg-amber-200 text-amber-700 rounded-xl font-black text-[10px] uppercase tracking-wide flex flex-col items-center justify-center gap-1 transition-colors shadow-sm"
-                    >
-                      <Zap className="w-5 h-5" />
-                      Rápida
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); openChecklistForDescida(reserva); }}
-                      className="w-2/3 py-3 bg-amber-500 active:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-wide flex items-center justify-center gap-2 transition-colors shadow-sm"
-                    >
-                      <Camera className="w-5 h-5" />
-                      Checklist Saída
-                    </button>
                   </div>
-                )}
 
-                {reserva.status !== 'cancelado' && reserva.horaDescida && !reserva.horaSaida && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); executeMarcarSaida(reserva); }}
-                    className="w-full py-4 bg-blue-600 active:bg-blue-700 text-white rounded-xl font-black text-sm uppercase tracking-wide flex items-center justify-center gap-2 transition-colors shadow-sm"
+                  {/* Col 4: Operações & Ações */}
+                  <div 
+                    className="md:col-span-3 lg:col-span-3 w-full md:w-auto flex items-center justify-start md:justify-end gap-1.5 flex-wrap pt-2 md:pt-0 border-t md:border-t-0 border-slate-100"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <Navigation className="w-5 h-5" />
-                    Marcar Saída
-                  </button>
-                )}
+                    {/* Agendado / Não Desceu */}
+                    {reserva.status !== 'cancelado' && !reserva.horaDescida && (
+                      <>
+                        <button 
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            if (confirm("Confirmar descida rápida sem fotos?")) {
+                              executeRegistrarDescida([], reserva);
+                            }
+                          }}
+                          title="Descida Rápida (sem fotos)"
+                          className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/60 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Rápida</span>
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openChecklistForDescida(reserva); }}
+                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>Checklist Saída</span>
+                        </button>
+                      </>
+                    )}
 
-                {reserva.status !== 'cancelado' && reserva.horaSaida && !reserva.horaChegada && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }}
-                    className="w-full py-4 bg-slate-900 active:bg-slate-800 text-white rounded-xl font-black text-sm uppercase tracking-wide flex items-center justify-center gap-2 transition-colors shadow-sm"
-                  >
-                    <Droplets className="w-5 h-5" />
-                    Registrar Chegada
-                  </button>
-                )}
+                    {/* No Píer */}
+                    {reserva.status !== 'cancelado' && reserva.horaDescida && !reserva.horaSaida && (
+                      <>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); executeMarcarSaida(reserva); }}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        >
+                          <Navigation className="w-3.5 h-3.5" />
+                          <span>Marcar Saída</span>
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }}
+                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        >
+                          <Droplets className="w-3.5 h-3.5" />
+                          <span>Abastecer</span>
+                        </button>
+                      </>
+                    )}
 
-                {filterType === 'retornaram' && reserva.status !== 'cancelado' && (reserva.horaChegada || reserva.statusMarina === 'chegada') && Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) > 0 && (
-                  reserva.abastecimentoStatusCobranca === 'cobrado' ? (
-                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs font-bold text-emerald-800">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>Abastecimento Cobrado: {reserva.abastecimentoLitros || reserva.litrosAbastecidos}L (R$ {reserva.abastecimentoValorTotal || (Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) * 9)})</span>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
-                      <div className="flex items-center gap-2 text-xs text-amber-950 font-bold">
-                        <Droplets className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
-                        <span>{reserva.abastecimentoLitros || reserva.litrosAbastecidos}L Lançados por {reserva.abastecimentoOperador || reserva.operadorChegada || 'Marinheiro'} (Pendente Cobrança)</span>
-                      </div>
+                    {/* Navegando */}
+                    {reserva.status !== 'cancelado' && reserva.horaSaida && !reserva.horaChegada && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }} 
-                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-black text-[11px] uppercase tracking-wider rounded-lg shrink-0 shadow-sm transition-all cursor-pointer"
+                        onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
                       >
-                        Cobrar
+                        <Droplets className="w-3.5 h-3.5" />
+                        <span>Registrar Chegada</span>
                       </button>
-                    </div>
-                  )
-                )}
+                    )}
 
-                {filterType === 'retornaram' && reserva.status !== 'cancelado' && (reserva.horaChegada || reserva.statusMarina === 'chegada') && !reserva.horaSubida && (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        if (confirm("Confirmar subida rápida sem fotos?")) {
-                          executeRegistrarSubida([], reserva);
-                        }
+                    {/* Retornaram */}
+                    {reserva.status !== 'cancelado' && (reserva.horaChegada || reserva.statusMarina === 'chegada') && !reserva.horaSubida && (
+                      <>
+                        {Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) > 0 && (
+                          reserva.abastecimentoStatusCobranca === 'cobrado' ? (
+                            <span className="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[10px] font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>{reserva.abastecimentoLitros || reserva.litrosAbastecidos}L Cobrado</span>
+                            </span>
+                          ) : (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }} 
+                              className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                            >
+                              <Droplets className="w-3.5 h-3.5" />
+                              <span>Cobrar {reserva.abastecimentoLitros || reserva.litrosAbastecidos}L</span>
+                            </button>
+                          )
+                        )}
+
+                        <button 
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            if (confirm("Confirmar subida rápida sem fotos?")) {
+                              executeRegistrarSubida([], reserva);
+                            }
+                          }}
+                          title="Subida Rápida (sem fotos)"
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Rápida</span>
+                        </button>
+
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); openChecklistForSubida(reserva); }}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        >
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          <span>Subir / Checklist</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Guardada e Finalizada */}
+                    {reserva.status !== 'cancelado' && reserva.horaSubida && (
+                      <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Guardada</span>
+                      </span>
+                    )}
+
+                    {/* Details Modal Trigger Arrow */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDetailsReserva(reserva);
+                        setDetailsModalOpen(true);
                       }}
-                      className="w-1/3 py-3 bg-slate-100 active:bg-slate-200 text-slate-700 rounded-xl font-black text-[10px] uppercase tracking-wide flex flex-col items-center justify-center gap-1 transition-colors shadow-sm"
+                      title="Ver Detalhes"
+                      className="p-1.5 hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer ml-1"
                     >
-                      <Zap className="w-5 h-5" />
-                      Rápida
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); openChecklistForSubida(reserva); }}
-                      className="w-2/3 py-3 bg-slate-800 active:bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-wide flex items-center justify-center gap-2 transition-colors shadow-sm"
-                    >
-                      <ClipboardList className="w-5 h-5" />
-                      Subir / Checklist
+                      <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
-                )}
-
-                {reserva.status !== 'cancelado' && reserva.horaSubida && (
-                  <div className="w-full py-3 bg-green-50 text-green-700 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border border-green-200">
-                    <CheckCircle2 className="w-5 h-5" />
-                    Guardada e Finalizada
-                  </div>
-                )}
-              </div>
-            );
-          })
+                </div>
+              );
+            })}
+          </div>
         )}
           </div>
         )}

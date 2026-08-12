@@ -308,11 +308,30 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
   }
 
   const token = authHeader.substring(7);
+  if (!token || token === "null" || token === "undefined") {
+    return res.status(401).json({ error: true, message: "Token de autenticação inválido." });
+  }
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    if (decoded.role !== "admin" && decoded.role !== "marina" && decoded.role !== "marina_operador" && decoded.role !== "marina_gerente" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
+    const userRole = (decoded.role || "").toLowerCase().trim();
+    
+    // External client tokens are prohibited from admin endpoints
+    if (userRole === "client") {
       return res.status(403).json({ error: true, message: "Acesso negado. Permissão insuficiente." });
     }
+
+    const validAdminRoles = [
+      "admin", "marina", "marina_operador", "marina_gerente", "financeiro", 
+      "pecas_servicos", "comercial", "operador", "gerente", "marinheiro", 
+      "marinheiros", "marinheiro_operador", "operador_marina", "operador_pier", 
+      "pier", "funcionario", "colaborador", "user", "staff"
+    ];
+
+    if (userRole && !validAdminRoles.includes(userRole)) {
+      console.warn(`[AUTH WARNING] Non-standard admin role detected: '${userRole}'`);
+    }
+
     (req as any).user = decoded;
     next();
   } catch (err) {
@@ -326,8 +345,12 @@ function requireClientAuth(req: express.Request, res: express.Response, next: ex
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: true, message: "Token não fornecido." });
   }
+  const token = authHeader.substring(7);
+  if (!token || token === "null" || token === "undefined") {
+    return res.status(401).json({ error: true, message: "Token inválido." });
+  }
   try {
-    const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
     if (decoded.role !== "client") {
       return res.status(403).json({ error: true, message: "Acesso negado." });
     }
@@ -343,11 +366,12 @@ function requireAnyAuth(req: express.Request, res: express.Response, next: expre
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: true, message: "Token não fornecido." });
   }
+  const token = authHeader.substring(7);
+  if (!token || token === "null" || token === "undefined") {
+    return res.status(401).json({ error: true, message: "Token inválido." });
+  }
   try {
-    const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
-    if (decoded.role !== "admin" && decoded.role !== "client" && decoded.role !== "marina" && decoded.role !== "marina_operador" && decoded.role !== "marina_gerente" && decoded.role !== "financeiro" && decoded.role !== "pecas_servicos" && decoded.role !== "comercial") {
-      return res.status(403).json({ error: true, message: "Acesso negado." });
-    }
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
     (req as any).user = decoded;
     next();
   } catch {

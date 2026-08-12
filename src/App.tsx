@@ -50,9 +50,10 @@ const AdminChecklistsWrapper = () => {
       boats: boatDB.getAll(),
       reservations: reservationDB.getAll()
     });
-    // Buscando dados reais do servidor para manter atualizado (opcionalmente)
-    fetch('/api/db/pull', { headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` } })
-      .then(res => res.json())
+    const token = localStorage.getItem('admin_token');
+    if (!token || token === 'null' || token === 'undefined') return;
+    fetch('/api/db/pull', { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.ok ? res.json() : null)
       .then(serverData => {
         if (serverData && serverData.reservations) {
           setData(prev => ({ ...prev, reservations: serverData.reservations }));
@@ -469,7 +470,9 @@ export default function App() {
     );
   }
 
-  if (adminRole === 'marina_operador') {
+  const normalizedRole = (adminRole || '').toLowerCase().trim();
+
+  if (normalizedRole === 'marina_operador' || normalizedRole === 'marinheiro' || normalizedRole === 'marinheiro_operador' || normalizedRole === 'operador' || normalizedRole === 'operador_pier' || normalizedRole === 'pier') {
     return (
       <div className="admin-panel h-full w-full">
         <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>}>
@@ -479,7 +482,7 @@ export default function App() {
     );
   }
 
-  if (adminRole === 'marina' || adminRole === 'marina_gerente') {
+  if (normalizedRole === 'marina' || normalizedRole === 'marina_gerente' || normalizedRole === 'gerente') {
     return (
       <div className="admin-panel h-full w-full">
         <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
