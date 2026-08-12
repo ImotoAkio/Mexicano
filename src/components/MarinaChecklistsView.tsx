@@ -3,18 +3,22 @@ import {
   Camera, ChevronLeft, ChevronRight, CheckCircle2, Ship, User as UserIcon, 
   Droplets, MapPin, Clock, Search, Filter, Layers, Navigation, Anchor, 
   Eye, FileText, Download, Printer, Check, X, ShieldAlert, ArrowUpRight, ArrowDownRight,
-  Plus, Loader2, Save, MoreVertical, SlidersHorizontal, LayoutGrid, List
+  Plus, Loader2, Save, MoreVertical, SlidersHorizontal, LayoutGrid, List, ArrowUpCircle, ArrowDownCircle
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
 import { logAction } from '../db';
 
 const CHECKLIST_ANGLES = [
-  { id: 'proa', label: 'Proa (Frente)', icon: Navigation },
-  { id: 'popa', label: 'Popa (Motor/Traseira)', icon: Anchor },
-  { id: 'bombordo', label: 'Lateral Esquerda', icon: Camera },
-  { id: 'estibordo', label: 'Lateral Direita', icon: Camera },
-  { id: 'painel', label: 'Interior / Painel', icon: Ship },
-  { id: 'casco', label: 'Casco (Ângulo Inferior)', icon: Layers }
+  { id: 'painel', label: 'Painel', icon: Ship },
+  { id: 'lateral_direita', label: 'Lateral Direita', icon: Camera },
+  { id: 'lateral_esquerda', label: 'Lateral Esquerda', icon: Camera },
+  { id: 'casco', label: 'Casco', icon: Layers },
+  { id: 'superior', label: 'Superior', icon: ArrowUpCircle },
+  { id: 'frontal_45_dir', label: '45° Frontal Direita', icon: Camera },
+  { id: 'frontal_45_esq', label: '45° Frontal Esquerda', icon: Camera },
+  { id: 'traseira_45_dir', label: '45° Traseira Direita', icon: Camera },
+  { id: 'traseira_45_esq', label: '45° Traseira Esquerda', icon: Camera },
+  { id: 'traseira_inf', label: 'Traseira Inferior', icon: ArrowDownCircle }
 ];
 
 interface MarinaChecklistsViewProps {
@@ -43,6 +47,12 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
   const [photoFilter, setPhotoFilter] = useState<'todos' | 'casco' | 'completos' | 'pendentes'>('todos');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
+  // Lightbox State
+  const [lightbox, setLightbox] = useState<{
+    photos: { url: string; title: string; time: string; operador: string; phase: string }[];
+    currentIndex: number;
+  } | null>(null);
+
   // Inspection Modal State
   const [inspectionReserva, setInspectionReserva] = useState<Reserva | null>(null);
 
@@ -52,6 +62,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
   const [selectedClientId, setSelectedClientId] = useState('');
   const [checklistMode, setChecklistMode] = useState<'descida' | 'chegada' | 'subida'>('descida');
   const [checklistFotos, setChecklistFotos] = useState<Record<string, string[]>>({});
+  const [checklistObservacoes, setChecklistObservacoes] = useState('');
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -69,6 +80,48 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
   const getEmbarcacao = (id: string) => data?.boats?.find(b => b.id === id);
   const getCliente = (id: string) => data?.clients?.find(c => c.id === id);
+
+  const openLightboxForPhase = (phase: string, startIndex: number) => {
+    if (!inspectionReserva) return;
+    const allPhotos: any[] = [];
+    ['descida', 'chegada', 'subida'].forEach(p => {
+      const pFotos = parseFotos(
+        p === 'descida' ? (inspectionReserva.fotosChecklistDescida || inspectionReserva.fotosChecklistSaida) :
+        p === 'chegada' ? inspectionReserva.fotosChecklistChegada :
+        inspectionReserva.fotosChecklistSubida
+      );
+      const time = p === 'descida' ? inspectionReserva.horaDescida : p === 'chegada' ? inspectionReserva.horaChegada : inspectionReserva.horaSubida;
+      const operador = p === 'descida' ? (inspectionReserva.operadorDescida || inspectionReserva.operadorSaida || 'Desconhecido') : p === 'chegada' ? (inspectionReserva.operadorChegada || 'Desconhecido') : (inspectionReserva.operadorSubida || 'Desconhecido');
+      pFotos.forEach((url: string) => {
+        allPhotos.push({
+          url,
+          title: `Checklist de ${p.charAt(0).toUpperCase() + p.slice(1)}`,
+          time: time || '--:--',
+          operador: operador,
+          phase: p
+        });
+      });
+    });
+
+    let absIndex = 0;
+    let found = false;
+    for (let i = 0; i < allPhotos.length; i++) {
+      if (allPhotos[i].phase === phase) {
+        if (startIndex === 0) {
+          absIndex = i;
+          found = true;
+          break;
+        } else {
+          startIndex--;
+        }
+      }
+    }
+    
+    setLightbox({
+      photos: allPhotos,
+      currentIndex: found ? absIndex : 0
+    });
+  };
 
   const handlePrevDay = () => {
     const d = new Date(selectedDate + 'T12:00:00');
@@ -200,14 +253,17 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
     if (checklistMode === 'descida') {
       newReserva.horaDescida = horaAtual;
       newReserva.fotosChecklistDescida = allPhotoUrls;
+      newReserva.observacoesChecklistDescida = checklistObservacoes;
       newReserva.operadorDescida = operadorNome || 'Operador';
     } else if (checklistMode === 'chegada') {
       newReserva.horaChegada = horaAtual;
       newReserva.fotosChecklistChegada = allPhotoUrls;
+      newReserva.observacoesChecklistChegada = checklistObservacoes;
       newReserva.operadorChegada = operadorNome || 'Operador';
     } else {
       newReserva.horaSubida = horaAtual;
       newReserva.fotosChecklistSubida = allPhotoUrls;
+      newReserva.observacoesChecklistSubida = checklistObservacoes;
       newReserva.operadorSubida = operadorNome || 'Operador';
     }
 
@@ -273,15 +329,16 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
               <span>Exportar</span>
             </button>
 
-            <button
-              onClick={() => {
-                setIsNewChecklistOpen(true);
-                setSelectedBoatId('');
-                setSelectedClientId('');
-                setChecklistFotos({});
-                setChecklistMode('descida');
-              }}
-              className="px-4 py-2.5 bg-[#635BFF] hover:bg-[#5249e3] text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              <button 
+                onClick={() => {
+                  setSelectedBoatId('');
+                  setSelectedClientId('');
+                  setChecklistMode('descida');
+                  setChecklistFotos({});
+                  setChecklistObservacoes('');
+                  setIsNewChecklistOpen(true);
+                }}
+              className="px-4 py-2.5 bg-[#2563EB] hover:bg-[#1d4ed8] text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               <Plus className="w-4 h-4" />
               <span>Novo Checklist</span>
@@ -367,10 +424,10 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search by boat name, client or berth ID..."
+                placeholder="Pesquisar por barco, cliente ou código..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-8 py-2.5 text-xs bg-slate-50/80 border border-slate-200/90 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#635BFF] focus:bg-white font-medium transition-all"
+                className="w-full pl-9 pr-8 py-2.5 text-xs bg-slate-50/80 border border-slate-200/90 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:bg-white font-medium transition-all"
               />
               {searchTerm && (
                 <button onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -381,14 +438,14 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
             <button className="px-3.5 py-2.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer">
               <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-              <span>Filter</span>
+              <span>Filtros</span>
             </button>
           </div>
 
-          {/* Right: Tab Pills (All, Active, Drafts, Archived) */}
+          {/* Right: Tab Pills */}
           <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl w-full lg:w-auto overflow-x-auto subtle-scrollbar">
             {[
-              { id: 'todos', label: 'All' },
+              { id: 'todos', label: 'Todos' },
               { id: 'casco', label: 'Com Foto do Casco' },
               { id: 'completos', label: 'Completos' },
               { id: 'pendentes', label: 'Pendentes' }
@@ -407,13 +464,13 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
         </div>
 
-        {/* Clean Data Table (Biosynthesia Table) */}
+        {/* Clean Data Table */}
         <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white">
           {filteredChecklists.length === 0 ? (
             <div className="p-16 text-center text-slate-400 flex flex-col items-center gap-3">
               <Camera className="w-10 h-10 text-slate-300" />
-              <p className="text-xs font-bold text-slate-600">No records found matching current query.</p>
-              <p className="text-[11px] text-slate-400">Try adjusting your filters or date selection.</p>
+              <p className="text-xs font-bold text-slate-600">Nenhum registro encontrado com a busca atual.</p>
+              <p className="text-[11px] text-slate-400">Tente ajustar seus filtros de busca ou período.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -425,15 +482,14 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                         type="checkbox" 
                         checked={selectedIds.length === filteredChecklists.length && filteredChecklists.length > 0}
                         onChange={toggleSelectAll}
-                        className="w-4 h-4 rounded border-slate-300 text-[#635BFF] focus:ring-[#635BFF] cursor-pointer"
+                        className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
                       />
                     </th>
-                    <th className="p-3.5">Product / Boat Name</th>
-                    <th className="p-3.5">ID & Date</th>
-                    <th className="p-3.5">Client & Phone</th>
-                    <th className="p-3.5 text-center">Angles (6 Fotos)</th>
-                    <th className="p-3.5 text-center">Status</th>
-                    <th className="p-3.5 text-right">Actions</th>
+                    <th className="p-3.5">Embarcação</th>
+                    <th className="p-3.5">Código & Data</th>
+                    <th className="p-3.5">Cliente</th>
+                    <th className="p-3.5 text-center">Fotos por Ângulo</th>
+                    <th className="p-3.5 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -447,7 +503,6 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                     const totalFotos = descidaFotos.concat(subidaFotos);
 
                     const hasCasco = totalFotos.some(f => f.toLowerCase().includes('casco'));
-                    const isComplete = descidaFotos.length > 0 && subidaFotos.length > 0;
 
                     return (
                       <tr 
@@ -459,7 +514,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                             type="checkbox" 
                             checked={isSelected}
                             onChange={() => toggleSelectOne(reserva.id)}
-                            className="w-4 h-4 rounded border-slate-300 text-[#635BFF] focus:ring-[#635BFF] cursor-pointer"
+                            className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
                           />
                         </td>
 
@@ -512,31 +567,6 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                           </div>
                         </td>
 
-                        {/* Status Pill Badges (Biosynthesia Aesthetic) */}
-                        <td className="p-3.5 text-center">
-                          {isComplete ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                              <span>Published</span>
-                            </span>
-                          ) : hasCasco ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-200/60">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                              <span>Vistoriado</span>
-                            </span>
-                          ) : descidaFotos.length > 0 ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-200/60">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                              <span>Em Navegação</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200/60">
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                              <span>Draft</span>
-                            </span>
-                          )}
-                        </td>
-
                         <td className="p-3.5 text-right">
                           <button
                             onClick={() => setInspectionReserva(reserva)}
@@ -560,7 +590,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
       {/* Floating Action Bar at Bottom (When 1+ Items Selected) */}
       {selectedIds.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white border border-slate-200/90 shadow-2xl rounded-2xl px-5 py-3 flex items-center space-x-4 animate-slide-up-fast">
-          <span className="text-xs font-black text-slate-900">{selectedIds.length} Selected</span>
+          <span className="text-xs font-black text-slate-900">{selectedIds.length} Selecionado(s)</span>
           <div className="h-4 w-[1px] bg-slate-200"></div>
           <button 
             onClick={() => window.print()} 
@@ -584,7 +614,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
           <div className="bg-white rounded-3xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
             <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <div>
-                <span className="px-2.5 py-0.5 rounded-full bg-[#635BFF]/10 text-[#635BFF] text-[10px] font-extrabold uppercase tracking-wider mb-1 inline-block">
+                <span className="px-2.5 py-0.5 rounded-full bg-[#2563EB]/10 text-[#2563EB] text-[10px] font-extrabold uppercase tracking-wider mb-1 inline-block">
                   Relatório de Vistoria Fotográfica
                 </span>
                 <h3 className="text-lg font-black text-slate-900">
@@ -626,7 +656,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                   <div key={phase} className="space-y-3">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                       <h4 className="font-bold text-sm text-slate-900 capitalize flex items-center gap-2">
-                        <Camera className="w-4 h-4 text-[#635BFF]" />
+                        <Camera className="w-4 h-4 text-[#2563EB]" />
                         <span>Checklist de {phase} ({photos.length} Fotos)</span>
                       </h4>
                       <span className="text-xs font-mono font-bold text-slate-500">
@@ -636,17 +666,11 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                       {photos.map((url, i) => (
-                        <div key={i} className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video shadow-2xs hover:shadow-md transition-all">
+                        <div key={i} className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video shadow-2xs hover:shadow-md transition-all cursor-pointer" onClick={() => openLightboxForPhase(phase, i)}>
                           <img src={url} alt={`Foto ${i + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-1.5"
-                          >
-                            <Eye className="w-4 h-4" />
-                            <span>Ampliar HD</span>
-                          </a>
+                          <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-1.5">
+                            <Eye className="w-3.5 h-3.5" /> Ampliar
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -673,7 +697,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
           <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-md overflow-hidden shadow-2xl space-y-4">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                <Camera className="w-4 h-4 text-[#635BFF]" />
+                <Camera className="w-4 h-4 text-[#2563EB]" />
                 <span>Novo Checklist Fotográfico</span>
               </h3>
               <button onClick={() => setIsNewChecklistOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
@@ -709,7 +733,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                       type="button"
                       onClick={() => setChecklistMode(mode)}
                       className={`flex-1 py-1.5 rounded-lg font-bold capitalize transition-all ${
-                        checklistMode === mode ? 'bg-[#635BFF] text-white shadow-xs' : 'text-slate-600'
+                        checklistMode === mode ? 'bg-[#2563EB] text-white shadow-xs' : 'text-slate-600'
                       }`}
                     >
                       {mode}
@@ -731,12 +755,22 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                         className="hidden"
                         onChange={(e) => handleUploadPhoto(e, angle.id)}
                       />
-                      <span className="text-[10px] font-bold text-[#635BFF] font-mono">
+                      <span className="text-[10px] font-bold text-[#2563EB] font-mono">
                         {checklistFotos[angle.id]?.length || 0} 📸
                       </span>
                     </label>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Detalhes / Observações</label>
+                <textarea
+                  value={checklistObservacoes}
+                  onChange={(e) => setChecklistObservacoes(e.target.value)}
+                  placeholder="Alguma avaria, item faltando, ou observação importante?"
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none min-h-[80px]"
+                />
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
@@ -750,7 +784,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                 <button
                   type="submit"
                   disabled={isSubmitting || !selectedBoatId}
-                  className="px-4 py-2 bg-[#635BFF] text-white font-bold rounded-xl shadow-sm flex items-center gap-1.5"
+                  className="px-4 py-2 bg-[#2563EB] text-white font-bold rounded-xl shadow-sm flex items-center gap-1.5"
                 >
                   {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                   <span>Salvar Checklist</span>
@@ -758,6 +792,53 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center animate-fade-in backdrop-blur-sm" onClick={() => setLightbox(null)}>
+          <div className="absolute top-4 right-4 flex items-center gap-4 z-10">
+            <button onClick={() => setLightbox(null)} className="p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer backdrop-blur-md">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <button 
+            onClick={(e) => { e.stopPropagation(); setLightbox(prev => prev ? { ...prev, currentIndex: Math.max(0, prev.currentIndex - 1) } : null) }}
+            className={`absolute left-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer z-10 backdrop-blur-md ${lightbox.currentIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={lightbox.currentIndex === 0}
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </button>
+
+          <div className="w-full max-w-5xl h-full max-h-[85vh] flex flex-col items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+             <img 
+               src={lightbox.photos[lightbox.currentIndex].url} 
+               alt="Zoomed" 
+               className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-2xl" 
+             />
+             <div className="mt-6 bg-slate-900/80 backdrop-blur-md border border-slate-700/50 rounded-2xl p-4 w-full max-w-2xl shadow-xl flex items-center justify-between text-slate-200">
+               <div>
+                 <h4 className="font-bold text-white uppercase tracking-wider text-sm">{lightbox.photos[lightbox.currentIndex].title}</h4>
+                 <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400">
+                   <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {lightbox.photos[lightbox.currentIndex].time}</span>
+                   <span className="flex items-center gap-1.5"><UserIcon className="w-3.5 h-3.5" /> {lightbox.photos[lightbox.currentIndex].operador}</span>
+                 </div>
+               </div>
+               <div className="text-xs font-bold text-slate-500 bg-slate-800 px-3 py-1.5 rounded-full">
+                 {lightbox.currentIndex + 1} / {lightbox.photos.length}
+               </div>
+             </div>
+          </div>
+
+          <button 
+            onClick={(e) => { e.stopPropagation(); setLightbox(prev => prev ? { ...prev, currentIndex: Math.min(prev.photos.length - 1, prev.currentIndex + 1) } : null) }}
+            className={`absolute right-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer z-10 backdrop-blur-md ${lightbox.currentIndex === lightbox.photos.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={lightbox.currentIndex === lightbox.photos.length - 1}
+          >
+            <ChevronRight className="w-8 h-8" />
+          </button>
         </div>
       )}
 

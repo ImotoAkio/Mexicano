@@ -83,6 +83,9 @@ export interface Reserva {
   fotosChecklistChegada?: string[];
   horaSubida?: string;
   fotosChecklistSubida?: string[];
+  observacoesChecklistDescida?: string;
+  observacoesChecklistChegada?: string;
+  observacoesChecklistSubida?: string;
   statusMarina?: 'agendado' | 'descida' | 'pier' | 'saida' | 'chegada' | 'guardada';
   operadorDescida?: string;
   operadorSaida?: string;

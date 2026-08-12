@@ -472,7 +472,7 @@ export default function App() {
   if (adminRole === 'marina_operador') {
     return (
       <div className="admin-panel h-full w-full">
-        <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>}>
           <MarinaOperadorDashboard onLogout={handleLogout} operadorNome={adminName} />
         </Suspense>
       </div>

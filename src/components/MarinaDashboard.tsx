@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
 import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
+import BoatPage from './BoatPage';
 
 interface MarinaDashboardProps {
   onLogout: () => void;
@@ -13,12 +14,16 @@ interface MarinaDashboardProps {
 }
 
 const CHECKLIST_ANGLES = [
-  { id: 'proa', label: 'Proa (Frente)', icon: Navigation },
-  { id: 'popa', label: 'Popa (Motor/Traseira)', icon: Anchor },
-  { id: 'bombordo', label: 'Lateral Esquerda', icon: Camera },
-  { id: 'estibordo', label: 'Lateral Direita', icon: Camera },
-  { id: 'painel', label: 'Interior / Painel', icon: Ship },
-  { id: 'casco', label: 'Casco (Ângulo Inferior)', icon: Layers }
+  { id: 'painel', label: 'Painel', icon: Ship },
+  { id: 'lateral_direita', label: 'Lateral Direita', icon: Camera },
+  { id: 'lateral_esquerda', label: 'Lateral Esquerda', icon: Camera },
+  { id: 'casco', label: 'Casco', icon: Layers },
+  { id: 'superior', label: 'Superior', icon: ArrowUpCircle },
+  { id: 'frontal_45_dir', label: '45° Frontal Direita', icon: Camera },
+  { id: 'frontal_45_esq', label: '45° Frontal Esquerda', icon: Camera },
+  { id: 'traseira_45_dir', label: '45° Traseira Direita', icon: Camera },
+  { id: 'traseira_45_esq', label: '45° Traseira Esquerda', icon: Camera },
+  { id: 'traseira_inf', label: 'Traseira Inferior', icon: ArrowDownCircle }
 ];
 
 const getFormattedDate = (date: Date) => {
@@ -59,6 +64,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistMode, setChecklistMode] = useState<'descida' | 'chegada' | 'subida'>('descida');
   const [checklistFotos, setChecklistFotos] = useState<Record<string, string[]>>({});
+  const [checklistObservacoes, setChecklistObservacoes] = useState('');
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
 
   const [filterType, setFilterType] = useState<'agendadas' | 'confirmadas' | 'prontas' | 'retornaram' | 'todas'>('agendadas');
@@ -100,14 +106,20 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       auth: { token: localStorage.getItem('admin_token') }
     });
     
+    socket.on('connect', () => {
+      fetchData();
+    });
+
     socket.on('marina_update', (payload: any) => {
-      if (!payload?.reservation) {
-        // Fallback: se não veio payload, faz fetch completo (compatibilidade)
+      const reservationData = payload?.reservation || payload?.data;
+      if (!reservationData || (payload.type && payload.type !== 'reservations')) {
+        // Fallback: se não veio payload ou não é reserva, faz fetch completo
         fetchData();
         return;
       }
 
-      const { reservation, action } = payload;
+      const reservation = reservationData;
+      const { action } = payload;
 
       setData((prev: any) => {
         if (!prev) return prev;
@@ -188,6 +200,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     setSelectedReserva(reserva);
     setChecklistMode('descida');
     setChecklistFotos({});
+    setChecklistObservacoes('');
     setChecklistOpen(true);
   };
 
@@ -199,12 +212,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     setSelectedReserva(reserva);
     setChecklistMode('subida');
     setChecklistFotos({});
+    setChecklistObservacoes('');
     setChecklistOpen(true);
   };
 
   const openFuelForChegada = (reserva: any) => {
     setSelectedReserva(reserva);
-    setLiters('');
+    setLiters(reserva.abastecimentoLitros || reserva.litrosAbastecidos || '');
     setPaymentType('pix');
     setComprovanteUrl(null);
     setFuelModalOpen(true);
@@ -280,7 +294,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     const updatedReserva = { 
       ...alvo, 
       horaDescida: horaAtual,
-      fotosChecklistDescida,
+      fotosChecklistDescida: fotosChecklistDescida.length > 0 ? fotosChecklistDescida : alvo.fotosChecklistDescida,
+      observacoesChecklistDescida: checklistObservacoes || alvo.observacoesChecklistDescida,
       statusMarina: 'pier',
       operadorDescida: operadorNome || 'Operador'
     };
@@ -351,46 +366,19 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     setIsSubmitting(true);
     
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const litersNum = Number(liters);
+    const litersNum = Number(liters) || 0;
+    const currentOperator = operadorNome || localStorage.getItem('user_name') || localStorage.getItem('usuario_nome') || 'Marinheiro';
+    
     const updatedReserva = { 
       ...selectedReserva, 
-      horaChegada: horaAtual,
-      statusMarina: 'chegada',
-      operadorChegada: operadorNome || 'Operador',
-      litrosAbastecidos: litersNum > 0 ? litersNum.toString() : '0'
-    };
-    
-    const pType = paymentType;
-    let pricePerLiter = 9;
-    let paymentStatus = 'pago';
-    let paymentLabel = 'Pix/Dinheiro';
-
-    if (pType === 'credit') {
-      pricePerLiter = 10;
-      paymentLabel = 'Cartão de Crédito';
-    } else if (pType === 'admin') {
-      pricePerLiter = 13;
-      paymentStatus = 'pendente';
-      paymentLabel = 'Pós-pago (Cobrar Cliente)';
-    }
-
-    const totalValue = litersNum * pricePerLiter;
-    
-    const transacao = {
-      id: `trx_fuel_${Date.now()}`,
-      tipo: 'receita',
-      categoria: 'Combustível',
-      valor: totalValue,
-      dataVencimento: selectedDate,
-      dataPagamento: paymentStatus === 'pago' ? selectedDate : null,
-      status: paymentStatus,
-      descricao: `Abastecimento Retorno: ${litersNum}L a R$${pricePerLiter}/L. Pagamento: ${paymentLabel}`,
-      clienteId: selectedReserva.clienteId,
-      embarcacaoId: selectedReserva.embarcacaoId,
-      operador: operadorNome || 'Operador',
-      comprovante: comprovanteUrl || null,
-      comprovanteUrl: comprovanteUrl || null,
-      createdAt: new Date().toISOString()
+      horaChegada: selectedReserva.horaChegada || horaAtual,
+      statusMarina: selectedReserva.statusMarina || 'chegada',
+      operadorChegada: selectedReserva.operadorChegada || currentOperator,
+      abastecimentoOperador: currentOperator,
+      litrosAbastecidos: litersNum > 0 ? litersNum.toString() : (selectedReserva.litrosAbastecidos || '0'),
+      abastecimentoLitros: litersNum > 0 ? litersNum : (selectedReserva.abastecimentoLitros || 0),
+      abastecimentoStatusCobranca: litersNum > 0 ? 'pendente' : (selectedReserva.abastecimentoStatusCobranca || 'sem_abastecimento'),
+      abastecimentoDataHora: selectedReserva.abastecimentoDataHora || new Date().toISOString()
     };
 
     try {
@@ -404,14 +392,9 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       });
 
       if (litersNum > 0) {
-        await fetch('/api/financeiro/transacoes/save', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-          },
-          body: JSON.stringify({ action: 'upsert', data: transacao })
-        });
+        const { consumeFuelForEmbarcacao } = await import('../utils/fuelInventory');
+        const boatName = selectedReserva.barcoNome || getEmbarcacao(selectedReserva.embarcacaoId)?.nome || 'Embarcação';
+        consumeFuelForEmbarcacao(litersNum, boatName, currentOperator);
       }
 
       setData((prev: any) => ({
@@ -419,10 +402,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         reservations: prev.reservations.map((r: any) => r.id === updatedReserva.id ? updatedReserva : r)
       }));
       
-      await logAction('Chegada', `Marcou chegada e abastecimento de ${litersNum}L`, updatedReserva.embarcacaoId, operadorNome);
+      await logAction('Chegada', `Marcou chegada e abastecimento de ${litersNum}L (Pendente de cobrança pelo gerente)`, updatedReserva.embarcacaoId, currentOperator);
 
       setFuelModalOpen(false);
-      alert('Chegada e abastecimento registrados com sucesso!');
+      alert('Chegada e abastecimento salvos com sucesso! O lançamento ficou PENDENTE para cobrança pelo gerente.');
     } catch (err) {
       alert('Erro ao salvar chegada.');
     } finally {
@@ -443,7 +426,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     const updatedReserva = { 
       ...alvo, 
       horaSubida: horaAtual,
-      fotosChecklistSubida,
+      fotosChecklistSubida: fotosChecklistSubida.length > 0 ? fotosChecklistSubida : alvo.fotosChecklistSubida,
+      observacoesChecklistSubida: checklistObservacoes || alvo.observacoesChecklistSubida,
       statusMarina: 'guardada',
       operadorSubida: operadorNome || 'Operador'
     };
@@ -499,24 +483,35 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     
     let filtered = data.reservations.filter((r: any) => r.data === selectedDate);
     
-    if (filterType === 'agendadas') {
-      filtered = filtered.filter((r: any) => !r.horaDescida && r.status === 'agendado');
-    } else if (filterType === 'confirmadas') {
-      filtered = filtered.filter((r: any) => !r.horaDescida && r.status === 'confirmado');
-    } else if (filterType === 'prontas') {
+    if (filterType === 'agendadas' || filterType === 'agendados') {
+      filtered = filtered.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado');
+    } else if (filterType === 'nopier' || filterType === 'prontas') {
       filtered = filtered.filter((r: any) => 
         r.horaDescida && 
+        !r.horaSaida && 
+        r.statusMarina !== 'saida' && 
+        r.statusOperacional !== 'navegando' && 
+        !r.horaChegada && 
         r.statusMarina !== 'chegada' && 
-        r.statusMarina !== 'guardada' &&
-        !r.horaSubida &&
+        !r.horaSubida && 
+        r.statusMarina !== 'guardada' && 
+        r.status !== 'cancelado'
+      );
+    } else if (filterType === 'navegando') {
+      filtered = filtered.filter((r: any) => 
+        (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && 
+        !r.horaChegada && 
+        r.statusMarina !== 'chegada' && 
+        !r.horaSubida && 
+        r.statusMarina !== 'guardada' && 
         r.status !== 'cancelado'
       );
     } else if (filterType === 'retornaram') {
       filtered = filtered.filter((r: any) => 
-        r.status === 'cancelado' || 
-        r.statusMarina === 'chegada' || 
-        r.statusMarina === 'guardada' ||
-        r.horaSubida
+        (r.horaChegada || r.statusMarina === 'chegada' || r.statusOperacional === 'retornou') && 
+        !r.horaSubida && 
+        r.statusMarina !== 'guardada' && 
+        r.status !== 'cancelado'
       );
     }
 
@@ -552,10 +547,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
   const reservasDoDia = getFilteredReservations();
   const totalDayReservations = data?.reservations?.filter((r: any) => r.data === selectedDate) || [];
-  const countAgendadas = totalDayReservations.filter((r: any) => !r.horaDescida && r.status === 'agendado').length;
-  const countConfirmadas = totalDayReservations.filter((r: any) => !r.horaDescida && r.status === 'confirmado').length;
-  const countProntas = totalDayReservations.filter((r: any) => r.horaDescida && r.statusMarina !== 'chegada' && r.statusMarina !== 'guardada' && !r.horaSubida && r.status !== 'cancelado').length;
-  const countRetornaram = totalDayReservations.filter((r: any) => r.status === 'cancelado' || r.statusMarina === 'chegada' || r.statusMarina === 'guardada' || r.horaSubida).length;
+  const countAgendadosConfirmados = totalDayReservations.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado').length;
+  const countNoPier = totalDayReservations.filter((r: any) => r.horaDescida && !r.horaSaida && r.statusMarina !== 'saida' && r.statusOperacional !== 'navegando' && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
+  const countNavegando = totalDayReservations.filter((r: any) => (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
+  const countRetornaram = totalDayReservations.filter((r: any) => (r.horaChegada || r.statusMarina === 'chegada' || r.statusOperacional === 'retornou') && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
   const countTodas = totalDayReservations.length;
   const displayDateStr = new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 
@@ -613,6 +608,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                     <span className="px-1.5 py-0.2 bg-blue-500/20 text-blue-600 rounded-full text-[10px]">{countTodas}</span>
                   </div>
                 )}
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('embarcacoes')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'embarcacoes' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Lista de Embarcações"
+              >
+                <Anchor className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Embarcações</span>}
               </button>
 
               <button 
@@ -675,50 +679,22 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         </div>
       </aside>
 
-      {/* Area Principal com Topbar Executiva */}
+      {/* Area Principal */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         
-        {/* Topbar Superior Executiva */}
-        <header className="bg-white border-b border-slate-200 min-h-[4.5rem] px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 shadow-xs">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors sm:hidden cursor-pointer"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-extrabold text-base text-slate-900 tracking-tight">
-                  {activeTab === 'home' && 'Visão Geral Executiva'}
-                  {activeTab === 'operacao' && 'Operação & Fila do Píer'}
-                  {activeTab === 'checklists' && 'Auditoria de Checklists & Fotos'}
-                  {activeTab === 'combustivel' && 'Lançamentos de Abastecimento'}
-                  {activeTab === 'tanques' && 'Estoque & Tanques da Marina'}
-                </h2>
-                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-extrabold uppercase tracking-wider hidden sm:inline-block">
-                  Gerente de Marina
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 font-medium hidden sm:block">
-                Controle centralizado da marina, frota na água e suprimentos
-              </p>
-            </div>
-          </div>
-
-          {/* Controls: Date Navigator & Status */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-2xs">
-              <button onClick={handlePrevDay} className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-white transition-all cursor-pointer">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-2 text-xs font-bold text-slate-700 capitalize">{displayDateStr}</span>
-              <button onClick={handleNextDay} className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-white transition-all cursor-pointer">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </header>
+        {/* Mobile menu toggle when sidebar is closed on small screens */}
+        <div className="sm:hidden p-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0">
+          <button 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold"
+          >
+            <Menu className="w-4 h-4" />
+            <span>Menu</span>
+          </button>
+          <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-extrabold uppercase tracking-wider">
+            Gerente de Marina
+          </span>
+        </div>
 
         {/* Content Body com Scroll Interno */}
         <main className="flex-1 overflow-y-auto subtle-scrollbar p-3 sm:p-6 bg-[#f4f5f7]">
@@ -755,27 +731,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
                   <div className="flex items-center justify-between text-slate-400">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Na Água Agora</span>
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                      <Anchor className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-black text-slate-900">{countProntas}</span>
-                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Embarcações</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 font-medium">Barcos prontos no píer / em água</p>
-                </div>
-
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Agendados no Dia</span>
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Agendados / Confirmados</span>
                     <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
                       <Clock className="w-5 h-5" />
                     </div>
                   </div>
                   <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-black text-slate-900">{countAgendadas + countConfirmadas}</span>
+                    <span className="text-3xl font-black text-slate-900">{countAgendadosConfirmados}</span>
                     <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Agendamentos</span>
                   </div>
                   <p className="text-[11px] text-slate-400 font-medium">Na fila para descida na data</p>
@@ -783,30 +745,44 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
                   <div className="flex items-center justify-between text-slate-400">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Retornaram / Concluídos</span>
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">No Píer</span>
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                      <Anchor className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-3xl font-black text-slate-900">{countNoPier}</span>
+                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Embarcações</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">Barcos prontos no píer</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Navegando</span>
+                    <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
+                      <Navigation className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-3xl font-black text-slate-900">{countNavegando}</span>
+                    <span className="text-xs font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full">Em Navegação</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">Barcos navegando no mar</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Retornaram</span>
                     <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
                       <CheckCircle2 className="w-5 h-5" />
                     </div>
                   </div>
                   <div className="flex items-baseline justify-between">
                     <span className="text-3xl font-black text-slate-900">{countRetornaram}</span>
-                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Finalizados</span>
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Retornados</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 font-medium">Barcos que retornaram e foram guardados</p>
-                </div>
-
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Operações Totais</span>
-                    <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                      <Ship className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-black text-slate-900">{countTodas}</span>
-                    <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">No Dia</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 font-medium">Movimentações programadas hoje</p>
+                  <p className="text-[11px] text-slate-400 font-medium">Aguardando vaga / subida</p>
                 </div>
               </div>
 
@@ -968,9 +944,9 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             {viewMode === 'lista' && (
               <div className="flex bg-white shadow-sm border border-slate-200 rounded-xl p-1 gap-1 overflow-x-auto subtle-scrollbar mb-4">
                 {[
-                  { id: 'agendadas', label: 'Agendadas', count: countAgendadas },
-                  { id: 'confirmadas', label: 'Confirmadas', count: countConfirmadas },
-                  { id: 'prontas', label: 'Prontas', count: countProntas },
+                  { id: 'agendadas', label: 'Agendados / Confirmados', count: countAgendadosConfirmados },
+                  { id: 'nopier', label: 'No Píer', count: countNoPier },
+                  { id: 'navegando', label: 'Navegando', count: countNavegando },
                   { id: 'retornaram', label: 'Retornaram', count: countRetornaram },
                   { id: 'todas', label: 'Todas', count: countTodas }
                 ].map(t => (
@@ -992,27 +968,27 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             {viewMode === 'kanban' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 
-                {/* Coluna 1: Agendadas & Confirmadas */}
-                <div className="bg-slate-100/80 rounded-2xl p-3 border border-slate-200 space-y-3 flex flex-col min-h-[400px]">
+                {/* Coluna 1: Agendados / Confirmados */}
+                <div className="bg-amber-50/40 rounded-2xl p-3 border border-amber-200/60 space-y-3 flex flex-col min-h-[400px]">
                   <div className="flex items-center justify-between px-1">
-                    <span className="font-extrabold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="font-extrabold text-xs text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                      <span>Agendadas / Fila</span>
+                      <span>Agendados / Confirmados</span>
                     </span>
                     <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-extrabold rounded-full text-[10px]">
-                      {countAgendadas + countConfirmadas}
+                      {countAgendadosConfirmados}
                     </span>
                   </div>
 
                   <div className="space-y-2.5 flex-1">
-                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && !r.horaDescida && r.status !== 'cancelado') || []).map((reserva: any) => {
+                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado') || []).map((reserva: any) => {
                       const barco = getEmbarcacao(reserva.embarcacaoId);
                       const cliente = getCliente(reserva.clienteId);
                       return (
-                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
+                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-amber-100 shadow-xs hover:shadow-md transition-all space-y-2">
                           <div className="flex items-start justify-between">
                             <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
-                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">
+                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md">
                               {reserva.previsaoSaida || '08:00'}
                             </span>
                           </div>
@@ -1023,10 +999,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                               onClick={() => {
                                 setSelectedReserva(reserva);
                                 setChecklistFotos({});
+                                setChecklistObservacoes('');
                                 setChecklistMode('descida');
                                 setChecklistOpen(true);
                               }}
-                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors"
+                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer shadow-2xs"
                             >
                               Baixar Barco
                             </button>
@@ -1037,20 +1014,20 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   </div>
                 </div>
 
-                {/* Coluna 2: Na Água / Prontas */}
+                {/* Coluna 2: No Píer */}
                 <div className="bg-blue-50/50 rounded-2xl p-3 border border-blue-200/60 space-y-3 flex flex-col min-h-[400px]">
                   <div className="flex items-center justify-between px-1">
                     <span className="font-extrabold text-xs text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                      <span>Na Água / Píer</span>
+                      <span>No Píer</span>
                     </span>
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-800 font-extrabold rounded-full text-[10px]">
-                      {countProntas}
+                      {countNoPier}
                     </span>
                   </div>
 
                   <div className="space-y-2.5 flex-1">
-                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && r.horaDescida && !r.horaSubida && r.statusMarina !== 'chegada' && r.statusMarina !== 'guardada') || []).map((reserva: any) => {
+                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && r.horaDescida && !r.horaSaida && r.statusMarina !== 'saida' && r.statusOperacional !== 'navegando' && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado') || []).map((reserva: any) => {
                       const barco = getEmbarcacao(reserva.embarcacaoId);
                       const cliente = getCliente(reserva.clienteId);
                       return (
@@ -1062,11 +1039,16 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             </span>
                           </div>
                           <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
-                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
-                            <span className="text-slate-400 font-medium">Op: {reserva.operadorDescida || 'Operador'}</span>
+                          <div className="flex items-center justify-between gap-1 text-[11px] pt-1 border-t border-slate-100">
+                            <button
+                              onClick={() => executeMarcarSaida(reserva)}
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
+                            >
+                              Saída / Navegar
+                            </button>
                             <button
                               onClick={() => handleRegistrarChegada(reserva)}
-                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                             >
                               Abastecer / Chegada
                             </button>
@@ -1077,7 +1059,47 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   </div>
                 </div>
 
-                {/* Coluna 3: Retornaram / Abastecendo */}
+                {/* Coluna 3: Navegando */}
+                <div className="bg-sky-50/50 rounded-2xl p-3 border border-sky-200/60 space-y-3 flex flex-col min-h-[400px]">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="font-extrabold text-xs text-sky-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+                      <span>Navegando</span>
+                    </span>
+                    <span className="px-2 py-0.5 bg-sky-100 text-sky-800 font-extrabold rounded-full text-[10px]">
+                      {countNavegando}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5 flex-1">
+                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado') || []).map((reserva: any) => {
+                      const barco = getEmbarcacao(reserva.embarcacaoId);
+                      const cliente = getCliente(reserva.clienteId);
+                      return (
+                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                          <div className="flex items-start justify-between">
+                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
+                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-sky-50 text-sky-700 rounded-md">
+                              {reserva.horaSaida || 'Navegando'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                            <span className="text-sky-700 font-bold">Em Navegação</span>
+                            <button
+                              onClick={() => handleRegistrarChegada(reserva)}
+                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
+                            >
+                              Abastecer / Chegada
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Coluna 4: Retornaram */}
                 <div className="bg-emerald-50/50 rounded-2xl p-3 border border-emerald-200/60 space-y-3 flex flex-col min-h-[400px]">
                   <div className="flex items-center justify-between px-1">
                     <span className="font-extrabold text-xs text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -1090,9 +1112,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   </div>
 
                   <div className="space-y-2.5 flex-1">
-                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.statusMarina === 'chegada' || (r.horaChegada && !r.horaSubida))) || []).map((reserva: any) => {
+                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.statusMarina === 'chegada' || r.horaChegada || r.statusOperacional === 'retornou') && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado') || []).map((reserva: any) => {
                       const barco = getEmbarcacao(reserva.embarcacaoId);
                       const cliente = getCliente(reserva.clienteId);
+                      const litros = reserva.abastecimentoLitros || reserva.litrosAbastecidos;
                       return (
                         <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-xs hover:shadow-md transition-all space-y-2">
                           <div className="flex items-start justify-between">
@@ -1103,7 +1126,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                           </div>
                           <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
                           <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
-                            <span className="text-emerald-700 font-bold">{reserva.combustivelAbastecido ? `${reserva.combustivelAbastecido}L Abastecido` : 'Retornado'}</span>
+                            <span className="text-emerald-700 font-bold">{litros ? `${litros}L Abastecido` : 'Retornado'}</span>
                             <button
                               onClick={() => {
                                 setSelectedReserva(reserva);
@@ -1111,45 +1134,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                                 setChecklistMode('subida');
                                 setChecklistOpen(true);
                               }}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                             >
                               Subir Barco
                             </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Coluna 4: Guardadas na Vaga */}
-                <div className="bg-slate-100/60 rounded-2xl p-3 border border-slate-200 space-y-3 flex flex-col min-h-[400px]">
-                  <div className="flex items-center justify-between px-1">
-                    <span className="font-extrabold text-xs text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
-                      <span>Guardadas</span>
-                    </span>
-                    <span className="px-2 py-0.5 bg-slate-200 text-slate-700 font-extrabold rounded-full text-[10px]">
-                      {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.statusMarina === 'guardada' || r.horaSubida)) || []).length}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2.5 flex-1">
-                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.statusMarina === 'guardada' || r.horaSubida)) || []).map((reserva: any) => {
-                      const barco = getEmbarcacao(reserva.embarcacaoId);
-                      const cliente = getCliente(reserva.clienteId);
-                      return (
-                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-slate-200 opacity-90 space-y-2">
-                          <div className="flex items-start justify-between">
-                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
-                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">
-                              {reserva.horaSubida || 'Guardado'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
-                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100 text-slate-400">
-                            <span>Vaga Seca: {barco?.vaga || 'N/A'}</span>
-                            <span className="font-bold text-slate-600">Concluído</span>
                           </div>
                         </div>
                       );
@@ -1316,6 +1304,28 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   </button>
                 )}
 
+                {filterType === 'retornaram' && reserva.status !== 'cancelado' && (reserva.horaChegada || reserva.statusMarina === 'chegada') && Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) > 0 && (
+                  reserva.abastecimentoStatusCobranca === 'cobrado' ? (
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs font-bold text-emerald-800">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Abastecimento Cobrado: {reserva.abastecimentoLitros || reserva.litrosAbastecidos}L (R$ {reserva.abastecimentoValorTotal || (Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) * 9)})</span>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
+                      <div className="flex items-center gap-2 text-xs text-amber-950 font-bold">
+                        <Droplets className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
+                        <span>{reserva.abastecimentoLitros || reserva.litrosAbastecidos}L Lançados por {reserva.abastecimentoOperador || reserva.operadorChegada || 'Marinheiro'} (Pendente Cobrança)</span>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }} 
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-black text-[11px] uppercase tracking-wider rounded-lg shrink-0 shadow-sm transition-all cursor-pointer"
+                      >
+                        Cobrar
+                      </button>
+                    </div>
+                  )
+                )}
+
                 {filterType === 'retornaram' && reserva.status !== 'cancelado' && (reserva.horaChegada || reserva.statusMarina === 'chegada') && !reserva.horaSubida && (
                   <div className="flex gap-2">
                     <button 
@@ -1375,6 +1385,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             operadorNome={operadorNome}
             showToast={showToast}
           />
+        )}
+
+        {activeTab === 'embarcacoes' && (
+          <div className="max-w-7xl mx-auto">
+            <BoatPage />
+          </div>
         )}
         </main>
       </div>
@@ -1542,6 +1558,16 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   );
                 })}
               </div>
+            </div>
+
+            <div className="px-5 pb-2">
+              <label className="text-xs font-bold text-slate-700 block mb-1">Detalhes / Observações</label>
+              <textarea
+                value={checklistObservacoes}
+                onChange={(e) => setChecklistObservacoes(e.target.value)}
+                placeholder="Alguma avaria, item faltando, ou observação importante?"
+                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none min-h-[80px]"
+              />
             </div>
 
             <div className="p-5 pt-2 border-t border-slate-100 shrink-0 space-y-3 mt-auto">

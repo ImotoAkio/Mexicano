@@ -82,55 +82,32 @@ export default function ScheduleCard({
   let statusClasses = 'bg-slate-50 text-slate-700 border-slate-200';
   let dotClasses = 'bg-slate-400';
 
+  const isGuardado = res.statusMarina === 'guardada' || res.statusOperacional === 'guardado' || !!res.horaSubida;
+  const isChegada = res.statusMarina === 'chegada' || res.statusOperacional === 'retornou' || (!!res.horaChegada && !isGuardado);
+  const isNavegando = res.statusMarina === 'saida' || res.statusOperacional === 'navegando' || (!!res.horaSaida && !isChegada && !isGuardado);
+  const isNaAgua = res.statusMarina === 'pronta' || res.statusMarina === 'descida' || res.statusMarina === 'pier' || res.statusOperacional === 'pronto_na_agua' || (!!res.horaDescida && !isNavegando && !isChegada && !isGuardado);
+
   if (isCanceled) {
     currentStatus = 'Cancelado';
     statusClasses = 'bg-rose-50 text-rose-700 border-rose-200';
     dotClasses = 'bg-rose-500';
-  } else if (res.statusMarina) {
-    switch (res.statusMarina) {
-      case 'agendado':
-        if (isConfirmed) {
-          currentStatus = 'Confirmado';
-          statusClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs font-extrabold';
-          dotClasses = 'bg-emerald-500';
-        } else {
-          currentStatus = 'Agendado';
-          statusClasses = 'bg-slate-50 text-slate-700 border-slate-200';
-          dotClasses = 'bg-slate-400';
-        }
-        break;
-      case 'descida':
-        currentStatus = 'Em Descida';
-        statusClasses = 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs font-extrabold';
-        dotClasses = 'bg-blue-500';
-        break;
-      case 'pier':
-        currentStatus = 'No Pier';
-        statusClasses = 'bg-indigo-50 text-indigo-700 border-indigo-200 shadow-2xs font-extrabold';
-        dotClasses = 'bg-indigo-500';
-        break;
-      case 'saida':
-        currentStatus = 'Navegando';
-        statusClasses = 'bg-amber-50 text-amber-700 border-amber-200 shadow-2xs font-extrabold';
-        dotClasses = 'bg-amber-500';
-        break;
-      case 'chegada':
-        currentStatus = 'Chegou';
-        statusClasses = 'bg-teal-50 text-teal-700 border-teal-200 shadow-2xs font-extrabold';
-        dotClasses = 'bg-teal-500';
-        break;
-      case 'guardada':
-        currentStatus = 'Guardada';
-        statusClasses = 'bg-green-50 text-green-800 border-green-300 shadow-2xs font-extrabold';
-        dotClasses = 'bg-green-600';
-        break;
-      default:
-        currentStatus = 'Confirmado';
-        statusClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs font-extrabold';
-        dotClasses = 'bg-emerald-500';
-        break;
-    }
-  } else if (isConfirmed) {
+  } else if (isGuardado) {
+    currentStatus = 'Guardada';
+    statusClasses = 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs font-extrabold';
+    dotClasses = 'bg-emerald-600';
+  } else if (isChegada) {
+    currentStatus = 'Chegou Píer';
+    statusClasses = 'bg-teal-50 text-teal-700 border-teal-200 shadow-2xs font-extrabold';
+    dotClasses = 'bg-teal-500';
+  } else if (isNavegando) {
+    currentStatus = 'Navegando';
+    statusClasses = 'bg-amber-50 text-amber-700 border-amber-200 shadow-2xs font-extrabold';
+    dotClasses = 'bg-amber-500';
+  } else if (isNaAgua) {
+    currentStatus = 'Na Água';
+    statusClasses = 'bg-cyan-50 text-cyan-700 border-cyan-200 shadow-2xs font-extrabold';
+    dotClasses = 'bg-cyan-500';
+  } else if (isConfirmed || res.statusMarina === 'confirmada') {
     currentStatus = 'Confirmado';
     statusClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs font-extrabold';
     dotClasses = 'bg-emerald-500';

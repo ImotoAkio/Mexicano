@@ -338,6 +338,14 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN fotosChecklistSubida TEXT;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN abastecimentoLitros VARCHAR(50);`);
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN abastecimentoStatusCobranca VARCHAR(50);`);
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN abastecimentoFormaPagamento VARCHAR(50);`);
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN abastecimentoValorTotal DECIMAL(10, 2);`);
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN abastecimentoComprovanteUrl TEXT;`);
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN abastecimentoOperador VARCHAR(100);`);
+    } catch (e) {}
 
     // 4. ControlesSom Table
     await connection.query(`
@@ -434,6 +442,14 @@ export async function initializeDatabase() {
 
     try {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN asaasPaymentUrl VARCHAR(255) NULL;`);
+    } catch (e) {}
+
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN reservaId VARCHAR(50) NULL;`);
+    } catch (e) {}
+
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN metodoPagamento VARCHAR(50) NULL;`);
     } catch (e) {}
 
     // 9. AtividadesFinanceiras Table (Kanban)
@@ -845,9 +861,11 @@ export async function pullDatabase(forceFresh = false) {
     let fotosChecklistSaida = [];
     let fotosChecklistChegada = [];
     let fotosChecklistDescida = [];
+    let fotosChecklistSubida = [];
     try { if (r.fotosChecklistSaida) fotosChecklistSaida = JSON.parse(r.fotosChecklistSaida); } catch(e){}
     try { if (r.fotosChecklistChegada) fotosChecklistChegada = JSON.parse(r.fotosChecklistChegada); } catch(e){}
     try { if (r.fotosChecklistDescida) fotosChecklistDescida = JSON.parse(r.fotosChecklistDescida); } catch(e){}
+    try { if (r.fotosChecklistSubida) fotosChecklistSubida = JSON.parse(r.fotosChecklistSubida); } catch(e){}
     
     return {
       ...r,
@@ -859,6 +877,7 @@ export async function pullDatabase(forceFresh = false) {
       fotosChecklistSaida,
       fotosChecklistChegada,
       fotosChecklistDescida,
+      fotosChecklistSubida,
     };
   });
 
@@ -1086,8 +1105,9 @@ export async function upsertReservation(reserva: any) {
     INSERT INTO Reservas (
       id, embarcacaoId, clienteId, data, periodo, observacoes, googleEventId, status, createdAt,
       somRetirado, somTesteSaida, somTesteRetorno, horaSaida, horaChegada, fotosChecklistSaida, fotosChecklistChegada,
-      previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada, litrosAbastecidos, horaSubida, operadorSubida, fotosChecklistSubida
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada, litrosAbastecidos, horaSubida, operadorSubida, fotosChecklistSubida,
+      abastecimentoLitros, abastecimentoStatusCobranca, abastecimentoFormaPagamento, abastecimentoValorTotal, abastecimentoComprovanteUrl, abastecimentoOperador
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       embarcacaoId = VALUES(embarcacaoId),
       clienteId = VALUES(clienteId),
@@ -1117,7 +1137,13 @@ export async function upsertReservation(reserva: any) {
       litrosAbastecidos = VALUES(litrosAbastecidos),
       horaSubida = VALUES(horaSubida),
       operadorSubida = VALUES(operadorSubida),
-      fotosChecklistSubida = VALUES(fotosChecklistSubida)
+      fotosChecklistSubida = VALUES(fotosChecklistSubida),
+      abastecimentoLitros = VALUES(abastecimentoLitros),
+      abastecimentoStatusCobranca = VALUES(abastecimentoStatusCobranca),
+      abastecimentoFormaPagamento = VALUES(abastecimentoFormaPagamento),
+      abastecimentoValorTotal = VALUES(abastecimentoValorTotal),
+      abastecimentoComprovanteUrl = VALUES(abastecimentoComprovanteUrl),
+      abastecimentoOperador = VALUES(abastecimentoOperador)
   `;
 
   const values = [
@@ -1151,7 +1177,13 @@ export async function upsertReservation(reserva: any) {
     reserva.litrosAbastecidos || null,
     reserva.horaSubida || null,
     reserva.operadorSubida || null,
-    fotosChecklistSubidaStr
+    fotosChecklistSubidaStr,
+    reserva.abastecimentoLitros || reserva.litrosAbastecidos || null,
+    reserva.abastecimentoStatusCobranca || null,
+    reserva.abastecimentoFormaPagamento || null,
+    reserva.abastecimentoValorTotal || null,
+    reserva.abastecimentoComprovanteUrl || null,
+    reserva.abastecimentoOperador || reserva.operadorChegada || null
   ];
 
   await currentPool.query(query, values);
@@ -1552,19 +1584,20 @@ export async function upsertTransacao(t: any) {
   }
 
   await currentPool.query(
-    `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl, reservaId, metodoPagamento)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        tipo=VALUES(tipo), categoria=VALUES(categoria), valor=VALUES(valor),
        dataVencimento=VALUES(dataVencimento), dataPagamento=VALUES(dataPagamento),
        status=VALUES(status), descricao=VALUES(descricao),
        clienteId=VALUES(clienteId), embarcacaoId=VALUES(embarcacaoId),
        comprovante=VALUES(comprovante),
-       asaasPaymentId=VALUES(asaasPaymentId), asaasPaymentUrl=VALUES(asaasPaymentUrl)`,
+       asaasPaymentId=VALUES(asaasPaymentId), asaasPaymentUrl=VALUES(asaasPaymentUrl),
+       reservaId=VALUES(reservaId), metodoPagamento=VALUES(metodoPagamento)`,
     [
       t.id, t.tipo, t.categoria, t.valor, t.dataVencimento, t.dataPagamento || null,
-      t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || null, t.createdAt,
-      t.asaasPaymentId || null, t.asaasPaymentUrl || null
+      t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || t.comprovanteUrl || null, t.createdAt,
+      t.asaasPaymentId || null, t.asaasPaymentUrl || null, t.reservaId || null, t.metodoPagamento || null
     ]
   );
 

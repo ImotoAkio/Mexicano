@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Droplets, FileText, Search, Calendar, ChevronLeft, ChevronRight, 
-  TrendingUp, Download, Edit2, Trash2, CheckCircle2, Clock, Upload, Loader2, Info 
+  TrendingUp, Download, Edit2, Trash2, CheckCircle2, Clock, Upload, Loader2, Info, User as UserIcon, Building2 
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
@@ -48,7 +48,8 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
 
   // Process data for KPIs and Charts
   const fuelTransactions = useMemo(() => {
-    const trx = (data?.transacoes || []).filter(t => {
+    // 1. Direct financial transactions
+    const directTrx = (data?.transacoes || []).filter(t => {
       const isFuelCategory = 
         t.categoria === 'receita_combustivel' || 
         t.categoria === 'Combustível' || 
@@ -64,9 +65,55 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
       
       return true;
     });
-    
-    // Apply additional filters
-    return trx.filter(t => {
+
+    // 2. Reservation fuel entries
+    const reservationTrx = (data?.reservations || [])
+      .filter((r: any) => {
+        const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
+        if (litros <= 0) return false;
+        const rDate = r.data || r.abastecimentoDataHora?.split('T')[0] || r.horaChegada;
+        if (!rDate) return false;
+        if (rDate < startDate || rDate > endDate) return false;
+        return true;
+      })
+      .map((r: any) => {
+        const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
+        const isCobrado = r.abastecimentoStatusCobranca === 'cobrado';
+        const valorTotal = r.abastecimentoValorTotal || (litros * 9);
+        return {
+          id: `res_fuel_${r.id}`,
+          reservaId: r.id,
+          tipo: 'receita',
+          categoria: 'receita_combustivel',
+          descricao: `Abastecimento Marina (Píer): ${litros}L`,
+          valor: valorTotal,
+          status: isCobrado ? 'pago' : 'pendente',
+          metodoPagamento: r.abastecimentoFormaPagamento || 'Pendente',
+          data: r.data || startDate,
+          clienteId: r.clienteId,
+          embarcacaoId: r.embarcacaoId,
+          comprovanteUrl: r.abastecimentoComprovanteUrl,
+          operador: r.abastecimentoOperador || r.operadorChegada || 'Marinheiro',
+          isFromReservation: true,
+          reservationRef: r
+        };
+      });
+
+    // 3. Deduplicate
+    const combined = [
+      ...directTrx,
+      ...reservationTrx.filter(rf => {
+        const isAlreadySaved = directTrx.some(dt => {
+          if (dt.reservaId && dt.reservaId === rf.reservaId) return true;
+          const dtDate = dt.data || dt.dataVencimento || dt.dataPagamento || dt.createdAt?.split('T')[0];
+          return dt.embarcacaoId === rf.embarcacaoId && dtDate === rf.data;
+        });
+        return !isAlreadySaved;
+      })
+    ];
+
+    // 4. Apply additional filters
+    return combined.filter(t => {
       const boat = data?.boats?.find(b => b.id === t.embarcacaoId);
       const client = data?.clients?.find(c => c.id === t.clienteId);
       
@@ -77,12 +124,13 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
         
       if (searchTerm && !matchesSearch) return false;
       
-      const isPix = t.descricao?.toLowerCase().includes('pix') || t.descricao?.toLowerCase().includes('dinheiro');
-      const isCredit = t.descricao?.toLowerCase().includes('cart');
+      const isPix = t.metodoPagamento === 'pix' || t.descricao?.toLowerCase().includes('pix') || t.descricao?.toLowerCase().includes('dinheiro');
+      const isCredit = t.metodoPagamento === 'credit' || t.descricao?.toLowerCase().includes('cart');
+      const isAdmin = t.metodoPagamento === 'admin' || t.descricao?.toLowerCase().includes('admin') || t.descricao?.toLowerCase().includes('faturado');
       
       if (paymentFilter === 'pix' && !isPix) return false;
       if (paymentFilter === 'credit' && !isCredit) return false;
-      if (paymentFilter === 'admin' && (isPix || isCredit)) return false;
+      if (paymentFilter === 'admin' && !isAdmin) return false;
       
       return true;
     }).sort((a, b) => {
@@ -149,6 +197,77 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
     
     setComprovanteUrl(t.comprovanteUrl || null);
     setIsFuelModalOpen(true);
+  };
+
+  const handleSendToAdmin = async (t: any) => {
+    const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+
+    if (litrosNum <= 0) return alert('Quantidade de litros inválida.');
+
+    const pricePerLiter = 13.0;
+    const totalValue = litrosNum * pricePerLiter;
+    const boat = data?.boats?.find(b => b.id === t.embarcacaoId);
+    const boatName = boat?.nome || 'Embarcação';
+    const dateStr = t.data || t.dataVencimento || endDate;
+
+    if (!window.confirm(`Confirmar envio de ${litrosNum}L (${boatName}) para a Administradora a R$ 13,00/L?\nValor Total: R$ ${totalValue.toFixed(2)}`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    const transacao = {
+      id: t.isFromReservation ? `trx_fuel_${Date.now()}` : t.id,
+      reservaId: t.reservaId || t.reservationRef?.id || null,
+      tipo: 'receita',
+      categoria: 'Combustível',
+      valor: totalValue,
+      data: dateStr,
+      dataVencimento: dateStr,
+      dataPagamento: null,
+      status: 'pendente',
+      metodoPagamento: 'admin',
+      descricao: `Abastecimento Faturado Administradora: ${litrosNum}L a R$13,00/L`,
+      clienteId: t.clienteId,
+      embarcacaoId: t.embarcacaoId,
+      operador: t.operador || 'Admin',
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({ action: 'upsert', data: transacao })
+      });
+
+      if (t.reservationRef) {
+        const updatedReserva = {
+          ...t.reservationRef,
+          abastecimentoStatusCobranca: 'cobrado',
+          abastecimentoFormaPagamento: 'admin',
+          abastecimentoValorTotal: totalValue
+        };
+        await fetch('/api/db/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          },
+          body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+        });
+      }
+
+      alert('Abastecimento enviado para a Administradora com sucesso!');
+      if (reloadData) reloadData();
+    } catch (err: any) {
+      alert('Erro ao enviar abastecimento para a administradora.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteFuel = async (id: string) => {
@@ -442,6 +561,10 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                           <div className="flex flex-col">
                             <span className="font-bold text-slate-900">{boat?.nome || 'N/A'} {boat?.numero ? `#${boat.numero}` : ''}</span>
                             <span className="text-xs text-slate-500 truncate max-w-[200px]">{client?.nome || 'N/A'}</span>
+                            <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
+                              <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Lançado por: <strong className="text-slate-600 font-semibold">{t.operador || 'Marinheiro'}</strong></span>
+                            </span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -452,7 +575,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                         </td>
                         <td className="px-4 py-3 text-center whitespace-nowrap">
                           <span className="text-xs font-bold text-slate-600 bg-white px-2 py-1 rounded-md border border-slate-200">
-                            {isPix ? 'PIX' : isCredit ? 'Cartão' : 'Faturado'}
+                            {t.metodoPagamento === 'admin' ? 'Faturado / Admin' : isPix ? 'PIX / Dinheiro' : isCredit ? 'Cartão' : 'Faturado'}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-center whitespace-nowrap">

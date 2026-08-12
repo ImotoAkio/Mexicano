@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Upload, Ship } from 'lucide-react';
+import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2 } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
 import { logAction } from '../db';
 
@@ -17,16 +17,28 @@ interface MarinaFuelViewProps {
 }
 
 export default function MarinaFuelView({ data, operadorNome, setData, reloadData, isAdmin }: MarinaFuelViewProps) {
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
+  const getTodayStr = () => {
     const date = new Date();
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const dd = String(date.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
-  });
+  };
+
+  // Period & Filter State
+  const [periodPreset, setPeriodPreset] = useState<'today' | 'yesterday' | '7days' | '30days' | 'this_month' | 'last_month' | 'all' | 'custom'>('today');
+  const [startDate, setStartDate] = useState<string>(getTodayStr());
+  const [endDate, setEndDate] = useState<string>(getTodayStr());
+
+  const [boatFilter, setBoatFilter] = useState<string>('all');
+  const [clientFilter, setClientFilter] = useState<string>('all');
+  const [paymentFilter, setPaymentFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pago' | 'pendente'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
   const [modalComprovante, setModalComprovante] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // New Fuel Modal state
   const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
@@ -37,76 +49,310 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
   const [isUploadingComprovante, setIsUploadingComprovante] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
 
-  // Search Modals state
-  const [isBoatSelectOpen, setIsBoatSelectOpen] = useState(false);
-  const [boatSearch, setBoatSearch] = useState('');
-  const [isClientSelectOpen, setIsClientSelectOpen] = useState(false);
-  const [clientSearch, setClientSearch] = useState('');
+  // Charge Item Modal state
+  const [chargeTargetItem, setChargeTargetItem] = useState<any | null>(null);
+  const [chargePaymentType, setChargePaymentType] = useState<'pix' | 'credit' | 'admin'>('pix');
+  const [chargeComprovanteUrl, setChargeComprovanteUrl] = useState<string | null>(null);
+  const [isUploadingChargeComprovante, setIsUploadingChargeComprovante] = useState(false);
 
-  const handlePrevDay = () => {
-    const d = new Date(selectedDate + 'T12:00:00');
-    d.setDate(d.getDate() - 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+  // Edit Fuel Modal state
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [editBoatId, setEditBoatId] = useState('');
+  const [editClientId, setEditClientId] = useState('');
+  const [editLiters, setEditLiters] = useState('');
+  const [editPaymentType, setEditPaymentType] = useState<'pix' | 'credit' | 'admin'>('pix');
+  const [editStatus, setEditStatus] = useState<'pago' | 'pendente'>('pago');
+  const [editDate, setEditDate] = useState('');
+
+  // Dropdown action menu per row
+  const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [activeActionTargetItem, setActiveActionTargetItem] = useState<any | null>(null);
+
+  const handleToggleActionMenu = (e: React.MouseEvent, item: any) => {
+    e.stopPropagation();
+    if (activeActionMenuId === item.id) {
+      setActiveActionMenuId(null);
+      setMenuPosition(null);
+      setActiveActionTargetItem(null);
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const menuWidth = 176;
+      const menuHeight = item.comprovanteUrl ? 130 : 90;
+      
+      let top = rect.bottom + 4;
+      if (top + menuHeight > window.innerHeight) {
+        top = rect.top - menuHeight - 4;
+      }
+      
+      let left = rect.right - menuWidth;
+      if (left < 10) left = 10;
+
+      setMenuPosition({ top, left });
+      setActiveActionMenuId(item.id);
+      setActiveActionTargetItem(item);
+    }
   };
 
-  const handleNextDay = () => {
-    const d = new Date(selectedDate + 'T12:00:00');
-    d.setDate(d.getDate() + 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+  const handleSelectPeriodPreset = (preset: 'today' | 'yesterday' | '7days' | '30days' | 'this_month' | 'last_month' | 'all' | 'custom') => {
+    setPeriodPreset(preset);
+    const today = new Date();
+    const todayStr = getTodayStr();
+
+    if (preset === 'today') {
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const y = new Date(today);
+      y.setDate(y.getDate() - 1);
+      const yyyy = y.getFullYear();
+      const mm = String(y.getMonth() + 1).padStart(2, '0');
+      const dd = String(y.getDate()).padStart(2, '0');
+      setStartDate(`${yyyy}-${mm}-${dd}`);
+      setEndDate(`${yyyy}-${mm}-${dd}`);
+    } else if (preset === '7days') {
+      const d7 = new Date(today);
+      d7.setDate(d7.getDate() - 6);
+      const yyyy = d7.getFullYear();
+      const mm = String(d7.getMonth() + 1).padStart(2, '0');
+      const dd = String(d7.getDate()).padStart(2, '0');
+      setStartDate(`${yyyy}-${mm}-${dd}`);
+      setEndDate(todayStr);
+    } else if (preset === '30days') {
+      const d30 = new Date(today);
+      d30.setDate(d30.getDate() - 29);
+      const yyyy = d30.getFullYear();
+      const mm = String(d30.getMonth() + 1).padStart(2, '0');
+      const dd = String(d30.getDate()).padStart(2, '0');
+      setStartDate(`${yyyy}-${mm}-${dd}`);
+      setEndDate(todayStr);
+    } else if (preset === 'this_month') {
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      setStartDate(`${yyyy}-${mm}-01`);
+      setEndDate(todayStr);
+    } else if (preset === 'last_month') {
+      const lm = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const yyyy = lm.getFullYear();
+      const mm = String(lm.getMonth() + 1).padStart(2, '0');
+      const lastDay = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+      const lastDayStr = String(lastDay).padStart(2, '0');
+      setStartDate(`${yyyy}-${mm}-01`);
+      setEndDate(`${yyyy}-${mm}-${lastDayStr}`);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
   };
 
-  const displayDateStr = new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-
-  const matchDate = (dateVal?: string | null) => {
-    if (!dateVal) return false;
-    return dateVal.startsWith(selectedDate);
+  const getPeriodLabel = () => {
+    if (periodPreset === 'today') return 'Hoje';
+    if (periodPreset === 'yesterday') return 'Ontem';
+    if (periodPreset === '7days') return 'Últimos 7 dias';
+    if (periodPreset === '30days') return 'Últimos 30 dias';
+    if (periodPreset === 'this_month') return 'Este Mês';
+    if (periodPreset === 'last_month') return 'Mês Passado';
+    if (periodPreset === 'all') return 'Todo o Período';
+    if (startDate && endDate) {
+      if (startDate === endDate) {
+        const [y, m, d] = startDate.split('-');
+        return `${d}/${m}/${y}`;
+      }
+      const [y1, m1, d1] = startDate.split('-');
+      const [y2, m2, d2] = endDate.split('-');
+      return `${d1}/${m1} a ${d2}/${m2}/${y2}`;
+    }
+    return 'Personalizado';
   };
 
-  // Filter fuel transactions for the selected day
-  const fuelTransactions = (data?.transacoes || []).filter(t => {
-    const isFuelCategory = 
-      t.categoria === 'receita_combustivel' || 
-      t.categoria === 'Combustível' || 
-      t.categoria === 'combustivel' || 
-      (t.descricao && (t.descricao.toLowerCase().includes('abastecimento') || t.descricao.toLowerCase().includes('litros')));
-    
-    const isMatchingDate = matchDate(t.data) || matchDate(t.dataVencimento) || matchDate(t.dataPagamento) || matchDate(t.createdAt);
-    
-    return isFuelCategory && isMatchingDate;
+  const getDateOnlyStr = (dateVal?: string | null): string | null => {
+    if (!dateVal) return null;
+    const str = String(dateVal).trim();
+    const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : null;
+  };
+
+  const isDateInRange = (dateVal?: string | null, start?: string, end?: string): boolean => {
+    if (!start && !end) return true;
+    const d = getDateOnlyStr(dateVal);
+    if (!d) return false;
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+    return true;
+  };
+
+  const getEmbarcacao = (id: string) => data?.boats?.find(b => b.id === id);
+  const getCliente = (id: string) => data?.clients?.find(c => c.id === id);
+
+  // Filter fuel transactions from financial transactions based on period date range
+  const directTransactions = (data?.transacoes || [])
+    .filter(t => {
+      const isFuelCategory = 
+        t.categoria === 'receita_combustivel' || 
+        t.categoria === 'Combustível' || 
+        t.categoria === 'combustivel' || 
+        (t.descricao && (t.descricao.toLowerCase().includes('abastecimento') || t.descricao.toLowerCase().includes('litros')));
+      
+      if (!isFuelCategory) return false;
+
+      const tDate = t.data || t.dataVencimento || t.dataPagamento || t.createdAt;
+      return isDateInRange(tDate, startDate, endDate);
+    })
+    .map(t => {
+      const descLower = (t.descricao || '').toLowerCase();
+      let pm = t.metodoPagamento;
+      let st = t.status;
+
+      if (!pm || pm === 'Pendente' || pm === 'pendente') {
+        if (descLower.includes('faturado') || descLower.includes('administradora') || descLower.includes('admin')) {
+          pm = 'admin';
+          if (!st || st === 'pendente') st = 'lancado';
+        } else if (descLower.includes('crédito') || descLower.includes('credito') || descLower.includes('credit')) {
+          pm = 'credit';
+          if (!st || st === 'pendente') st = 'pago';
+        } else if (descLower.includes('pix') || descLower.includes('dinheiro') || descLower.includes('débito') || descLower.includes('debito')) {
+          pm = 'pix';
+          if (!st || st === 'pendente') st = 'pago';
+        }
+      }
+
+      return {
+        ...t,
+        metodoPagamento: pm || t.metodoPagamento,
+        status: st || t.status
+      };
+    });
+
+  // Include fuel recorded in reservations for period date range
+  const reservationFuelTransactions = (data?.reservations || [])
+    .filter((r: any) => {
+      const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
+      if (litros <= 0) return false;
+      const rDate = r.data || r.abastecimentoDataHora || r.horaChegada;
+      return isDateInRange(rDate, startDate, endDate);
+    })
+    .map((r: any) => {
+      const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
+      const isCobrado = r.abastecimentoStatusCobranca === 'cobrado';
+      const valorTotal = r.abastecimentoValorTotal || (litros * 9);
+      return {
+        id: `res_fuel_${r.id}`,
+        reservaId: r.id,
+        tipo: 'receita',
+        categoria: 'receita_combustivel',
+        descricao: `Abastecimento Marina (Píer): ${litros}L`,
+        valor: valorTotal,
+        status: isCobrado ? 'pago' : 'pendente',
+        metodoPagamento: r.abastecimentoFormaPagamento || 'Pendente',
+        data: r.data || getTodayStr(),
+        clienteId: r.clienteId,
+        embarcacaoId: r.embarcacaoId,
+        comprovanteUrl: r.abastecimentoComprovanteUrl,
+        operador: r.abastecimentoOperador || r.operadorChegada || 'Marinheiro',
+        isFromReservation: true,
+        reservationRef: r
+      };
+    });
+
+  const allTransactions = [
+    ...directTransactions,
+    ...reservationFuelTransactions.filter(rf => {
+      const isAlreadySaved = directTransactions.some(dt => {
+        if (dt.reservaId && (dt.reservaId === rf.reservaId || dt.reservaId === rf.reservationRef?.id)) return true;
+        if (dt.embarcacaoId === rf.embarcacaoId && dt.data === rf.data && (dt.metodoPagamento === 'admin' || dt.status === 'pago' || dt.status === 'lancado' || (dt.descricao && dt.descricao.toLowerCase().includes('abastecimento')))) return true;
+        return false;
+      });
+      return !isAlreadySaved;
+    })
+  ];
+
+  const fuelTransactions = allTransactions.filter(t => {
+    // Boat filter
+    if (boatFilter !== 'all' && t.embarcacaoId !== boatFilter) {
+      return false;
+    }
+
+    // Client filter
+    if (clientFilter !== 'all' && t.clienteId !== clientFilter) {
+      return false;
+    }
+
+    // Payment method filter
+    if (paymentFilter !== 'all') {
+      const pm = (t.metodoPagamento || '').toLowerCase();
+      if (paymentFilter === 'pix' && !pm.includes('pix') && !pm.includes('dinheiro')) return false;
+      if (paymentFilter === 'credit' && !pm.includes('credit') && !pm.includes('cartao') && !pm.includes('cartão')) return false;
+      if (paymentFilter === 'admin' && !pm.includes('admin') && !pm.includes('faturado')) return false;
+    }
+
+    // Status filter match
+    const isCobradoItem = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
+    if (statusFilter === 'pago' && !isCobradoItem) return false;
+    if (statusFilter === 'pendente' && isCobradoItem) return false;
+
+    // Search query match
+    const term = searchTerm.toLowerCase().trim();
+    if (term) {
+      const boat = getEmbarcacao(t.embarcacaoId);
+      const client = getCliente(t.clienteId);
+      const matchesSearch = (
+        boat?.nome?.toLowerCase().includes(term) ||
+        client?.nome?.toLowerCase().includes(term) ||
+        t.descricao?.toLowerCase().includes(term) ||
+        t.id?.toLowerCase().includes(term)
+      );
+      if (!matchesSearch) return false;
+    }
+
+    return true;
   });
+
+  const activeFilterCount = 
+    (periodPreset !== 'this_month' ? 1 : 0) +
+    (boatFilter !== 'all' ? 1 : 0) +
+    (clientFilter !== 'all' ? 1 : 0) +
+    (paymentFilter !== 'all' ? 1 : 0) +
+    (statusFilter !== 'all' ? 1 : 0) +
+    (searchTerm.trim() !== '' ? 1 : 0);
+
+  const handleResetFilters = () => {
+    handleSelectPeriodPreset('this_month');
+    setBoatFilter('all');
+    setClientFilter('all');
+    setPaymentFilter('all');
+    setStatusFilter('all');
+    setSearchTerm('');
+  };
 
   let totalLiters = 0;
   let totalValue = 0;
+  let totalPendingValue = 0;
 
   fuelTransactions.forEach(t => {
-    totalValue += Number(t.valor || 0);
+    const isCobradoItem = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
+    if (isCobradoItem) {
+      totalValue += Number(t.valor || 0);
+    } else {
+      totalPendingValue += Number(t.valor || 0);
+    }
+    
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
     if (match) {
       totalLiters += parseFloat(match[1].replace(',', '.'));
     }
   });
 
-  const getEmbarcacao = (id: string) => data?.boats?.find(b => b.id === id);
-  const getCliente = (id: string) => data?.clients?.find(c => c.id === id);
-
-  const toggleExpand = (id: string) => {
-    if (expandedId === id) {
-      setExpandedId(null);
+  const toggleSelectAll = () => {
+    if (selectedIds.length === fuelTransactions.length) {
+      setSelectedIds([]);
     } else {
-      setExpandedId(id);
+      setSelectedIds(fuelTransactions.map(t => t.id));
     }
   };
 
-  const handleBoatChange = (boatId: string) => {
-    setSelectedBoatId(boatId);
-    const boat = getEmbarcacao(boatId);
-    if (boat && boat.donos && boat.donos.length > 0) {
-      setSelectedClientId(boat.donos[0]);
-    } else {
-      setSelectedClientId('');
-    }
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
   };
 
   const handleUploadComprovante = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,6 +360,276 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     if (!file) return;
 
     setIsUploadingComprovante(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+        body: formData
+      });
+
+      if (!res.ok) throw new Error('Falha no upload');
+      const dataRes = await res.json();
+      setComprovanteUrl(dataRes.url);
+    } catch (err) {
+      alert('Erro ao enviar comprovante.');
+    } finally {
+      setIsUploadingComprovante(false);
+    }
+  };
+
+  const handleSaveFuelTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBoatId || !liters) {
+      alert('Selecione uma embarcação e informe os litros.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    const litrosNum = parseFloat(liters.replace(',', '.'));
+    let precoPorLitro = 9.0;
+    if (paymentType === 'credit') precoPorLitro = 10.0;
+    const valorTotal = litrosNum * precoPorLitro;
+
+    const boat = getEmbarcacao(selectedBoatId);
+    const clientId = selectedClientId || boat?.donos?.[0] || '';
+
+    const newTransacao = {
+      id: `trans_${Date.now()}`,
+      tipo: 'receita',
+      categoria: 'receita_combustivel',
+      descricao: `Abastecimento Marina: ${litrosNum}L`,
+      valor: valorTotal,
+      status: paymentType === 'admin' ? 'pendente' : 'pago',
+      metodoPagamento: paymentType,
+      data: getTodayStr(),
+      dataPagamento: paymentType === 'admin' ? null : getTodayStr(),
+      clienteId: clientId,
+      embarcacaoId: selectedBoatId,
+      comprovanteUrl,
+      operadorMarina: operadorNome || 'Operador',
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({ action: 'upsert', data: newTransacao })
+      });
+      
+      const { consumeFuelForEmbarcacao } = await import('../utils/fuelInventory');
+      consumeFuelForEmbarcacao(litrosNum, boat?.nome || 'Embarcação', operadorNome || 'Gerente');
+
+      if (setData) {
+        setData((prev: any) => ({
+          ...prev,
+          transacoes: [...(prev.transacoes || []), newTransacao]
+        }));
+      }
+
+      await logAction('Abastecimento Avulso', `Registrou abastecimento de ${litrosNum}L (R$ ${valorTotal}).`, selectedBoatId, operadorNome);
+      setIsFuelModalOpen(false);
+      alert('Abastecimento registrado com sucesso!');
+    } catch (err) {
+      alert('Erro ao salvar abastecimento.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSendToAdmin = async (t: any) => {
+    const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+
+    if (litrosNum <= 0) {
+      alert('Quantidade de litros inválida.');
+      return;
+    }
+
+    const pricePerLiter = 13.0;
+    const totalValue = litrosNum * pricePerLiter;
+    const boat = getEmbarcacao(t.embarcacaoId);
+    const boatName = boat?.nome || 'Embarcação';
+
+    if (!confirm(`Confirmar envio de ${litrosNum}L (${boatName}) para a Administradora a R$ 13,00/L?\nValor Total: R$ ${totalValue.toFixed(2)}`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    const transacao = {
+      id: t.isFromReservation ? `trx_fuel_${Date.now()}` : t.id,
+      reservaId: t.reservaId || t.reservationRef?.id || null,
+      tipo: 'receita',
+      categoria: 'Combustível',
+      valor: totalValue,
+      data: t.data || getTodayStr(),
+      dataVencimento: t.data || getTodayStr(),
+      dataPagamento: null,
+      status: 'pendente',
+      metodoPagamento: 'admin',
+      descricao: `Abastecimento Faturado Administradora: ${litrosNum}L a R$13,00/L`,
+      clienteId: t.clienteId,
+      embarcacaoId: t.embarcacaoId,
+      operador: operadorNome || 'Gerente',
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({ action: 'upsert', data: transacao })
+      });
+
+      if (t.reservationRef) {
+        const updatedReserva = {
+          ...t.reservationRef,
+          abastecimentoStatusCobranca: 'cobrado',
+          abastecimentoFormaPagamento: 'admin',
+          abastecimentoValorTotal: totalValue
+        };
+        await fetch('/api/db/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          },
+          body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+        });
+      }
+
+      await logAction('Abastecimento Administradora', `Enviou ${litrosNum}L de ${boatName} para Administradora (R$ ${totalValue.toFixed(2)})`, t.embarcacaoId, operadorNome);
+      alert('Abastecimento enviado para a Administradora com sucesso!');
+      if (reloadData) reloadData();
+    } catch (err: any) {
+      alert('Erro ao enviar abastecimento para a administradora.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmChargeItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chargeTargetItem) return;
+
+    setIsSubmitting(true);
+    const t = chargeTargetItem;
+    const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+
+    let pricePerLiter = 9.0;
+    let paymentLabel = 'Pix / Dinheiro / Débito';
+    let txStatus = 'pago';
+
+    if (chargePaymentType === 'credit') {
+      pricePerLiter = 10.0;
+      paymentLabel = 'Cartão de Crédito';
+      txStatus = 'pago';
+    } else if (chargePaymentType === 'admin') {
+      pricePerLiter = 13.0;
+      paymentLabel = 'Faturado / Administradora';
+      txStatus = 'lancado';
+    }
+
+    const totalValue = litrosNum * pricePerLiter;
+    const boat = getEmbarcacao(t.embarcacaoId);
+    const boatName = boat?.nome || 'Embarcação';
+
+    const transacao = {
+      id: t.isFromReservation ? `trx_fuel_${Date.now()}` : t.id,
+      reservaId: t.reservaId || t.reservationRef?.id || null,
+      tipo: 'receita',
+      categoria: 'Combustível',
+      valor: totalValue,
+      data: t.data || getTodayStr(),
+      dataVencimento: t.data || getTodayStr(),
+      dataPagamento: txStatus === 'pago' ? (t.data || getTodayStr()) : null,
+      status: txStatus,
+      metodoPagamento: chargePaymentType,
+      descricao: `Abastecimento Marina (${paymentLabel}): ${litrosNum}L a R$${pricePerLiter.toFixed(2)}/L`,
+      clienteId: t.clienteId,
+      embarcacaoId: t.embarcacaoId,
+      operador: operadorNome || 'Gerente',
+      comprovanteUrl: chargeComprovanteUrl || t.comprovanteUrl || null,
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({ action: 'upsert', data: transacao })
+      });
+
+      if (t.reservationRef) {
+        const updatedReserva = {
+          ...t.reservationRef,
+          abastecimentoStatusCobranca: 'cobrado',
+          abastecimentoFormaPagamento: chargePaymentType,
+          abastecimentoValorTotal: totalValue,
+          abastecimentoComprovanteUrl: chargeComprovanteUrl || t.reservationRef.abastecimentoComprovanteUrl
+        };
+        await fetch('/api/db/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          },
+          body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+        });
+      }
+
+      if (setData) {
+        setData((prev: any) => {
+          const currentTxs = prev?.transacoes || [];
+          const updatedTxs = [transacao, ...currentTxs.filter((x: any) => x.id !== transacao.id)];
+          const currentRes = prev?.reservations || [];
+          const updatedRes = t.reservationRef 
+            ? currentRes.map((r: any) => r.id === t.reservationRef.id ? { 
+                ...r, 
+                abastecimentoStatusCobranca: 'cobrado', 
+                abastecimentoFormaPagamento: chargePaymentType, 
+                abastecimentoValorTotal: totalValue,
+                abastecimentoComprovanteUrl: chargeComprovanteUrl || t.reservationRef.abastecimentoComprovanteUrl
+              } : r)
+            : currentRes;
+          return {
+            ...prev,
+            transacoes: updatedTxs,
+            reservations: updatedRes
+          };
+        });
+      }
+
+      await logAction('Cobrança Combustível', `Registrou cobrança de ${litrosNum}L de ${boatName} via ${paymentLabel} (R$ ${totalValue.toFixed(2)})`, t.embarcacaoId, operadorNome);
+      setChargeTargetItem(null);
+      alert('Cobrança realizada com sucesso!');
+      if (reloadData) reloadData();
+    } catch (err: any) {
+      alert('Erro ao salvar cobrança.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUploadChargeComprovante = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingChargeComprovante(true);
     const formData = new FormData();
     formData.append('comprovante', file);
 
@@ -125,688 +641,1314 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       });
 
       const json = await res.json();
-      if (!json.success) throw new Error(json.message);
-
-      setComprovanteUrl(json.url);
-    } catch (err) {
-      alert('Erro ao fazer upload do comprovante.');
-    } finally {
-      setIsUploadingComprovante(false);
-    }
-  };
-
-  const handleEditFuel = (t: any) => {
-    setEditingTransactionId(t.id);
-    setSelectedBoatId(t.embarcacaoId || '');
-    setSelectedClientId(t.clienteId || '');
-    
-    const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-    setLiters(match ? match[1].replace(',', '.') : '');
-    
-    if (t.descricao?.toLowerCase().includes('cart')) {
-      setPaymentType('credit');
-    } else if (t.status === 'pendente' || t.descricao?.toLowerCase().includes('cobrar') || t.descricao?.toLowerCase().includes('pós-pago')) {
-      setPaymentType('admin');
-    } else {
-      setPaymentType('pix');
-    }
-    
-    setComprovanteUrl(t.comprovanteUrl || null);
-    setIsFuelModalOpen(true);
-  };
-
-  const handleDeleteFuel = async (id: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir este lançamento de abastecimento?')) return;
-    
-    try {
-      const res = await fetch(`/api/financeiro/transacoes/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        }
-      });
-      
-      const json = await res.json();
-      if (!json.success) throw new Error(json.message);
-      
-      if (setData) {
-        setData((prev: any) => ({
-          ...prev,
-          transacoes: (prev?.transacoes || []).filter((t: any) => t.id !== id)
-        }));
+      const imgUrl = json.url || json.imageUrl;
+      if (imgUrl) {
+        setChargeComprovanteUrl(imgUrl);
+      } else {
+        alert('Erro ao processar arquivo.');
       }
-      
-      if (reloadData) reloadData();
-      alert('Registro excluído com sucesso.');
-    } catch (err: any) {
-      alert(err.message || 'Erro ao excluir registro.');
+    } catch (err) {
+      alert('Erro ao enviar comprovante.');
+    } finally {
+      setIsUploadingChargeComprovante(false);
     }
   };
 
-  const handleSaveFuelTransaction = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedBoatId) {
-      alert('Selecione uma embarcação.');
-      return;
-    }
-    if (!selectedClientId) {
-      alert('Selecione um cliente/proprietário.');
-      return;
-    }
-    if (!liters || Number(liters) <= 0) {
-      alert('Informe os litros corretamente.');
-      return;
-    }
-    if ((paymentType === 'pix' || paymentType === 'credit') && !comprovanteUrl) {
-      alert('É obrigatório enviar o comprovante para pagamentos no Pix ou Cartão.');
+  const handleDeleteFuel = async (t: any) => {
+    const boat = getEmbarcacao(t.embarcacaoId);
+    const boatName = boat?.nome || 'Embarcação';
+
+    if (!window.confirm(`Tem certeza que deseja excluir o lançamento de abastecimento de ${boatName}?`)) {
       return;
     }
 
     setIsSubmitting(true);
-    const litersNum = Number(liters);
-    let pricePerLiter = 9;
-    let paymentStatus = 'pago';
-    let paymentLabel = 'Pix/Dinheiro';
-
-    if (paymentType === 'credit') {
-      pricePerLiter = 10;
-      paymentLabel = 'Cartão de Crédito';
-    } else if (paymentType === 'admin') {
-      pricePerLiter = 13;
-      paymentStatus = 'pendente';
-      paymentLabel = 'Pós-pago (Cobrar Cliente)';
-    }
-
-    const calculatedValue = litersNum * pricePerLiter;
-    
-    const existingTransaction = editingTransactionId 
-      ? data?.transacoes?.find(t => t.id === editingTransactionId) 
-      : null;
-
-    const transacao = {
-      id: editingTransactionId || `trx_fuel_${Date.now()}`,
-      tipo: existingTransaction?.tipo || 'receita',
-      categoria: existingTransaction?.categoria || 'Combustível',
-      valor: calculatedValue,
-      dataVencimento: existingTransaction?.dataVencimento || selectedDate,
-      dataPagamento: paymentStatus === 'pago' ? (existingTransaction?.dataPagamento || selectedDate) : null,
-      status: paymentStatus,
-      descricao: `Abastecimento: ${litersNum}L a R$${pricePerLiter}/L. Pagamento: ${paymentLabel}`,
-      clienteId: selectedClientId,
-      embarcacaoId: selectedBoatId,
-      operador: operadorNome || 'Operador Marina',
-      comprovante: comprovanteUrl || null,
-      comprovanteUrl: comprovanteUrl || null,
-      createdAt: new Date().toISOString()
-    };
-
     try {
-      const res = await fetch('/api/financeiro/transacoes/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({ action: 'upsert', data: transacao })
-      });
+      if (t.id && !t.id.startsWith('res_fuel_')) {
+        await fetch('/api/financeiro/transacoes/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          },
+          body: JSON.stringify({ action: 'delete', data: t.id })
+        });
+      }
 
-      const json = await res.json();
-      if (!json.success) throw new Error(json.message || 'Erro ao salvar abastecimento.');
+      if (t.reservationRef) {
+        const updatedReserva = {
+          ...t.reservationRef,
+          abastecimentoLitros: 0,
+          litrosAbastecidos: 0,
+          abastecimentoStatusCobranca: null,
+          abastecimentoValorTotal: 0
+        };
+        await fetch('/api/db/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          },
+          body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+        });
+      }
 
       if (setData) {
         setData((prev: any) => ({
           ...prev,
-          transacoes: [transacao, ...(prev?.transacoes || []).filter((t: any) => t.id !== transacao.id)]
+          transacoes: (prev?.transacoes || []).filter((item: any) => item.id !== t.id),
+          reservations: (prev?.reservations || []).map((r: any) => {
+            if (r.id === t.reservaId || r.id === t.reservationRef?.id) {
+              return {
+                ...r,
+                abastecimentoLitros: 0,
+                litrosAbastecidos: 0,
+                abastecimentoStatusCobranca: null,
+                abastecimentoValorTotal: 0
+              };
+            }
+            return r;
+          })
         }));
       }
 
-      await logAction('Abastecimento', `Abasteceu ${litersNum}L. Valor: R$${calculatedValue.toFixed(2)}. Pgto: ${paymentLabel}`, selectedBoatId, operadorNome);
-
-      if (reloadData) {
-        reloadData();
-      }
-
-      setIsFuelModalOpen(false);
-      setEditingTransactionId(null);
-      setSelectedBoatId('');
-      setSelectedClientId('');
-      setLiters('');
-      setPaymentType('pix');
-      setComprovanteUrl(null);
-      alert(editingTransactionId ? 'Abastecimento atualizado com sucesso!' : 'Abastecimento lançado com sucesso!');
+      await logAction('Exclusão de Abastecimento', `Excluiu lançamento de abastecimento (${boatName})`, t.embarcacaoId, operadorNome);
+      alert('Registro excluído com sucesso!');
+      if (reloadData) reloadData();
     } catch (err: any) {
-      alert(err.message || 'Erro ao salvar abastecimento.');
+      alert(err.message || 'Erro ao excluir registro.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const selectedBoat = getEmbarcacao(selectedBoatId);
-  const possibleClients = selectedBoat?.donos
-    ? (data?.clients || []).filter(c => selectedBoat.donos.includes(c.id))
-    : (data?.clients || []);
+  const handleBulkDeleteFuel = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Tem certeza que deseja excluir os ${selectedIds.length} lançamentos selecionados?`)) return;
+
+    setIsSubmitting(true);
+    try {
+      for (const id of selectedIds) {
+        const target = fuelTransactions.find(t => t.id === id);
+        if (target) {
+          if (target.id && !target.id.startsWith('res_fuel_')) {
+            await fetch('/api/financeiro/transacoes/save', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+              },
+              body: JSON.stringify({ action: 'delete', data: target.id })
+            });
+          }
+          if (target.reservationRef) {
+            const updatedReserva = {
+              ...target.reservationRef,
+              abastecimentoLitros: 0,
+              litrosAbastecidos: 0,
+              abastecimentoStatusCobranca: null,
+              abastecimentoValorTotal: 0
+            };
+            await fetch('/api/db/save', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+              },
+              body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+            });
+          }
+        }
+      }
+
+      setSelectedIds([]);
+      if (reloadData) reloadData();
+      alert('Registros selecionados excluídos com sucesso!');
+    } catch (err: any) {
+      alert('Erro ao excluir lançamentos selecionados.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenEditModal = (t: any) => {
+    setEditingItem(t);
+    setEditBoatId(t.embarcacaoId || '');
+    setEditClientId(t.clienteId || '');
+    
+    const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+    const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+    setEditLiters(String(litersVal || ''));
+    
+    setEditPaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+    setEditStatus(t.status === 'pago' ? 'pago' : 'pendente');
+    setEditDate(t.data || getTodayStr());
+  };
+
+  const handleSaveEditItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem || !editBoatId || !editLiters) {
+      alert('Informe a embarcação e a quantidade de litros.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const litrosNum = parseFloat(editLiters.replace(',', '.'));
+    let pricePerLiter = 9.0;
+    let paymentLabel = 'Pix / Dinheiro';
+    if (editPaymentType === 'credit') {
+      pricePerLiter = 10.0;
+      paymentLabel = 'Cartão de Crédito';
+    } else if (editPaymentType === 'admin') {
+      pricePerLiter = 13.0;
+      paymentLabel = 'Faturado / Administradora';
+    }
+
+    const valorTotal = litrosNum * pricePerLiter;
+    const boat = getEmbarcacao(editBoatId);
+    const boatName = boat?.nome || 'Embarcação';
+
+    const updatedTrans = {
+      id: editingItem.isFromReservation ? `trx_fuel_${Date.now()}` : editingItem.id,
+      reservaId: editingItem.reservaId || editingItem.reservationRef?.id || null,
+      tipo: 'receita',
+      categoria: 'Combustível',
+      valor: valorTotal,
+      data: editDate,
+      dataVencimento: editDate,
+      dataPagamento: editStatus === 'pago' ? editDate : null,
+      status: editStatus,
+      metodoPagamento: editPaymentType,
+      descricao: `Abastecimento Marina (${paymentLabel}): ${litrosNum}L a R$${pricePerLiter.toFixed(2)}/L`,
+      clienteId: editClientId || boat?.donos?.[0] || '',
+      embarcacaoId: editBoatId,
+      operador: editingItem.operador || operadorNome || 'Gerente',
+      comprovanteUrl: editingItem.comprovanteUrl || null,
+      createdAt: editingItem.createdAt || new Date().toISOString()
+    };
+
+    try {
+      await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({ action: 'upsert', data: updatedTrans })
+      });
+
+      if (editingItem.reservationRef) {
+        const updatedReserva = {
+          ...editingItem.reservationRef,
+          abastecimentoLitros: litrosNum,
+          litrosAbastecidos: litrosNum,
+          abastecimentoStatusCobranca: editStatus === 'pago' ? 'cobrado' : 'pendente',
+          abastecimentoFormaPagamento: editPaymentType,
+          abastecimentoValorTotal: valorTotal
+        };
+        await fetch('/api/db/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          },
+          body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+        });
+      }
+
+      await logAction('Edição de Abastecimento', `Atualizou abastecimento de ${boatName} (${litrosNum}L - R$ ${valorTotal.toFixed(2)})`, editBoatId, operadorNome);
+      setEditingItem(null);
+      alert('Lançamento atualizado com sucesso!');
+      if (reloadData) reloadData();
+    } catch (err: any) {
+      alert('Erro ao atualizar lançamento.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const itemsToExport = selectedIds.length > 0 
+      ? fuelTransactions.filter(t => selectedIds.includes(t.id))
+      : fuelTransactions;
+
+    if (itemsToExport.length === 0) {
+      alert('Nenhum registro para exportar.');
+      return;
+    }
+
+    const headers = ['ID', 'Data', 'Embarcacao', 'Cliente', 'Operador', 'Litros', 'Valor (R$)', 'Forma Pagamento', 'Status'];
+    const rows = itemsToExport.map(t => {
+      const boat = getEmbarcacao(t.embarcacaoId);
+      const client = getCliente(t.clienteId);
+      const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+      const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
+      return [
+        t.id,
+        t.data,
+        `"${boat?.nome || 'Venda Avulsa'}"`,
+        `"${client?.nome || 'N/A'}"`,
+        `"${t.operador || 'Gerente'}"`,
+        litersVal.toFixed(1),
+        Number(t.valor).toFixed(2),
+        t.metodoPagamento === 'admin' ? 'Faturado Admin' : t.metodoPagamento === 'credit' ? 'Cartao Credito' : 'Pix / Dinheiro',
+        t.status === 'pago' ? 'Pago' : 'Pendente'
+      ];
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `abastecimentos_${getTodayStr()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#F8FAFC] overflow-hidden relative font-sans">
-      {/* Date Navigator & Action Bar */}
-      <div className="bg-white/80 backdrop-blur-md p-4 shadow-sm z-10 flex flex-wrap items-center justify-between border-b border-slate-200 sticky top-0 gap-3">
-        <div className="flex items-center gap-2">
-          <button onClick={handlePrevDay} className="p-2.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all active:scale-95 cursor-pointer">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Fluxo de Combustível</span>
-            <span className="text-lg font-black text-slate-800 capitalize tracking-tight">{displayDateStr}</span>
+    <div className="w-full max-w-7xl mx-auto space-y-6 text-slate-800 font-sans relative pb-24">
+      
+      {/* Outer Card Canvas (Biosynthesia Aesthetic) */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-6">
+        
+        {/* Page Top Header */}
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Financeiro & Abastecimento</h1>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Gerencie receitas de combustíveis, vendas e controle de bombas da marina.
+            </p>
           </div>
-          <button onClick={handleNextDay} className="p-2.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all active:scale-95 cursor-pointer">
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
 
-        <button
-          onClick={() => setIsFuelModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer ml-auto"
-        >
-          <Plus className="w-4 h-4" />
-          Abastecer Embarcação
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 subtle-scrollbar pb-28">
-        {fuelTransactions.length === 0 ? (
-          <div className="bg-white/60 backdrop-blur-sm rounded-3xl border border-slate-200/60 p-10 text-center flex flex-col items-center mt-4 shadow-sm max-w-lg mx-auto">
-            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-              <Droplets className="w-10 h-10 text-slate-300" />
+          <div className="flex items-center gap-3">
+            {/* Period Selector Button */}
+            <div className="relative">
+              <button
+                onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+                className={`px-3.5 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs ${
+                  isFilterPanelOpen || activeFilterCount > 0
+                    ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : 'bg-slate-50 border-slate-200/90 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <Calendar className="w-4 h-4 text-blue-600" />
+                <span>{getPeriodLabel()}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isFilterPanelOpen ? 'rotate-180' : ''}`} />
+              </button>
             </div>
-            <h3 className="text-lg font-bold text-slate-700">Nenhum Abastecimento Registrado</h3>
-            <p className="text-slate-500 text-sm mt-2 max-w-[280px]">Nenhuma embarcação registrou abastecimento nesta data.</p>
+
             <button
-              onClick={() => setIsFuelModalOpen(true)}
-              className="mt-6 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2"
+              onClick={() => handleExportSelected()}
+              className="px-4 py-2.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              Lançar Abastecimento
+              <Download className="w-4 h-4 text-slate-500" />
+              <span>Exportar</span>
             </button>
-          </div>
-        ) : (
-          <div className="space-y-6 max-w-4xl mx-auto">
-            {/* Painel Resumo Financeiro */}
-            <div className="relative overflow-hidden bg-slate-900 rounded-3xl shadow-lg border border-slate-800 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="absolute -left-10 -top-10 w-40 h-40 bg-blue-500 rounded-full opacity-20 blur-3xl mix-blend-screen pointer-events-none"></div>
-              <div className="absolute right-0 bottom-0 w-32 h-32 bg-emerald-500 rounded-full opacity-10 blur-2xl mix-blend-screen pointer-events-none"></div>
-              
-              <div className="relative z-10 flex gap-4 items-center">
-                <div className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/10">
-                  <Droplets className="w-7 h-7 text-blue-400" />
-                </div>
-                <div>
-                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest block mb-0.5">Volume Total</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl md:text-4xl font-black text-white font-mono tracking-tight">{totalLiters.toFixed(1).replace('.0', '')}</span>
-                    <span className="text-blue-400 font-bold text-lg">Litros</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="relative z-10 flex flex-col md:items-end">
-                <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest block mb-0.5">Faturamento Estimado</span>
-                <span className="text-2xl md:text-3xl font-black font-mono text-emerald-400 tracking-tight">
-                  <span className="text-emerald-400/50 text-xl mr-1">R$</span>
-                  {totalValue.toFixed(2).replace('.', ',')}
-                </span>
-              </div>
-            </div>
 
-            {/* Lista de Transações Acordeão */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 pl-2">Lançamentos do Dia ({fuelTransactions.length})</h3>
-              
-              {fuelTransactions.map(t => {
-                const boat = getEmbarcacao(t.embarcacaoId);
-                const client = getCliente(t.clienteId);
-                const isExpanded = expandedId === t.id;
-                
-                const isPago = t.status === 'pago';
-                const matchLiters = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-                const litersVal = matchLiters ? matchLiters[1] : '?';
-                const isPix = t.descricao?.toLowerCase().includes('pix') || t.descricao?.toLowerCase().includes('dinheiro');
-                const isCredit = t.descricao?.toLowerCase().includes('cart') || t.descricao?.toLowerCase().includes('crédito') || t.descricao?.toLowerCase().includes('debito');
-
-                return (
-                  <div key={t.id} className={`bg-white rounded-2xl shadow-sm border border-slate-200/80 relative overflow-hidden transition-all duration-300 cursor-pointer ${isExpanded ? 'ring-2 ring-emerald-500/20' : 'hover:shadow-md'}`} onClick={() => toggleExpand(t.id)}>
-                    <div className={`absolute top-0 left-0 w-1.5 h-full transition-colors ${isPago ? 'bg-emerald-500' : 'bg-amber-400'}`}></div>
-                    
-                    {/* Linha Resumida (Sempre visível) */}
-                    <div className="px-4 py-3.5 pl-6 flex items-center justify-between">
-                      <div className="flex items-center gap-3 md:gap-4 flex-1 overflow-hidden">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${isPago ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
-                          {isPago ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <Clock className="w-5 h-5 text-amber-600" />}
-                        </div>
-                        <div className="flex flex-col overflow-hidden pr-2">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-black text-slate-900 tracking-tight leading-none truncate">
-                              {boat?.nome || 'Embarcação'}
-                            </h3>
-                            {boat?.numero && (
-                              <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono border border-slate-200 shrink-0">
-                                #{boat.numero}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-slate-500 text-xs font-medium mt-1 truncate">
-                            {client?.nome || 'Cliente não identificado'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 shrink-0">
-                        <div className="flex flex-col items-end">
-                          <span className="font-mono font-black text-lg text-blue-600 tracking-tight leading-none">
-                            {litersVal} <span className="text-sm text-blue-400">L</span>
-                          </span>
-                          <span className="text-xs font-bold text-slate-400 mt-1">R$ {Number(t.valor || 0).toFixed(2).replace('.', ',')}</span>
-                        </div>
-                        <div className="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 rounded-full border border-slate-100">
-                          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Detalhes (Visível apenas expandido) */}
-                    <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`} onClick={(e) => e.stopPropagation()}>
-                      <div className="p-4 bg-slate-50/80 border-t border-slate-100 ml-1.5 flex flex-col md:flex-row justify-between md:items-center gap-4">
-                        <div>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">Detalhes do Pagamento</span>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg ${
-                              isPago ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {isPago ? 'Confirmado' : 'Aguardando Admin'}
-                            </span>
-                            <span className="text-xs font-bold text-slate-600 flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm">
-                              {isPix ? 'PIX / Dinheiro' : isCredit ? 'Cartão' : 'Cobrar Depois'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col md:items-end gap-3">
-                          {t.comprovanteUrl ? (
-                            <button 
-                              onClick={() => setModalComprovante(t.comprovanteUrl)}
-                              className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer shadow-sm active:scale-95"
-                            >
-                              <FileText className="w-4 h-4" />
-                              Ver Comprovante
-                            </button>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 px-3 py-2 bg-white rounded-xl border border-slate-200 border-dashed">
-                              <Info className="w-3.5 h-3.5" />
-                              Sem comprovante
-                            </div>
-                          )}
-                          {t.operador && (
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider text-right block">Registrado por: {t.operador}</span>
-                          )}
-                          
-                          {isAdmin && (
-                            <div className="flex items-center gap-2 mt-2 border-t border-slate-200/60 pt-2 w-full justify-end">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleEditFuel(t); }}
-                                className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDeleteFuel(t.id); }}
-                                className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
-                              >
-                                Excluir
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Modal Novo Abastecimento Direto */}
-      {isFuelModalOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end md:justify-center md:items-center">
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setIsFuelModalOpen(false)}></div>
-          
-          <div className="bg-white w-full md:max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl relative z-10 animate-slide-up-fast pb-8 md:pb-6 overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mt-3 mb-1 shrink-0 md:hidden"></div>
-            
-            <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-                  <Droplets className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-slate-900 leading-none">{editingTransactionId ? 'Editar Abastecimento' : 'Novo Abastecimento'}</h3>
-                  <p className="text-xs text-slate-500 font-medium mt-1">{editingTransactionId ? 'Alterar dados de consumo' : 'Lançar consumo de combustível'}</p>
-                </div>
-              </div>
-              <button onClick={() => {
-                setIsFuelModalOpen(false);
-                setEditingTransactionId(null);
+            <button
+              onClick={() => {
+                setIsFuelModalOpen(true);
                 setSelectedBoatId('');
                 setSelectedClientId('');
                 setLiters('');
                 setComprovanteUrl(null);
-              }} className="p-2 bg-slate-100 text-slate-500 rounded-full active:bg-slate-200 cursor-pointer">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
+                setPaymentType('pix');
+              }}
+              className="px-4 py-2.5 bg-[#2563EB] hover:bg-[#1d4ed8] text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Venda Rápida</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Biosynthesia 4 Executive KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          {/* KPI Card 1: Total Revenue (Pago) */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Receita Recebida</span>
+              <MoreVertical className="w-4 h-4 text-slate-300" />
+            </div>
+            <div className="text-3xl font-black text-slate-900">
+              {totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                <span>+12.5%</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Últimos 7 dias</span>
+            </div>
+          </div>
+
+          {/* KPI Card 2: Liters Sold */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total de Litros (Vendas)</span>
+              <MoreVertical className="w-4 h-4 text-slate-300" />
+            </div>
+            <div className="text-3xl font-black text-slate-900">
+              {totalLiters.toFixed(1)} <span className="text-xl font-bold text-slate-500">L</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                <span>+5.2%</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Fluxo na Bomba</span>
+            </div>
+          </div>
+
+          {/* KPI Card 3: Pending Bills */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Faturamentos Abertos</span>
+              <MoreVertical className="w-4 h-4 text-slate-300" />
+            </div>
+            <div className="text-3xl font-black text-slate-900">
+              {totalPendingValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-rose-600 font-bold flex items-center gap-0.5">
+                <ArrowDownRight className="w-3.5 h-3.5" />
+                <span>-2.4%</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Pendentes na data</span>
+            </div>
+          </div>
+
+          {/* KPI Card 4: Orders/Transactions */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Abastecimentos</span>
+              <MoreVertical className="w-4 h-4 text-slate-300" />
+            </div>
+            <div className="text-3xl font-black text-slate-900">{fuelTransactions.length}</div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                <span>+1.1%</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Tickets de venda</span>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Search, Filter & Tabs Bar */}
+        <div className="space-y-4 pt-2">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
+            
+            <div className="flex items-center gap-2 w-full lg:w-auto flex-1 max-w-xl">
+              {/* Search Bar */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar por cliente, barco ou detalhes..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2.5 text-xs bg-slate-50/80 border border-slate-200/90 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:bg-white font-medium transition-all"
+                />
+                {searchTerm && (
+                  <button onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Toggle Filter Panel Button */}
+              <button
+                onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+                className={`px-3.5 py-2.5 border text-xs font-bold rounded-xl shadow-2xs transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+                  isFilterPanelOpen || activeFilterCount > 0
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                    : 'bg-white border-slate-200/90 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                <span>Filtros</span>
+                {activeFilterCount > 0 && (
+                  <span className="w-5 h-5 rounded-full bg-white text-blue-600 font-extrabold text-[10px] flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
               </button>
             </div>
 
-            <form onSubmit={handleSaveFuelTransaction} className="p-5 space-y-5 overflow-y-auto subtle-scrollbar">
-              
-              {/* Selecionar Embarcação */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 block uppercase tracking-wider">Embarcação *</label>
-                <div 
-                  onClick={() => setIsBoatSelectOpen(true)}
-                  className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"
+            {/* Status Tabs */}
+            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl w-full lg:w-auto overflow-x-auto subtle-scrollbar">
+              {[
+                { id: 'all', label: 'Todos' },
+                { id: 'pago', label: 'Pagos / Concluídos' },
+                { id: 'pendente', label: 'Faturamento / Pendentes' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setStatusFilter(tab.id as any)}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    statusFilter === tab.id ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-900'
+                  }`}
                 >
-                  <span className={`text-sm font-bold ${selectedBoatId ? 'text-slate-900' : 'text-slate-400'}`}>
-                    {selectedBoatId ? (
-                      data?.boats?.find(b => b.id === selectedBoatId) ? (
-                        `${data?.boats?.find(b => b.id === selectedBoatId)?.numero ? `#${data?.boats?.find(b => b.id === selectedBoatId)?.numero} - ` : ''}${data?.boats?.find(b => b.id === selectedBoatId)?.nome}`
-                      ) : 'Selecionar Embarcação'
-                    ) : '-- Selecione a lancha/jet --'}
-                  </span>
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
-                </div>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+          </div>
+
+          {/* Expandable Filter Panel */}
+          {isFilterPanelOpen && (
+            <div className="p-4 bg-slate-50/90 border border-slate-200/90 rounded-2xl space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Filter className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Filtros Avançados</span>
+                </span>
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={handleResetFilters}
+                    className="text-[11px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Limpar Filtros</span>
+                  </button>
+                )}
               </div>
 
-              {/* Selecionar Cliente */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 block uppercase tracking-wider">Proprietário / Cotista *</label>
-                <div 
-                  onClick={() => setIsClientSelectOpen(true)}
-                  className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"
-                >
-                  <span className={`text-sm font-bold ${selectedClientId ? 'text-slate-900' : 'text-slate-400'}`}>
-                    {selectedClientId ? (
-                      possibleClients.find(c => c.id === selectedClientId)?.nome || 'Selecionar Cliente'
-                    ) : '-- Selecione o cliente --'}
-                  </span>
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
-                </div>
-              </div>
-
-              {/* Litros Abastecidos */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700 block uppercase tracking-wider">Litros Abastecidos (L) *</label>
-                <div className="relative">
-                  <input 
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9]*[.,]?[0-9]*"
-                    required
-                    value={liters}
-                    onChange={(e) => setLiters(e.target.value.replace(',', '.'))}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                    placeholder="0.0"
-                  />
-                  <span className="absolute right-5 top-3.5 text-slate-400 font-bold text-lg">L</span>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
-                <div className="grid grid-cols-4 gap-2 mt-2">
-                  {[0, 50, 100, 150].map(val => (
-                    <button 
-                      type="button"
-                      key={val}
-                      onClick={() => setLiters(val.toString())}
-                      className="py-2.5 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition-colors flex items-center justify-center cursor-pointer"
-                    >
-                      {val === 0 ? 'Zero' : `+${val}L`}
-                    </button>
-                  ))}
+                {/* 1. Período Preset */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Período</span>
+                  </label>
+                  <select
+                    value={periodPreset}
+                    onChange={(e) => handleSelectPeriodPreset(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
+                  >
+                    <option value="today">Hoje</option>
+                    <option value="yesterday">Ontem</option>
+                    <option value="7days">Últimos 7 dias</option>
+                    <option value="30days">Últimos 30 dias</option>
+                    <option value="this_month">Este Mês</option>
+                    <option value="last_month">Mês Passado</option>
+                    <option value="all">Todo o Período</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
                 </div>
+
+                {/* 2. Embarcação Filter */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <Ship className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Embarcação</span>
+                  </label>
+                  <select
+                    value={boatFilter}
+                    onChange={(e) => setBoatFilter(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
+                  >
+                    <option value="all">Todas as Embarcações</option>
+                    {(data?.boats || []).map((boat) => (
+                      <option key={boat.id} value={boat.id}>
+                        {boat.nome} {boat.vaga ? `(${boat.vaga})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Cliente Filter */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Cliente</span>
+                  </label>
+                  <select
+                    value={clientFilter}
+                    onChange={(e) => setClientFilter(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
+                  >
+                    <option value="all">Todos os Clientes</option>
+                    {(data?.clients || []).map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 4. Forma de Pagamento Filter */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Forma de Pagamento</span>
+                  </label>
+                  <select
+                    value={paymentFilter}
+                    onChange={(e) => setPaymentFilter(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
+                  >
+                    <option value="all">Todas as Formas</option>
+                    <option value="pix">Pix / Dinheiro</option>
+                    <option value="credit">Cartão de Crédito</option>
+                    <option value="admin">Faturado / Administradora</option>
+                  </select>
+                </div>
+
               </div>
 
-              {/* Forma de Cobrança */}
-              {Number(liters) > 0 && (
-                <div className="space-y-3 pt-1">
-                  <label className="text-xs font-bold text-slate-700 block uppercase tracking-wider">Forma de Pagamento</label>
-                  <div className="grid grid-cols-1 gap-2">
-                    <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'pix' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="pix" checked={paymentType === 'pix'} onChange={() => setPaymentType('pix')} className="sr-only" />
-                      <div className="flex-1">
-                        <span className="block font-bold text-sm text-slate-900">Pix / Dinheiro</span>
-                        <span className="block text-xs text-slate-500 font-medium">R$ 9,00 por litro</span>
-                      </div>
-                      <span className="font-mono font-bold text-sm text-blue-600">R$ {(Number(liters) * 9).toFixed(2).replace('.', ',')}</span>
-                    </label>
-
-                    <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'credit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
-                      <div className="flex-1">
-                        <span className="block font-bold text-sm text-slate-900">Cartão de Crédito</span>
-                        <span className="block text-xs text-slate-500 font-medium">R$ 10,00 por litro</span>
-                      </div>
-                      <span className="font-mono font-bold text-sm text-blue-600">R$ {(Number(liters) * 10).toFixed(2).replace('.', ',')}</span>
-                    </label>
-
-                    <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'admin' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
-                      <div className="flex-1">
-                        <span className="block font-bold text-sm text-slate-900">Cobrar Depois (Faturamento Admin)</span>
-                        <span className="block text-xs text-slate-500 font-medium">R$ 13,00 por litro</span>
-                      </div>
-                      <span className="font-mono font-bold text-sm text-blue-600">R$ {(Number(liters) * 13).toFixed(2).replace('.', ',')}</span>
-                    </label>
+              {/* Date pickers row if custom or date selected */}
+              {(periodPreset === 'custom' || periodPreset === 'all') && (
+                <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-200/60">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-500">De:</span>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        setPeriodPreset('custom');
+                      }}
+                      className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-500">Até:</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        setPeriodPreset('custom');
+                      }}
+                      className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
+                    />
                   </div>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Upload Comprovante */}
-              {(paymentType === 'pix' || paymentType === 'credit') && Number(liters) > 0 && (
-                <div className="space-y-2 pt-1">
-                  <label className="text-xs font-bold text-slate-700 block uppercase tracking-wider">Comprovante de Pagamento *</label>
-                  <div className="relative">
-                    <input 
-                      type="file" 
-                      accept="image/*,application/pdf"
-                      onChange={handleUploadComprovante}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                      disabled={isUploadingComprovante}
-                    />
-                    <div className={`p-4 border-2 border-dashed rounded-xl flex items-center justify-center gap-3 transition-colors ${comprovanteUrl ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-slate-50'}`}>
-                      {isUploadingComprovante ? (
-                        <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-                      ) : comprovanteUrl ? (
-                        <CheckCircle2 className="w-5 h-5 text-green-600" />
-                      ) : (
-                        <Upload className="w-5 h-5 text-slate-400" />
-                      )}
-                      <span className={`text-xs font-bold ${comprovanteUrl ? 'text-green-700' : 'text-slate-600'}`}>
-                        {isUploadingComprovante ? 'Enviando comprovante...' : comprovanteUrl ? 'Comprovante anexado com sucesso' : 'Toque para selecionar a foto ou PDF'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+          {/* Active Filters Chips Bar */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">Filtros ativos:</span>
+              
+              {periodPreset !== 'this_month' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold">
+                  <span>Período: {getPeriodLabel()}</span>
+                  <button onClick={() => handleSelectPeriodPreset('this_month')} className="hover:text-blue-900 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {boatFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">
+                  <span>Barco: {getEmbarcacao(boatFilter)?.nome || boatFilter}</span>
+                  <button onClick={() => setBoatFilter('all')} className="hover:text-indigo-900 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {clientFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold">
+                  <span>Cliente: {getCliente(clientFilter)?.nome || clientFilter}</span>
+                  <button onClick={() => setClientFilter('all')} className="hover:text-purple-900 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {paymentFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold">
+                  <span>Pagamento: {paymentFilter === 'pix' ? 'Pix/Dinheiro' : paymentFilter === 'credit' ? 'Cartão Crédito' : 'Admin'}</span>
+                  <button onClick={() => setPaymentFilter('all')} className="hover:text-amber-900 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {searchTerm.trim() !== '' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold">
+                  <span>Busca: "{searchTerm}"</span>
+                  <button onClick={() => setSearchTerm('')} className="hover:text-slate-900 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
               )}
 
               <button
-                type="submit"
-                disabled={isSubmitting || isUploadingComprovante}
-                className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl font-black text-sm uppercase tracking-wide flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer mt-4"
+                onClick={handleResetFilters}
+                className="text-[11px] font-bold text-rose-600 hover:underline cursor-pointer ml-1"
               >
-                {isSubmitting ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-5 h-5" />
-                    {editingTransactionId ? 'Atualizar Abastecimento' : 'Confirmar Abastecimento'}
-                  </>
-                )}
+                Limpar tudo
               </button>
+            </div>
+          )}
+
+        </div>
+
+        {/* Clean Data Table */}
+        <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white">
+          {fuelTransactions.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 flex flex-col items-center gap-3">
+              <Droplets className="w-10 h-10 text-slate-300" />
+              <p className="text-xs font-bold text-slate-600">Nenhum registro de abastecimento encontrado com os filtros aplicados.</p>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={handleResetFilters}
+                  className="mt-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  Limpar Filtros
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                    <th className="p-3.5 w-10 text-center">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.length === fuelTransactions.length && fuelTransactions.length > 0}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
+                      />
+                    </th>
+                    <th className="p-3.5">Produto & ID</th>
+                    <th className="p-3.5">Valor & Litros</th>
+                    <th className="p-3.5">Cliente</th>
+                    <th className="p-3.5">Pagamento</th>
+                    <th className="p-3.5 text-center">Status</th>
+                    <th className="p-3.5 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {fuelTransactions.map(t => {
+                    const boat = getEmbarcacao(t.embarcacaoId);
+                    const client = getCliente(t.clienteId);
+                    const isSelected = selectedIds.includes(t.id);
+                    
+                    const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+                    const litersVal = match ? parseFloat(match[1].replace(',', '.')) : 0;
+                    const isItemCobrado = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
+                    const isFaturado = (t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoFormaPagamento === 'admin');
+
+                    return (
+                      <tr 
+                        key={t.id} 
+                        className={`transition-colors hover:bg-slate-50/60 ${isSelected ? 'bg-indigo-50/30' : ''}`}
+                      >
+                        <td className="p-3.5 text-center">
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => toggleSelectOne(t.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
+                          />
+                        </td>
+
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-100/80">
+                              <Droplets className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-slate-900 block text-sm">{boat?.nome || 'Venda Avulsa'}</span>
+                              <span className="text-[11px] text-slate-400 font-mono block">#{t.id.substring(t.id.length - 8)}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-3.5">
+                          <span className="font-bold text-slate-800 block text-sm">
+                            {Number(t.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-medium block">{litersVal.toFixed(1)} Litros</span>
+                        </td>
+
+                        <td className="p-3.5">
+                          <span className="font-semibold text-slate-800 block">{client?.nome || 'N/A'}</span>
+                          <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
+                            <UserIcon className="w-3 h-3 text-slate-400" />
+                            <span>Lançado por: <strong className="text-slate-600 font-semibold">{t.operador || 'Marinheiro'}</strong></span>
+                          </span>
+                        </td>
+
+                        <td className="p-3.5">
+                          <span className="font-semibold text-slate-700 block uppercase text-[10px] tracking-wide">
+                            {isFaturado ? 'Faturado / Admin' : t.metodoPagamento === 'credit' || t.reservationRef?.abastecimentoFormaPagamento === 'credit' ? 'Cartão Crédito' : t.metodoPagamento === 'pix' || t.reservationRef?.abastecimentoFormaPagamento === 'pix' ? 'Pix / Dinheiro' : 'Pendente'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">{t.data}</span>
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          {isItemCobrado ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span>{isFaturado ? 'Concluído (Faturado)' : 'Concluído (Pago)'}</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-200/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                              <span>Pendente</span>
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {/* 1. Cobrar button */}
+                            <button
+                              onClick={() => {
+                                if (!isItemCobrado) {
+                                  setChargeTargetItem(t);
+                                  setChargePaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+                                  setChargeComprovanteUrl(t.comprovanteUrl || null);
+                                }
+                              }}
+                              disabled={isItemCobrado}
+                              className={`px-3 py-1.5 font-bold text-xs rounded-xl transition-all shadow-2xs flex items-center gap-1.5 shrink-0 ${
+                                isItemCobrado
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 cursor-default opacity-90'
+                                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                              }`}
+                            >
+                              {isItemCobrado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Droplets className="w-3.5 h-3.5" />}
+                              <span>{isItemCobrado ? 'Cobrado' : 'Cobrar'}</span>
+                            </button>
+
+                            {/* 2. 3 pontinhos button */}
+                            <button
+                              onClick={(e) => handleToggleActionMenu(e, t)}
+                              className={`p-1.5 rounded-xl transition-colors cursor-pointer border ${
+                                activeActionMenuId === t.id
+                                  ? 'bg-slate-200 text-slate-900 border-slate-300'
+                                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 border-transparent hover:border-slate-200'
+                              }`}
+                              title="Opções"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+      </div>
+
+      {/* Floating Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-slate-800 text-white shadow-2xl rounded-2xl px-5 py-3 flex items-center space-x-3 animate-slide-up-fast">
+          <span className="text-xs font-black">{selectedIds.length} Selecionado(s)</span>
+          <div className="h-4 w-[1px] bg-slate-700"></div>
+          
+          <button 
+            onClick={handleExportSelected}
+            className="text-xs font-bold text-slate-200 hover:text-white flex items-center gap-1.5 cursor-pointer bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl transition-all"
+          >
+            <Download className="w-3.5 h-3.5 text-blue-400" />
+            <span>Exportar</span>
+          </button>
+
+          <button 
+            onClick={handleBulkDeleteFuel}
+            className="text-xs font-bold text-rose-300 hover:text-rose-200 flex items-center gap-1.5 cursor-pointer bg-rose-950/80 hover:bg-rose-900/90 border border-rose-800/60 px-3 py-1.5 rounded-xl transition-all"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Apagar</span>
+          </button>
+
+          <button 
+            onClick={() => setSelectedIds([])} 
+            className="text-xs font-bold text-slate-400 hover:text-slate-200 p-1 cursor-pointer ml-1"
+            title="Limpar seleção"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Modal Comprovante */}
+      {modalComprovante && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl overflow-hidden max-w-lg w-full shadow-2xl">
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <h3 className="font-black text-slate-900 text-lg">Comprovante de Pagamento</h3>
+              <button onClick={() => setModalComprovante(null)} className="p-2 text-slate-400 hover:bg-slate-200 rounded-full">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 bg-slate-100">
+              <img src={modalComprovante} alt="Comprovante" className="w-full rounded-2xl border border-slate-200 shadow-sm" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Fuel Record Modal */}
+      {isFuelModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
+                <Droplets className="w-5 h-5 text-[#2563EB]" />
+                <span>Nova Venda / Abastecimento</span>
+              </h3>
+              <button onClick={() => setIsFuelModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full shadow-xs">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFuelTransaction} className="p-6 space-y-4">
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
+                <select
+                  value={selectedBoatId}
+                  onChange={(e) => {
+                    setSelectedBoatId(e.target.value);
+                    const b = getEmbarcacao(e.target.value);
+                    if (b?.donos?.[0]) setSelectedClientId(b.donos[0]);
+                  }}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-sm focus:ring-[#2563EB]"
+                >
+                  <option value="">Selecione o barco...</option>
+                  {(data?.boats || []).map(b => (
+                    <option key={b.id} value={b.id}>{b.nome} ({b.vaga || 'Sem Vaga'})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 text-xs">Litros Abastecidos (L) *</label>
+                <input 
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9]*[.,]?[0-9]*"
+                  value={liters}
+                  onChange={(e) => setLiters(e.target.value.replace(',', '.'))}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200/80 rounded-xl font-mono text-xl font-black text-slate-900 focus:ring-[#2563EB]"
+                  placeholder="0.0"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 text-xs block">Forma de Pagamento</label>
+                <div className="grid grid-cols-1 gap-2">
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'pix' ? 'border-[#2563EB] bg-[#2563EB]/5 ring-1 ring-[#2563EB]' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="payment" value="pix" checked={paymentType === 'pix'} onChange={() => setPaymentType('pix')} className="sr-only" />
+                    <div className="flex-1">
+                      <span className="block font-bold text-sm text-slate-900">Pix / Dinheiro</span>
+                      <span className="block text-[11px] text-slate-500 font-medium">R$ 9,00/L (Recebido na hora)</span>
+                    </div>
+                  </label>
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'admin' ? 'border-amber-500 bg-amber-50 ring-1 ring-amber-500' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
+                    <div className="flex-1">
+                      <span className="block font-bold text-sm text-slate-900">Faturar para a Marina (Admin)</span>
+                      <span className="block text-[11px] text-slate-500 font-medium">Cobrança Mensal Pendente</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 text-xs block">Comprovante (Opcional)</label>
+                <div className="flex items-center justify-center w-full">
+                  <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      {isUploadingComprovante ? (
+                        <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
+                      ) : comprovanteUrl ? (
+                        <CheckCircle2 className="w-6 h-6 text-emerald-500 mb-2" />
+                      ) : (
+                        <Upload className="w-6 h-6 text-slate-400 mb-2" />
+                      )}
+                      <p className="text-xs text-slate-500 font-medium">
+                        {comprovanteUrl ? 'Comprovante anexado' : 'Clique para enviar foto/PDF'}
+                      </p>
+                    </div>
+                    <input type="file" className="hidden" accept="image/*,.pdf" onChange={handleUploadComprovante} disabled={isUploadingComprovante} />
+                  </label>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFuelModalOpen(false)}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !selectedBoatId || !liters}
+                  className="px-5 py-2.5 bg-[#2563EB] hover:bg-[#1d4ed8] text-white font-bold rounded-xl shadow-md text-xs transition-all flex items-center gap-2"
+                >
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>Registrar Venda</span>
+                </button>
+              </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal Fotográfico Premium para Comprovantes */}
-      {modalComprovante && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-slate-950/95 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
-          <div className="p-5 flex justify-between items-center bg-transparent relative z-10">
-            <h3 className="font-black tracking-tight text-white text-xl">Comprovante de Abastecimento</h3>
-            <button 
-              onClick={() => setModalComprovante(null)} 
-              className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white rounded-full transition-all active:scale-90 cursor-pointer backdrop-blur-md"
+      {/* Modal Cobrar / Enviar para Administradora */}
+      {chargeTargetItem && (() => {
+        const t = chargeTargetItem;
+        const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+        const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+        const boat = getEmbarcacao(t.embarcacaoId);
+        const client = getCliente(t.clienteId);
+
+        let preco = 9.0;
+        if (chargePaymentType === 'credit') preco = 10.0;
+        if (chargePaymentType === 'admin') preco = 13.0;
+        const totalCalc = litrosNum * preco;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
+                  <Droplets className="w-5 h-5 text-blue-600" />
+                  <span>Cobrança de Combustível</span>
+                </h3>
+                <button onClick={() => setChargeTargetItem(null)} className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full shadow-xs cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmChargeItem} className="p-6 space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-1">
+                  <div className="flex justify-between items-center text-xs font-bold text-blue-900">
+                    <span>Embarcação: {boat?.nome || 'M99'}</span>
+                    <span className="font-mono text-sm font-black">{litrosNum} Litros</span>
+                  </div>
+                  <div className="text-xs text-blue-700 font-medium">
+                    Cliente: {client?.nome || 'Cliente'}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="font-bold text-slate-700 text-xs block">Selecione a Modalidade de Cobrança *</label>
+                  
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'pix' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="chargePayment" value="pix" checked={chargePaymentType === 'pix'} onChange={() => setChargePaymentType('pix')} className="sr-only" />
+                    <div className="flex-1 flex justify-between items-center">
+                      <div>
+                        <span className="block font-extrabold text-sm text-slate-900">Pix / Dinheiro / Débito</span>
+                        <span className="block text-[11px] text-slate-500 font-medium">R$ 9,00 / Litro (Pago)</span>
+                      </div>
+                      <span className="font-mono font-black text-sm text-blue-900">
+                        {(litrosNum * 9).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'credit' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="chargePayment" value="credit" checked={chargePaymentType === 'credit'} onChange={() => setChargePaymentType('credit')} className="sr-only" />
+                    <div className="flex-1 flex justify-between items-center">
+                      <div>
+                        <span className="block font-extrabold text-sm text-slate-900">Cartão de Crédito</span>
+                        <span className="block text-[11px] text-slate-500 font-medium">R$ 10,00 / Litro</span>
+                      </div>
+                      <span className="font-mono font-black text-sm text-blue-900">
+                        {(litrosNum * 10).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'admin' ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="chargePayment" value="admin" checked={chargePaymentType === 'admin'} onChange={() => setChargePaymentType('admin')} className="sr-only" />
+                    <div className="flex-1 flex justify-between items-center">
+                      <div>
+                        <span className="block font-extrabold text-sm text-slate-900 flex items-center gap-1">
+                          <Building2 className="w-4 h-4 text-indigo-600" /> Enviar p/ Administradora
+                        </span>
+                        <span className="block text-[11px] text-indigo-700 font-bold">Faturado Pós-pago (R$ 13,00 / Litro)</span>
+                      </div>
+                      <span className="font-mono font-black text-sm text-indigo-900">
+                        {(litrosNum * 13).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 text-xs block">Anexar Comprovante / Recibo (Imagem ou PDF - Opcional)</label>
+                  <div className="flex items-center justify-center w-full">
+                    <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                      <div className="flex flex-col items-center justify-center pt-2 pb-2">
+                        {isUploadingChargeComprovante ? (
+                          <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+                        ) : chargeComprovanteUrl ? (
+                          <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-xs">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            <span>Comprovante Anexado com Sucesso!</span>
+                          </div>
+                        ) : (
+                          <>
+                            <Upload className="w-5 h-5 text-slate-400 mb-1" />
+                            <p className="text-[11px] text-slate-500 font-medium">Clique para anexar Imagem ou PDF</p>
+                          </>
+                        )}
+                      </div>
+                      <input 
+                        type="file" 
+                        accept="image/*,.pdf,application/pdf" 
+                        onChange={handleUploadChargeComprovante} 
+                        disabled={isUploadingChargeComprovante} 
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-600 uppercase">Valor Total a Lançar:</span>
+                  <span className="text-lg font-black text-slate-900 font-mono">
+                    {totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>Confirmar Lançamento</span>
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal Editar Lançamento */}
+      {editingItem && (() => {
+        const boat = getEmbarcacao(editBoatId);
+        const litrosNum = parseFloat(editLiters.replace(',', '.') || '0');
+        let preco = 9.0;
+        if (editPaymentType === 'credit') preco = 10.0;
+        if (editPaymentType === 'admin') preco = 13.0;
+        const totalCalc = litrosNum * preco;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
+                  <SquarePen className="w-5 h-5 text-amber-600" />
+                  <span>Editar Lançamento</span>
+                </h3>
+                <button onClick={() => setEditingItem(null)} className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full shadow-xs cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditItem} className="p-6 space-y-4">
+                
+                {/* Embarcação */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
+                  <select
+                    value={editBoatId}
+                    onChange={(e) => {
+                      setEditBoatId(e.target.value);
+                      const b = getEmbarcacao(e.target.value);
+                      if (b?.donos?.[0]) setEditClientId(b.donos[0]);
+                    }}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-xs focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="">Selecione a embarcação...</option>
+                    {(data?.boats || []).map(b => (
+                      <option key={b.id} value={b.id}>{b.nome} ({b.vaga || 'Sem Vaga'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Cliente */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 text-xs">Cliente / Proprietário</label>
+                  <select
+                    value={editClientId}
+                    onChange={(e) => setEditClientId(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-xs focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="">Selecione o cliente...</option>
+                    {(data?.clients || []).map(c => (
+                      <option key={c.id} value={c.id}>{c.nome}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Litros */}
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 text-xs">Litros (L) *</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={editLiters}
+                      onChange={(e) => setEditLiters(e.target.value.replace(',', '.'))}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-mono text-sm font-bold text-slate-900 focus:ring-amber-500"
+                      placeholder="0.0"
+                    />
+                  </div>
+
+                  {/* Data */}
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 text-xs">Data do Lançamento</label>
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-medium text-xs focus:ring-amber-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Status & Forma de Pagamento */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 text-xs">Status</label>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value as any)}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-xs focus:ring-amber-500 cursor-pointer"
+                    >
+                      <option value="pago">Pago / Publicado</option>
+                      <option value="pendente">Pendente</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 text-xs">Forma de Pagamento</label>
+                    <select
+                      value={editPaymentType}
+                      onChange={(e) => setEditPaymentType(e.target.value as any)}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-xs focus:ring-amber-500 cursor-pointer"
+                    >
+                      <option value="pix">Pix / Dinheiro (R$9/L)</option>
+                      <option value="credit">Cartão Crédito (R$10/L)</option>
+                      <option value="admin">Faturado Admin (R$13/L)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-900 uppercase">Valor Total Calculado:</span>
+                  <span className="text-base font-black text-amber-950 font-mono">
+                    {totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </span>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingItem(null)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !editBoatId || !editLiters}
+                    className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    <span>Salvar Alterações</span>
+                  </button>
+                </div>
+
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Global Fixed Popover Menu for 3-dots */}
+      {activeActionMenuId && menuPosition && activeActionTargetItem && (
+        <>
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => {
+              setActiveActionMenuId(null);
+              setMenuPosition(null);
+              setActiveActionTargetItem(null);
+            }}
+          />
+
+          <div
+            style={{ top: menuPosition.top, left: menuPosition.left }}
+            className="fixed w-44 bg-white border border-slate-200 shadow-2xl rounded-2xl p-1.5 z-[9999] animate-in fade-in slide-in-from-top-1 duration-150 text-left space-y-0.5"
+          >
+            <button
+              onClick={() => {
+                const item = activeActionTargetItem;
+                setActiveActionMenuId(null);
+                setMenuPosition(null);
+                setActiveActionTargetItem(null);
+                handleOpenEditModal(item);
+              }}
+              className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <svg width="16" height="16" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-              </svg>
+              <SquarePen className="w-3.5 h-3.5 text-amber-600" />
+              <span>Editar</span>
+            </button>
+
+            {activeActionTargetItem.comprovanteUrl && (
+              <button
+                onClick={() => {
+                  const url = activeActionTargetItem.comprovanteUrl;
+                  setActiveActionMenuId(null);
+                  setMenuPosition(null);
+                  setActiveActionTargetItem(null);
+                  setModalComprovante(url);
+                }}
+                className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                <span>Ver Recibo</span>
+              </button>
+            )}
+
+            <div className="my-1 border-t border-slate-100"></div>
+
+            <button
+              onClick={() => {
+                const item = activeActionTargetItem;
+                setActiveActionMenuId(null);
+                setMenuPosition(null);
+                setActiveActionTargetItem(null);
+                handleDeleteFuel(item);
+              }}
+              className="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Apagar</span>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center subtle-scrollbar relative z-0">
-            {modalComprovante.endsWith('.pdf') ? (
-              <div className="bg-white/10 backdrop-blur-md border border-white/20 p-8 rounded-3xl flex flex-col items-center text-center max-w-sm w-full shadow-2xl">
-                <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-6">
-                  <FileText className="w-10 h-10 text-white" />
-                </div>
-                <h4 className="font-bold text-white mb-2 text-lg">Documento em PDF</h4>
-                <p className="text-white/60 text-sm mb-8">Este comprovante é um documento PDF e precisa ser aberto em uma nova guia.</p>
-                <a href={modalComprovante} target="_blank" rel="noreferrer" className="w-full py-3.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-blue-500/30 active:scale-95">
-                  Visualizar PDF
-                </a>
-              </div>
-            ) : (
-              <img src={modalComprovante} className="w-full max-w-lg rounded-3xl shadow-2xl ring-1 ring-white/10" alt="Comprovante" />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal Seleção de Embarcação (Mobile Otimizado) */}
-      {isBoatSelectOpen && (
-        <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
-          <div className="p-4 bg-white border-b border-slate-200 flex flex-col gap-3 shrink-0">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-lg text-slate-900">Selecionar Embarcação</h3>
-              <button 
-                onClick={() => setIsBoatSelectOpen(false)}
-                className="p-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-full cursor-pointer transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </button>
-            </div>
-            <div className="relative">
-              <input 
-                type="text" 
-                autoFocus
-                placeholder="Buscar por nome ou número..." 
-                value={boatSearch}
-                onChange={(e) => setBoatSearch(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-slate-100 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 transition-shadow outline-none"
-              />
-              <svg className="w-5 h-5 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-2 subtle-scrollbar">
-            {(data?.boats || []).filter(b => 
-              b.nome?.toLowerCase().includes(boatSearch.toLowerCase()) || 
-              b.numero?.toLowerCase().includes(boatSearch.toLowerCase())
-            ).map(b => (
-              <div 
-                key={b.id} 
-                onClick={() => {
-                  handleBoatChange(b.id);
-                  setIsBoatSelectOpen(false);
-                  setBoatSearch('');
-                }}
-                className="p-4 border-b border-slate-100 flex items-center justify-between active:bg-blue-50 cursor-pointer transition-colors last:border-0 rounded-xl"
-              >
-                <div>
-                  <h4 className="font-bold text-slate-900 text-base">{b.nome}</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">{b.modelo || 'Sem modelo'}</p>
-                </div>
-                {b.numero && (
-                  <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-xs font-bold font-mono border border-slate-200">
-                    #{b.numero}
-                  </span>
-                )}
-              </div>
-            ))}
-            {(data?.boats || []).filter(b => 
-              b.nome?.toLowerCase().includes(boatSearch.toLowerCase()) || 
-              b.numero?.toLowerCase().includes(boatSearch.toLowerCase())
-            ).length === 0 && (
-              <div className="p-8 text-center text-slate-500">Nenhuma embarcação encontrada.</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal Seleção de Cliente (Mobile Otimizado) */}
-      {isClientSelectOpen && (
-        <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
-          <div className="p-4 bg-white border-b border-slate-200 flex flex-col gap-3 shrink-0">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-lg text-slate-900">Selecionar Cliente</h3>
-              <button 
-                onClick={() => setIsClientSelectOpen(false)}
-                className="p-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-full cursor-pointer transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </button>
-            </div>
-            <div className="relative">
-              <input 
-                type="text" 
-                autoFocus
-                placeholder="Buscar por nome..." 
-                value={clientSearch}
-                onChange={(e) => setClientSearch(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-slate-100 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 transition-shadow outline-none"
-              />
-              <svg className="w-5 h-5 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-2 subtle-scrollbar">
-            {possibleClients.filter(c => 
-              c.nome?.toLowerCase().includes(clientSearch.toLowerCase())
-            ).map(c => (
-              <div 
-                key={c.id} 
-                onClick={() => {
-                  setSelectedClientId(c.id);
-                  setIsClientSelectOpen(false);
-                  setClientSearch('');
-                }}
-                className="p-4 border-b border-slate-100 flex items-center justify-between active:bg-blue-50 cursor-pointer transition-colors last:border-0 rounded-xl"
-              >
-                <div>
-                  <h4 className="font-bold text-slate-900 text-base">{c.nome}</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">{c.cota ? `Cota: ${c.cota}` : 'Proprietário'}</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-slate-300" />
-              </div>
-            ))}
-            {possibleClients.filter(c => 
-              c.nome?.toLowerCase().includes(clientSearch.toLowerCase())
-            ).length === 0 && (
-              <div className="p-8 text-center text-slate-500">Nenhum cliente encontrado.</div>
-            )}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

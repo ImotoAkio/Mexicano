@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 // @ts-ignore
 import bgVideo from '../assets/videos/login_bg.mp4';
 // @ts-ignore
 import bgImage from '../assets/images/boat_jet_bg.png';
-// @ts-ignore
-import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
+import Logo from './Logo';
 
 interface LoginPageProps {
   onLogin: (status: boolean) => void;
@@ -75,8 +74,9 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           />
           {/* Logo Overlay */}
           <div className="absolute top-8 left-0 right-0 flex justify-center">
-            <div className="px-4 py-2 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20 shadow-lg">
-              <img src={logoSrc} alt="Vale Náuticos" className="h-10 w-auto" />
+            <div className="px-5 py-2.5 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center gap-3 border border-white/20 shadow-lg">
+              <Logo className="h-9 w-9 text-[#B69D74]" />
+              <span className="text-white font-medium tracking-[0.2em] text-sm uppercase">VILA NÁUTICA</span>
             </div>
           </div>
         </div>
@@ -84,10 +84,14 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         {/* Right Side - Form */}
         <div className="w-full md:w-1/2 p-8 md:p-12 lg:p-16 flex flex-col bg-slate-900/40 text-white backdrop-blur-sm border-l border-white/10">
 
-          <div className="mb-10 mt-4">
-            <h1 className="text-4xl font-semibold mb-2">Acesso Administrativo</h1>
-            <p className="text-white/60 text-sm">
-              Entre com suas credenciais de administrador.
+          <div className="mb-10 mt-2">
+            <div className="flex items-center gap-3 mb-4">
+              <Logo className="h-10 w-10 text-[#B69D74] shrink-0" />
+              <span className="text-[#B69D74] font-medium tracking-[0.2em] text-xs uppercase">VILA NÁUTICA</span>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-semibold mb-2 text-white">Acesso Interno</h1>
+            <p className="text-white/70 text-sm leading-relaxed">
+              Portal de colaboradores (Marina, Vale Administradora e Mexicano Lanchas).
             </p>
           </div>
 
@@ -100,8 +104,8 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3.5 bg-white/10 border border-white/20 rounded-full text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 transition-all sm:text-sm backdrop-blur-md"
-                placeholder="ex: admin"
+                className="w-full px-4 py-3.5 bg-white/10 border border-white/20 rounded-full text-white !text-white dark-input placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 transition-all sm:text-sm backdrop-blur-md"
+                placeholder="Digite seu usuário"
                 required
               />
             </div>
@@ -114,8 +118,8 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-4 pr-12 py-3.5 bg-white/10 border border-white/20 rounded-full text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 transition-all sm:text-sm backdrop-blur-md"
-                  placeholder="Senha"
+                  className="w-full pl-4 pr-12 py-3.5 bg-white/10 border border-white/20 rounded-full text-white !text-white dark-input placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 transition-all sm:text-sm backdrop-blur-md"
+                  placeholder="Sua senha"
                   required
                 />
                 <button 
@@ -127,8 +131,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                 </button>
               </div>
             </div>
-
-            {/* Removido o link de esqueci a senha */}
 
             {error && (
               <div className="text-red-300 text-sm font-medium bg-red-900/30 p-3 rounded-lg border border-red-500/30 backdrop-blur-md">

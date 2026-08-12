@@ -1196,12 +1196,16 @@ export async function deleteGoogleCalendarEvent(eventId: string, boatCode?: stri
 
     // Fallback: Se não encontrou ou não apagou em nenhum dos dois, tenta o primary
     if (!boatDeleted && !marinaDeleted) {
-      const response3 = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`), {
-        method: 'DELETE',
-        headers: { 'Authorization': getAuthHeader() }
-      });
-      if (!response3.ok && response3.status !== 404 && response3.status !== 410) {
-        throw new Error(`Google Calendar API delete error: ${response3.statusText}`);
+      try {
+        const response3 = await fetch(getApiUrl(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`), {
+          method: 'DELETE',
+          headers: { 'Authorization': getAuthHeader() }
+        });
+        if (!response3.ok && response3.status !== 404 && response3.status !== 410) {
+          console.warn(`Google Calendar API delete fallback warning: ${response3.statusText}`);
+        }
+      } catch (e) {
+        console.warn('Google Calendar delete fallback error:', e);
       }
     }
     

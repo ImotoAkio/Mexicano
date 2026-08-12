@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
-import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download } from 'lucide-react';
+import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download, List, LayoutGrid } from 'lucide-react';
 import ClientProfileModal from './ClientProfileModal';
 import { generateContract } from './ContractGenerator';
 import jsPDF from 'jspdf';
@@ -11,6 +11,7 @@ export default function ClientPage() {
   const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll());
   const [boats, setBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   
   // Contract Modal State
   const [contractModalClient, setContractModalClient] = useState<Cliente | null>(null);
@@ -544,7 +545,33 @@ export default function ClientPage() {
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+            {/* View Mode Switcher */}
+            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`px-3 py-1 text-xs font-bold rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'table' ? 'bg-white text-slate-900 shadow-xs font-extrabold' : 'text-slate-500 hover:text-slate-900'
+                }`}
+                title="Exibir em Lista / Tabela"
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Lista</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`px-3 py-1 text-xs font-bold rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'grid' ? 'bg-white text-slate-900 shadow-xs font-extrabold' : 'text-slate-500 hover:text-slate-900'
+                }`}
+                title="Exibir em Blocos / Cards"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Blocos</span>
+              </button>
+            </div>
+
             {/* Toggle Filters Button */}
             <button
               onClick={() => setIsFiltersVisible(!isFiltersVisible)}
@@ -668,7 +695,155 @@ export default function ClientPage() {
           <p className="text-sm font-medium text-slate-900">Nenhum cliente encontrado</p>
           <p className="text-xs text-slate-500 mt-1">Cadastre um cliente com sua respectiva embarcação e cota.</p>
         </div>
+      ) : viewMode === 'table' ? (
+        /* VISÃO EM TABELA / LISTA */
+        <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600 border-collapse">
+              <thead className="bg-slate-50/80 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="py-3.5 px-4">Proprietário / Cliente</th>
+                  <th className="py-3.5 px-4">Contato & Documentos</th>
+                  <th className="py-3.5 px-4">Embarcação & Cotas</th>
+                  <th className="py-3.5 px-4 text-center">Status Financeiro</th>
+                  <th className="py-3.5 px-4 text-center">Plano</th>
+                  <th className="py-3.5 px-4 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {filteredClients.map((client) => {
+                  const list = client.embarcacoes && client.embarcacoes.length > 0
+                    ? client.embarcacoes
+                    : [{ embarcacaoId: client.embarcacaoId || '', cota: client.cota || 'N/A' }];
+
+                  return (
+                    <tr id={`client-row-${client.id}`} key={client.id} className="hover:bg-slate-50/80 transition-colors">
+                      {/* Cliente */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-800 font-black text-sm shrink-0">
+                            {client.nome.charAt(0)}
+                          </div>
+                          <div className="overflow-hidden">
+                            <span className="font-bold text-slate-900 text-xs block truncate max-w-[220px]" title={client.nome}>
+                              {client.nome}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              {client.cpf ? `CPF: ${client.cpf}` : `Cadastrado: ${new Date(client.dataCadastro).toLocaleDateString()}`}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Contato */}
+                      <td className="py-3 px-4">
+                        <div className="space-y-0.5">
+                          {client.telefone && (
+                            <div className="flex items-center text-[11px] text-slate-700 font-mono">
+                              <Phone className="w-3 h-3 text-slate-400 mr-1.5 shrink-0" />
+                              <span>{client.telefone}</span>
+                            </div>
+                          )}
+                          {client.email && (
+                            <div className="flex items-center text-[10px] text-slate-500 truncate max-w-[180px]" title={client.email}>
+                              <Mail className="w-3 h-3 text-slate-400 mr-1.5 shrink-0" />
+                              <span className="truncate">{client.email}</span>
+                            </div>
+                          )}
+                          {!client.telefone && !client.email && (
+                            <span className="text-[10px] text-slate-400 italic">Sem contato informado</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Embarcações & Cotas */}
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap gap-1.5 max-w-[280px]">
+                          {list.map((item, idx) => {
+                            const b = boats.find(boat => boat.id === item.embarcacaoId);
+                            return (
+                              <div key={idx} className="inline-flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[11px]">
+                                <span className="font-bold text-slate-800 font-mono">
+                                  {b ? b.nome : 'Sem Barco'}
+                                </span>
+                                {b && (
+                                  <span className={`px-1.5 py-0.2 text-[8px] font-extrabold uppercase rounded ${
+                                    b.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
+                                  }`}>
+                                    {b.tipo === 'jet' ? 'Jet' : 'Lancha'}
+                                  </span>
+                                )}
+                                <span className="font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded text-[10px] border border-indigo-100">
+                                  Cota: {item.cota || 'N/A'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+
+                      {/* Status Financeiro */}
+                      <td className="py-3 px-4 text-center">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
+                          client.statusFinanceiro === 'inadimplente'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}>
+                          {client.statusFinanceiro === 'inadimplente' ? 'Inadimplente' : 'Em Dia'}
+                        </span>
+                      </td>
+
+                      {/* Plano */}
+                      <td className="py-3 px-4 text-center">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+                          client.plano === 'completo' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {client.plano === 'completo' ? 'Completo' : 'Normal'}
+                        </span>
+                      </td>
+
+                      {/* Ações */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end space-x-1">
+                          <button
+                            onClick={() => setViewProfileId(client.id)}
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
+                            title="Ver Perfil e Documentos"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenContractModal(client)}
+                            className="p-1.5 hover:bg-amber-50 rounded-lg text-amber-600 hover:text-amber-700 transition-colors cursor-pointer"
+                            title="Gerar Contrato (PDF)"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenEditModal(client)}
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => initiateDelete(client.id, client.nome)}
+                            className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Remover"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* VISÃO EM BLOCOS / CARDS */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredClients.map(client => {
             const clientBoat = boats.find(b => b.id === client.embarcacaoId);
