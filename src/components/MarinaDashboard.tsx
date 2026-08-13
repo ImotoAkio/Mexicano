@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
@@ -7,6 +7,10 @@ import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
 import BoatPage from './BoatPage';
+import FinanceSchedulesPage from './FinanceSchedulesPage';
+import SettingsPage from './SettingsPage';
+import { getFuelInventory } from '../utils/fuelInventory';
+import { ZoomableImage } from './ZoomableImage';
 
 interface MarinaDashboardProps {
   onLogout: () => void;
@@ -64,10 +68,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistMode, setChecklistMode] = useState<'descida' | 'chegada' | 'subida'>('descida');
   const [checklistFotos, setChecklistFotos] = useState<Record<string, string[]>>({});
+  const [lightbox, setLightbox] = useState<{ currentIndex: number, urls: string[], title: string } | null>(null);
   const [checklistObservacoes, setChecklistObservacoes] = useState('');
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
 
-  const [filterType, setFilterType] = useState<'agendadas' | 'confirmadas' | 'prontas' | 'retornaram' | 'todas'>('agendadas');
+  const [filterType, setFilterType] = useState<'agendadas' | 'confirmadas' | 'prontas' | 'retornaram' | 'todas' | 'agendados' | 'nopier' | 'navegando'>('agendadas');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'hora_saida' | 'alfabetica'>('hora_saida');
   const [tempFuelData, setTempFuelData] = useState<{liters: number, paymentType: string, comprovanteUrl: string | null} | null>(null);
@@ -80,7 +85,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
 
   // Bottom Navigation Tab & Sidebar state
-  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques' | 'embarcacoes' | 'agendamentos' | 'configuracoes'>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
 
@@ -172,6 +177,56 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       socket.disconnect();
     };
   }, []);
+
+  // Calculo de movimentacao semanal real para o grafico SVG (Hook antes de retornos condicionais)
+  const chartDays = useMemo(() => {
+    const dayLabels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+    const today = new Date();
+    const currentDayOfWeek = today.getDay();
+    const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + mondayOffset);
+
+    return dayLabels.map((dayName, index) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + index);
+      const dateStr = d.toISOString().split('T')[0];
+      const count = (data?.reservations || []).filter((r: any) => r.data === dateStr && r.status !== 'cancelado').length;
+      return { dayName, dateStr, count };
+    });
+  }, [data?.reservations]);
+
+  const chartPoints = useMemo(() => {
+    const maxVal = Math.max(5, ...chartDays.map(d => d.count));
+    const width = 500;
+    const paddingX = 40;
+    const stepX = (width - 2 * paddingX) / (chartDays.length - 1);
+
+    return chartDays.map((d, i) => {
+      const x = Math.round(paddingX + i * stepX);
+      const y = Math.round(115 - (d.count / maxVal) * 85);
+      return { ...d, x, y };
+    });
+  }, [chartDays]);
+
+  const chartPathD = useMemo(() => {
+    if (chartPoints.length === 0) return '';
+    let d = `M ${chartPoints[0].x},${chartPoints[0].y}`;
+    for (let i = 0; i < chartPoints.length - 1; i++) {
+      const p0 = chartPoints[i];
+      const p1 = chartPoints[i + 1];
+      const dx = (p1.x - p0.x) / 2.5;
+      d += ` C ${p0.x + dx},${p0.y} ${p1.x - dx},${p1.y} ${p1.x},${p1.y}`;
+    }
+    return d;
+  }, [chartPoints]);
+
+  const chartFillD = useMemo(() => {
+    if (!chartPathD || chartPoints.length === 0) return '';
+    const firstX = chartPoints[0].x;
+    const lastX = chartPoints[chartPoints.length - 1].x;
+    return `${chartPathD} L ${lastX},135 L ${firstX},135 Z`;
+  }, [chartPathD, chartPoints]);
 
   const fetchData = async (isInitial = false) => {
     if (isInitial || !data) setLoading(true);
@@ -559,24 +614,28 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const countTodas = totalDayReservations.length;
   const displayDateStr = new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 
+  // Dados reais de estoque do módulo de tanques (fuelInventory)
+  const fuelInventory = getFuelInventory();
+  const tanqueLitros = fuelInventory.tanquePrincipalLitros || 0;
+  const tanqueCapacidade = fuelInventory.tanqueCapacidadeMaxima || 10000;
+  const tanquePct = Math.min(100, Math.round((tanqueLitros / tanqueCapacidade) * 100));
+
+  const galoesQtd = fuelInventory.galoesPierQuantidade || 0;
+  const galaoParcial = fuelInventory.galaoParcialLitros || 0;
+  const totalLitrosGaloes = (galoesQtd * (fuelInventory.galoesCapacidadeLitros || 20)) + galaoParcial;
+
   return (
     <div className="min-h-screen w-full flex bg-[#f4f5f7] font-sans text-slate-800">
       
       {/* Sidebar - Light Theme Executiva (Desktop & Tablet) */}
-      <aside className={`bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0 transition-all duration-300 overflow-hidden z-30 shrink-0 ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-        <div className="min-h-[4.5rem] flex items-center justify-between px-4 border-b border-slate-100">
-          <div className="flex items-center gap-3 min-w-0">
-            <Logo className="h-7 w-auto text-[#B69D74] shrink-0" />
-            {isSidebarOpen && (
-              <div className="min-w-0">
-                <h1 className="font-extrabold text-sm text-slate-900 tracking-tight leading-none truncate">Marina ERP</h1>
-                <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider block mt-0.5">Painel Gerencial</span>
-              </div>
-            )}
+      <aside className={`hidden sm:flex bg-white border-r border-slate-200 flex-col h-screen sticky top-0 transition-all duration-300 overflow-hidden z-30 shrink-0 ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+        <div className="min-h-[4.5rem] flex items-center justify-between px-3 border-b border-slate-100">
+          <div className="flex items-center min-w-0 flex-1 justify-center py-2">
+            <Logo className="h-10 w-full text-[#B69D74]" editable={true} />
           </div>
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors hidden sm:block cursor-pointer"
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors hidden sm:block cursor-pointer shrink-0 ml-1"
             title={isSidebarOpen ? "Recolher Menu" : "Expandir Menu"}
           >
             <Menu className="w-4 h-4" />
@@ -632,6 +691,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 <ClipboardList className="w-4 h-4 shrink-0" />
                 {isSidebarOpen && <span>Auditoria Checklists</span>}
               </button>
+
+              <button 
+                onClick={() => setActiveTab('agendamentos')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'agendamentos' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Consulta de Agendamentos"
+              >
+                <CalendarDays className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Consulta Agendamentos</span>}
+              </button>
             </nav>
           </div>
 
@@ -659,9 +727,9 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           </div>
         </div>
 
-        {/* Sidebar Footer User Info */}
+        {/* Sidebar Footer User Info & Action Buttons */}
         <div className="p-3 border-t border-slate-100 bg-slate-50/50">
-          <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
+          <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'flex-col gap-2 justify-center'}`}>
             {isSidebarOpen && (
               <div className="min-w-0 flex items-center space-x-2">
                 <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
@@ -673,13 +741,28 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 </div>
               </div>
             )}
-            <button 
-              onClick={onLogout}
-              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-              title="Sair do sistema"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={() => setActiveTab('configuracoes')}
+                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                  activeTab === 'configuracoes' 
+                    ? 'text-blue-600 bg-blue-100/80 font-bold shadow-xs' 
+                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/60'
+                }`}
+                title="Configurações do Sistema"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+
+              <button 
+                onClick={onLogout}
+                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                title="Sair do sistema"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -687,180 +770,446 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       {/* Area Principal */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         
-        {/* Mobile menu toggle when sidebar is closed on small screens */}
-        <div className="sm:hidden p-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0">
-          <button 
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold"
-          >
-            <Menu className="w-4 h-4" />
-            <span>Menu</span>
-          </button>
-          <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-extrabold uppercase tracking-wider">
-            Gerente de Marina
-          </span>
+        {/* Mobile Header Bar (Exibido apenas em telas menores que sm) */}
+        <div className="sm:hidden px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <Logo className="h-8 w-32 text-[#B69D74]" editable={true} />
+          </div>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={() => setActiveTab('configuracoes')}
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                activeTab === 'configuracoes' ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-500 hover:bg-slate-100'
+              }`}
+              title="Configurações"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={onLogout}
+              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+              title="Sair"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Content Body com Scroll Interno */}
-        <main className="flex-1 overflow-y-auto subtle-scrollbar p-3 sm:p-6 bg-[#f4f5f7]">
+        <main className="flex-1 overflow-y-auto subtle-scrollbar p-3 sm:p-6 bg-[#f4f5f7] pb-24 sm:pb-6">
           
-          {/* ABA HOME: VISÃO GERAL EXECUTIVA */}
+          {/* ABA HOME: VISÃO GERAL EXECUTIVA & RELATÓRIOS */}
           {activeTab === 'home' && (
-            <div className="space-y-6 max-w-7xl mx-auto">
-              {/* Banner Executivo */}
-              <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-slate-800">
-                <div className="space-y-1.5 z-10">
+            <div className="space-y-6 max-w-7xl mx-auto pb-10">
+              
+              {/* Header Executivo & Controles de Período */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <div>
                   <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-400/30 rounded-full text-[10px] font-black uppercase tracking-wider">
-                      Painel Gerencial
+                    <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200/80 rounded-full text-[10px] font-black uppercase tracking-wider">
+                      Painel Gerencial Marina
                     </span>
-                    <span className="text-xs font-medium text-slate-300">{displayDateStr}</span>
+                    <span className="text-xs font-semibold text-slate-400">• {displayDateStr}</span>
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">Bem-vindo, {operadorNome || 'Gerente'}!</h2>
-                  <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-                    Painel administrativo em tempo real para monitorar a operação do píer, conferir checklists fotográficos dos marinheiros e controlar o estoque de combustível da marina.
+                  <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">
+                    Controle Operacional & Analytics
+                  </h1>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Visão consolidada do fluxo do píer, ocupação de vagas, estoque de combustível e histórico de relatórios.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 z-10">
+
+                <div className="flex items-center gap-2 shrink-0">
                   <button 
                     onClick={() => setActiveTab('operacao')}
-                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
                   >
                     <Ship className="w-4 h-4" />
-                    <span>Ver Fila do Píer</span>
+                    <span>Fila do Píer</span>
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('combustivel')}
+                    className="px-3 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <Droplets className="w-4 h-4 text-amber-400" />
+                    <span>Combustível</span>
                   </button>
                 </div>
               </div>
 
-              {/* Metric Cards Grid */}
+              {/* Metric Cards Grid - Estilo Analytics */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Agendados / Confirmados</span>
-                    <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                {/* Metric 1 */}
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Agendamentos Hoje</span>
+                    <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold border border-amber-100">
                       <Clock className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-black text-slate-900">{countAgendadosConfirmados}</span>
-                    <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Agendamentos</span>
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-black text-slate-900">{countAgendadosConfirmados}</span>
+                      <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                        <TrendingUp className="w-3 h-3" />
+                        <span>Confirmadas</span>
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium mt-1">Total de descidas agendadas no dia</p>
                   </div>
-                  <p className="text-[11px] text-slate-400 font-medium">Na fila para descida na data</p>
                 </div>
 
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">No Píer</span>
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                {/* Metric 2 */}
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">No Píer Prontas</span>
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold border border-blue-100">
                       <Anchor className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-black text-slate-900">{countNoPier}</span>
-                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Embarcações</span>
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-black text-slate-900">{countNoPier}</span>
+                      <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                        Na água
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium mt-1">Barcos prontos à espera do cliente</p>
                   </div>
-                  <p className="text-[11px] text-slate-400 font-medium">Barcos prontos no píer</p>
                 </div>
 
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Navegando</span>
-                    <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
+                {/* Metric 3 */}
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Navegando no Rio</span>
+                    <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold border border-sky-100">
                       <Navigation className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-black text-slate-900">{countNavegando}</span>
-                    <span className="text-xs font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full">Em Navegação</span>
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-black text-slate-900">{countNavegando}</span>
+                      <span className="text-[11px] font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full">
+                        Em rio
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium mt-1">Barcos navegando no rio</p>
                   </div>
-                  <p className="text-[11px] text-slate-400 font-medium">Barcos navegando no mar</p>
                 </div>
 
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Retornaram</span>
-                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                      <CheckCircle2 className="w-5 h-5" />
+                {/* Metric 4 */}
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Total Embarcações</span>
+                    <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold border border-indigo-100">
+                      <Ship className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-black text-slate-900">{countRetornaram}</span>
-                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Retornados</span>
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-black text-slate-900">{data?.boats?.length || 0}</span>
+                      <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                        Cadastradas
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium mt-1">Total de barcos sob gestão da marina</p>
                   </div>
-                  <p className="text-[11px] text-slate-400 font-medium">Aguardando vaga / subida</p>
                 </div>
               </div>
 
-              {/* Quick Shortcuts Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Tanques de Combustível Summary Widget */}
+              {/* Analytics Section: Gráficos de Tendência & Desempenho Operacional */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Main Movement Graph Card (Dynamic SVG Line Chart) */}
+                <div className="lg:col-span-2 bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-extrabold text-base text-slate-900">Movimentação Operacional no Píer</h3>
+                      <p className="text-xs text-slate-400">Fluxo semanal de descidas e saídas de embarcações</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
+                        Semana Atual
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Dynamic SVG Area Chart */}
+                  <div className="w-full pt-4 pb-2">
+                    <div className="relative h-48 w-full">
+                      <svg className="w-full h-full overflow-visible" viewBox="0 0 500 150">
+                        <defs>
+                          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.35" />
+                            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        {/* Grid lines */}
+                        <line x1="40" y1="30" x2="460" y2="30" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="4 4" />
+                        <line x1="40" y1="70" x2="460" y2="70" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="4 4" />
+                        <line x1="40" y1="110" x2="460" y2="110" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="4 4" />
+
+                        {/* Smooth trend path passing exactly through every point */}
+                        {chartFillD && (
+                          <path
+                            d={chartFillD}
+                            fill="url(#chartGradient)"
+                          />
+                        )}
+                        {chartPathD && (
+                          <path
+                            d={chartPathD}
+                            fill="none"
+                            stroke="#2563eb"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        )}
+
+                        {/* Data Points - Exactly Aligned to Curve (x, y) */}
+                        {chartPoints.map((pt, idx) => (
+                          <g key={idx} className="group cursor-pointer">
+                            {/* Number badge label above point */}
+                            <text
+                              x={pt.x}
+                              y={pt.y - 10}
+                              textAnchor="middle"
+                              className="text-[11px] font-black fill-blue-700"
+                            >
+                              {pt.count}
+                            </text>
+                            {/* Circle indicator */}
+                            <circle
+                              cx={pt.x}
+                              cy={pt.y}
+                              r="5.5"
+                              fill="#2563eb"
+                              stroke="#ffffff"
+                              strokeWidth="2.5"
+                              className="transition-transform group-hover:scale-125"
+                            />
+                          </g>
+                        ))}
+                      </svg>
+                    </div>
+
+                    {/* X Axis Labels */}
+                    <div className="flex justify-between text-[11px] font-bold text-slate-400 pt-2 border-t border-slate-100 px-4">
+                      {chartDays.map((d, i) => (
+                        <span key={i} className="text-center w-8">{d.dayName}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Efficiency Gauge Ring Card (Radial Gauge) */}
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-extrabold text-base text-slate-900">Eficiência Operacional</h3>
+                      <p className="text-xs text-slate-400">Conformidade de Checklists & Atendimento</p>
+                    </div>
+                  </div>
+
+                  {/* SVG Semi-Circle / Gauge Ring */}
+                  <div className="flex flex-col items-center justify-center my-auto py-2">
+                    <div className="relative w-44 h-32 flex items-center justify-center">
+                      <svg className="w-44 h-44 -rotate-90 transform" viewBox="0 0 100 100">
+                        {/* Background track */}
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          fill="transparent"
+                          stroke="#f1f5f9"
+                          strokeWidth="10"
+                          strokeDasharray="251.2"
+                          strokeDashoffset="62.8"
+                          strokeLinecap="round"
+                        />
+                        {/* Active progress track */}
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          fill="transparent"
+                          stroke="#10b981"
+                          strokeWidth="10"
+                          strokeDasharray="251.2"
+                          strokeDashoffset="80"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pt-4">
+                        <span className="text-3xl font-black text-slate-900 font-mono">98%</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Conformidade</span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center mt-2">
+                      <p className="text-xs text-emerald-800 font-bold">100% dos Checklists em Dia</p>
+                      <p className="text-[10px] text-emerald-600 font-medium">Fotos de 6 ângulos registradas antes da descida</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Control Section: Relatórios de Tanques & Tabela de Atividades Recentes */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Tanques de Combustível Controls - Real Inventory Data */}
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Droplets className="w-5 h-5 text-blue-600" />
-                      <h3 className="font-extrabold text-base text-slate-900">Estoque dos Tanques da Marina</h3>
+                      <h3 className="font-extrabold text-base text-slate-900">Estoque dos Tanques</h3>
                     </div>
                     <button 
                       onClick={() => setActiveTab('tanques')}
                       className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
                     >
-                      <span>Gerenciar Tanques</span>
+                      <span>Gerenciar</span>
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-3">
+                    {/* Tanque Principal */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Gasolina Podium</span>
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-xl font-black text-slate-900 font-mono">7.650 L</span>
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">76%</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Tanque Principal</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                          tanquePct <= 20 ? 'bg-rose-50 text-rose-700' :
+                          tanquePct <= 40 ? 'bg-amber-50 text-amber-700' :
+                          'bg-emerald-50 text-emerald-700'
+                        }`}>
+                          {tanquePct}%
+                        </span>
                       </div>
-                      <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: '76%' }} />
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-900 font-mono">
+                          {tanqueLitros.toLocaleString('pt-BR')} L
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          Cap: {tanqueCapacidade.toLocaleString('pt-BR')}L
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${
+                            tanquePct <= 20 ? 'bg-rose-500' :
+                            tanquePct <= 40 ? 'bg-amber-500' :
+                            'bg-emerald-500'
+                          }`} 
+                          style={{ width: `${tanquePct}%` }} 
+                        />
                       </div>
                     </div>
 
+                    {/* Galões no Píer */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Diesel Náutico</span>
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-xl font-black text-slate-900 font-mono">4.200 L</span>
-                        <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">42%</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Galões no Píer</span>
+                        <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+                          {galoesQtd} {galoesQtd === 1 ? 'galão cheio' : 'galões cheios'}
+                        </span>
                       </div>
-                      <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                        <div className="bg-amber-500 h-full rounded-full" style={{ width: '42%' }} />
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-900 font-mono">
+                          {totalLitrosGaloes.toLocaleString('pt-BR')} L
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          {galaoParcial > 0 ? `+ ${galaoParcial}L parcial` : 'Píer pronto'}
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-blue-500 h-full rounded-full transition-all" 
+                          style={{ width: `${Math.min(100, Math.round((totalLitrosGaloes / 200) * 100))}%` }} 
+                        />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Auditoria de Checklists Summary Widget */}
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+                {/* Tabela de Atividades Recentes do Píer */}
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <ClipboardList className="w-5 h-5 text-blue-600" />
-                      <h3 className="font-extrabold text-base text-slate-900">Auditoria & Registros Fotográficos</h3>
+                    <div>
+                      <h3 className="font-extrabold text-base text-slate-900">Relatório de Operações no Píer</h3>
+                      <p className="text-xs text-slate-400">Últimas movimentações registradas na data</p>
                     </div>
                     <button 
-                      onClick={() => setActiveTab('checklists')}
+                      onClick={() => setActiveTab('operacao')}
                       className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
                     >
-                      <span>Ver Checklists</span>
+                      <span>Ver Fila Completa</span>
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
 
-                  <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-2 text-slate-700 text-xs">
-                    <div className="flex items-center gap-2 text-blue-900 font-bold">
-                      <Layers className="w-4 h-4 text-blue-600" />
-                      <span>Ângulo do Casco & Inspeção Inferior Ativados</span>
-                    </div>
-                    <p className="text-slate-600 leading-relaxed">
-                      Os marinheiros estão registrando fotos nos 6 ângulos (Proa, Popa, Lateral Esquerda, Lateral Direita, Painel e Casco) em cada descida e subida.
-                    </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-extrabold uppercase text-slate-400">
+                          <th className="pb-2">Embarcação</th>
+                          <th className="pb-2">Cliente</th>
+                          <th className="pb-2">Estágio Atual</th>
+                          <th className="pb-2">Prev. Saída</th>
+                          <th className="pb-2 text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50 font-medium">
+                        {(totalDayReservations.slice(0, 5) || []).map((r: any) => {
+                          const boat = getEmbarcacao(r.embarcacaoId);
+                          const client = getCliente(r.clienteId);
+                          const isSaida = !!r.horaSaida;
+                          const isChegada = !!r.horaChegada;
+                          const isSubida = !!r.horaSubida;
+                          const isDescida = !!r.horaDescida;
+                          const isConfirmado = r.status === 'confirmado' || r.statusMarina === 'confirmada';
+
+                          return (
+                            <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-2.5 font-bold text-slate-900">
+                                {boat?.nome || 'Embarcação'}
+                              </td>
+                              <td className="py-2.5 text-slate-600">
+                                {client?.nome || 'Cliente'}
+                              </td>
+                              <td className="py-2.5">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 ${
+                                  isSubida ? 'bg-emerald-50 text-emerald-700' :
+                                  isChegada ? 'bg-teal-50 text-teal-700' :
+                                  isSaida ? 'bg-sky-50 text-sky-700' :
+                                  isDescida ? 'bg-blue-50 text-blue-700' :
+                                  isConfirmado ? 'bg-emerald-50 text-emerald-800' :
+                                  'bg-amber-50 text-amber-800'
+                                }`}>
+                                  {isSubida ? 'Guardada' : isChegada ? 'Retornou' : isSaida ? 'Navegando' : isDescida ? 'No Píer' : isConfirmado ? 'Confirmado' : 'Agendado'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 font-mono text-slate-500">
+                                {r.previsaoSaida || '--:--'}
+                              </td>
+                              <td className="py-2.5 text-right">
+                                <button 
+                                  onClick={() => setActiveTab('operacao')}
+                                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
+                                >
+                                  Ver no Píer
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
+
               </div>
+
             </div>
           )}
         {activeTab === 'operacao' && (
@@ -989,13 +1338,32 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                     {(data?.reservations?.filter((r: any) => r.data === selectedDate && !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado') || []).map((reserva: any) => {
                       const barco = getEmbarcacao(reserva.embarcacaoId);
                       const cliente = getCliente(reserva.clienteId);
+                      const isConfirmado = reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada';
                       return (
-                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-amber-100 shadow-xs hover:shadow-md transition-all space-y-2">
-                          <div className="flex items-start justify-between">
-                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
-                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md">
-                              {reserva.previsaoSaida || '08:00'}
-                            </span>
+                        <div key={reserva.id} className={`bg-white p-3.5 rounded-xl border shadow-xs hover:shadow-md transition-all space-y-2 ${isConfirmado ? 'border-emerald-200 hover:border-emerald-300' : 'border-amber-100'}`}>
+                          <div className="flex items-start justify-between gap-1">
+                            <div>
+                              <span className="font-extrabold text-sm text-slate-900 block leading-tight">{barco?.nome || 'Embarcação'}</span>
+                              <div className="mt-1 flex items-center gap-1.5">
+                                <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
+                                  isConfirmado 
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80' 
+                                    : 'bg-amber-50 text-amber-800 border-amber-200/80'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isConfirmado ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                  {isConfirmado ? 'Confirmado' : 'Agendado'}
+                                </span>
+                              </div>
+                            </div>
+                            {reserva.previsaoSaida ? (
+                              <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md shrink-0">
+                                {reserva.previsaoSaida}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-slate-100 text-slate-400 rounded-md shrink-0" title="Horário não informado">
+                                --:--
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
                           <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
@@ -1052,7 +1420,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                               Saída / Navegar
                             </button>
                             <button
-                              onClick={() => handleRegistrarChegada(reserva)}
+                              onClick={() => openFuelForChegada(reserva)}
                               className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                             >
                               Abastecer / Chegada
@@ -1084,15 +1452,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs hover:shadow-md transition-all space-y-2">
                           <div className="flex items-start justify-between">
                             <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
-                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-sky-50 text-sky-700 rounded-md">
-                              {reserva.horaSaida || 'Navegando'}
+                            <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-md ${reserva.horaSaida ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-400'}`}>
+                              {reserva.horaSaida || '--:--'}
                             </span>
                           </div>
                           <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
                           <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
                             <span className="text-sky-700 font-bold">Em Navegação</span>
                             <button
-                              onClick={() => handleRegistrarChegada(reserva)}
+                              onClick={() => openFuelForChegada(reserva)}
                               className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                             >
                               Abastecer / Chegada
@@ -1153,267 +1521,252 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               </div>
             )}
 
-            {reservasDoDia.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center mt-4 mx-2">
-            <Ship className="w-12 h-12 text-slate-300 mb-3" />
-            <h3 className="text-base font-bold text-slate-500">Nenhum agendamento encontrado</h3>
-            <p className="text-slate-400 text-xs mt-1">
-              {searchTerm ? `Nenhum resultado para "${searchTerm}".` : 'Não há registros nesta categoria.'}
-            </p>
-            {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm('')}
-                className="mt-3 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition-colors"
-              >
-                Limpar busca
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden divide-y divide-slate-100 mb-6">
-            {/* Table Header - Visible on Desktop/Tablet */}
-            <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-3 bg-slate-50/90 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 items-center">
-              <div className="col-span-4 lg:col-span-3">Embarcação & Cliente</div>
-              <div className="col-span-3 lg:col-span-3">Horários Previstos</div>
-              <div className="col-span-2 lg:col-span-3">Estágio & Horários Reais</div>
-              <div className="col-span-3 lg:col-span-3 text-right">Operações & Ações</div>
-            </div>
-
-            {/* List Rows */}
-            {reservasDoDia.map((reserva: any) => {
-              const boat = getEmbarcacao(reserva.embarcacaoId);
-              const client = getCliente(reserva.clienteId);
-              const isSaida = !!reserva.horaSaida;
-              const isChegada = !!reserva.horaChegada;
-              const isSubida = !!reserva.horaSubida;
-
-              return (
-                <div 
-                  key={reserva.id} 
-                  className="p-3 sm:p-4 hover:bg-slate-50/80 transition-colors flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center relative group cursor-pointer"
-                  onClick={() => {
-                    setDetailsReserva(reserva);
-                    setDetailsModalOpen(true);
-                  }}
-                >
-                  {/* Left accent bar */}
-                  <div className={`absolute top-0 left-0 bottom-0 w-1 ${
-                    isSubida ? 'bg-emerald-500' : 
-                    isChegada ? 'bg-teal-500' : 
-                    isSaida ? 'bg-sky-500' : 
-                    reserva.horaDescida ? 'bg-blue-500' : 
-                    'bg-amber-500'
-                  }`} />
-
-                  {/* Col 1: Embarcação & Cliente */}
-                  <div className="md:col-span-4 lg:col-span-3 min-w-0 pl-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
-                        {boat?.nome || 'Embarcação'}
-                      </span>
-                      {boat?.numero && (
-                        <span className="bg-slate-900 text-white px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">
-                          {boat.numero}
-                        </span>
-                      )}
-                      {boat?.vaga && (
-                        <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                          Vaga {boat.vaga}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                      <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate max-w-[200px]">{client?.nome || 'Cliente'}</span>
-                    </div>
-                  </div>
-
-                  {/* Col 2: Horários Previstos */}
-                  <div className="md:col-span-3 lg:col-span-3">
-                    <div className="flex items-center gap-2 text-xs flex-wrap">
-                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg text-slate-700">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Saída:</span>
-                        <span className="font-mono font-bold">{reserva.previsaoSaida || '08:00'}</span>
-                      </div>
-                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg text-slate-700">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Chegada:</span>
-                        <span className="font-mono font-bold">{reserva.previsaoChegada || '18:00'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Col 3: Estágio & Horários Reais */}
-                  <div className="md:col-span-2 lg:col-span-3">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                          isSubida ? 'bg-emerald-100 text-emerald-800' :
-                          isChegada ? 'bg-teal-100 text-teal-800' :
-                          isSaida ? 'bg-sky-100 text-sky-800' :
-                          reserva.horaDescida ? 'bg-blue-100 text-blue-800' :
-                          reserva.status === 'cancelado' ? 'bg-red-100 text-red-700' :
-                          'bg-amber-100 text-amber-800'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${
-                            isSubida ? 'bg-emerald-500' :
-                            isChegada ? 'bg-teal-500' :
-                            isSaida ? 'bg-sky-500' :
-                            reserva.horaDescida ? 'bg-blue-500' :
-                            reserva.status === 'cancelado' ? 'bg-red-500' :
-                            'bg-amber-500'
-                          }`} />
-                          {isSubida ? 'Guardada' :
-                           isChegada ? 'Retornou' :
-                           isSaida ? 'Navegando' :
-                           reserva.horaDescida ? 'No Píer' :
-                           reserva.status === 'cancelado' ? 'Cancelado' :
-                           'Agendado'}
-                        </span>
-                      </div>
-
-                      {(reserva.horaDescida || reserva.horaSaida || reserva.horaChegada || reserva.horaSubida) && (
-                        <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 flex-wrap">
-                          {reserva.horaDescida && <span>Píer: <b>{reserva.horaDescida}</b></span>}
-                          {reserva.horaSaida && <span>• Mar: <b>{reserva.horaSaida}</b></span>}
-                          {reserva.horaChegada && <span>• Chegou: <b>{reserva.horaChegada}</b></span>}
-                          {reserva.horaSubida && <span>• Subiu: <b>{reserva.horaSubida}</b></span>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Col 4: Operações & Ações */}
-                  <div 
-                    className="md:col-span-3 lg:col-span-3 w-full md:w-auto flex items-center justify-start md:justify-end gap-1.5 flex-wrap pt-2 md:pt-0 border-t md:border-t-0 border-slate-100"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Agendado / Não Desceu */}
-                    {reserva.status !== 'cancelado' && !reserva.horaDescida && (
-                      <>
-                        <button 
-                          onClick={(e) => { 
-                            e.stopPropagation(); 
-                            if (confirm("Confirmar descida rápida sem fotos?")) {
-                              executeRegistrarDescida([], reserva);
-                            }
-                          }}
-                          title="Descida Rápida (sem fotos)"
-                          className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/60 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
-                        >
-                          <Zap className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Rápida</span>
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); openChecklistForDescida(reserva); }}
-                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                        >
-                          <Camera className="w-3.5 h-3.5" />
-                          <span>Checklist Saída</span>
-                        </button>
-                      </>
-                    )}
-
-                    {/* No Píer */}
-                    {reserva.status !== 'cancelado' && reserva.horaDescida && !reserva.horaSaida && (
-                      <>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); executeMarcarSaida(reserva); }}
-                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                        >
-                          <Navigation className="w-3.5 h-3.5" />
-                          <span>Marcar Saída</span>
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }}
-                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                        >
-                          <Droplets className="w-3.5 h-3.5" />
-                          <span>Abastecer</span>
-                        </button>
-                      </>
-                    )}
-
-                    {/* Navegando */}
-                    {reserva.status !== 'cancelado' && reserva.horaSaida && !reserva.horaChegada && (
+            {/* VISÃO LISTA (Apenas exibida no modo 'lista') */}
+            {viewMode === 'lista' && (
+              <>
+                {reservasDoDia.length === 0 ? (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center flex flex-col items-center mt-4 mx-2">
+                    <Ship className="w-12 h-12 text-slate-300 mb-3" />
+                    <h3 className="text-base font-bold text-slate-500">Nenhum agendamento encontrado</h3>
+                    <p className="text-slate-400 text-xs mt-1">
+                      {searchTerm ? `Nenhum resultado para "${searchTerm}".` : 'Não há registros nesta categoria.'}
+                    </p>
+                    {searchTerm && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }}
-                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        onClick={() => setSearchTerm('')}
+                        className="mt-3 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition-colors"
                       >
-                        <Droplets className="w-3.5 h-3.5" />
-                        <span>Registrar Chegada</span>
+                        Limpar busca
                       </button>
                     )}
-
-                    {/* Retornaram */}
-                    {reserva.status !== 'cancelado' && (reserva.horaChegada || reserva.statusMarina === 'chegada') && !reserva.horaSubida && (
-                      <>
-                        {Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) > 0 && (
-                          reserva.abastecimentoStatusCobranca === 'cobrado' ? (
-                            <span className="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[10px] font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              <span>{reserva.abastecimentoLitros || reserva.litrosAbastecidos}L Cobrado</span>
-                            </span>
-                          ) : (
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }} 
-                              className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
-                            >
-                              <Droplets className="w-3.5 h-3.5" />
-                              <span>Cobrar {reserva.abastecimentoLitros || reserva.litrosAbastecidos}L</span>
-                            </button>
-                          )
-                        )}
-
-                        <button 
-                          onClick={(e) => { 
-                            e.stopPropagation(); 
-                            if (confirm("Confirmar subida rápida sem fotos?")) {
-                              executeRegistrarSubida([], reserva);
-                            }
-                          }}
-                          title="Subida Rápida (sem fotos)"
-                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
-                        >
-                          <Zap className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Rápida</span>
-                        </button>
-
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); openChecklistForSubida(reserva); }}
-                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                        >
-                          <ClipboardList className="w-3.5 h-3.5" />
-                          <span>Subir / Checklist</span>
-                        </button>
-                      </>
-                    )}
-
-                    {/* Guardada e Finalizada */}
-                    {reserva.status !== 'cancelado' && reserva.horaSubida && (
-                      <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Guardada</span>
-                      </span>
-                    )}
-
-                    {/* Details Modal Trigger Arrow */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDetailsReserva(reserva);
-                        setDetailsModalOpen(true);
-                      }}
-                      title="Ver Detalhes"
-                      className="p-1.5 hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer ml-1"
-                    >
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                ) : (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden divide-y divide-slate-100 mb-6">
+                    {/* Table Header - Visible on Desktop/Tablet */}
+                    <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-3 bg-slate-50/90 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 items-center">
+                      <div className="col-span-4 lg:col-span-3">Embarcação & Cliente</div>
+                      <div className="col-span-3 lg:col-span-3">Horários Previstos</div>
+                      <div className="col-span-2 lg:col-span-3">Estágio & Horários Reais</div>
+                      <div className="col-span-3 lg:col-span-3 text-right">Operações & Ações</div>
+                    </div>
+
+                    {/* List Rows */}
+                    {reservasDoDia.map((reserva: any) => {
+                      const boat = getEmbarcacao(reserva.embarcacaoId);
+                      const client = getCliente(reserva.clienteId);
+                      const isSaida = !!reserva.horaSaida;
+                      const isChegada = !!reserva.horaChegada;
+                      const isSubida = !!reserva.horaSubida;
+                      const isConfirmado = reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada';
+
+                      return (
+                        <div 
+                          key={reserva.id} 
+                          className="p-3 sm:p-4 hover:bg-slate-50/80 transition-colors flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center relative group cursor-pointer"
+                          onClick={() => {
+                            setDetailsReserva(reserva);
+                            setDetailsModalOpen(true);
+                          }}
+                        >
+                          {/* Left accent bar */}
+                          <div className={`absolute top-0 left-0 bottom-0 w-1 ${
+                            isSubida ? 'bg-emerald-500' : 
+                            isChegada ? 'bg-teal-500' : 
+                            isSaida ? 'bg-sky-500' : 
+                            reserva.horaDescida ? 'bg-blue-500' : 
+                            isConfirmado ? 'bg-emerald-500' :
+                            'bg-amber-500'
+                          }`} />
+
+                          {/* Col 1: Embarcação & Cliente */}
+                          <div className="md:col-span-4 lg:col-span-3 min-w-0 pl-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
+                                {boat?.nome || 'Embarcação'}
+                              </span>
+                              {boat?.numero && (
+                                <span className="bg-slate-900 text-white px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">
+                                  {boat.numero}
+                                </span>
+                              )}
+                              {boat?.vaga && (
+                                <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                  Vaga {boat.vaga}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                              <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate max-w-[200px]">{client?.nome || 'Cliente'}</span>
+                            </div>
+                          </div>
+
+                          {/* Col 2: Horários Previstos */}
+                          <div className="md:col-span-3 lg:col-span-3">
+                            <div className="flex items-center gap-2 text-xs flex-wrap">
+                              <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg text-slate-700">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Saída:</span>
+                                <span className={`font-mono font-bold ${reserva.previsaoSaida ? 'text-slate-700' : 'text-slate-400'}`}>{reserva.previsaoSaida || '--:--'}</span>
+                              </div>
+                              <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg text-slate-700">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Chegada:</span>
+                                <span className={`font-mono font-bold ${reserva.previsaoChegada ? 'text-slate-700' : 'text-slate-400'}`}>{reserva.previsaoChegada || '--:--'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Col 3: Estágio & Horários Reais */}
+                          <div className="md:col-span-2 lg:col-span-3">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                                  isSubida ? 'bg-emerald-100 text-emerald-800' :
+                                  isChegada ? 'bg-teal-100 text-teal-800' :
+                                  isSaida ? 'bg-sky-100 text-sky-800' :
+                                  reserva.horaDescida ? 'bg-blue-100 text-blue-800' :
+                                  reserva.status === 'cancelado' ? 'bg-red-100 text-red-700' :
+                                  isConfirmado ? 'bg-emerald-100 text-emerald-800' :
+                                  'bg-amber-100 text-amber-800'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    isSubida ? 'bg-emerald-500' :
+                                    isChegada ? 'bg-teal-500' :
+                                    isSaida ? 'bg-sky-500' :
+                                    reserva.horaDescida ? 'bg-blue-500' :
+                                    reserva.status === 'cancelado' ? 'bg-red-500' :
+                                    isConfirmado ? 'bg-emerald-500' :
+                                    'bg-amber-500'
+                                  }`} />
+                                  {isSubida ? 'Guardada' :
+                                   isChegada ? 'Retornou' :
+                                   isSaida ? 'Navegando' :
+                                   reserva.horaDescida ? 'No Píer' :
+                                   reserva.status === 'cancelado' ? 'Cancelado' :
+                                   isConfirmado ? 'Confirmado' :
+                                   'Agendado'}
+                                </span>
+                              </div>
+
+                              {(reserva.horaDescida || reserva.horaSaida || reserva.horaChegada || reserva.horaSubida) && (
+                                <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 flex-wrap">
+                                  {reserva.horaDescida && <span>Píer: <b>{reserva.horaDescida}</b></span>}
+                                  {reserva.horaSaida && <span>• Mar: <b>{reserva.horaSaida}</b></span>}
+                                  {reserva.horaChegada && <span>• Chegou: <b>{reserva.horaChegada}</b></span>}
+                                  {reserva.horaSubida && <span>• Subiu: <b>{reserva.horaSubida}</b></span>}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Col 4: Operações & Ações */}
+                          <div 
+                            className="md:col-span-3 lg:col-span-3 w-full md:w-auto flex items-center justify-start md:justify-end gap-1.5 flex-wrap pt-2 md:pt-0 border-t md:border-t-0 border-slate-100"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {/* Agendado / Não Desceu */}
+                            {reserva.status !== 'cancelado' && !reserva.horaDescida && (
+                              <>
+                                <button 
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (confirm("Confirmar descida rápida sem fotos?")) {
+                                      executeRegistrarDescida([], reserva);
+                                    }
+                                  }}
+                                  title="Descida Rápida (sem fotos)"
+                                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/60 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                                >
+                                  <Zap className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Rápida</span>
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); openChecklistForDescida(reserva); }}
+                                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  <span>Checklist Saída</span>
+                                </button>
+                              </>
+                            )}
+
+                            {/* No Píer */}
+                            {reserva.status !== 'cancelado' && reserva.horaDescida && !reserva.horaSaida && (
+                              <>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); executeMarcarSaida(reserva); }}
+                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                                >
+                                  <Navigation className="w-3.5 h-3.5" />
+                                  <span>Marcar Saída</span>
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }}
+                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                                >
+                                  <Droplets className="w-3.5 h-3.5" />
+                                  <span>Abastecer</span>
+                                </button>
+                              </>
+                            )}
+
+                            {/* Navegando */}
+                            {reserva.status !== 'cancelado' && reserva.horaSaida && !reserva.horaChegada && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); openFuelForChegada(reserva); }}
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                              >
+                                <Droplets className="w-3.5 h-3.5" />
+                                <span>Registrar Chegada</span>
+                              </button>
+                            )}
+
+                            {/* Retornaram */}
+                            {reserva.status !== 'cancelado' && (reserva.horaChegada || reserva.statusMarina === 'chegada') && !reserva.horaSubida && (
+                              <>
+                                {Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) > 0 && (
+                                  <span className="px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200/80 rounded-lg text-xs font-bold flex items-center gap-1">
+                                    <Droplets className="w-3 h-3 text-amber-600" />
+                                    <span>{reserva.abastecimentoLitros || reserva.litrosAbastecidos}L</span>
+                                  </span>
+                                )}
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); openChecklistForSubida(reserva); }}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  <span>Checklist Subida</span>
+                                </button>
+                              </>
+                            )}
+
+                            {/* Subiu / Guardada */}
+                            {reserva.status !== 'cancelado' && reserva.horaSubida && (
+                              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Guardada</span>
+                              </span>
+                            )}
+
+                            {/* Details Modal Trigger Arrow */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDetailsReserva(reserva);
+                                setDetailsModalOpen(true);
+                              }}
+                              title="Ver Detalhes"
+                              className="p-1.5 hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer ml-1"
+                            >
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -1444,6 +1797,18 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         {activeTab === 'embarcacoes' && (
           <div className="max-w-7xl mx-auto">
             <BoatPage />
+          </div>
+        )}
+
+        {activeTab === 'agendamentos' && (
+          <div className="max-w-7xl mx-auto">
+            <FinanceSchedulesPage />
+          </div>
+        )}
+
+        {activeTab === 'configuracoes' && (
+          <div className="max-w-7xl mx-auto">
+            <SettingsPage operadorNome={operadorNome} showToast={showToast} />
           </div>
         )}
         </main>
@@ -1731,8 +2096,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                     <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'admin' ? 'border-amber-500 bg-amber-50 ring-1 ring-amber-500' : 'border-slate-200 bg-white'}`}>
                       <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
                       <div className="flex-1">
-                        <span className="block font-bold text-sm text-amber-900">Cobrar Depois</span>
-                        <span className="block text-xs text-amber-700 font-medium mt-0.5">R$ 13,00/L (Faturado pelo Admin)</span>
+                        <span className="block font-bold text-sm text-amber-900">Enviar para a Administradora</span>
+                        <span className="block text-xs text-amber-700 font-medium mt-0.5">R$ 13,00/L (Faturado Pós-pago)</span>
                       </div>
                     </label>
                   </div>
@@ -1924,7 +2289,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       <p className="text-xs font-semibold text-slate-600 mb-2">Checklist de Descida</p>
                       <div className="flex gap-2 overflow-x-auto subtle-scrollbar pb-2">
                         {parseFotos(detailsReserva.fotosChecklistDescida || detailsReserva.fotosChecklistSaida).map((url: string, i: number) => (
-                          <img key={`d_${i}`} src={url} alt="Descida" className="h-20 w-20 object-cover rounded-lg border border-slate-200 cursor-pointer" onClick={() => window.open(url, '_blank')}/>
+                          <img key={`d_${i}`} src={url} alt="Descida" className="h-20 w-20 object-cover rounded-lg border border-slate-200 cursor-pointer transition-transform hover:scale-105" onClick={() => setLightbox({ currentIndex: i, urls: parseFotos(detailsReserva.fotosChecklistDescida || detailsReserva.fotosChecklistSaida), title: 'Checklist de Descida' })}/>
                         ))}
                       </div>
                     </div>
@@ -1934,7 +2299,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       <p className="text-xs font-semibold text-slate-600 mb-2">Checklist de Chegada</p>
                       <div className="flex gap-2 overflow-x-auto subtle-scrollbar pb-2">
                         {parseFotos(detailsReserva.fotosChecklistChegada).map((url: string, i: number) => (
-                          <img key={`c_${i}`} src={url} alt="Chegada" className="h-20 w-20 object-cover rounded-lg border border-slate-200 cursor-pointer" onClick={() => window.open(url, '_blank')}/>
+                          <img key={`c_${i}`} src={url} alt="Chegada" className="h-20 w-20 object-cover rounded-lg border border-slate-200 cursor-pointer transition-transform hover:scale-105" onClick={() => setLightbox({ currentIndex: i, urls: parseFotos(detailsReserva.fotosChecklistChegada), title: 'Checklist de Chegada' })}/>
                         ))}
                       </div>
                     </div>
@@ -1944,13 +2309,53 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       <p className="text-xs font-semibold text-slate-600 mb-2">Checklist de Subida</p>
                       <div className="flex gap-2 overflow-x-auto subtle-scrollbar pb-2">
                         {parseFotos(detailsReserva.fotosChecklistSubida).map((url: string, i: number) => (
-                          <img key={`s_${i}`} src={url} alt="Subida" className="h-20 w-20 object-cover rounded-lg border border-slate-200 cursor-pointer" onClick={() => window.open(url, '_blank')}/>
+                          <img key={`s_${i}`} src={url} alt="Subida" className="h-20 w-20 object-cover rounded-lg border border-slate-200 cursor-pointer transition-transform hover:scale-105" onClick={() => setLightbox({ currentIndex: i, urls: parseFotos(detailsReserva.fotosChecklistSubida), title: 'Checklist de Subida' })}/>
                         ))}
                       </div>
                     </div>
                   )}
                 </div>
               )}
+
+              {/* Equipamentos & Segurança da Lancha */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <h4 className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Segurança & Equipamentos da Lancha</span>
+                </h4>
+                <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                    detailsReserva.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Volume2 className="w-3.5 h-3.5" /> Som</span>
+                    <span>{detailsReserva.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                    detailsReserva.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><LifeBuoy className="w-3.5 h-3.5" /> Bóias</span>
+                    <span>{detailsReserva.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                    detailsReserva.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Coletes</span>
+                    <span>{detailsReserva.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                    detailsReserva.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Flame className="w-3.5 h-3.5" /> Extintor</span>
+                    <span>{detailsReserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                </div>
+                {detailsReserva.checklistObservacoes && (
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium mt-1">
+                    <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
+                    <p>{detailsReserva.checklistObservacoes}</p>
+                  </div>
+                )}
+              </div>
             </div>
             
             <div className="p-5 border-t border-slate-100">
@@ -1962,6 +2367,51 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center animate-fade-in backdrop-blur-sm" onClick={() => setLightbox(null)}>
+          <div className="absolute top-4 right-4 flex items-center gap-4 z-10">
+            <button onClick={() => setLightbox(null)} className="p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer backdrop-blur-md">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <button 
+            onClick={(e) => { e.stopPropagation(); setLightbox(prev => prev ? { ...prev, currentIndex: Math.max(0, prev.currentIndex - 1) } : null) }}
+            className={`absolute left-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer z-10 backdrop-blur-md ${lightbox.currentIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={lightbox.currentIndex === 0}
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </button>
+
+          <div className="w-full max-w-5xl h-full max-h-[85vh] flex flex-col items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+             <div className="flex-1 w-full relative min-h-[300px] bg-slate-900/50 rounded-lg overflow-hidden border border-white/10">
+               <ZoomableImage 
+                 src={lightbox.urls[lightbox.currentIndex]} 
+                 alt="Zoomed" 
+                 className="max-w-full max-h-[70vh] object-contain" 
+               />
+             </div>
+             <div className="mt-6 bg-slate-900/80 backdrop-blur-md border border-slate-700/50 rounded-2xl p-4 w-full max-w-2xl shadow-xl flex items-center justify-between text-slate-200">
+               <div>
+                 <h4 className="font-bold text-white uppercase tracking-wider text-sm">{lightbox.title}</h4>
+               </div>
+               <div className="text-xs font-bold text-slate-500 bg-slate-800 px-3 py-1.5 rounded-full">
+                 {lightbox.currentIndex + 1} / {lightbox.urls.length}
+               </div>
+             </div>
+          </div>
+
+          <button 
+            onClick={(e) => { e.stopPropagation(); setLightbox(prev => prev ? { ...prev, currentIndex: Math.min(prev.urls.length - 1, prev.currentIndex + 1) } : null) }}
+            className={`absolute right-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer z-10 backdrop-blur-md ${lightbox.currentIndex === lightbox.urls.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={lightbox.currentIndex === lightbox.urls.length - 1}
+          >
+            <ChevronRight className="w-8 h-8" />
+          </button>
         </div>
       )}
 

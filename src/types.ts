@@ -83,6 +83,13 @@ export interface Reserva {
   fotosChecklistChegada?: string[];
   horaSubida?: string;
   fotosChecklistSubida?: string[];
+  checklistEquipamentos?: {
+    som?: boolean;
+    boias?: boolean;
+    coletes?: boolean;
+    extintor?: boolean;
+  };
+  checklistObservacoes?: string;
   observacoesChecklistDescida?: string;
   observacoesChecklistChegada?: string;
   observacoesChecklistSubida?: string;

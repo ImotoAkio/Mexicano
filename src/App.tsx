@@ -541,19 +541,15 @@ export default function App() {
           className={`h-16 flex items-center border-b border-slate-100 px-4 ${isSidebarOpen ? 'justify-between' : 'justify-center'} shrink-0 cursor-pointer hover:bg-slate-50 transition-colors`}
           title={isSidebarOpen ? "Recolher Menu" : "Expandir Menu"}
         >
-          {/* Expanded Logo & Text */}
+          {/* Expanded Logo */}
           {isSidebarOpen ? (
-            <div className="flex items-center space-x-3 overflow-hidden transition-all w-auto opacity-100">
-              <Logo className="h-9 w-auto shrink-0 text-[#B69D74]" />
-              <div className="flex flex-col justify-center min-w-[120px]">
-                <h1 className="text-sm font-bold tracking-tight text-slate-950 leading-none">Reservas</h1>
-                <p className="text-[9px] text-slate-400 font-bold tracking-wider uppercase mt-0.5">Gestão de Cotas</p>
-              </div>
+            <div className="flex items-center justify-center w-full overflow-hidden transition-all px-2">
+              <Logo className="h-10 w-full text-[#B69D74]" />
             </div>
           ) : (
             /* Collapsed Logo Only */
             <div className="hidden md:flex justify-center w-full">
-              <Logo className="h-8 w-auto shrink-0 text-[#B69D74]" />
+              <Logo className="h-8 w-auto text-[#B69D74]" />
             </div>
           )}
         </div>

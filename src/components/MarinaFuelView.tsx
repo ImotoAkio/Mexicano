@@ -392,6 +392,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     const litrosNum = parseFloat(liters.replace(',', '.'));
     let precoPorLitro = 9.0;
     if (paymentType === 'credit') precoPorLitro = 10.0;
+    if (paymentType === 'admin') precoPorLitro = 13.0;
     const valorTotal = litrosNum * precoPorLitro;
 
     const boat = getEmbarcacao(selectedBoatId);
@@ -401,11 +402,12 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       id: `trans_${Date.now()}`,
       tipo: 'receita',
       categoria: 'receita_combustivel',
-      descricao: `Abastecimento Marina: ${litrosNum}L`,
+      descricao: `Abastecimento Marina (${paymentType === 'admin' ? 'Enviar p/ Administradora' : paymentType === 'credit' ? 'Cartão Crédito' : 'Pix/Dinheiro'}): ${litrosNum}L`,
       valor: valorTotal,
       status: paymentType === 'admin' ? 'pendente' : 'pago',
       metodoPagamento: paymentType,
       data: getTodayStr(),
+      dataVencimento: getTodayStr(),
       dataPagamento: paymentType === 'admin' ? null : getTodayStr(),
       clienteId: clientId,
       embarcacaoId: selectedBoatId,
@@ -537,8 +539,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       txStatus = 'pago';
     } else if (chargePaymentType === 'admin') {
       pricePerLiter = 13.0;
-      paymentLabel = 'Faturado / Administradora';
-      txStatus = 'lancado';
+      paymentLabel = 'Enviar para a Administradora';
+      txStatus = 'pendente';
     }
 
     const totalValue = litrosNum * pricePerLiter;
@@ -873,37 +875,440 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       : fuelTransactions;
 
     if (itemsToExport.length === 0) {
-      alert('Nenhum registro para exportar.');
+      alert('Nenhum registro selecionado para exportar.');
       return;
     }
 
-    const headers = ['ID', 'Data', 'Embarcacao', 'Cliente', 'Operador', 'Litros', 'Valor (R$)', 'Forma Pagamento', 'Status'];
-    const rows = itemsToExport.map(t => {
-      const boat = getEmbarcacao(t.embarcacaoId);
-      const client = getCliente(t.clienteId);
+    // Calculation Metrics for PDF Report
+    let totalLiters = 0;
+    let totalRevenue = 0;
+    let totalPixValue = 0;
+    let totalCreditValue = 0;
+    let totalAdminValue = 0;
+    let totalPixLiters = 0;
+    let totalCreditLiters = 0;
+    let totalAdminLiters = 0;
+
+    const boatMap: Record<string, { name: string; liters: number; value: number; count: number }> = {};
+
+    itemsToExport.forEach(t => {
       const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
       const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
-      return [
-        t.id,
-        t.data,
-        `"${boat?.nome || 'Venda Avulsa'}"`,
-        `"${client?.nome || 'N/A'}"`,
-        `"${t.operador || 'Gerente'}"`,
-        litersVal.toFixed(1),
-        Number(t.valor).toFixed(2),
-        t.metodoPagamento === 'admin' ? 'Faturado Admin' : t.metodoPagamento === 'credit' ? 'Cartao Credito' : 'Pix / Dinheiro',
-        t.status === 'pago' ? 'Pago' : 'Pendente'
-      ];
+      const val = Number(t.valor) || 0;
+
+      totalLiters += litersVal;
+      totalRevenue += val;
+
+      const pm = t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || 'pix';
+      if (pm === 'credit') {
+        totalCreditValue += val;
+        totalCreditLiters += litersVal;
+      } else if (pm === 'admin') {
+        totalAdminValue += val;
+        totalAdminLiters += litersVal;
+      } else {
+        totalPixValue += val;
+        totalPixLiters += litersVal;
+      }
+
+      const boat = getEmbarcacao(t.embarcacaoId);
+      const boatName = boat?.nome || 'Venda Avulsa';
+      if (!boatMap[boatName]) {
+        boatMap[boatName] = { name: boatName, liters: 0, value: 0, count: 0 };
+      }
+      boatMap[boatName].liters += litersVal;
+      boatMap[boatName].value += val;
+      boatMap[boatName].count += 1;
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `abastecimentos_${getTodayStr()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const topBoats = Object.values(boatMap).sort((a, b) => b.value - a.value);
+
+    // Build Executive PDF Document HTML window
+    const logoSrc = localStorage.getItem('custom_sidebar_logo') || '';
+    const nowStr = new Date().toLocaleString('pt-BR');
+    const periodStr = getPeriodLabel();
+
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) {
+      alert('Por favor, permita pop-ups no navegador para visualizar e salvar o PDF.');
+      return;
+    }
+
+    reportWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Relatorio_Abastecimentos_${getTodayStr()}.pdf</title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            margin: 0;
+            padding: 16px;
+            font-size: 11px;
+            line-height: 1.4;
+          }
+          .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+          }
+          .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+          .brand img {
+            max-height: 44px;
+            max-width: 150px;
+            object-fit: contain;
+          }
+          .title-area h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -0.5px;
+          }
+          .title-area p {
+            margin: 2px 0 0 0;
+            font-size: 10px;
+            color: #64748b;
+            font-weight: 600;
+          }
+          .meta-box {
+            text-align: right;
+            font-size: 10px;
+            color: #475569;
+          }
+          .meta-box strong {
+            color: #0f172a;
+          }
+
+          /* KPI Grid Cards */
+          .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+          }
+          .kpi-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 10px;
+          }
+          .kpi-card .label {
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #64748b;
+            margin-bottom: 3px;
+          }
+          .kpi-card .val {
+            font-size: 16px;
+            font-weight: 900;
+            color: #0f172a;
+          }
+          .kpi-card .sub {
+            font-size: 9px;
+            color: #2563eb;
+            font-weight: 700;
+            margin-top: 2px;
+          }
+
+          /* Charts & Analytics Section */
+          .analytics-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+          }
+          .chart-box {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 12px;
+          }
+          .chart-box h3 {
+            margin: 0 0 10px 0;
+            font-size: 12px;
+            font-weight: 800;
+            color: #1e293b;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 6px;
+          }
+          
+          /* Progress bar chart */
+          .bar-item {
+            margin-bottom: 8px;
+          }
+          .bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            font-weight: 700;
+            margin-bottom: 2px;
+          }
+          .bar-bg {
+            height: 7px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+          }
+          .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+          }
+          .bg-pix { background: #2563eb; }
+          .bg-credit { background: #0284c7; }
+          .bg-admin { background: #d97706; }
+
+          /* Table Styling */
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin-top: 8px;
+          }
+          th {
+            background: #f1f5f9;
+            color: #475569;
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 7px 8px;
+            text-align: left;
+            border-bottom: 1px solid #cbd5e1;
+          }
+          td {
+            padding: 7px 8px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #334155;
+          }
+          tr:nth-child(even) td {
+            background: #f8fafc;
+          }
+          .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 9px;
+            font-weight: 800;
+          }
+          .badge-pago { background: #dcfce7; color: #15803d; }
+          .badge-pendente { background: #fef3c7; color: #b45309; }
+
+          .total-row td {
+            font-weight: 900;
+            background: #eff6ff;
+            color: #1e40af;
+            border-top: 2px solid #2563eb;
+            font-size: 11px;
+          }
+
+          .footer {
+            margin-top: 24px;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            color: #94a3b8;
+          }
+
+          @media print {
+            .no-print { display: none !important; }
+            body { padding: 0; }
+          }
+        </style>
+      </head>
+      <body>
+
+        <!-- Top Action Bar for Exporting PDF -->
+        <div class="no-print" style="background:#0f172a; padding:12px 20px; margin:-16px -16px 16px -16px; display:flex; align-items:center; justify-content:space-between; color:white;">
+          <div style="font-weight:bold; font-size:13px;">📄 Relatório de Abastecimentos Prontos para PDF</div>
+          <div style="display:flex; gap:10px;">
+            <button onclick="window.print()" style="background:#2563eb; color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">🖨️ Baixar / Salvar PDF</button>
+            <button onclick="window.close()" style="background:#334155; color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">Fechar</button>
+          </div>
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+          <div class="brand">
+            ${logoSrc ? `<img src="${logoSrc}" alt="Logo" />` : `<div style="font-size:20px; font-weight:900; color:#2563eb;">MARINA ERP</div>`}
+            <div class="title-area">
+              <h1>Relatório de Abastecimentos</h1>
+              <p>Gestão Executiva de Combustível e Vendas</p>
+            </div>
+          </div>
+          <div class="meta-box">
+            <div>Data de Emissão: <strong>${nowStr}</strong></div>
+            <div>Período: <strong>${periodStr}</strong></div>
+            <div>Operador: <strong>${operadorNome || 'Gerente de Marina'}</strong></div>
+          </div>
+        </div>
+
+        <!-- KPI Cards Grid -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="label">Faturamento Total</div>
+            <div class="val">${totalRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            <div class="sub">${itemsToExport.length} Registros</div>
+          </div>
+          <div class="kpi-card">
+            <div class="label">Volume Total</div>
+            <div class="val">${totalLiters.toFixed(1)} L</div>
+            <div class="sub">Dispensado na Bomba</div>
+          </div>
+          <div class="kpi-card">
+            <div class="label">Enviar p/ Administradora</div>
+            <div class="val">${totalAdminValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            <div class="sub">${totalAdminLiters.toFixed(1)} L faturados</div>
+          </div>
+          <div class="kpi-card">
+            <div class="label">Pix + Crédito (Direto)</div>
+            <div class="val">${(totalPixValue + totalCreditValue).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            <div class="sub">${(totalPixLiters + totalCreditLiters).toFixed(1)} L recebidos</div>
+          </div>
+        </div>
+
+        <!-- Analytics Section (Charts & Breakdown) -->
+        <div class="analytics-section">
+          <!-- Chart 1: Payment Method Distribution -->
+          <div class="chart-box">
+            <h3>📊 Distribuição por Forma de Pagamento</h3>
+            
+            <div class="bar-item">
+              <div class="bar-label">
+                <span>Pix / Dinheiro (R$ 9,00/L)</span>
+                <span>${totalPixValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalPixValue / totalRevenue) * 100) : 0}%)</span>
+              </div>
+              <div class="bar-bg">
+                <div class="bar-fill bg-pix" style="width: ${totalRevenue > 0 ? (totalPixValue / totalRevenue) * 100 : 0}%"></div>
+              </div>
+            </div>
+
+            <div class="bar-item">
+              <div class="bar-label">
+                <span>Cartão de Crédito (R$ 10,00/L)</span>
+                <span>${totalCreditValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalCreditValue / totalRevenue) * 100) : 0}%)</span>
+              </div>
+              <div class="bar-bg">
+                <div class="bar-fill bg-credit" style="width: ${totalRevenue > 0 ? (totalCreditValue / totalRevenue) * 100 : 0}%"></div>
+              </div>
+            </div>
+
+            <div class="bar-item">
+              <div class="bar-label">
+                <span>Enviar p/ Administradora (R$ 13,00/L)</span>
+                <span>${totalAdminValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalAdminValue / totalRevenue) * 100) : 0}%)</span>
+              </div>
+              <div class="bar-bg">
+                <div class="bar-fill bg-admin" style="width: ${totalRevenue > 0 ? (totalAdminValue / totalRevenue) * 100 : 0}%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart 2: Top Boats Breakdown -->
+          <div class="chart-box">
+            <h3>⛵ Top Embarcações por Volume</h3>
+            ${topBoats.slice(0, 4).map(b => `
+              <div class="bar-item">
+                <div class="bar-label">
+                  <span>${b.name} (${b.count}x)</span>
+                  <span>${b.liters.toFixed(1)} L - ${b.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                </div>
+                <div class="bar-bg">
+                  <div class="bar-fill bg-pix" style="width: ${totalLiters > 0 ? (b.liters / totalLiters) * 100 : 0}%"></div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Detailed Transactions Table -->
+        <h3 style="font-size:13px; font-weight:800; margin: 0 0 6px 0; color:#1e293b;">📋 Detalhamento dos Lançamentos (${itemsToExport.length})</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Data</th>
+              <th>Embarcação</th>
+              <th>Cotista / Cliente</th>
+              <th>Litros (L)</th>
+              <th>Valor (R$)</th>
+              <th>Forma de Pagamento</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsToExport.map(t => {
+              const boat = getEmbarcacao(t.embarcacaoId);
+              const client = getCliente(t.clienteId);
+              const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+              const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
+              const isFaturado = (t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoFormaPagamento === 'admin');
+              const isPago = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado';
+
+              return `
+                <tr>
+                  <td style="font-family:monospace; font-weight:bold; font-size:9px;">#${t.id.substring(t.id.length - 8)}</td>
+                  <td>${t.data}</td>
+                  <td><strong>${boat?.nome || 'Venda Avulsa'}</strong></td>
+                  <td>${client?.nome || 'N/A'}</td>
+                  <td style="font-weight:bold;">${litersVal.toFixed(1)} L</td>
+                  <td style="font-weight:bold;">${Number(t.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                  <td>${isFaturado ? 'Enviar p/ Administradora' : t.metodoPagamento === 'credit' ? 'Cartão Crédito' : 'Pix / Dinheiro'}</td>
+                  <td><span class="badge ${isPago ? 'badge-pago' : 'badge-pendente'}">${isPago ? 'Concluído' : 'Pendente'}</span></td>
+                </tr>
+              `;
+            }).join('')}
+            <tr class="total-row">
+              <td colspan="4" style="text-align:right;">TOTAL ACUMULADO:</td>
+              <td>${totalLiters.toFixed(1)} L</td>
+              <td>${totalRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+              <td colspan="2"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Footer -->
+        <div class="footer">
+          <div>Documento gerado eletronicamente pelo Marina ERP.</div>
+          <div>Relatório Oficial de Gestão</div>
+        </div>
+
+        <script>
+          // Automatically prompt print dialog when opened
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 400);
+          };
+        </script>
+
+      </body>
+      </html>
+    `);
+    reportWindow.document.close();
   };
 
   return (
@@ -963,8 +1368,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
           </div>
         </div>
 
-        {/* Biosynthesia 4 Executive KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Executive KPI Cards (Hidden on mobile, visible on desktop/tablet) */}
+        <div className="hidden sm:grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
           
           {/* KPI Card 1: Total Revenue (Pago) */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
@@ -1197,7 +1602,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     <option value="all">Todas as Formas</option>
                     <option value="pix">Pix / Dinheiro</option>
                     <option value="credit">Cartão de Crédito</option>
-                    <option value="admin">Faturado / Administradora</option>
+                    <option value="admin">Enviar para a Administradora</option>
                   </select>
                 </div>
 
@@ -1296,10 +1701,10 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
         </div>
 
-        {/* Clean Data Table */}
+        {/* Clean Data Table Container (Mobile Cards + Desktop Table) */}
         <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white">
           {fuelTransactions.length === 0 ? (
-            <div className="p-16 text-center text-slate-400 flex flex-col items-center gap-3">
+            <div className="p-10 sm:p-16 text-center text-slate-400 flex flex-col items-center gap-3">
               <Droplets className="w-10 h-10 text-slate-300" />
               <p className="text-xs font-bold text-slate-600">Nenhum registro de abastecimento encontrado com os filtros aplicados.</p>
               {activeFilterCount > 0 && (
@@ -1312,8 +1717,115 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+            <>
+              {/* Mobile Card List (Visible on Phone/Mobile) */}
+              <div className="block md:hidden divide-y divide-slate-100">
+                {fuelTransactions.map(t => {
+                  const boat = getEmbarcacao(t.embarcacaoId);
+                  const client = getCliente(t.clienteId);
+                  const isSelected = selectedIds.includes(t.id);
+                  
+                  const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+                  const litersVal = match ? parseFloat(match[1].replace(',', '.')) : 0;
+                  const isItemCobrado = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
+                  const isFaturado = (t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoFormaPagamento === 'admin');
+
+                  return (
+                    <div 
+                      key={t.id}
+                      className={`p-3.5 sm:p-4 transition-colors space-y-2.5 ${isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}
+                    >
+                      {/* Top Row: Checkbox, Boat Name, Status Pill */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => toggleSelectOne(t.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer shrink-0"
+                          />
+                          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-100">
+                            <Droplets className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-bold text-slate-900 text-sm truncate block leading-tight">{boat?.nome || 'Venda Avulsa'}</span>
+                            <span className="text-[10px] text-slate-400 font-mono block">#{t.id.substring(t.id.length - 8)}</span>
+                          </div>
+                        </div>
+
+                        {isItemCobrado ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>{isFaturado ? 'Faturado' : 'Pago'}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            <span>Pendente</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Middle Row: Value & Liters, Client & Date */}
+                      <div className="grid grid-cols-2 gap-2 pt-1 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-medium block uppercase tracking-wider">Valor & Litros</span>
+                          <span className="font-extrabold text-slate-900 text-sm block">
+                            {Number(t.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-semibold">{litersVal.toFixed(1)} Litros</span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-medium block uppercase tracking-wider">Cotista / Data</span>
+                          <span className="font-bold text-slate-800 truncate block">{client?.nome || 'N/A'}</span>
+                          <span className="text-[10px] text-slate-500 font-mono block">{t.data}</span>
+                        </div>
+                      </div>
+
+                      {/* Bottom Actions Row */}
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <span className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold truncate max-w-[50%]">
+                          Forma: <strong className="text-slate-700">{isFaturado ? 'Enviar p/ Administradora' : t.metodoPagamento === 'credit' ? 'Cartão Crédito' : 'Pix/Dinheiro'}</strong>
+                        </span>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => {
+                              if (!isItemCobrado) {
+                                setChargeTargetItem(t);
+                                setChargePaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+                                setChargeComprovanteUrl(t.comprovanteUrl || null);
+                              }
+                            }}
+                            disabled={isItemCobrado}
+                            className={`px-3 py-1.5 font-bold text-xs rounded-xl transition-all shadow-2xs flex items-center gap-1.5 ${
+                              isItemCobrado
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 cursor-default opacity-90'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95'
+                            }`}
+                          >
+                            {isItemCobrado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Droplets className="w-3.5 h-3.5" />}
+                            <span>{isItemCobrado ? 'Cobrado' : 'Cobrar'}</span>
+                          </button>
+
+                          <button
+                            onClick={(e) => handleToggleActionMenu(e, t)}
+                            className="p-1.5 rounded-xl transition-colors cursor-pointer border border-slate-200 text-slate-500 hover:text-slate-900 bg-white"
+                            title="Opções"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Data Table (Visible on Tablet/Desktop) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
                     <th className="p-3.5 w-10 text-center">
@@ -1386,7 +1898,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
                         <td className="p-3.5">
                           <span className="font-semibold text-slate-700 block uppercase text-[10px] tracking-wide">
-                            {isFaturado ? 'Faturado / Admin' : t.metodoPagamento === 'credit' || t.reservationRef?.abastecimentoFormaPagamento === 'credit' ? 'Cartão Crédito' : t.metodoPagamento === 'pix' || t.reservationRef?.abastecimentoFormaPagamento === 'pix' ? 'Pix / Dinheiro' : 'Pendente'}
+                            {isFaturado ? 'Enviar p/ Administradora' : t.metodoPagamento === 'credit' || t.reservationRef?.abastecimentoFormaPagamento === 'credit' ? 'Cartão Crédito' : t.metodoPagamento === 'pix' || t.reservationRef?.abastecimentoFormaPagamento === 'pix' ? 'Pix / Dinheiro' : 'Pendente'}
                           </span>
                           <span className="text-[10px] text-slate-400 block">{t.data}</span>
                         </td>
@@ -1447,6 +1959,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 </tbody>
               </table>
             </div>
+          </>
           )}
         </div>
 
@@ -1503,10 +2016,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
       {/* New Fuel Record Modal */}
       {isFuelModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
+            <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto my-2 shrink-0 sm:hidden"></div>
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
                 <Droplets className="w-5 h-5 text-[#2563EB]" />
                 <span>Nova Venda / Abastecimento</span>
               </h3>
@@ -1515,21 +2029,54 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               </button>
             </div>
 
-            <form onSubmit={handleSaveFuelTransaction} className="p-6 space-y-4">
+            <form onSubmit={handleSaveFuelTransaction} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 subtle-scrollbar">
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
                 <select
                   value={selectedBoatId}
                   onChange={(e) => {
-                    setSelectedBoatId(e.target.value);
-                    const b = getEmbarcacao(e.target.value);
-                    if (b?.donos?.[0]) setSelectedClientId(b.donos[0]);
+                    const boatId = e.target.value;
+                    setSelectedBoatId(boatId);
+                    const b = getEmbarcacao(boatId);
+                    if (b?.donos?.[0]) {
+                      setSelectedClientId(b.donos[0]);
+                    } else {
+                      setSelectedClientId('');
+                    }
                   }}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-sm focus:ring-[#2563EB]"
                 >
                   <option value="">Selecione o barco...</option>
                   {(data?.boats || []).map(b => (
                     <option key={b.id} value={b.id}>{b.nome} ({b.vaga || 'Sem Vaga'})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Seleção do Cotista / Cliente */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 text-xs">Cotista / Cliente *</label>
+                <select
+                  value={selectedClientId}
+                  onChange={(e) => setSelectedClientId(e.target.value)}
+                  disabled={!selectedBoatId}
+                  required
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-sm focus:ring-[#2563EB] disabled:opacity-50"
+                >
+                  <option value="">
+                    {!selectedBoatId ? 'Selecione a embarcação primeiro...' : 'Selecione o cotista...'}
+                  </option>
+                  {((data?.clients || []).filter(c => {
+                    const selectedBoat = getEmbarcacao(selectedBoatId);
+                    if (!selectedBoat) return true;
+                    if (selectedBoat.donos && Array.isArray(selectedBoat.donos) && selectedBoat.donos.length > 0) {
+                      return selectedBoat.donos.includes(c.id);
+                    }
+                    return true;
+                  })).map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome} {c.cota ? `(Cota ${c.cota})` : c.cpf ? `(${c.cpf})` : ''}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -1557,11 +2104,18 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                       <span className="block text-[11px] text-slate-500 font-medium">R$ 9,00/L (Recebido na hora)</span>
                     </div>
                   </label>
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'credit' ? 'border-[#2563EB] bg-[#2563EB]/5 ring-1 ring-[#2563EB]' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
+                    <div className="flex-1">
+                      <span className="block font-bold text-sm text-slate-900">Cartão de Crédito</span>
+                      <span className="block text-[11px] text-slate-500 font-medium">R$ 10,00/L (Recebido na hora)</span>
+                    </div>
+                  </label>
                   <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'admin' ? 'border-amber-500 bg-amber-50 ring-1 ring-amber-500' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
                     <div className="flex-1">
-                      <span className="block font-bold text-sm text-slate-900">Faturar para a Marina (Admin)</span>
-                      <span className="block text-[11px] text-slate-500 font-medium">Cobrança Mensal Pendente</span>
+                      <span className="block font-bold text-sm text-slate-900">Enviar para a Administradora</span>
+                      <span className="block text-[11px] text-slate-500 font-medium">R$ 13,00/L (Cobrança Mensal Pendente)</span>
                     </div>
                   </label>
                 </div>
@@ -1624,10 +2178,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         const totalCalc = litrosNum * preco;
 
         return (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
+              <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto my-2 shrink-0 sm:hidden"></div>
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
                   <Droplets className="w-5 h-5 text-blue-600" />
                   <span>Cobrança de Combustível</span>
                 </h3>
@@ -1636,7 +2191,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 </button>
               </div>
 
-              <form onSubmit={handleConfirmChargeItem} className="p-6 space-y-4">
+              <form onSubmit={handleConfirmChargeItem} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 subtle-scrollbar">
                 <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-1">
                   <div className="flex justify-between items-center text-xs font-bold text-blue-900">
                     <span>Embarcação: {boat?.nome || 'M99'}</span>
@@ -1681,7 +2236,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     <div className="flex-1 flex justify-between items-center">
                       <div>
                         <span className="block font-extrabold text-sm text-slate-900 flex items-center gap-1">
-                          <Building2 className="w-4 h-4 text-indigo-600" /> Enviar p/ Administradora
+                          <Building2 className="w-4 h-4 text-indigo-600" /> Enviar para a Administradora
                         </span>
                         <span className="block text-[11px] text-indigo-700 font-bold">Faturado Pós-pago (R$ 13,00 / Litro)</span>
                       </div>
@@ -1753,10 +2308,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         const totalCalc = litrosNum * preco;
 
         return (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
+              <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto my-2 shrink-0 sm:hidden"></div>
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
                   <SquarePen className="w-5 h-5 text-amber-600" />
                   <span>Editar Lançamento</span>
                 </h3>
@@ -1765,7 +2321,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 </button>
               </div>
 
-              <form onSubmit={handleSaveEditItem} className="p-6 space-y-4">
+              <form onSubmit={handleSaveEditItem} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 subtle-scrollbar">
                 
                 {/* Embarcação */}
                 <div className="space-y-1.5">
@@ -1850,7 +2406,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     >
                       <option value="pix">Pix / Dinheiro (R$9/L)</option>
                       <option value="credit">Cartão Crédito (R$10/L)</option>
-                      <option value="admin">Faturado Admin (R$13/L)</option>
+                      <option value="admin">Enviar p/ Administradora (R$13/L)</option>
                     </select>
                   </div>
                 </div>

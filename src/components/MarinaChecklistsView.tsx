@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { 
   Camera, ChevronLeft, ChevronRight, CheckCircle2, Ship, User as UserIcon, 
   Droplets, MapPin, Clock, Search, Filter, Layers, Navigation, Anchor, 
-  Eye, FileText, Download, Printer, Check, X, ShieldAlert, ArrowUpRight, ArrowDownRight,
+  Eye, FileText, Download, Printer, Check, X, ShieldAlert, ArrowUpRight, ArrowDownRight, Share2, Shield, Volume2, LifeBuoy, Flame,
   Plus, Loader2, Save, MoreVertical, SlidersHorizontal, LayoutGrid, List, ArrowUpCircle, ArrowDownCircle
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
+import { ZoomableImage } from './ZoomableImage';
 import { logAction } from '../db';
 
 const CHECKLIST_ANGLES = [
@@ -55,6 +56,14 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
   // Inspection Modal State
   const [inspectionReserva, setInspectionReserva] = useState<Reserva | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyShareLink = (id: string) => {
+    const link = `${window.location.origin}/checklist/share/${id}`;
+    navigator.clipboard.writeText(link);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
+  };
 
   // New Checklist Modal State
   const [isNewChecklistOpen, setIsNewChecklistOpen] = useState(false);
@@ -627,15 +636,20 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="px-3.5 py-1.5 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl hover:bg-white flex items-center gap-1.5"
+                  onClick={() => handleCopyShareLink(inspectionReserva.id)}
+                  className={`px-3.5 py-1.5 border text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                    copiedLink 
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700' 
+                      : 'border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300 shadow-2xs'
+                  }`}
+                  title="Copiar Link Compartilhável da Vistoria"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Imprimir</span>
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-slate-500" />}
+                  <span>{copiedLink ? 'Link Copiado!' : 'Gerar Link'}</span>
                 </button>
                 <button 
                   onClick={() => setInspectionReserva(null)}
-                  className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200 transition-colors"
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -677,6 +691,46 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                   </div>
                 );
               })}
+
+              {/* Equipamentos & Segurança da Lancha */}
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-amber-600" />
+                  <span>Segurança & Equipamentos da Lancha</span>
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
+                  <div className={`p-3 rounded-2xl border flex items-center justify-between ${
+                    inspectionReserva.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Volume2 className="w-4 h-4" /> Som</span>
+                    <span>{inspectionReserva.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-3 rounded-2xl border flex items-center justify-between ${
+                    inspectionReserva.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><LifeBuoy className="w-4 h-4" /> Bóias</span>
+                    <span>{inspectionReserva.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-3 rounded-2xl border flex items-center justify-between ${
+                    inspectionReserva.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Shield className="w-4 h-4" /> Coletes</span>
+                    <span>{inspectionReserva.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-3 rounded-2xl border flex items-center justify-between ${
+                    inspectionReserva.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Flame className="w-4 h-4" /> Extintor</span>
+                    <span>{inspectionReserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                </div>
+                {inspectionReserva.checklistObservacoes && (
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-xs text-slate-700 font-medium mt-2">
+                    <span className="font-bold text-slate-900 block text-xs uppercase mb-1">Observações do Marinheiro:</span>
+                    <p>{inspectionReserva.checklistObservacoes}</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="p-4 border-t border-slate-100 bg-slate-50 text-right">
@@ -813,11 +867,13 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
           </button>
 
           <div className="w-full max-w-5xl h-full max-h-[85vh] flex flex-col items-center justify-center p-4" onClick={e => e.stopPropagation()}>
-             <img 
-               src={lightbox.photos[lightbox.currentIndex].url} 
-               alt="Zoomed" 
-               className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-2xl" 
-             />
+             <div className="flex-1 w-full relative min-h-[300px] bg-slate-900/50 rounded-lg overflow-hidden border border-white/10">
+               <ZoomableImage 
+                 src={lightbox.photos[lightbox.currentIndex].url} 
+                 alt="Zoomed" 
+                 className="max-w-full max-h-[70vh] object-contain" 
+               />
+             </div>
              <div className="mt-6 bg-slate-900/80 backdrop-blur-md border border-slate-700/50 rounded-2xl p-4 w-full max-w-2xl shadow-xl flex items-center justify-between text-slate-200">
                <div>
                  <h4 className="font-bold text-white uppercase tracking-wider text-sm">{lightbox.photos[lightbox.currentIndex].title}</h4>

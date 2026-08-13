@@ -21,7 +21,12 @@ import {
   Layers,
   Sparkles,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Shield,
+  Volume2,
+  LifeBuoy,
+  Flame,
+  RotateCcw
 } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
@@ -77,6 +82,15 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
 
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistMode, setChecklistMode] = useState<'descida' | 'chegada' | 'subida'>('descida');
+  // Step Wizard State
+  const [currentStep, setCurrentStep] = useState(0);
+  const [checklistEquipamentos, setChecklistEquipamentos] = useState({
+    som: true,
+    boias: true,
+    coletes: true,
+    extintor: true
+  });
+  const [checklistObservacoes, setChecklistObservacoes] = useState('');
   const [checklistFotos, setChecklistFotos] = useState<Record<string, string[]>>({});
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
 
@@ -241,6 +255,9 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
     setSelectedReserva(reserva);
     setChecklistMode('descida');
     setChecklistFotos({});
+    setCurrentStep(0);
+    setChecklistEquipamentos({ som: true, boias: true, coletes: true, extintor: true });
+    setChecklistObservacoes('');
     setChecklistOpen(true);
   };
 
@@ -252,6 +269,9 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
     setSelectedReserva(reserva);
     setChecklistMode('subida');
     setChecklistFotos({});
+    setCurrentStep(0);
+    setChecklistEquipamentos({ som: true, boias: true, coletes: true, extintor: true });
+    setChecklistObservacoes('');
     setChecklistOpen(true);
   };
 
@@ -1092,6 +1112,46 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                   </div>
                 )}
               </div>
+
+              {/* Equipamentos & Segurança da Lancha */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <h4 className="font-black text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Segurança & Equipamentos da Lancha</span>
+                </h4>
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-bold">
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                    viewChecklistReserva.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Som</span>
+                    <span>{viewChecklistReserva.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                    viewChecklistReserva.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1"><LifeBuoy className="w-3.5 h-3.5" /> Bóias</span>
+                    <span>{viewChecklistReserva.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                    viewChecklistReserva.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> Coletes</span>
+                    <span>{viewChecklistReserva.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                    viewChecklistReserva.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> Extintor</span>
+                    <span>{viewChecklistReserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                </div>
+                {viewChecklistReserva.checklistObservacoes && (
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-700 font-medium mt-1">
+                    <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
+                    <p className="mt-0.5">{viewChecklistReserva.checklistObservacoes}</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Footer Actions */}
@@ -1284,52 +1344,156 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
         </div>
       )}
 
-      {/* Checklist Camera Form Modal */}
+      {/* Checklist Sequential Wizard Modal */}
       {checklistOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white border border-slate-200 rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-            {/* Modal Header */}
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
-                  <Camera className="w-4 h-4 text-blue-600" />
-                  <span>Checklist de {checklistMode.toUpperCase()}</span>
+          <div className="bg-white border border-slate-200 rounded-t-3xl sm:rounded-3xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+            
+            {/* Modal Header & Step Counter */}
+            <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div className="flex-1 pr-2">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black uppercase tracking-wider">
+                    Checklist {checklistMode.toUpperCase()}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500">
+                    Passo {currentStep + 1} de 8
+                  </span>
+                </div>
+                <h3 className="font-extrabold text-base text-slate-900 truncate">
+                  {selectedReserva?.barcoNome || 'Embarcação'}
                 </h3>
-                <p className="text-[11px] text-slate-500">{selectedReserva?.barcoNome || 'Embarcação'}</p>
               </div>
-              <button onClick={() => setChecklistOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer">
+
+              <button 
+                onClick={() => setChecklistOpen(false)} 
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors cursor-pointer shrink-0"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const allUploaded = Object.values(checklistFotos).flat();
-              if (checklistMode === 'descida') executeRegistrarDescida(allUploaded);
-              else if (checklistMode === 'subida') executeRegistrarSubida(allUploaded);
-            }} className="p-4 overflow-y-auto space-y-4 flex-1 subtle-scrollbar">
-              <p className="text-xs text-slate-600">
-                Tire fotos dos 6 ângulos para comprovar o estado da embarcação no píer:
-              </p>
+            {/* Progress Bar & Navigation Pills */}
+            <div className="bg-slate-100/70 border-b border-slate-200/60 px-4 py-2 space-y-2">
+              {/* Progress Line */}
+              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${((currentStep + 1) / 8) * 100}%` }}
+                />
+              </div>
 
-              {/* Angles Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                {CHECKLIST_ANGLES.map((angle) => {
-                  const Icon = angle.icon;
-                  const fotos = checklistFotos[angle.id] || [];
-                  const isUploaded = fotos.length > 0;
-                  const isUploading = uploadingAngle === angle.id;
+              {/* Scrollable Step Pills Bar */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 subtle-scrollbar">
+                {[
+                  { id: 'proa', label: 'Proa' },
+                  { id: 'popa', label: 'Popa' },
+                  { id: 'bombordo', label: 'L. Esquerda' },
+                  { id: 'estibordo', label: 'L. Direita' },
+                  { id: 'painel', label: 'Painel' },
+                  { id: 'casco', label: 'Casco' },
+                  { id: 'equipamentos', label: 'Equipamentos' },
+                  { id: 'revisao', label: 'Revisão' }
+                ].map((stepItem, idx) => {
+                  const isDone = idx < 6 
+                    ? (checklistFotos[stepItem.id] && checklistFotos[stepItem.id].length > 0)
+                    : true;
+                  const isActive = currentStep === idx;
 
                   return (
-                    <div key={angle.id} className="relative flex flex-col gap-1.5">
-                      {fotos.length > 0 && (
-                        <div className="flex overflow-x-auto gap-1.5 pb-1 subtle-scrollbar">
-                          {fotos.map((url, i) => (
-                            <img key={i} src={url} className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" alt="Foto" />
-                          ))}
+                    <button
+                      key={stepItem.id}
+                      type="button"
+                      onClick={() => setCurrentStep(idx)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                        isActive 
+                          ? 'bg-blue-600 text-white shadow-xs' 
+                          : isDone && idx < 6
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>{idx + 1}. {stepItem.label}</span>
+                      {isDone && idx < 6 && <Check className="w-3 h-3 text-emerald-600" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Step Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 subtle-scrollbar space-y-5">
+              
+              {/* STEPS 0..5: Sequential Photo Capture Steps */}
+              {currentStep < 6 && (() => {
+                const angle = CHECKLIST_ANGLES[currentStep];
+                const Icon = angle.icon;
+                const fotos = checklistFotos[angle.id] || [];
+                const hasPhoto = fotos.length > 0;
+                const isUploading = uploadingAngle === angle.id;
+
+                return (
+                  <div className="space-y-4">
+                    {/* Step Title Header */}
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center gap-3">
+                      <div className="p-3 bg-blue-100 text-blue-700 rounded-xl shrink-0">
+                        <Icon className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-600 block">
+                          Passo {currentStep + 1} de 6 • Foto de Ângulo
+                        </span>
+                        <h4 className="font-extrabold text-slate-900 text-sm">Tire a foto: {angle.label}</h4>
+                        <p className="text-xs text-slate-500 font-medium">Foque no estado de conservação no píer.</p>
+                      </div>
+                    </div>
+
+                    {/* Photo Capture or Preview */}
+                    {hasPhoto ? (
+                      <div className="space-y-3">
+                        <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900 aspect-video flex items-center justify-center">
+                          <img 
+                            src={fotos[fotos.length - 1]} 
+                            className="w-full h-full object-cover" 
+                            alt={angle.label} 
+                          />
+                          <div className="absolute top-3 left-3 bg-emerald-500 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-md flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Foto Capturada & OK</span>
+                          </div>
                         </div>
-                      )}
+
+                        {/* Additional Photo Strip if >1 photo */}
+                        {fotos.length > 1 && (
+                          <div className="flex items-center gap-2 overflow-x-auto pb-1 subtle-scrollbar">
+                            {fotos.map((url, i) => (
+                              <img key={i} src={url} className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0" alt="Foto" />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Retake Button */}
+                        <div className="relative">
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            capture="environment"
+                            onChange={(e) => handleUploadPhoto(e, angle.id)}
+                            className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
+                            disabled={isUploading}
+                          />
+                          <button
+                            type="button"
+                            disabled={isUploading}
+                            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                          >
+                            {isUploading ? <Loader2 className="w-4 h-4 text-blue-600 animate-spin" /> : <RotateCcw className="w-4 h-4 text-slate-500" />}
+                            <span>Tirar Foto Novamente / Adicionar Outra</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Camera Trigger Card */
                       <div className="relative">
                         <input 
                           type="file" 
@@ -1339,37 +1503,256 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                           className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
                           disabled={isUploading}
                         />
-                        <div className={`border-2 border-dashed rounded-xl p-3 flex flex-col items-center justify-center text-center gap-1.5 h-24 transition-all ${
-                          isUploaded ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                        }`}>
+                        <div className="border-2 border-dashed border-blue-400 hover:border-blue-600 bg-blue-50/50 hover:bg-blue-50 rounded-2xl p-8 flex flex-col items-center justify-center text-center gap-3 transition-all cursor-pointer min-h-[220px]">
                           {isUploading ? (
-                            <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                            <div className="flex flex-col items-center gap-2">
+                              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+                              <span className="text-xs font-bold text-blue-900">Enviando foto...</span>
+                            </div>
                           ) : (
-                            <Icon className={`w-5 h-5 ${isUploaded ? 'text-blue-600' : 'text-slate-400'}`} />
+                            <>
+                              <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg active:scale-95 transition-all">
+                                <Camera className="w-7 h-7" />
+                              </div>
+                              <div>
+                                <span className="font-extrabold text-sm text-blue-950 block">Tocar para Abrir Câmera</span>
+                                <span className="text-xs text-blue-700 font-medium block mt-0.5">Tire a foto de {angle.label}</span>
+                              </div>
+                            </>
                           )}
-                          <span className={`text-[11px] font-bold leading-tight ${isUploaded ? 'text-blue-900' : 'text-slate-700'}`}>
-                            {angle.label}
-                          </span>
-                          <span className="text-[9px] text-slate-400 font-semibold">
-                            {isUploaded ? `${fotos.length} foto(s)` : 'Tocar p/ câmera'}
-                          </span>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    )}
+                  </div>
+                );
+              })()}
 
-              {/* Submit Button */}
+              {/* STEP 6: Equipment Inspection Step for Lanchas */}
+              {currentStep === 6 && (
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-center gap-3">
+                    <div className="p-3 bg-amber-100 text-amber-800 rounded-xl shrink-0">
+                      <Shield className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-extrabold tracking-wider text-amber-700 block">
+                        Passo 7 de 8 • Inspeção Obrigatória
+                      </span>
+                      <h4 className="font-extrabold text-slate-900 text-sm">Equipamentos & Segurança da Lancha</h4>
+                      <p className="text-xs text-slate-600 font-medium">Verifique os 4 itens essenciais a bordo antes de liberar:</p>
+                    </div>
+                  </div>
+
+                  {/* 4 Check Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Item 1: Som */}
+                    <div 
+                      onClick={() => setChecklistEquipamentos(prev => ({ ...prev, som: !prev.som }))}
+                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                        checklistEquipamentos.som ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.som ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                        <Volume2 className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-900">Equipamento de Som</span>
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.som ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                            {checklistEquipamentos.som ? 'OK / Funcional' : 'Avaria / Ausente'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Som Bluetooth, alto-falantes e comandos operacionais.</span>
+                      </div>
+                    </div>
+
+                    {/* Item 2: Bóias */}
+                    <div 
+                      onClick={() => setChecklistEquipamentos(prev => ({ ...prev, boias: !prev.boias }))}
+                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                        checklistEquipamentos.boias ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.boias ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                        <LifeBuoy className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-900">Bóias de Salvatagem</span>
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.boias ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                            {checklistEquipamentos.boias ? 'OK / Presentes' : 'Avaria / Ausente'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Bóias circulares no suporte com retida de salvatagem.</span>
+                      </div>
+                    </div>
+
+                    {/* Item 3: Coletes */}
+                    <div 
+                      onClick={() => setChecklistEquipamentos(prev => ({ ...prev, coletes: !prev.coletes }))}
+                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                        checklistEquipamentos.coletes ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.coletes ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                        <Shield className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-900">Coletes Salva-vidas</span>
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.coletes ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                            {checklistEquipamentos.coletes ? 'OK / Completo' : 'Incompleto'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Coletes em número compatível com a lotação da lancha.</span>
+                      </div>
+                    </div>
+
+                    {/* Item 4: Extintor */}
+                    <div 
+                      onClick={() => setChecklistEquipamentos(prev => ({ ...prev, extintor: !prev.extintor }))}
+                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                        checklistEquipamentos.extintor ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.extintor ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                        <Flame className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-900">Extintor de Incêndio</span>
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.extintor ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                            {checklistEquipamentos.extintor ? 'OK / Na Validade' : 'Vencido / Baixo'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Manômetro na faixa verde e lacre de segurança intacto.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Observações */}
+                  <div className="space-y-1 pt-2">
+                    <label className="text-xs font-bold text-slate-700 block">Observações do Marinheiro / Avarias (Opcional)</label>
+                    <textarea
+                      rows={2}
+                      value={checklistObservacoes}
+                      onChange={(e) => setChecklistObservacoes(e.target.value)}
+                      placeholder="Descreva eventuais avarias ou detalhes observados..."
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 7: Final Review & Save */}
+              {currentStep === 7 && (
+                <div className="space-y-5">
+                  <div className="bg-blue-50 border border-blue-200/80 rounded-2xl p-4 flex items-center gap-3">
+                    <div className="p-3 bg-blue-600 text-white rounded-xl shrink-0 shadow-md">
+                      <CheckCircle2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-700 block">
+                        Passo 8 de 8 • Resumo Final
+                      </span>
+                      <h4 className="font-extrabold text-slate-900 text-sm">Revisão do Checklist de {checklistMode.toUpperCase()}</h4>
+                      <p className="text-xs text-slate-600 font-medium">Confira os dados abaixo antes de concluir:</p>
+                    </div>
+                  </div>
+
+                  {/* Photos Summary */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold text-slate-800 block">📸 Ângulos Fotográficos:</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {CHECKLIST_ANGLES.map((angle) => {
+                        const fotos = checklistFotos[angle.id] || [];
+                        const hasPhoto = fotos.length > 0;
+                        return (
+                          <div key={angle.id} className={`p-2 rounded-xl border flex items-center gap-2 ${hasPhoto ? 'bg-emerald-50/70 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                            {hasPhoto ? (
+                              <img src={fotos[0]} className="w-9 h-9 rounded-lg object-cover border border-emerald-300 shrink-0" alt="Foto" />
+                            ) : (
+                              <div className="w-9 h-9 rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                                <Camera className="w-4 h-4" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] font-bold text-slate-900 truncate block">{angle.label.split(' ')[0]}</span>
+                              <span className={`text-[9px] font-semibold block ${hasPhoto ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                {hasPhoto ? '✓ OK' : 'Sem foto'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Equipment Summary */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold text-slate-800 block">🛡️ Equipamentos de Segurança Verificados:</span>
+                    <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.som ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                        <span>🔊 Som</span>
+                        <span>{checklistEquipamentos.som ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.boias ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                        <span>🛟 Bóias</span>
+                        <span>{checklistEquipamentos.boias ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.coletes ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                        <span>🦺 Coletes</span>
+                        <span>{checklistEquipamentos.coletes ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.extintor ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                        <span>🧯 Extintor</span>
+                        <span>{checklistEquipamentos.extintor ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Final Submit Button */}
+                  <button
+                    type="button"
+                    disabled={isSubmitting || uploadingAngle !== null}
+                    onClick={() => {
+                      const allUploaded = Object.values(checklistFotos).flat();
+                      if (checklistMode === 'descida') executeRegistrarDescida(allUploaded);
+                      else if (checklistMode === 'subida') executeRegistrarSubida(allUploaded);
+                    }}
+                    className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg active:scale-98 cursor-pointer disabled:opacity-50 mt-4"
+                  >
+                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                    <span>Finalizar e Salvar Checklist</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Step Controls */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
               <button
-                type="submit"
-                disabled={isSubmitting || uploadingAngle !== null}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 cursor-pointer disabled:opacity-50"
+                type="button"
+                disabled={currentStep === 0}
+                onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
+                className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer shadow-2xs"
               >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                <span>Finalizar e Salvar Checklist</span>
+                <ChevronLeft className="w-4 h-4" />
+                <span>Anterior</span>
               </button>
-            </form>
+
+              {currentStep < 7 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(prev => Math.min(7, prev + 1))}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-98 cursor-pointer"
+                >
+                  <span>Próximo Passo</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : null}
+            </div>
+
           </div>
         </div>
       )}

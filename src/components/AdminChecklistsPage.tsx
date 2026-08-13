@@ -4,9 +4,11 @@ import {
   ClipboardCheck, Search, Calendar, Download, Edit2, Trash2, 
   ArrowDownCircle, ArrowUpCircle, Anchor, Image as ImageIcon, 
   Clock, CheckCircle2, MoreVertical, X, List, LayoutList, GitCommit,
-  Link as LinkIcon, Share2, Compass, AlertTriangle
+  Link as LinkIcon, Share2, Compass, AlertTriangle, Shield, Volume2, LifeBuoy, Flame,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
+import { ZoomableImage } from './ZoomableImage';
 
 interface AdminChecklistsPageProps {
   data: {
@@ -33,6 +35,7 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
   const [selectedTimelineBoatId, setSelectedTimelineBoatId] = useState<string>('');
   
   const [modalPhotos, setModalPhotos] = useState<{title: string, urls: string[]} | null>(null);
+  const [lightbox, setLightbox] = useState<{ currentIndex: number, urls: string[], title: string } | null>(null);
   const [viewingRes, setViewingRes] = useState<Reserva | null>(null);
 
   const [editingRes, setEditingRes] = useState<string | null>(null);
@@ -554,6 +557,46 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
                 );
               })}
 
+              {/* Equipamentos & Segurança da Lancha */}
+              <div className="bg-white border rounded-xl p-5 border-amber-100">
+                <h4 className="font-semibold text-slate-800 flex items-center gap-2 mb-3">
+                  <Shield className="w-5 h-5 text-amber-600" />
+                  <span>Segurança & Equipamentos da Lancha</span>
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
+                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                    viewingRes.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Volume2 className="w-4 h-4" /> Som</span>
+                    <span>{viewingRes.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                    viewingRes.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><LifeBuoy className="w-4 h-4" /> Bóias</span>
+                    <span>{viewingRes.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                    viewingRes.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Shield className="w-4 h-4" /> Coletes</span>
+                    <span>{viewingRes.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                    viewingRes.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                  }`}>
+                    <span className="flex items-center gap-1.5"><Flame className="w-4 h-4" /> Extintor</span>
+                    <span>{viewingRes.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                  </div>
+                </div>
+                {viewingRes.checklistObservacoes && (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium mt-3">
+                    <span className="font-bold text-slate-900 block text-xs uppercase mb-1">Observações do Marinheiro:</span>
+                    <p>{viewingRes.checklistObservacoes}</p>
+                  </div>
+                )}
+              </div>
+
             </div>
             
             <div className="p-4 border-t border-slate-100 bg-white flex justify-between">
@@ -585,8 +628,8 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
           <div className="flex-1 overflow-y-auto p-4 sm:p-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
               {modalPhotos.urls.map((url, i) => (
-                <div key={i} className="relative rounded-xl overflow-hidden bg-black aspect-[4/3] ring-1 ring-white/10">
-                  <img src={url} alt={`Foto ${i+1}`} className="w-full h-full object-contain" />
+                <div key={i} className="relative rounded-xl overflow-hidden bg-black aspect-[4/3] ring-1 ring-white/10 group cursor-pointer" onClick={() => setLightbox({ currentIndex: i, urls: modalPhotos.urls, title: modalPhotos.title })}>
+                  <img src={url} alt={`Foto ${i+1}`} className="w-full h-full object-contain transition-transform group-hover:scale-105" />
                   <a href={url} download target="_blank" rel="noreferrer" className="absolute bottom-4 right-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white p-2 rounded-lg transition-colors">
                     <Download className="w-5 h-5" />
                   </a>
@@ -594,6 +637,51 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center animate-fade-in backdrop-blur-sm" onClick={() => setLightbox(null)}>
+          <div className="absolute top-4 right-4 flex items-center gap-4 z-10">
+            <button onClick={() => setLightbox(null)} className="p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer backdrop-blur-md">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <button 
+            onClick={(e) => { e.stopPropagation(); setLightbox(prev => prev ? { ...prev, currentIndex: Math.max(0, prev.currentIndex - 1) } : null) }}
+            className={`absolute left-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer z-10 backdrop-blur-md ${lightbox.currentIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={lightbox.currentIndex === 0}
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </button>
+
+          <div className="w-full max-w-5xl h-full max-h-[85vh] flex flex-col items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+             <div className="flex-1 w-full relative min-h-[300px] bg-slate-900/50 rounded-lg overflow-hidden border border-white/10">
+               <ZoomableImage 
+                 src={lightbox.urls[lightbox.currentIndex]} 
+                 alt="Zoomed" 
+                 className="max-w-full max-h-[70vh] object-contain" 
+               />
+             </div>
+             <div className="mt-6 bg-slate-900/80 backdrop-blur-md border border-slate-700/50 rounded-2xl p-4 w-full max-w-2xl shadow-xl flex items-center justify-between text-slate-200">
+               <div>
+                 <h4 className="font-bold text-white uppercase tracking-wider text-sm">{lightbox.title}</h4>
+               </div>
+               <div className="text-xs font-bold text-slate-500 bg-slate-800 px-3 py-1.5 rounded-full">
+                 {lightbox.currentIndex + 1} / {lightbox.urls.length}
+               </div>
+             </div>
+          </div>
+
+          <button 
+            onClick={(e) => { e.stopPropagation(); setLightbox(prev => prev ? { ...prev, currentIndex: Math.min(prev.urls.length - 1, prev.currentIndex + 1) } : null) }}
+            className={`absolute right-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer z-10 backdrop-blur-md ${lightbox.currentIndex === lightbox.urls.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={lightbox.currentIndex === lightbox.urls.length - 1}
+          >
+            <ChevronRight className="w-8 h-8" />
+          </button>
         </div>
       )}
 

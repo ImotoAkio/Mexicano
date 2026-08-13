@@ -3,7 +3,7 @@ import { Eye, EyeOff } from 'lucide-react';
 // @ts-ignore
 import bgVideo from '../assets/videos/login_bg.mp4';
 // @ts-ignore
-import bgImage from '../assets/images/boat_jet_bg.png';
+import bgImage from '../assets/images/boat_jet_bg.webp';
 import Logo from './Logo';
 
 interface LoginPageProps {
