@@ -692,45 +692,65 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                 );
               })}
 
-              {/* Equipamentos & Segurança da Lancha */}
-              <div className="space-y-3 pt-3 border-t border-slate-100">
-                <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-amber-600" />
-                  <span>Segurança & Equipamentos da Lancha</span>
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
-                  <div className={`p-3 rounded-2xl border flex items-center justify-between ${
-                    inspectionReserva.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1.5"><Volume2 className="w-4 h-4" /> Som</span>
-                    <span>{inspectionReserva.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+              {/* Equipamentos & Segurança da Lancha (Apenas para Lanchas) */}
+              {(() => {
+                const boat = getEmbarcacao(inspectionReserva.embarcacaoId);
+                const isJet = boat 
+                  ? (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet'))
+                  : ((inspectionReserva as any)?.embarcacaoTipo === 'jet' || ((inspectionReserva as any)?.barcoNome || (inspectionReserva as any)?.embarcacaoNome || '').toLowerCase().includes('jet'));
+
+                if (isJet) {
+                  return inspectionReserva.checklistObservacoes ? (
+                    <div className="space-y-3 pt-3 border-t border-slate-100">
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-xs text-slate-700 font-medium">
+                        <span className="font-bold text-slate-900 block text-xs uppercase mb-1">Observações do Marinheiro:</span>
+                        <p>{inspectionReserva.checklistObservacoes}</p>
+                      </div>
+                    </div>
+                  ) : null;
+                }
+
+                return (
+                  <div className="space-y-3 pt-3 border-t border-slate-100">
+                    <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-amber-600" />
+                      <span>Segurança & Equipamentos da Lancha</span>
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
+                      <div className={`p-3 rounded-2xl border flex items-center justify-between ${
+                        inspectionReserva.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1.5"><Volume2 className="w-4 h-4" /> Som</span>
+                        <span>{inspectionReserva.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-3 rounded-2xl border flex items-center justify-between ${
+                        inspectionReserva.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1.5"><LifeBuoy className="w-4 h-4" /> Bóias</span>
+                        <span>{inspectionReserva.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-3 rounded-2xl border flex items-center justify-between ${
+                        inspectionReserva.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1.5"><Shield className="w-4 h-4" /> Coletes</span>
+                        <span>{inspectionReserva.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-3 rounded-2xl border flex items-center justify-between ${
+                        inspectionReserva.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1.5"><Flame className="w-4 h-4" /> Extintor</span>
+                        <span>{inspectionReserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                    </div>
+                    {inspectionReserva.checklistObservacoes && (
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-xs text-slate-700 font-medium mt-2">
+                        <span className="font-bold text-slate-900 block text-xs uppercase mb-1">Observações do Marinheiro:</span>
+                        <p>{inspectionReserva.checklistObservacoes}</p>
+                      </div>
+                    )}
                   </div>
-                  <div className={`p-3 rounded-2xl border flex items-center justify-between ${
-                    inspectionReserva.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1.5"><LifeBuoy className="w-4 h-4" /> Bóias</span>
-                    <span>{inspectionReserva.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                  <div className={`p-3 rounded-2xl border flex items-center justify-between ${
-                    inspectionReserva.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1.5"><Shield className="w-4 h-4" /> Coletes</span>
-                    <span>{inspectionReserva.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                  <div className={`p-3 rounded-2xl border flex items-center justify-between ${
-                    inspectionReserva.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1.5"><Flame className="w-4 h-4" /> Extintor</span>
-                    <span>{inspectionReserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                </div>
-                {inspectionReserva.checklistObservacoes && (
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-xs text-slate-700 font-medium mt-2">
-                    <span className="font-bold text-slate-900 block text-xs uppercase mb-1">Observações do Marinheiro:</span>
-                    <p>{inspectionReserva.checklistObservacoes}</p>
-                  </div>
-                )}
-              </div>
+                );
+              })()}
             </div>
 
             <div className="p-4 border-t border-slate-100 bg-slate-50 text-right">

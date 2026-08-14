@@ -26,7 +26,14 @@ import {
   Volume2,
   LifeBuoy,
   Flame,
-  RotateCcw
+  RotateCcw,
+  CreditCard,
+  QrCode,
+  Banknote,
+  Building2,
+  FileCheck,
+  Paperclip,
+  Eye
 } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
@@ -77,7 +84,9 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
   const [fuelModalOpen, setFuelModalOpen] = useState(false);
   const [selectedReserva, setSelectedReserva] = useState<any>(null);
   const [liters, setLiters] = useState('');
-  const [paymentType, setPaymentType] = useState<'pix' | 'credit' | 'admin'>('pix');
+  const [paymentType, setPaymentType] = useState<'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin'>('pix');
+  const [fuelComprovanteUrl, setFuelComprovanteUrl] = useState<string | null>(null);
+  const [statusCobranca, setStatusCobranca] = useState<'cobrado' | 'pendente'>('pendente');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [checklistOpen, setChecklistOpen] = useState(false);
@@ -345,10 +354,15 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
     setIsSubmitting(true);
     
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const boat = getEmbarcacao(alvo.embarcacaoId) || selectedBoatForAvulso;
+    const isJet = boat ? (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet')) : (alvo.embarcacaoTipo === 'jet');
+
     const updatedReserva = { 
       ...alvo, 
       horaDescida: horaAtual,
       fotosChecklistDescida: fotosChecklistDescida.length > 0 ? fotosChecklistDescida : alvo.fotosChecklistDescida,
+      checklistEquipamentos: isJet ? undefined : checklistEquipamentos,
+      checklistObservacoes: checklistObservacoes || alvo.checklistObservacoes || '',
       statusMarina: 'pronta',
       statusOperacional: 'pronto_na_agua',
       operadorDescida: operadorNome || 'Operador'
@@ -410,6 +424,45 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
     }
   };
 
+  const handleOpenFuelModal = (reserva: any) => {
+    setSelectedReserva(reserva);
+    const existingLiters = reserva.abastecimentoLitros ?? reserva.litrosAbastecidos ?? '';
+    setLiters(existingLiters ? existingLiters.toString() : '');
+    setPaymentType(reserva.abastecimentoFormaPagamento || 'pix');
+    setFuelComprovanteUrl(reserva.abastecimentoComprovanteUrl || null);
+    setStatusCobranca(reserva.abastecimentoStatusCobranca === 'cobrado' ? 'cobrado' : 'pendente');
+    setFuelModalOpen(true);
+  };
+
+  const handleUploadFuelComprovante = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingComprovante(true);
+    const formData = new FormData();
+    formData.append('comprovante', file);
+
+    try {
+      const res = await fetch('/api/upload/comprovante', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+        body: formData
+      });
+
+      const json = await res.json();
+      const imgUrl = json.url || json.imageUrl;
+      if (imgUrl) {
+        setFuelComprovanteUrl(imgUrl);
+        setStatusCobranca('cobrado');
+        showToast('Comprovante anexado!', 'success');
+      }
+    } catch (err) {
+      showToast('Erro ao enviar comprovante.', 'warning');
+    } finally {
+      setIsUploadingComprovante(false);
+    }
+  };
+
   const handleConfirmFuelAndRegisterArrival = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReserva) return;
@@ -424,17 +477,28 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
     
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const currentOperator = operadorNome || localStorage.getItem('user_name') || localStorage.getItem('usuario_nome') || 'Marinheiro';
+    
+    let precoPorLitro = 9.0;
+    if (paymentType === 'credit') precoPorLitro = 10.0;
+    if (paymentType === 'admin') precoPorLitro = 13.0;
+
+    const valorTotalCalc = litersNum * precoPorLitro;
+    const finalStatusCobranca = litersNum > 0 ? statusCobranca : 'sem_abastecimento';
+
     const updatedReserva = { 
       ...selectedReserva, 
-      horaChegada: horaAtual,
-      statusMarina: 'chegada',
-      statusOperacional: 'retornou',
-      operadorChegada: currentOperator,
+      horaChegada: selectedReserva.horaChegada || horaAtual,
+      statusMarina: selectedReserva.statusMarina === 'guardada' ? 'guardada' : 'chegada',
+      statusOperacional: selectedReserva.statusOperacional === 'guardada' ? 'guardada' : 'retornou',
+      operadorChegada: selectedReserva.operadorChegada || currentOperator,
       abastecimentoOperador: currentOperator,
       litrosAbastecidos: litersNum > 0 ? litersNum.toString() : '0',
       abastecimentoSolucao: true,
       abastecimentoLitros: litersNum,
-      abastecimentoStatusCobranca: litersNum > 0 ? 'pendente' : 'sem_abastecimento',
+      abastecimentoFormaPagamento: paymentType,
+      abastecimentoValorTotal: valorTotalCalc,
+      abastecimentoStatusCobranca: finalStatusCobranca,
+      abastecimentoComprovanteUrl: fuelComprovanteUrl || selectedReserva.abastecimentoComprovanteUrl || null,
       abastecimentoDataHora: new Date().toISOString()
     };
     
@@ -450,19 +514,73 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
 
       if (litersNum > 0) {
         const boatName = selectedReserva.barcoNome || getEmbarcacao(selectedReserva.embarcacaoId)?.nome || 'Embarcação';
-        consumeFuelForEmbarcacao(litersNum, boatName, operadorNome || 'Marinheiro');
-      }
+        
+        // Consumir estoque se ainda não foi marcado abastecimento anterior
+        if (!selectedReserva.abastecimentoLitros || Number(selectedReserva.abastecimentoLitros) === 0) {
+          consumeFuelForEmbarcacao(litersNum, boatName, currentOperator);
+        }
 
-      setData((prev: any) => ({
-        ...prev,
-        reservations: prev.reservations.map((r: any) => r.id === updatedReserva.id ? updatedReserva : r)
-      }));
+        // Criar transação financeira caso esteja cobrado
+        if (finalStatusCobranca === 'cobrado') {
+          const paymentLabels: Record<string, string> = {
+            pix: 'PIX',
+            credit: 'Cartão de Crédito',
+            debit: 'Cartão de Débito',
+            dinheiro: 'Dinheiro',
+            admin: 'Faturado Administradora'
+          };
+          const labelMetodo = paymentLabels[paymentType] || paymentType;
+
+          const transacao = {
+            id: `trans_fuel_${Date.now()}`,
+            tipo: 'receita',
+            categoria: 'Abastecimento Marina',
+            valor: valorTotalCalc,
+            dataVencimento: new Date().toISOString().split('T')[0],
+            dataPagamento: new Date().toISOString().split('T')[0],
+            status: 'pago',
+            metodoPagamento: paymentType,
+            descricao: `Abastecimento Marina (${labelMetodo}): ${litersNum}L a R$${precoPorLitro.toFixed(2)}/L - ${boatName}`,
+            clienteId: selectedReserva.clienteId,
+            embarcacaoId: selectedReserva.embarcacaoId,
+            operador: currentOperator,
+            comprovante: fuelComprovanteUrl || null,
+            comprovanteUrl: fuelComprovanteUrl || null,
+            createdAt: new Date().toISOString()
+          };
+
+          await fetch('/api/financeiro/transacoes/save', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            },
+            body: JSON.stringify({ action: 'upsert', data: transacao })
+          }).catch(err => console.error('Erro ao salvar transação financeira:', err));
+
+          setData((prev: any) => ({
+            ...prev,
+            transacoes: [transacao, ...(prev.transacoes || []).filter((t: any) => t.id !== transacao.id)],
+            reservations: prev.reservations.map((r: any) => r.id === updatedReserva.id ? updatedReserva : r)
+          }));
+        } else {
+          setData((prev: any) => ({
+            ...prev,
+            reservations: prev.reservations.map((r: any) => r.id === updatedReserva.id ? updatedReserva : r)
+          }));
+        }
+      } else {
+        setData((prev: any) => ({
+          ...prev,
+          reservations: prev.reservations.map((r: any) => r.id === updatedReserva.id ? updatedReserva : r)
+        }));
+      }
       
-      await logAction(operadorNome || 'Operador', 'CHEGADA_ABASTECIMENTO', `Registrou chegada e ${litersNum}L de combustível`);
+      await logAction(currentOperator, 'CHEGADA_ABASTECIMENTO', `Registrou ${finalStatusCobranca === 'cobrado' ? 'cobrança' : 'abastecimento'} de ${litersNum}L (${paymentType})`);
       setFuelModalOpen(false);
-      showToast('Chegada e abastecimento salvos com sucesso!', 'success');
+      showToast('Abastecimento e cobrança salvos com sucesso!', 'success');
     } catch (err) {
-      showToast('Erro ao salvar chegada.', 'warning');
+      showToast('Erro ao salvar abastecimento.', 'warning');
     } finally {
       setIsSubmitting(false);
     }
@@ -474,10 +592,15 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
     setIsSubmitting(true);
     
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const boat = getEmbarcacao(alvo.embarcacaoId) || selectedBoatForAvulso;
+    const isJet = boat ? (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet')) : (alvo.embarcacaoTipo === 'jet');
+
     const updatedReserva = { 
       ...alvo, 
       horaSubida: horaAtual,
       fotosChecklistSubida: fotosChecklistSubida.length > 0 ? fotosChecklistSubida : alvo.fotosChecklistSubida,
+      checklistEquipamentos: isJet ? undefined : checklistEquipamentos,
+      checklistObservacoes: checklistObservacoes || alvo.checklistObservacoes || '',
       statusMarina: 'guardada',
       statusOperacional: 'guardado',
       operadorSubida: operadorNome || 'Operador'
@@ -949,43 +1072,104 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                     const client = getCliente(reserva.clienteId);
                     const boatNumber = boat?.numero || boat?.nome?.match(/\d+/)?.[0] || '99';
                     const litros = Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) || 0;
-                    const valor = litros * 9;
+                    
+                    const isCobrado = reserva.abastecimentoStatusCobranca === 'cobrado';
+                    const pm = reserva.abastecimentoFormaPagamento || 'pix';
+                    const unitPrice = pm === 'credit' ? 10 : pm === 'admin' ? 13 : 9;
+                    const valor = reserva.abastecimentoValorTotal || (litros * unitPrice);
+
+                    const paymentLabels: Record<string, string> = {
+                      pix: 'PIX',
+                      credit: 'Crédito',
+                      debit: 'Débito',
+                      dinheiro: 'Dinheiro',
+                      admin: 'Faturado Admin'
+                    };
 
                     return (
-                      <div key={reserva.id} className="border-l-4 border-l-emerald-500 bg-white border border-slate-200 rounded-2xl p-3.5 flex items-center justify-between shadow-xs">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0">
-                            <Check className="w-5 h-5 stroke-[3]" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <h4 className="font-extrabold text-slate-900 text-sm leading-tight uppercase">
-                                {boat?.nome || reserva.barcoNome || 'M99'}
-                              </h4>
-                              <span className="bg-slate-900 text-white font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
-                                #{boatNumber}
-                              </span>
+                      <div 
+                        key={reserva.id} 
+                        className={`bg-white border rounded-2xl p-3.5 shadow-xs transition-all ${
+                          isCobrado ? 'border-l-4 border-l-blue-600 border-slate-200' : 'border-l-4 border-l-slate-400 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-3">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                              isCobrado 
+                                ? 'bg-blue-50 border border-blue-200 text-blue-600' 
+                                : 'bg-slate-100 border border-slate-200 text-slate-500'
+                            }`}>
+                              {isCobrado ? <Check className="w-5 h-5 stroke-[3]" /> : <Clock className="w-4 h-4 stroke-[2.5]" />}
                             </div>
-                            <p className="text-xs font-bold text-blue-600 uppercase mt-0.5">
-                              {client?.nome || reserva.clienteNome || 'AKIO'}
-                            </p>
-                            <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
-                              <UserIcon className="w-3 h-3 text-slate-400" />
-                              <span>Lançado por: <strong className="text-slate-600 font-semibold">{reserva.abastecimentoOperador || reserva.operadorChegada || 'Marinheiro'}</strong></span>
-                            </p>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-3 text-right">
-                          <div>
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="font-extrabold text-slate-900 text-sm leading-tight uppercase">
+                                  {boat?.nome || reserva.barcoNome || 'M99'}
+                                </h4>
+                                <span className="bg-slate-900 text-white font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
+                                  #{boatNumber}
+                                </span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                  isCobrado
+                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                                }`}>
+                                  {isCobrado ? 'COBRADO' : 'PENDENTE'}
+                                </span>
+                              </div>
+
+                              <p className="text-xs font-bold text-blue-600 uppercase mt-0.5">
+                                {client?.nome || reserva.clienteNome || 'Cliente'}
+                              </p>
+
+                              <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-500 flex-wrap">
+                                <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-lg font-bold text-slate-700">
+                                  💳 {paymentLabels[pm] || pm}
+                                </span>
+                                
+                                {reserva.abastecimentoComprovanteUrl && (
+                                  <a
+                                    href={reserva.abastecimentoComprovanteUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-2 py-0.5 rounded-lg font-bold hover:underline flex items-center gap-1"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <FileCheck className="w-3 h-3" />
+                                    <span>Comprovante</span>
+                                  </a>
+                                )}
+
+                                <span className="flex items-center gap-1">
+                                  <UserIcon className="w-3 h-3 text-slate-400" />
+                                  <span>Por: <strong>{reserva.abastecimentoOperador || reserva.operadorChegada || 'Marinheiro'}</strong></span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
                             <span className="text-sm font-black text-blue-600 font-mono block">
                               {litros} L
                             </span>
-                            <span className="text-[11px] font-bold text-slate-500 font-mono block">
+                            <span className="text-[11px] font-bold text-slate-700 font-mono block">
                               R$ {valor.toFixed(2).replace('.', ',')}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFuelModal(reserva)}
+                              className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer shadow-2xs flex items-center gap-1 ${
+                                isCobrado 
+                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' 
+                                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                              }`}
+                            >
+                              <Droplets className="w-3 h-3" />
+                              <span>{isCobrado ? 'Editar' : 'Cobrar'}</span>
+                            </button>
                           </div>
-                          <ChevronRight className="w-4 h-4 text-slate-300" />
                         </div>
                       </div>
                     );
@@ -1113,45 +1297,65 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                 )}
               </div>
 
-              {/* Equipamentos & Segurança da Lancha */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <h4 className="font-black text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Segurança & Equipamentos da Lancha</span>
-                </h4>
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-bold">
-                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                    viewChecklistReserva.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Som</span>
-                    <span>{viewChecklistReserva.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+              {/* Equipamentos & Segurança da Lancha (Apenas para Lanchas) */}
+              {(() => {
+                const viewBoat = viewChecklistReserva ? getEmbarcacao(viewChecklistReserva.embarcacaoId) : null;
+                const viewIsJet = viewBoat 
+                  ? (viewBoat.tipo === 'jet' || (viewBoat.nome || '').toLowerCase().includes('jet'))
+                  : (viewChecklistReserva?.embarcacaoTipo === 'jet' || (viewChecklistReserva?.barcoNome || '').toLowerCase().includes('jet'));
+
+                if (viewIsJet) {
+                  return viewChecklistReserva.checklistObservacoes ? (
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-700 font-medium">
+                        <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
+                        <p className="mt-0.5">{viewChecklistReserva.checklistObservacoes}</p>
+                      </div>
+                    </div>
+                  ) : null;
+                }
+
+                return (
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <h4 className="font-black text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Segurança & Equipamentos da Lancha</span>
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] font-bold">
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                        viewChecklistReserva.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Som</span>
+                        <span>{viewChecklistReserva.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                        viewChecklistReserva.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1"><LifeBuoy className="w-3.5 h-3.5" /> Bóias</span>
+                        <span>{viewChecklistReserva.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                        viewChecklistReserva.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> Coletes</span>
+                        <span>{viewChecklistReserva.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                        viewChecklistReserva.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> Extintor</span>
+                        <span>{viewChecklistReserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                    </div>
+                    {viewChecklistReserva.checklistObservacoes && (
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-700 font-medium mt-1">
+                        <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
+                        <p className="mt-0.5">{viewChecklistReserva.checklistObservacoes}</p>
+                      </div>
+                    )}
                   </div>
-                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                    viewChecklistReserva.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1"><LifeBuoy className="w-3.5 h-3.5" /> Bóias</span>
-                    <span>{viewChecklistReserva.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                    viewChecklistReserva.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> Coletes</span>
-                    <span>{viewChecklistReserva.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                  <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                    viewChecklistReserva.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> Extintor</span>
-                    <span>{viewChecklistReserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                </div>
-                {viewChecklistReserva.checklistObservacoes && (
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-700 font-medium mt-1">
-                    <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
-                    <p className="mt-0.5">{viewChecklistReserva.checklistObservacoes}</p>
-                  </div>
-                )}
-              </div>
+                );
+              })()}
             </div>
 
             {/* Footer Actions */}
@@ -1345,134 +1549,176 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
       )}
 
       {/* Checklist Sequential Wizard Modal */}
-      {checklistOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white border border-slate-200 rounded-t-3xl sm:rounded-3xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-            
-            {/* Modal Header & Step Counter */}
-            <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <div className="flex-1 pr-2">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black uppercase tracking-wider">
-                    Checklist {checklistMode.toUpperCase()}
-                  </span>
-                  <span className="text-xs font-bold text-slate-500">
-                    Passo {currentStep + 1} de 8
-                  </span>
+      {checklistOpen && (() => {
+        const activeChecklistBoat = selectedReserva ? getEmbarcacao(selectedReserva.embarcacaoId) : selectedBoatForAvulso;
+        const activeIsJet = activeChecklistBoat 
+          ? (activeChecklistBoat.tipo === 'jet' || (activeChecklistBoat.nome || '').toLowerCase().includes('jet'))
+          : (selectedReserva ? (selectedReserva.embarcacaoTipo === 'jet' || (selectedReserva.barcoNome || '').toLowerCase().includes('jet')) : false);
+
+        const totalSteps = activeIsJet ? 7 : 8;
+        const maxStepIndex = totalSteps - 1;
+        const isReviewStep = currentStep === maxStepIndex;
+        const isEquipmentStep = !activeIsJet && currentStep === 6;
+
+        const stepPills = activeIsJet ? [
+          { id: 'proa', label: 'Proa' },
+          { id: 'popa', label: 'Popa' },
+          { id: 'bombordo', label: 'L. Esquerda' },
+          { id: 'estibordo', label: 'L. Direita' },
+          { id: 'painel', label: 'Painel' },
+          { id: 'casco', label: 'Casco' },
+          { id: 'revisao', label: 'Revisão' }
+        ] : [
+          { id: 'proa', label: 'Proa' },
+          { id: 'popa', label: 'Popa' },
+          { id: 'bombordo', label: 'L. Esquerda' },
+          { id: 'estibordo', label: 'L. Direita' },
+          { id: 'painel', label: 'Painel' },
+          { id: 'casco', label: 'Casco' },
+          { id: 'equipamentos', label: 'Equipamentos' },
+          { id: 'revisao', label: 'Revisão' }
+        ];
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="bg-white border border-slate-200 rounded-t-3xl sm:rounded-3xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+              
+              {/* Modal Header & Step Counter */}
+              <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                <div className="flex-1 pr-2">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black uppercase tracking-wider">
+                      Checklist {checklistMode.toUpperCase()}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">
+                      Passo {currentStep + 1} de {totalSteps}
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base text-slate-900 truncate">
+                    {selectedReserva?.barcoNome || activeChecklistBoat?.nome || 'Embarcação'}
+                  </h3>
                 </div>
-                <h3 className="font-extrabold text-base text-slate-900 truncate">
-                  {selectedReserva?.barcoNome || 'Embarcação'}
-                </h3>
+
+                <button 
+                  onClick={() => setChecklistOpen(false)} 
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <button 
-                onClick={() => setChecklistOpen(false)} 
-                className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+              {/* Progress Bar & Navigation Pills */}
+              <div className="bg-slate-100/70 border-b border-slate-200/60 px-4 py-2 space-y-2">
+                {/* Progress Line */}
+                <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
+                  />
+                </div>
 
-            {/* Progress Bar & Navigation Pills */}
-            <div className="bg-slate-100/70 border-b border-slate-200/60 px-4 py-2 space-y-2">
-              {/* Progress Line */}
-              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                <div 
-                  className="bg-blue-600 h-full rounded-full transition-all duration-300"
-                  style={{ width: `${((currentStep + 1) / 8) * 100}%` }}
-                />
+                {/* Scrollable Step Pills Bar */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 subtle-scrollbar">
+                  {stepPills.map((stepItem, idx) => {
+                    const isDone = idx < 6 
+                      ? (checklistFotos[stepItem.id] && checklistFotos[stepItem.id].length > 0)
+                      : true;
+                    const isActive = currentStep === idx;
+
+                    return (
+                      <button
+                        key={stepItem.id}
+                        type="button"
+                        onClick={() => setCurrentStep(idx)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                          isActive 
+                            ? 'bg-blue-600 text-white shadow-xs' 
+                            : isDone && idx < 6
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>{idx + 1}. {stepItem.label}</span>
+                        {isDone && idx < 6 && <Check className="w-3 h-3 text-emerald-600" />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Scrollable Step Pills Bar */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 subtle-scrollbar">
-                {[
-                  { id: 'proa', label: 'Proa' },
-                  { id: 'popa', label: 'Popa' },
-                  { id: 'bombordo', label: 'L. Esquerda' },
-                  { id: 'estibordo', label: 'L. Direita' },
-                  { id: 'painel', label: 'Painel' },
-                  { id: 'casco', label: 'Casco' },
-                  { id: 'equipamentos', label: 'Equipamentos' },
-                  { id: 'revisao', label: 'Revisão' }
-                ].map((stepItem, idx) => {
-                  const isDone = idx < 6 
-                    ? (checklistFotos[stepItem.id] && checklistFotos[stepItem.id].length > 0)
-                    : true;
-                  const isActive = currentStep === idx;
+              {/* Step Body */}
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1 subtle-scrollbar space-y-5">
+                
+                {/* STEPS 0..5: Sequential Photo Capture Steps */}
+                {currentStep < 6 && (() => {
+                  const angle = CHECKLIST_ANGLES[currentStep];
+                  const Icon = angle.icon;
+                  const fotos = checklistFotos[angle.id] || [];
+                  const hasPhoto = fotos.length > 0;
+                  const isUploading = uploadingAngle === angle.id;
 
                   return (
-                    <button
-                      key={stepItem.id}
-                      type="button"
-                      onClick={() => setCurrentStep(idx)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
-                        isActive 
-                          ? 'bg-blue-600 text-white shadow-xs' 
-                          : isDone && idx < 6
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>{idx + 1}. {stepItem.label}</span>
-                      {isDone && idx < 6 && <Check className="w-3 h-3 text-emerald-600" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Step Body */}
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1 subtle-scrollbar space-y-5">
-              
-              {/* STEPS 0..5: Sequential Photo Capture Steps */}
-              {currentStep < 6 && (() => {
-                const angle = CHECKLIST_ANGLES[currentStep];
-                const Icon = angle.icon;
-                const fotos = checklistFotos[angle.id] || [];
-                const hasPhoto = fotos.length > 0;
-                const isUploading = uploadingAngle === angle.id;
-
-                return (
-                  <div className="space-y-4">
-                    {/* Step Title Header */}
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center gap-3">
-                      <div className="p-3 bg-blue-100 text-blue-700 rounded-xl shrink-0">
-                        <Icon className="w-6 h-6" />
+                    <div className="space-y-4">
+                      {/* Step Title Header */}
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center gap-3">
+                        <div className="p-3 bg-blue-100 text-blue-700 rounded-xl shrink-0">
+                          <Icon className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-600 block">
+                            Passo {currentStep + 1} de 6 • Foto de Ângulo
+                          </span>
+                          <h4 className="font-extrabold text-slate-900 text-sm">Tire a foto: {angle.label}</h4>
+                          <p className="text-xs text-slate-500 font-medium">Foque no estado de conservação no píer.</p>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-600 block">
-                          Passo {currentStep + 1} de 6 • Foto de Ângulo
-                        </span>
-                        <h4 className="font-extrabold text-slate-900 text-sm">Tire a foto: {angle.label}</h4>
-                        <p className="text-xs text-slate-500 font-medium">Foque no estado de conservação no píer.</p>
-                      </div>
-                    </div>
 
-                    {/* Photo Capture or Preview */}
-                    {hasPhoto ? (
-                      <div className="space-y-3">
-                        <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900 aspect-video flex items-center justify-center">
-                          <img 
-                            src={fotos[fotos.length - 1]} 
-                            className="w-full h-full object-cover" 
-                            alt={angle.label} 
-                          />
-                          <div className="absolute top-3 left-3 bg-emerald-500 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-md flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Foto Capturada & OK</span>
+                      {/* Photo Capture or Preview */}
+                      {hasPhoto ? (
+                        <div className="space-y-3">
+                          <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900 aspect-video flex items-center justify-center">
+                            <img 
+                              src={fotos[fotos.length - 1]} 
+                              className="w-full h-full object-cover" 
+                              alt={angle.label} 
+                            />
+                            <div className="absolute top-3 left-3 bg-emerald-500 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-md flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Foto Capturada & OK</span>
+                            </div>
+                          </div>
+
+                          {/* Additional Photo Strip if >1 photo */}
+                          {fotos.length > 1 && (
+                            <div className="flex items-center gap-2 overflow-x-auto pb-1 subtle-scrollbar">
+                              {fotos.map((url, i) => (
+                                <img key={i} src={url} className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0" alt="Foto" />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Retake Button */}
+                          <div className="relative">
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              capture="environment"
+                              onChange={(e) => handleUploadPhoto(e, angle.id)}
+                              className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
+                              disabled={isUploading}
+                            />
+                            <button
+                              type="button"
+                              disabled={isUploading}
+                              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                            >
+                              {isUploading ? <Loader2 className="w-4 h-4 text-blue-600 animate-spin" /> : <RotateCcw className="w-4 h-4 text-slate-500" />}
+                              <span>Tirar Foto Novamente / Adicionar Outra</span>
+                            </button>
                           </div>
                         </div>
-
-                        {/* Additional Photo Strip if >1 photo */}
-                        {fotos.length > 1 && (
-                          <div className="flex items-center gap-2 overflow-x-auto pb-1 subtle-scrollbar">
-                            {fotos.map((url, i) => (
-                              <img key={i} src={url} className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0" alt="Foto" />
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Retake Button */}
+                      ) : (
+                        /* Camera Trigger Card */
                         <div className="relative">
                           <input 
                             type="file" 
@@ -1482,296 +1728,300 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                             className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
                             disabled={isUploading}
                           />
-                          <button
-                            type="button"
-                            disabled={isUploading}
-                            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                          >
-                            {isUploading ? <Loader2 className="w-4 h-4 text-blue-600 animate-spin" /> : <RotateCcw className="w-4 h-4 text-slate-500" />}
-                            <span>Tirar Foto Novamente / Adicionar Outra</span>
-                          </button>
+                          <div className="border-2 border-dashed border-blue-400 hover:border-blue-600 bg-blue-50/50 hover:bg-blue-50 rounded-2xl p-8 flex flex-col items-center justify-center text-center gap-3 transition-all cursor-pointer min-h-[220px]">
+                            {isUploading ? (
+                              <div className="flex flex-col items-center gap-2">
+                                <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+                                <span className="text-xs font-bold text-blue-900">Enviando foto...</span>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg active:scale-95 transition-all">
+                                  <Camera className="w-7 h-7" />
+                                </div>
+                                <div>
+                                  <span className="font-extrabold text-sm text-blue-950 block">Tocar para Abrir Câmera</span>
+                                  <span className="text-xs text-blue-700 font-medium block mt-0.5">Tire a foto de {angle.label}</span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* STEP Equipment Inspection (Apenas para Lanchas) */}
+                {isEquipmentStep && (
+                  <div className="space-y-4">
+                    <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-center gap-3">
+                      <div className="p-3 bg-amber-100 text-amber-800 rounded-xl shrink-0">
+                        <Shield className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-extrabold tracking-wider text-amber-700 block">
+                          Passo 7 de 8 • Inspeção Obrigatória
+                        </span>
+                        <h4 className="font-extrabold text-slate-900 text-sm">Equipamentos & Segurança da Lancha</h4>
+                        <p className="text-xs text-slate-600 font-medium">Verifique os 4 itens essenciais a bordo antes de liberar:</p>
+                      </div>
+                    </div>
+
+                    {/* 4 Check Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Item 1: Som */}
+                      <div 
+                        onClick={() => setChecklistEquipamentos(prev => ({ ...prev, som: !prev.som }))}
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                          checklistEquipamentos.som ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
+                        <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.som ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                          <Volume2 className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-slate-900">Equipamento de Som</span>
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.som ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                              {checklistEquipamentos.som ? 'OK / Funcional' : 'Avaria / Ausente'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Som Bluetooth, alto-falantes e comandos operacionais.</span>
                         </div>
                       </div>
-                    ) : (
-                      /* Camera Trigger Card */
-                      <div className="relative">
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          capture="environment"
-                          onChange={(e) => handleUploadPhoto(e, angle.id)}
-                          className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
-                          disabled={isUploading}
-                        />
-                        <div className="border-2 border-dashed border-blue-400 hover:border-blue-600 bg-blue-50/50 hover:bg-blue-50 rounded-2xl p-8 flex flex-col items-center justify-center text-center gap-3 transition-all cursor-pointer min-h-[220px]">
-                          {isUploading ? (
-                            <div className="flex flex-col items-center gap-2">
-                              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-                              <span className="text-xs font-bold text-blue-900">Enviando foto...</span>
+
+                      {/* Item 2: Bóias */}
+                      <div 
+                        onClick={() => setChecklistEquipamentos(prev => ({ ...prev, boias: !prev.boias }))}
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                          checklistEquipamentos.boias ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
+                        <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.boias ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                          <LifeBuoy className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-slate-900">Bóias de Salvatagem</span>
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.boias ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                              {checklistEquipamentos.boias ? 'OK / Presentes' : 'Avaria / Ausente'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Bóias circulares no suporte com retida de salvatagem.</span>
+                        </div>
+                      </div>
+
+                      {/* Item 3: Coletes */}
+                      <div 
+                        onClick={() => setChecklistEquipamentos(prev => ({ ...prev, coletes: !prev.coletes }))}
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                          checklistEquipamentos.coletes ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
+                        <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.coletes ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                          <Shield className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-slate-900">Coletes Salva-vidas</span>
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.coletes ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                              {checklistEquipamentos.coletes ? 'OK / Completo' : 'Incompleto'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Coletes em número compatível com a lotação da lancha.</span>
+                        </div>
+                      </div>
+
+                      {/* Item 4: Extintor */}
+                      <div 
+                        onClick={() => setChecklistEquipamentos(prev => ({ ...prev, extintor: !prev.extintor }))}
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                          checklistEquipamentos.extintor ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
+                        <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.extintor ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                          <Flame className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-slate-900">Extintor de Incêndio</span>
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.extintor ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                              {checklistEquipamentos.extintor ? 'OK / Na Validade' : 'Vencido / Baixo'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Manômetro na faixa verde e lacre de segurança intacto.</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Observações */}
+                    <div className="space-y-1 pt-2">
+                      <label className="text-xs font-bold text-slate-700 block">Observações do Marinheiro / Avarias (Opcional)</label>
+                      <textarea
+                        rows={2}
+                        value={checklistObservacoes}
+                        onChange={(e) => setChecklistObservacoes(e.target.value)}
+                        placeholder="Descreva eventuais avarias ou detalhes observados..."
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP Final Review & Save */}
+                {isReviewStep && (
+                  <div className="space-y-5">
+                    <div className="bg-blue-50 border border-blue-200/80 rounded-2xl p-4 flex items-center gap-3">
+                      <div className="p-3 bg-blue-600 text-white rounded-xl shrink-0 shadow-md">
+                        <CheckCircle2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-700 block">
+                          Passo {totalSteps} de {totalSteps} • Resumo Final
+                        </span>
+                        <h4 className="font-extrabold text-slate-900 text-sm">Revisão do Checklist de {checklistMode.toUpperCase()}</h4>
+                        <p className="text-xs text-slate-600 font-medium">Confira os dados abaixo antes de concluir:</p>
+                      </div>
+                    </div>
+
+                    {/* Photos Summary */}
+                    <div className="space-y-2">
+                      <span className="text-xs font-bold text-slate-800 block">📸 Ângulos Fotográficos:</span>
+                      <div className="grid grid-cols-3 gap-2">
+                        {CHECKLIST_ANGLES.map((angle) => {
+                          const fotos = checklistFotos[angle.id] || [];
+                          const hasPhoto = fotos.length > 0;
+                          return (
+                            <div key={angle.id} className={`p-2 rounded-xl border flex items-center gap-2 ${hasPhoto ? 'bg-emerald-50/70 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                              {hasPhoto ? (
+                                <img src={fotos[0]} className="w-9 h-9 rounded-lg object-cover border border-emerald-300 shrink-0" alt="Foto" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                                  <Camera className="w-4 h-4" />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] font-bold text-slate-900 truncate block">{angle.label.split(' ')[0]}</span>
+                                <span className={`text-[9px] font-semibold block ${hasPhoto ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                  {hasPhoto ? '✓ OK' : 'Sem foto'}
+                                </span>
+                              </div>
                             </div>
-                          ) : (
-                            <>
-                              <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg active:scale-95 transition-all">
-                                <Camera className="w-7 h-7" />
-                              </div>
-                              <div>
-                                <span className="font-extrabold text-sm text-blue-950 block">Tocar para Abrir Câmera</span>
-                                <span className="text-xs text-blue-700 font-medium block mt-0.5">Tire a foto de {angle.label}</span>
-                              </div>
-                            </>
-                          )}
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Equipment Summary (Apenas para Lanchas) */}
+                    {!activeIsJet && (
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold text-slate-800 block">🛡️ Equipamentos de Segurança Verificados:</span>
+                        <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+                          <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.som ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                            <span>🔊 Som</span>
+                            <span>{checklistEquipamentos.som ? '✓ OK' : '⚠️ Avaria'}</span>
+                          </div>
+                          <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.boias ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                            <span>🛟 Bóias</span>
+                            <span>{checklistEquipamentos.boias ? '✓ OK' : '⚠️ Avaria'}</span>
+                          </div>
+                          <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.coletes ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                            <span>🦺 Coletes</span>
+                            <span>{checklistEquipamentos.coletes ? '✓ OK' : '⚠️ Avaria'}</span>
+                          </div>
+                          <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.extintor ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                            <span>🧯 Extintor</span>
+                            <span>{checklistEquipamentos.extintor ? '✓ OK' : '⚠️ Avaria'}</span>
+                          </div>
                         </div>
                       </div>
                     )}
-                  </div>
-                );
-              })()}
 
-              {/* STEP 6: Equipment Inspection Step for Lanchas */}
-              {currentStep === 6 && (
-                <div className="space-y-4">
-                  <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-center gap-3">
-                    <div className="p-3 bg-amber-100 text-amber-800 rounded-xl shrink-0">
-                      <Shield className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-extrabold tracking-wider text-amber-700 block">
-                        Passo 7 de 8 • Inspeção Obrigatória
-                      </span>
-                      <h4 className="font-extrabold text-slate-900 text-sm">Equipamentos & Segurança da Lancha</h4>
-                      <p className="text-xs text-slate-600 font-medium">Verifique os 4 itens essenciais a bordo antes de liberar:</p>
-                    </div>
-                  </div>
+                    {/* Observações do Marinheiro para Jet Ski */}
+                    {activeIsJet && (
+                      <div className="space-y-1 pt-1">
+                        <label className="text-xs font-bold text-slate-700 block">Observações do Marinheiro / Avarias (Opcional)</label>
+                        <textarea
+                          rows={2}
+                          value={checklistObservacoes}
+                          onChange={(e) => setChecklistObservacoes(e.target.value)}
+                          placeholder="Descreva eventuais avarias ou detalhes observados..."
+                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
 
-                  {/* 4 Check Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Item 1: Som */}
-                    <div 
-                      onClick={() => setChecklistEquipamentos(prev => ({ ...prev, som: !prev.som }))}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
-                        checklistEquipamentos.som ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
-                      }`}
+                    {/* Final Submit Button */}
+                    <button
+                      type="button"
+                      disabled={isSubmitting || uploadingAngle !== null}
+                      onClick={() => {
+                        const allUploaded = Object.values(checklistFotos).flat();
+                        if (checklistMode === 'descida') executeRegistrarDescida(allUploaded);
+                        else if (checklistMode === 'subida') executeRegistrarSubida(allUploaded);
+                      }}
+                      className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg active:scale-98 cursor-pointer disabled:opacity-50 mt-4"
                     >
-                      <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.som ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                        <Volume2 className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900">Equipamento de Som</span>
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.som ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
-                            {checklistEquipamentos.som ? 'OK / Funcional' : 'Avaria / Ausente'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Som Bluetooth, alto-falantes e comandos operacionais.</span>
-                      </div>
-                    </div>
-
-                    {/* Item 2: Bóias */}
-                    <div 
-                      onClick={() => setChecklistEquipamentos(prev => ({ ...prev, boias: !prev.boias }))}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
-                        checklistEquipamentos.boias ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.boias ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                        <LifeBuoy className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900">Bóias de Salvatagem</span>
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.boias ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
-                            {checklistEquipamentos.boias ? 'OK / Presentes' : 'Avaria / Ausente'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Bóias circulares no suporte com retida de salvatagem.</span>
-                      </div>
-                    </div>
-
-                    {/* Item 3: Coletes */}
-                    <div 
-                      onClick={() => setChecklistEquipamentos(prev => ({ ...prev, coletes: !prev.coletes }))}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
-                        checklistEquipamentos.coletes ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.coletes ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                        <Shield className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900">Coletes Salva-vidas</span>
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.coletes ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
-                            {checklistEquipamentos.coletes ? 'OK / Completo' : 'Incompleto'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Coletes em número compatível com a lotação da lancha.</span>
-                      </div>
-                    </div>
-
-                    {/* Item 4: Extintor */}
-                    <div 
-                      onClick={() => setChecklistEquipamentos(prev => ({ ...prev, extintor: !prev.extintor }))}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
-                        checklistEquipamentos.extintor ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300' : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className={`p-2 rounded-xl shrink-0 ${checklistEquipamentos.extintor ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                        <Flame className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900">Extintor de Incêndio</span>
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${checklistEquipamentos.extintor ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
-                            {checklistEquipamentos.extintor ? 'OK / Na Validade' : 'Vencido / Baixo'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">Manômetro na faixa verde e lacre de segurança intacto.</span>
-                      </div>
-                    </div>
+                      {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                      <span>Finalizar e Salvar Checklist</span>
+                    </button>
                   </div>
+                )}
+              </div>
 
-                  {/* Observações */}
-                  <div className="space-y-1 pt-2">
-                    <label className="text-xs font-bold text-slate-700 block">Observações do Marinheiro / Avarias (Opcional)</label>
-                    <textarea
-                      rows={2}
-                      value={checklistObservacoes}
-                      onChange={(e) => setChecklistObservacoes(e.target.value)}
-                      placeholder="Descreva eventuais avarias ou detalhes observados..."
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 7: Final Review & Save */}
-              {currentStep === 7 && (
-                <div className="space-y-5">
-                  <div className="bg-blue-50 border border-blue-200/80 rounded-2xl p-4 flex items-center gap-3">
-                    <div className="p-3 bg-blue-600 text-white rounded-xl shrink-0 shadow-md">
-                      <CheckCircle2 className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-700 block">
-                        Passo 8 de 8 • Resumo Final
-                      </span>
-                      <h4 className="font-extrabold text-slate-900 text-sm">Revisão do Checklist de {checklistMode.toUpperCase()}</h4>
-                      <p className="text-xs text-slate-600 font-medium">Confira os dados abaixo antes de concluir:</p>
-                    </div>
-                  </div>
-
-                  {/* Photos Summary */}
-                  <div className="space-y-2">
-                    <span className="text-xs font-bold text-slate-800 block">📸 Ângulos Fotográficos:</span>
-                    <div className="grid grid-cols-3 gap-2">
-                      {CHECKLIST_ANGLES.map((angle) => {
-                        const fotos = checklistFotos[angle.id] || [];
-                        const hasPhoto = fotos.length > 0;
-                        return (
-                          <div key={angle.id} className={`p-2 rounded-xl border flex items-center gap-2 ${hasPhoto ? 'bg-emerald-50/70 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                            {hasPhoto ? (
-                              <img src={fotos[0]} className="w-9 h-9 rounded-lg object-cover border border-emerald-300 shrink-0" alt="Foto" />
-                            ) : (
-                              <div className="w-9 h-9 rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                                <Camera className="w-4 h-4" />
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] font-bold text-slate-900 truncate block">{angle.label.split(' ')[0]}</span>
-                              <span className={`text-[9px] font-semibold block ${hasPhoto ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                {hasPhoto ? '✓ OK' : 'Sem foto'}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Equipment Summary */}
-                  <div className="space-y-2">
-                    <span className="text-xs font-bold text-slate-800 block">🛡️ Equipamentos de Segurança Verificados:</span>
-                    <div className="grid grid-cols-2 gap-2 text-xs font-bold">
-                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.som ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
-                        <span>🔊 Som</span>
-                        <span>{checklistEquipamentos.som ? '✓ OK' : '⚠️ Avaria'}</span>
-                      </div>
-                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.boias ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
-                        <span>🛟 Bóias</span>
-                        <span>{checklistEquipamentos.boias ? '✓ OK' : '⚠️ Avaria'}</span>
-                      </div>
-                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.coletes ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
-                        <span>🦺 Coletes</span>
-                        <span>{checklistEquipamentos.coletes ? '✓ OK' : '⚠️ Avaria'}</span>
-                      </div>
-                      <div className={`p-2.5 rounded-xl border flex items-center justify-between ${checklistEquipamentos.extintor ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
-                        <span>🧯 Extintor</span>
-                        <span>{checklistEquipamentos.extintor ? '✓ OK' : '⚠️ Avaria'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Final Submit Button */}
-                  <button
-                    type="button"
-                    disabled={isSubmitting || uploadingAngle !== null}
-                    onClick={() => {
-                      const allUploaded = Object.values(checklistFotos).flat();
-                      if (checklistMode === 'descida') executeRegistrarDescida(allUploaded);
-                      else if (checklistMode === 'subida') executeRegistrarSubida(allUploaded);
-                    }}
-                    className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg active:scale-98 cursor-pointer disabled:opacity-50 mt-4"
-                  >
-                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                    <span>Finalizar e Salvar Checklist</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Footer Step Controls */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                disabled={currentStep === 0}
-                onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
-                className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer shadow-2xs"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <span>Anterior</span>
-              </button>
-
-              {currentStep < 7 ? (
+              {/* Footer Step Controls */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(prev => Math.min(7, prev + 1))}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-98 cursor-pointer"
+                  disabled={currentStep === 0}
+                  onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
+                  className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer shadow-2xs"
                 >
-                  <span>Próximo Passo</span>
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Anterior</span>
                 </button>
-              ) : null}
-            </div>
 
+                {currentStep < maxStepIndex ? (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(prev => Math.min(maxStepIndex, prev + 1))}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-98 cursor-pointer"
+                  >
+                    <span>Próximo Passo</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                ) : null}
+              </div>
+
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Fuel Modal */}
       {fuelModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white border border-slate-200 rounded-t-3xl sm:rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-t-3xl sm:rounded-3xl w-full max-w-md overflow-hidden shadow-2xl my-auto">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
-                <Droplets className="w-4 h-4 text-blue-600" />
-                <span>Registrar Chegada & Abastecimento</span>
-              </h3>
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+                  <Droplets className="w-4 h-4 text-blue-600" />
+                  <span>Cobrança de Combustível</span>
+                </h3>
+                {selectedReserva && (
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                    {selectedReserva.barcoNome || getEmbarcacao(selectedReserva.embarcacaoId)?.nome} • {selectedReserva.clienteNome || getCliente(selectedReserva.clienteId)?.nome}
+                  </p>
+                )}
+              </div>
               <button onClick={() => setFuelModalOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleConfirmFuelAndRegisterArrival} className="p-4 space-y-4">
+            <form onSubmit={handleConfirmFuelAndRegisterArrival} className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Quantidade em Litros */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-bold text-slate-700 block">Litros de Combustível *</label>
@@ -1812,15 +2062,177 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                 />
               </div>
 
+              {Number(liters) > 0 && (
+                <>
+                  {/* Status da Cobrança / Alternador de Modo */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                    <label className="text-xs font-bold text-slate-700 block">Status do Pagamento</label>
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setStatusCobranca('pendente')}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          statusCobranca === 'pendente'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Pendente</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatusCobranca('cobrado')}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          statusCobranca === 'cobrado'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-blue-600'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Cobrar Agora</span>
+                      </button>
+                    </div>
+                  </div>
 
+                  {/* MODO PENDENTE: Exibe apenas resumo simples sem formas de pagamento/comprovante */}
+                  {statusCobranca === 'pendente' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span>Cobrança será mantida <strong>pendente</strong>.</span>
+                      </div>
+                      <span className="font-bold font-mono text-slate-900 shrink-0">
+                        R$ {(Number(liters) * 9).toFixed(2).replace('.', ',')}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* MODO COBRAR AGORA: Exibe formas de pagamento, total e anexo de comprovante */}
+                  {statusCobranca === 'cobrado' && (
+                    <>
+                      {/* Forma de Pagamento */}
+                      <div className="space-y-2 pt-1 border-t border-slate-100">
+                        <label className="text-xs font-bold text-slate-700 block">Forma de Pagamento *</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { id: 'pix', label: 'PIX', icon: QrCode, price: 'R$ 9,00/L' },
+                            { id: 'credit', label: 'Crédito', icon: CreditCard, price: 'R$ 10,00/L' },
+                            { id: 'debit', label: 'Débito', icon: CreditCard, price: 'R$ 9,00/L' },
+                            { id: 'dinheiro', label: 'Dinheiro', icon: Banknote, price: 'R$ 9,00/L' },
+                            { id: 'admin', label: 'Administradora', icon: Building2, price: 'R$ 13,00/L' },
+                          ].map((item) => {
+                            const IconComponent = item.icon;
+                            const isSelected = paymentType === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => setPaymentType(item.id as any)}
+                                className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-blue-50 border-blue-600 ring-2 ring-blue-500/20 text-blue-900 font-bold'
+                                    : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700 font-medium'
+                                }`}
+                              >
+                                <div className={`p-1.5 rounded-lg shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                  <IconComponent className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-xs block truncate">{item.label}</span>
+                                  <span className="text-[10px] text-slate-500 font-normal block">{item.price}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Resumo do Valor Total */}
+                      <div className="bg-slate-900 text-white p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total a Cobrar</span>
+                          <span className="text-xs text-blue-300 font-medium">
+                            {Number(liters)}L x R$ {
+                              (paymentType === 'credit' ? 10 : paymentType === 'admin' ? 13 : 9).toFixed(2)
+                            }/L
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-lg font-black text-emerald-400 font-mono block">
+                            R$ {(Number(liters) * (paymentType === 'credit' ? 10 : paymentType === 'admin' ? 13 : 9)).toFixed(2).replace('.', ',')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Anexar Comprovante */}
+                      <div className="space-y-1.5 pt-1">
+                        <label className="text-xs font-bold text-slate-700 block flex items-center justify-between">
+                          <span>Anexar Comprovante</span>
+                          <span className="text-[10px] text-slate-400 font-normal">(Opcional / Recomendado)</span>
+                        </label>
+
+                        {fuelComprovanteUrl ? (
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                                <FileCheck className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-bold text-slate-900 block truncate">Comprovante Anexado</span>
+                                <a
+                                  href={fuelComprovanteUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[11px] text-blue-600 underline font-medium hover:text-blue-800 flex items-center gap-1"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>Visualizar Arquivo</span>
+                                </a>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setFuelComprovanteUrl(null)}
+                              className="p-1 text-slate-400 hover:text-red-600 rounded-lg cursor-pointer"
+                              title="Remover comprovante"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-slate-50 hover:bg-blue-50/50 rounded-xl p-3.5 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all">
+                            {isUploadingComprovante ? (
+                              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                            ) : (
+                              <Paperclip className="w-5 h-5 text-slate-400" />
+                            )}
+                            <span className="text-xs font-bold text-slate-700">
+                              {isUploadingComprovante ? 'Enviando arquivo...' : 'Clique para tirar foto ou selecionar comprovante'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">JPG, PNG ou PDF</span>
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              onChange={handleUploadFuelComprovante}
+                              disabled={isUploadingComprovante}
+                              className="hidden"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
 
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 cursor-pointer disabled:opacity-50 mt-2"
+                disabled={isSubmitting || isUploadingComprovante}
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 cursor-pointer disabled:opacity-50 mt-2"
               >
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                <span>Salvar Chegada & Abastecimento</span>
+                <span>Salvar Abastecimento</span>
               </button>
             </form>
           </div>

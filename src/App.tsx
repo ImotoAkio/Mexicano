@@ -117,7 +117,7 @@ import {
 } from 'lucide-react';
 
 
-type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs';
+type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -282,6 +282,7 @@ export default function App() {
       group: 'Financeiro',
       items: [
         { id: 'finance-lancamentos' as TabType, label: 'Lançamentos', icon: Wallet },
+        { id: 'finance-fuel' as TabType, label: 'Lançamento de Combustível', icon: Droplets },
         { id: 'finance-atividades' as TabType, label: 'Atividades', icon: ClipboardList },
         { id: 'finance-cobranca' as TabType, label: 'Débitos & Cobrança', icon: FileText },
         { id: 'finance-boletos' as TabType, label: 'Envio de Boletos', icon: Receipt },
@@ -312,9 +313,9 @@ export default function App() {
     ...group,
     items: group.items.filter(item => {
       if (adminRole === 'financeiro') {
-        return ['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id);
+        return ['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id);
       } else if (adminRole === 'pecas_servicos') {
-        return ['manutencoes', 'finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(item.id);
+        return ['manutencoes', 'finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(item.id);
       } else if (adminRole === 'comercial') {
         return ['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(item.id);
       }
@@ -323,9 +324,9 @@ export default function App() {
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
-    if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
+    if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
       setActiveTab('finance-lancamentos');
-    } else if (adminRole === 'pecas_servicos' && !['manutencoes', 'finance-lancamentos', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(activeTab)) {
+    } else if (adminRole === 'pecas_servicos' && !['manutencoes', 'finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(activeTab)) {
       setActiveTab('manutencoes');
     } else if (adminRole === 'comercial' && !['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(activeTab)) {
       setActiveTab('contratos');
@@ -621,7 +622,7 @@ export default function App() {
                 {activeTab === 'schedules' && <SchedulesPage />}
                 {activeTab === 'whatsapp' && <WhatsAppPage />}
                 {activeTab === 'checklists' && <AdminChecklistsWrapper />}
-                {activeTab === 'fuel' && <AdminFuelWrapper />}
+                {(activeTab === 'fuel' || activeTab === 'finance-fuel') && <AdminFuelWrapper />}
                 {activeTab === 'reports' && <SchedulesReportPage />}
                 {activeTab === 'clients' && <ClientPage />}
                 {activeTab === 'boats' && <BoatPage />}

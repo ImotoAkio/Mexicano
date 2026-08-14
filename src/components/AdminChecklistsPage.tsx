@@ -557,45 +557,63 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
                 );
               })}
 
-              {/* Equipamentos & Segurança da Lancha */}
-              <div className="bg-white border rounded-xl p-5 border-amber-100">
-                <h4 className="font-semibold text-slate-800 flex items-center gap-2 mb-3">
-                  <Shield className="w-5 h-5 text-amber-600" />
-                  <span>Segurança & Equipamentos da Lancha</span>
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
-                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                    viewingRes.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1.5"><Volume2 className="w-4 h-4" /> Som</span>
-                    <span>{viewingRes.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+              {/* Equipamentos & Segurança da Lancha (Apenas para Lanchas) */}
+              {(() => {
+                const boat = data.boats?.find((b: any) => b.id === viewingRes.embarcacaoId);
+                const isJet = boat 
+                  ? (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet'))
+                  : ((viewingRes as any)?.embarcacaoTipo === 'jet' || ((viewingRes as any)?.barcoNome || (viewingRes as any)?.embarcacaoNome || '').toLowerCase().includes('jet'));
+
+                if (isJet) {
+                  return viewingRes.checklistObservacoes ? (
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium">
+                      <span className="font-bold text-slate-900 block text-xs uppercase mb-1">Observações do Marinheiro:</span>
+                      <p>{viewingRes.checklistObservacoes}</p>
+                    </div>
+                  ) : null;
+                }
+
+                return (
+                  <div className="bg-white border rounded-xl p-5 border-amber-100">
+                    <h4 className="font-semibold text-slate-800 flex items-center gap-2 mb-3">
+                      <Shield className="w-5 h-5 text-amber-600" />
+                      <span>Segurança & Equipamentos da Lancha</span>
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
+                      <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                        viewingRes.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1.5"><Volume2 className="w-4 h-4" /> Som</span>
+                        <span>{viewingRes.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                        viewingRes.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1.5"><LifeBuoy className="w-4 h-4" /> Bóias</span>
+                        <span>{viewingRes.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                        viewingRes.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1.5"><Shield className="w-4 h-4" /> Coletes</span>
+                        <span>{viewingRes.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                      <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                        viewingRes.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+                      }`}>
+                        <span className="flex items-center gap-1.5"><Flame className="w-4 h-4" /> Extintor</span>
+                        <span>{viewingRes.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                      </div>
+                    </div>
+                    {viewingRes.checklistObservacoes && (
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium mt-3">
+                        <span className="font-bold text-slate-900 block text-xs uppercase mb-1">Observações do Marinheiro:</span>
+                        <p>{viewingRes.checklistObservacoes}</p>
+                      </div>
+                    )}
                   </div>
-                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                    viewingRes.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1.5"><LifeBuoy className="w-4 h-4" /> Bóias</span>
-                    <span>{viewingRes.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                    viewingRes.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1.5"><Shield className="w-4 h-4" /> Coletes</span>
-                    <span>{viewingRes.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                    viewingRes.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                  }`}>
-                    <span className="flex items-center gap-1.5"><Flame className="w-4 h-4" /> Extintor</span>
-                    <span>{viewingRes.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                  </div>
-                </div>
-                {viewingRes.checklistObservacoes && (
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium mt-3">
-                    <span className="font-bold text-slate-900 block text-xs uppercase mb-1">Observações do Marinheiro:</span>
-                    <p>{viewingRes.checklistObservacoes}</p>
-                  </div>
-                )}
-              </div>
+                );
+              })()}
 
             </div>
             

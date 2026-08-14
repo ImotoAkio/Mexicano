@@ -560,7 +560,7 @@ export default function WhatsAppPage() {
     showToast('Processo de disparo concluído!', 'success');
   };
 
-const fetchWaStatus = async () => {
+  const fetchWaStatus = async () => {
     setIsFetchingWaStatus(true);
     try {
       const res = await fetch('/api/whatsapp/status', {
@@ -588,8 +588,12 @@ const fetchWaStatus = async () => {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
       });
       const data = await res.json();
-      if (data.base64) {
-        setWaQrCode(data.base64);
+      const qr = data.base64 || data.qrcode?.base64 || data.code;
+      if (qr) {
+        setWaQrCode(qr);
+      } else if (data.instance?.state === 'open') {
+        setWaStatus('open');
+        setWaQrCode(null);
       }
     } catch (err) {
       console.error(err);
@@ -610,6 +614,7 @@ const fetchWaStatus = async () => {
       showToast('Erro ao desconectar', 'error');
     }
   };
+
 
   
 

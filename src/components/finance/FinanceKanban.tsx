@@ -23,8 +23,14 @@ export default function FinanceKanban() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        const data = await res.json();
-        setAtividades(data);
+        const text = await res.text();
+        let data = [];
+        try {
+          data = text ? JSON.parse(text) : [];
+        } catch (e) {
+          console.warn('Resposta não é um JSON válido em /api/financeiro/atividades');
+        }
+        setAtividades(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error(err);

@@ -1768,16 +1768,16 @@ app.get("/api/whatsapp/status", requireAdminAuth, async (req, res) => {
 
     if (!response.ok) {
       if (response.status === 404) {
-        return res.json({ instance: { state: "close" } }); // Instância pode não existir ainda
+        return res.json({ error: "Not Found", instance: { state: "not_created" }, message: "Instância não existe" });
       }
-      return res.status(502).json({ error: true, message: `Evolution API failure: ${response.statusText}` });
+      return res.json({ instance: { state: "close" }, message: `Evolution API status: ${response.statusText}` });
     }
 
     const data = await response.json();
     res.json(data);
   } catch (err: any) {
-    console.error("Error checking WhatsApp status:", err);
-    res.status(502).json({ error: true, message: err.message || "Failed to fetch WhatsApp status" });
+    console.warn("Error checking WhatsApp status (safe handling):", err?.message);
+    res.json({ instance: { state: "close" }, message: err?.message || "Failed to fetch status" });
   }
 });
 
@@ -1789,7 +1789,7 @@ app.get("/api/whatsapp/connect", requireAdminAuth, async (req, res) => {
     const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
-      return res.status(503).json({ error: true, message: "Evolution API não configurada nas variáveis de ambiente." });
+      return res.json({ base64: null, count: 0, message: "Evolution API não configurada nas variáveis de ambiente." });
     }
 
     const response = await evolutionFetch(`${apiUrl}/instance/connect/${instance}`, {
@@ -1798,14 +1798,123 @@ app.get("/api/whatsapp/connect", requireAdminAuth, async (req, res) => {
     });
 
     if (!response.ok) {
-      return res.status(502).json({ error: true, message: `Evolution API failure: ${response.statusText}` });
+      return res.json({ base64: null, count: 0, message: `Evolution API instance connect: ${response.statusText}` });
     }
 
     const data = await response.json();
     res.json(data);
   } catch (err: any) {
-    console.error("Error connecting WhatsApp:", err);
-    res.status(502).json({ error: true, message: err.message || "Failed to connect" });
+    console.warn("Error connecting WhatsApp (safe handling):", err?.message);
+    res.json({ base64: null, count: 0, message: err?.message || "Failed to connect" });
+  }
+});
+
+// Route: Get all instances from Evolution API
+app.get("/api/whatsapp/instances", requireAdminAuth, async (req, res) => {
+  try {
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+
+    if (!apiUrl || !apiKey) {
+      return res.status(500).json({ error: true, message: "Evolution API não configurada." });
+    }
+
+    const response = await evolutionFetch(`${apiUrl}/instance/fetchInstances`, {
+      method: "GET",
+      headers: { "apikey": apiKey }
+    });
+
+    if (!response.ok) {
+      return res.status(500).json({ error: true, message: `Failed to fetch instances: ${response.statusText}` });
+    }
+
+    const data = await response.json();
+    // data is typically an array of instances: [{ instance: { instanceName: "mexicano", status: "open" } }, ...] or similar depending on Evolution version.
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err?.message || "Failed to fetch instances" });
+  }
+});
+
+// Route: Debug WhatsApp Connection & Evolution API Diagnostics
+app.get("/api/whatsapp/debug", requireAdminAuth, async (req, res) => {
+  try {
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+    const instance = (req.query.instance as string) || process.env.EVOLUTION_INSTANCE || "mexicano";
+
+    const report: any = {
+      timestamp: new Date().toISOString(),
+      env: {
+        EVOLUTION_API_URL: apiUrl ? apiUrl : "NÃO CONFIGURADO",
+        EVOLUTION_API_KEY: apiKey ? `${apiKey.substring(0, 6)}...` : "NÃO CONFIGURADO",
+        EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE || "mexicano",
+        targetInstance: instance
+      },
+      tests: {}
+    };
+
+    if (!apiUrl || !apiKey) {
+      report.status = "ERROR_ENV_MISSING";
+      return res.json(report);
+    }
+
+    // Test 1: fetchInstances
+    try {
+      const resInst = await evolutionFetch(`${apiUrl}/instance/fetchInstances`, {
+        headers: { "apikey": apiKey }
+      });
+      const instData = await resInst.json();
+      report.tests.fetchInstances = {
+        status: resInst.status,
+        ok: resInst.ok,
+        instancesCount: Array.isArray(instData) ? instData.length : 0,
+        instances: Array.isArray(instData) ? instData.map((i: any) => ({ name: i.name, connectionStatus: i.connectionStatus, ownerJid: i.ownerJid })) : instData
+      };
+    } catch (e: any) {
+      report.tests.fetchInstances = { error: e.message };
+    }
+
+    // Test 2: connectionState
+    try {
+      const resState = await evolutionFetch(`${apiUrl}/instance/connectionState/${instance}`, {
+        headers: { "apikey": apiKey }
+      });
+      report.tests.connectionState = {
+        status: resState.status,
+        ok: resState.ok,
+        data: await resState.json()
+      };
+    } catch (e: any) {
+      report.tests.connectionState = { error: e.message };
+    }
+
+    // Test 3: connect (QR code endpoint)
+    try {
+      const resConn = await evolutionFetch(`${apiUrl}/instance/connect/${instance}`, {
+        headers: { "apikey": apiKey }
+      });
+      const connData = await resConn.json();
+      report.tests.connect = {
+        status: resConn.status,
+        ok: resConn.ok,
+        keysReturned: Object.keys(connData || {}),
+        hasBase64: !!(connData?.base64 || connData?.qrcode?.base64),
+        hasCode: !!connData?.code,
+        dataSummary: {
+          instance: connData?.instance,
+          state: connData?.instance?.state || connData?.state,
+          pairingCode: connData?.pairingCode,
+          codePreview: connData?.code ? (connData.code.substring(0, 30) + "...") : null
+        }
+      };
+    } catch (e: any) {
+      report.tests.connect = { error: e.message };
+    }
+
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message });
   }
 });
 
@@ -2569,31 +2678,6 @@ app.get("/api/public/checklist/:checklistId", async (req, res) => {
     const dbData = await pullDatabase();
     const reserva = dbData.reservations?.find((r: any) => r.id === checklistId);
 
-    if (!reserva) {
-      return res.status(404).json({ success: false, message: "Checklist não encontrado." });
-    }
-
-    const boat = dbData.boats?.find((b: any) => b.id === reserva.embarcacaoId);
-    const embarcacaoNome = boat ? `${boat.nome}${boat.numero ? ` (${boat.numero})` : ''}` : 'Embarcação';
-
-    const checklist = {
-      id: reserva.id,
-      dataAgendamento: reserva.data,
-      data: reserva.data,
-      embarcacaoNome,
-      horaDescida: reserva.horaDescida || reserva.horaSaida || null,
-      fotosChecklistDescida: reserva.fotosChecklistDescida || reserva.fotosChecklistSaida || [],
-      fotosChecklistSaida: reserva.fotosChecklistSaida || [],
-      horaChegada: reserva.horaChegada || null,
-      fotosChecklistChegada: reserva.fotosChecklistChegada || [],
-      horaSubida: reserva.horaSubida || null,
-      fotosChecklistSubida: reserva.fotosChecklistSubida || [],
-      observacoesChecklistDescida: reserva.observacoesChecklistDescida || null,
-      observacoesChecklistChegada: reserva.observacoesChecklistChegada || null,
-      observacoesChecklistSubida: reserva.observacoesChecklistSubida || null
-    };
-
-    return res.json({ success: true, checklist });
   } catch (err: any) {
     console.error("Error fetching shared checklist:", err);
     return res.status(500).json({ success: false, message: "Erro interno ao carregar checklist." });

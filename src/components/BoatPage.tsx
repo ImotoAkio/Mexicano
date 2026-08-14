@@ -4,7 +4,11 @@ import { Embarcacao, Cliente } from '../types';
 import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid } from 'lucide-react';
 import Select from 'react-select';
 
-export default function BoatPage() {
+interface BoatPageProps {
+  showWhatsAppMapping?: boolean;
+}
+
+export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) {
   const [boats, setBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
   const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll());
   const [search, setSearch] = useState('');
@@ -421,14 +425,16 @@ export default function BoatPage() {
           <p className="text-sm text-slate-500">Registre os veículos náuticos (Lanchas e Jets) e relacione seus proprietários compartilhados (coproprietários).</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={handleOpenMappingModal}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 rounded-lg transition-colors cursor-pointer"
-            title="Mapear grupos do WhatsApp usando Evolution API"
-          >
-            <Zap className="w-4 h-4 mr-2 text-teal-500" />
-            Mapear WhatsApp
-          </button>
+          {showWhatsAppMapping && (
+            <button
+              onClick={handleOpenMappingModal}
+              className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 rounded-lg transition-colors cursor-pointer"
+              title="Mapear grupos do WhatsApp usando Evolution API"
+            >
+              <Zap className="w-4 h-4 mr-2 text-teal-500" />
+              Mapear WhatsApp
+            </button>
+          )}
           <button
             id="btn-new-boat"
             onClick={handleOpenCreateModal}
@@ -689,7 +695,7 @@ export default function BoatPage() {
                             Google ID: {boat.googleCalendarId}
                           </div>
                         )}
-                        {boat.whatsappGroupId && (
+                        {showWhatsAppMapping && boat.whatsappGroupId && (
                           <div className="text-[10px] font-mono text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded-md mt-1 truncate max-w-[210px] border border-teal-100/50" title={boat.whatsappGroupId}>
                             WhatsApp: {boat.whatsappGroupId}
                           </div>
@@ -1044,44 +1050,46 @@ export default function BoatPage() {
               </div>
 
               {/* WhatsApp Group ID Field */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-medium text-slate-700">ID do Grupo do WhatsApp - Evolution API (Opcional)</label>
-                  <button 
-                    type="button" 
-                    onClick={handleFetchGroups}
-                    disabled={isFetchingGroups}
-                    className="text-[10px] text-teal-600 font-semibold hover:text-teal-700 flex items-center cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingGroups ? 'animate-spin' : ''}`} />
-                    {isFetchingGroups ? 'Buscando...' : 'Buscar Grupos'}
-                  </button>
-                </div>
+              {showWhatsAppMapping && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-medium text-slate-700">ID do Grupo do WhatsApp - Evolution API (Opcional)</label>
+                    <button 
+                      type="button" 
+                      onClick={handleFetchGroups}
+                      disabled={isFetchingGroups}
+                      className="text-[10px] text-teal-600 font-semibold hover:text-teal-700 flex items-center cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingGroups ? 'animate-spin' : ''}`} />
+                      {isFetchingGroups ? 'Buscando...' : 'Buscar Grupos'}
+                    </button>
+                  </div>
 
-                {availableGroups.length > 0 ? (
-                  <select
-                    id="input-boat-whatsapp-id-select"
-                    value={whatsappGroupId}
-                    onChange={(e) => setWhatsappGroupId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white focus:border-transparent font-mono"
-                  >
-                    <option value="">-- Selecione o Grupo do Barco --</option>
-                    {availableGroups.map((g: any) => (
-                      <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    id="input-boat-whatsapp-id"
-                    type="text"
-                    placeholder="Ex: 120363123456789012@g.us"
-                    value={whatsappGroupId}
-                    onChange={(e) => setWhatsappGroupId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white focus:border-transparent font-mono"
-                  />
-                )}
-                <p className="text-[10px] text-slate-400">Insira o JID do grupo manualmente ou busque da Evolution API para receber calendários automáticos.</p>
-              </div>
+                  {availableGroups.length > 0 ? (
+                    <select
+                      id="input-boat-whatsapp-id-select"
+                      value={whatsappGroupId}
+                      onChange={(e) => setWhatsappGroupId(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white focus:border-transparent font-mono"
+                    >
+                      <option value="">-- Selecione o Grupo do Barco --</option>
+                      {availableGroups.map((g: any) => (
+                        <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id="input-boat-whatsapp-id"
+                      type="text"
+                      placeholder="Ex: 120363123456789012@g.us"
+                      value={whatsappGroupId}
+                      onChange={(e) => setWhatsappGroupId(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white focus:border-transparent font-mono"
+                    />
+                  )}
+                  <p className="text-[10px] text-slate-400">Insira o JID do grupo manualmente ou busque da Evolution API para receber calendários automáticos.</p>
+                </div>
+              )}
 
               {/* Maintenance Toggle */}
               <div className="border border-rose-100 bg-rose-50/50 p-3 rounded-lg flex items-start space-x-3 mt-2">
@@ -1264,7 +1272,7 @@ export default function BoatPage() {
       )}
 
       {/* WhatsApp Mapping Modal */}
-      {isMappingModalOpen && (
+      {showWhatsAppMapping && isMappingModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-100">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">

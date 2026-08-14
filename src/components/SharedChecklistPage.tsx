@@ -165,45 +165,62 @@ export default function SharedChecklistPage({ checklistId }: { checklistId: stri
         {renderSection('Chegada', data.horaChegada, fotosChegada, CheckCircle2, 'text-amber-400')}
         {renderSection('Subida', data.horaSubida, fotosSubida, ArrowUpCircle, 'text-emerald-400')}
 
-        {/* Equipamentos & Segurança da Lancha */}
-        <div className="bg-[#111111] rounded-2xl border border-white/5 p-6 mb-6">
-          <h3 className="text-lg font-medium text-white/90 mb-4 flex items-center gap-2">
-            <Shield className="w-5 h-5 text-[#B69D74]" />
-            <span>Segurança & Equipamentos da Lancha</span>
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-bold">
-            <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-              data.checklistEquipamentos?.som !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-            }`}>
-              <span className="flex items-center gap-2"><Volume2 className="w-4 h-4 text-[#B69D74]" /> Som</span>
-              <span>{data.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+        {/* Equipamentos & Segurança da Lancha (Apenas para Lanchas) */}
+        {(() => {
+          const isJet = data?.embarcacaoTipo === 'jet' || (data?.embarcacaoNome || '').toLowerCase().includes('jet');
+
+          if (isJet) {
+            return data.checklistObservacoes ? (
+              <div className="bg-[#111111] rounded-2xl border border-white/5 p-6 mb-6">
+                <div className="bg-[#1A1A1A] p-4 rounded-xl border border-white/10 text-xs text-white/80">
+                  <span className="font-bold text-[#B69D74] block uppercase tracking-wider text-[10px] mb-1">Observações do Marinheiro:</span>
+                  <p>{data.checklistObservacoes}</p>
+                </div>
+              </div>
+            ) : null;
+          }
+
+          return (
+            <div className="bg-[#111111] rounded-2xl border border-white/5 p-6 mb-6">
+              <h3 className="text-lg font-medium text-white/90 mb-4 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-[#B69D74]" />
+                <span>Segurança & Equipamentos da Lancha</span>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-bold">
+                <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
+                  data.checklistEquipamentos?.som !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+                }`}>
+                  <span className="flex items-center gap-2"><Volume2 className="w-4 h-4 text-[#B69D74]" /> Som</span>
+                  <span>{data.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                </div>
+                <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
+                  data.checklistEquipamentos?.boias !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+                }`}>
+                  <span className="flex items-center gap-2"><LifeBuoy className="w-4 h-4 text-[#B69D74]" /> Bóias</span>
+                  <span>{data.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                </div>
+                <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
+                  data.checklistEquipamentos?.coletes !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+                }`}>
+                  <span className="flex items-center gap-2"><Shield className="w-4 h-4 text-[#B69D74]" /> Coletes</span>
+                  <span>{data.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                </div>
+                <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
+                  data.checklistEquipamentos?.extintor !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+                }`}>
+                  <span className="flex items-center gap-2"><Flame className="w-4 h-4 text-[#B69D74]" /> Extintor</span>
+                  <span>{data.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
+                </div>
+              </div>
+              {data.checklistObservacoes && (
+                <div className="bg-[#1A1A1A] p-4 rounded-xl border border-white/10 text-xs text-white/80 mt-4">
+                  <span className="font-bold text-[#B69D74] block uppercase tracking-wider text-[10px] mb-1">Observações do Marinheiro:</span>
+                  <p>{data.checklistObservacoes}</p>
+                </div>
+              )}
             </div>
-            <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-              data.checklistEquipamentos?.boias !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-            }`}>
-              <span className="flex items-center gap-2"><LifeBuoy className="w-4 h-4 text-[#B69D74]" /> Bóias</span>
-              <span>{data.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-            </div>
-            <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-              data.checklistEquipamentos?.coletes !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-            }`}>
-              <span className="flex items-center gap-2"><Shield className="w-4 h-4 text-[#B69D74]" /> Coletes</span>
-              <span>{data.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-            </div>
-            <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-              data.checklistEquipamentos?.extintor !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-            }`}>
-              <span className="flex items-center gap-2"><Flame className="w-4 h-4 text-[#B69D74]" /> Extintor</span>
-              <span>{data.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-            </div>
-          </div>
-          {data.checklistObservacoes && (
-            <div className="bg-[#1A1A1A] p-4 rounded-xl border border-white/10 text-xs text-white/80 mt-4">
-              <span className="font-bold text-[#B69D74] block uppercase tracking-wider text-[10px] mb-1">Observações do Marinheiro:</span>
-              <p>{data.checklistObservacoes}</p>
-            </div>
-          )}
-        </div>
+          );
+        })()}
 
         {!data.horaDescida && !data.horaChegada && !data.horaSubida && (
           <div className="py-20 text-center">
