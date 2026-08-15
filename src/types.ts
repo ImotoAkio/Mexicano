@@ -56,6 +56,13 @@ export interface Embarcacao {
   seguroUrl?: string; // URL for the boat insurance PDF
   temSom?: boolean; // Indicates if the boat requires sound control checks
   horasMotor?: number; // Track current engine hours
+  acessorios?: {
+    tenda?: boolean;
+    mesa?: boolean;
+    bancosCadeiras?: boolean;
+    churrasqueira?: boolean;
+    observacoes?: string;
+  };
 }
 
 export interface Reserva {
@@ -155,6 +162,7 @@ export interface AtividadeFinanceira {
   titulo: string;
   descricao?: string;
   status: 'a_fazer' | 'em_andamento' | 'concluido';
+  setor?: 'financeiro' | 'pecas_servicos';
   createdAt: string;
   updatedAt: string;
 }
@@ -175,16 +183,33 @@ export interface Feedback {
 export interface Manutencao {
   id: string;
   embarcacaoId: string;
+  tituloChamado?: string; // Short description for Kanban
   dataSaida: string; // YYYY-MM-DD
+  dataChamado?: string; // YYYY-MM-DD
+  prazoEntrega?: string; // YYYY-MM-DD
   mecanico?: string | null;
   orcamento?: number | null;
   custo?: number | null;
   valorRepassado?: number | null;
-  status: 'em_andamento' | 'concluido' | 'cancelado';
+  orcamentoAprovado?: boolean;
+  status: 'chamado_aberto' | 'orcamento_pendente' | 'na_oficina' | 'em_andamento' | 'aguardando_pecas' | 'concluido' | 'cancelado';
+  localizacao?: 'marina' | 'oficina_externa';
   descricaoServico?: string;
   gerarFinanceiro?: boolean; // apenas para frontend
   horasMotorAtual?: number; // Engine hours when maintenance started
   proximaRevisaoHoras?: number; // Engine hours due for next revision
+  acessorios?: {
+    tenda?: boolean;
+    mesa?: boolean;
+    bancosCadeiras?: boolean;
+    churrasqueira?: boolean;
+  };
+  pecas?: Array<{
+    nome: string;
+    quantidade: number;
+    valorUnitario: number;
+  }>;
+  whatsappStatus?: 'nao_enviado' | 'orcamento_enviado' | 'aprovado' | 'concluido';
   createdAt: string;
 }
 

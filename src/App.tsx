@@ -22,7 +22,11 @@ const ComercialDashboard = lazy(() => import('./components/ComercialDashboard'))
 const UsersPage = lazy(() => import('./components/UsersPage'));
 const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
-const MaintenancePage = lazy(() => import('./components/MaintenancePage'));
+const PecasKanbanPage = lazy(() => import('./components/PecasKanbanPage'));
+const PecasHorimetrosPage = lazy(() => import('./components/pecas/PecasHorimetrosPage'));
+const PecasAcessoriosPage = lazy(() => import('./components/pecas/PecasAcessoriosPage'));
+const PecasWhatsAppPage = lazy(() => import('./components/pecas/PecasWhatsAppPage'));
+const PecasAtividadesPage = lazy(() => import('./components/pecas/PecasAtividadesPage'));
 const PortalInterno = lazy(() => import('./components/finance/PortalInterno'));
 const AdminChecklistsPage = lazy(() => import('./components/AdminChecklistsPage'));
 const AdminFuelPage = lazy(() => import('./components/AdminFuelPage'));
@@ -113,11 +117,11 @@ import {
   MessageSquare,
   CheckCircle,
   Wrench,
-  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History
+  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package
 } from 'lucide-react';
 
 
-type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs';
+type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -267,7 +271,11 @@ export default function App() {
         { id: 'fuel' as TabType, label: 'Abastecimento', icon: Droplets },
         { id: 'sound' as TabType, label: 'Vistoria de Som', icon: Speaker },
         { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
-        { id: 'manutencoes' as TabType, label: 'Manutenções', icon: Wrench },
+        { id: 'manutencoes' as TabType, label: 'Painel de Manutenções', icon: Wrench },
+        { id: 'pecas-horimetros' as TabType, label: 'Controle de Horímetros', icon: Clock },
+        { id: 'pecas-acessorios' as TabType, label: 'Checklist de Acessórios', icon: Package },
+        { id: 'pecas-whatsapp' as TabType, label: 'WhatsApp (Peças/Serviços)', icon: MessageSquare },
+        { id: 'pecas-atividades' as TabType, label: 'Quadro de Atividades', icon: ClipboardList },
       ]
     },
     {
@@ -315,7 +323,7 @@ export default function App() {
       if (adminRole === 'financeiro') {
         return ['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id);
       } else if (adminRole === 'pecas_servicos') {
-        return ['manutencoes', 'finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(item.id);
+        return ['schedules', 'checklists', 'pecas-whatsapp', 'pecas-atividades', 'manutencoes', 'pecas-horimetros', 'pecas-acessorios'].includes(item.id);
       } else if (adminRole === 'comercial') {
         return ['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(item.id);
       }
@@ -326,7 +334,7 @@ export default function App() {
   useEffect(() => {
     if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
       setActiveTab('finance-lancamentos');
-    } else if (adminRole === 'pecas_servicos' && !['manutencoes', 'finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'finance-schedules', 'schedules', 'portal-interno'].includes(activeTab)) {
+    } else if (adminRole === 'pecas_servicos' && !['schedules', 'checklists', 'pecas-whatsapp', 'pecas-atividades', 'manutencoes', 'pecas-horimetros', 'pecas-acessorios'].includes(activeTab)) {
       setActiveTab('manutencoes');
     } else if (adminRole === 'comercial' && !['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(activeTab)) {
       setActiveTab('contratos');
@@ -628,7 +636,11 @@ export default function App() {
                 {activeTab === 'boats' && <BoatPage />}
                 {activeTab === 'contratos' && <ContractGeneratorPage />}
                 {activeTab === 'sound' && <SoundControlsPage />}
-                {activeTab === 'manutencoes' && <MaintenancePage />}
+                {activeTab === 'manutencoes' && <PecasKanbanPage />}
+                {activeTab === 'pecas-horimetros' && <PecasHorimetrosPage />}
+                {activeTab === 'pecas-acessorios' && <PecasAcessoriosPage />}
+                {activeTab === 'pecas-whatsapp' && <PecasWhatsAppPage />}
+                {activeTab === 'pecas-atividades' && <PecasAtividadesPage />}
                 {activeTab === 'finance-lancamentos' && <FinancePage initialTab="lancamentos" />}
                 {activeTab === 'finance-atividades' && <FinancePage initialTab="atividades" />}
                 {activeTab === 'finance-cobranca' && <FinancePage initialTab="cobranca" />}

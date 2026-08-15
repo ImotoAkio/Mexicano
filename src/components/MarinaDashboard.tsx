@@ -518,6 +518,138 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     }
   };
 
+  const getEmbarcacao = (id: string) => data?.boats?.find((b: any) => b.id === id);
+  const getCliente = (id: string) => data?.clients?.find((c: any) => c.id === id);
+
+  const filterBySearch = (list: any[]) => {
+    if (!searchTerm.trim()) return list;
+    const q = searchTerm.trim().toLowerCase();
+    return list.filter((r: any) => {
+      const boat = getEmbarcacao(r.embarcacaoId);
+      const client = getCliente(r.clienteId);
+      const boatName = (boat?.nome || r.barcoNome || '').toLowerCase();
+      const boatNum = (boat?.numero || '').toString().toLowerCase();
+      const boatVaga = (boat?.vaga || '').toString().toLowerCase();
+      const clientName = (client?.nome || r.clienteNome || '').toLowerCase();
+      const obs = (r.observacoes || '').toLowerCase();
+      return boatName.includes(q) || boatNum.includes(q) || boatVaga.includes(q) || clientName.includes(q) || obs.includes(q);
+    });
+  };
+
+  const getSortTime = (reserva: any): string => {
+    const raw = reserva.previsaoSaida || reserva.horaSaida || reserva.horaDescida;
+    if (raw && typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (trimmed && trimmed !== 'Não informada' && trimmed !== 'Sem previsão' && trimmed !== '--:--') {
+        const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+        if (match) {
+          const hh = match[1].padStart(2, '0');
+          const mm = match[2];
+          return `${hh}:${mm}`;
+        }
+        return trimmed;
+      }
+    }
+    return '99:99';
+  };
+
+  const sortReservations = (list: any[]) => {
+    return [...list].sort((a: any, b: any) => {
+      if (sortBy === 'alfabetica') {
+        const boatA = getEmbarcacao(a.embarcacaoId);
+        const boatB = getEmbarcacao(b.embarcacaoId);
+        const nameA = boatA?.nome || a.barcoNome || '';
+        const nameB = boatB?.nome || b.barcoNome || '';
+        return nameA.localeCompare(nameB, 'pt-BR', { numeric: true });
+      } else {
+        const timeA = getSortTime(a);
+        const timeB = getSortTime(b);
+        const timeCompare = timeA.localeCompare(timeB);
+        if (timeCompare !== 0) return timeCompare;
+
+        const boatA = getEmbarcacao(a.embarcacaoId);
+        const boatB = getEmbarcacao(b.embarcacaoId);
+        const nameA = (boatA?.nome || a.barcoNome || '').toString();
+        const nameB = (boatB?.nome || b.barcoNome || '').toString();
+        return nameA.localeCompare(nameB, 'pt-BR', { numeric: true });
+      }
+    });
+  };
+
+  const totalDayReservations = data?.reservations?.filter((r: any) => r.data === selectedDate) || [];
+  const searchedDayReservations = sortReservations(filterBySearch(totalDayReservations));
+
+  const kanbanAgendados = searchedDayReservations.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado');
+  const kanbanNoPier = searchedDayReservations.filter((r: any) => r.horaDescida && !r.horaSaida && r.statusMarina !== 'saida' && r.statusOperacional !== 'navegando' && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado');
+  const kanbanNavegando = searchedDayReservations.filter((r: any) => (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado');
+  const kanbanRetornaram = searchedDayReservations.filter((r: any) => (r.horaChegada || r.statusMarina === 'chegada' || r.statusOperacional === 'retornou') && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado');
+
+  const countAgendadosConfirmados = totalDayReservations.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado').length;
+  const countNoPier = totalDayReservations.filter((r: any) => r.horaDescida && !r.horaSaida && r.statusMarina !== 'saida' && r.statusOperacional !== 'navegando' && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
+  const countNavegando = totalDayReservations.filter((r: any) => (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
+  const countRetornaram = totalDayReservations.filter((r: any) => (r.horaChegada || r.statusMarina === 'chegada' || r.statusOperacional === 'retornou') && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
+  const countTodas = totalDayReservations.length;
+
+  // Auto-navegação para a aba com correspondência no modo Lista ao pesquisar
+  useEffect(() => {
+    const query = searchTerm.trim();
+    if (!query || searchedDayReservations.length === 0) return;
+
+    const inAgendados = kanbanAgendados.length > 0;
+    const inNoPier = kanbanNoPier.length > 0;
+    const inNavegando = kanbanNavegando.length > 0;
+    const inRetornaram = kanbanRetornaram.length > 0;
+
+    // Se a aba atual já contém resultados da busca, mantém nela
+    const currentHasResults = 
+      (filterType === 'agendadas' || filterType === 'agendados') ? inAgendados :
+      (filterType === 'nopier' || filterType === 'prontas') ? inNoPier :
+      (filterType === 'navegando') ? inNavegando :
+      (filterType === 'retornaram') ? inRetornaram :
+      (filterType === 'todas') ? true : false;
+
+    if (currentHasResults) return;
+
+    // Caso a aba atual não tenha resultados, navega automaticamente para a aba correspondente
+    const matchingTabs: Array<'agendadas' | 'nopier' | 'navegando' | 'retornaram'> = [];
+    if (inAgendados) matchingTabs.push('agendadas');
+    if (inNoPier) matchingTabs.push('nopier');
+    if (inNavegando) matchingTabs.push('navegando');
+    if (inRetornaram) matchingTabs.push('retornaram');
+
+    if (matchingTabs.length === 1) {
+      setFilterType(matchingTabs[0]);
+    } else if (matchingTabs.length > 1) {
+      setFilterType('todas');
+    }
+  }, [searchTerm, kanbanAgendados.length, kanbanNoPier.length, kanbanNavegando.length, kanbanRetornaram.length]);
+
+  const getFilteredReservations = () => {
+    if (filterType === 'agendadas' || filterType === 'agendados') {
+      return kanbanAgendados;
+    } else if (filterType === 'nopier' || filterType === 'prontas') {
+      return kanbanNoPier;
+    } else if (filterType === 'navegando') {
+      return kanbanNavegando;
+    } else if (filterType === 'retornaram') {
+      return kanbanRetornaram;
+    }
+    return searchedDayReservations;
+  };
+
+  const reservasDoDia = getFilteredReservations();
+  const displayDateStr = new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+
+  // Dados reais de estoque do módulo de tanques (fuelInventory)
+  const fuelInventory = getFuelInventory();
+  const tanqueLitros = fuelInventory.tanquePrincipalLitros || 0;
+  const tanqueCapacidade = fuelInventory.tanqueCapacidadeMaxima || 10000;
+  const tanquePct = Math.min(100, Math.round((tanqueLitros / tanqueCapacidade) * 100));
+
+  const galoesQtd = fuelInventory.galoesPierQuantidade || 0;
+  const galaoParcial = fuelInventory.galaoParcialLitros || 0;
+  const totalLitrosGaloes = (galoesQtd * (fuelInventory.galoesCapacidadeLitros || 20)) + galaoParcial;
+
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-950 text-white">
@@ -534,95 +666,6 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       </div>
     );
   }
-
-  const getEmbarcacao = (id: string) => data?.boats?.find((b: any) => b.id === id);
-  const getCliente = (id: string) => data?.clients?.find((c: any) => c.id === id);
-
-  const getFilteredReservations = () => {
-    if (!data?.reservations) return [];
-    
-    let filtered = data.reservations.filter((r: any) => r.data === selectedDate);
-    
-    if (filterType === 'agendadas' || filterType === 'agendados') {
-      filtered = filtered.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado');
-    } else if (filterType === 'nopier' || filterType === 'prontas') {
-      filtered = filtered.filter((r: any) => 
-        r.horaDescida && 
-        !r.horaSaida && 
-        r.statusMarina !== 'saida' && 
-        r.statusOperacional !== 'navegando' && 
-        !r.horaChegada && 
-        r.statusMarina !== 'chegada' && 
-        !r.horaSubida && 
-        r.statusMarina !== 'guardada' && 
-        r.status !== 'cancelado'
-      );
-    } else if (filterType === 'navegando') {
-      filtered = filtered.filter((r: any) => 
-        (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && 
-        !r.horaChegada && 
-        r.statusMarina !== 'chegada' && 
-        !r.horaSubida && 
-        r.statusMarina !== 'guardada' && 
-        r.status !== 'cancelado'
-      );
-    } else if (filterType === 'retornaram') {
-      filtered = filtered.filter((r: any) => 
-        (r.horaChegada || r.statusMarina === 'chegada' || r.statusOperacional === 'retornou') && 
-        !r.horaSubida && 
-        r.statusMarina !== 'guardada' && 
-        r.status !== 'cancelado'
-      );
-    }
-
-    if (searchTerm.trim()) {
-      const q = searchTerm.trim().toLowerCase();
-      filtered = filtered.filter((r: any) => {
-        const boat = getEmbarcacao(r.embarcacaoId);
-        const client = getCliente(r.clienteId);
-        const boatName = (boat?.nome || '').toLowerCase();
-        const boatNum = (boat?.numero || '').toString().toLowerCase();
-        const clientName = (client?.nome || '').toLowerCase();
-        const obs = (r.observacoes || '').toLowerCase();
-        return boatName.includes(q) || boatNum.includes(q) || clientName.includes(q) || obs.includes(q);
-      });
-    }
-
-    filtered.sort((a: any, b: any) => {
-      if (sortBy === 'alfabetica') {
-        const boatA = getEmbarcacao(a.embarcacaoId);
-        const boatB = getEmbarcacao(b.embarcacaoId);
-        const nameA = boatA?.nome || '';
-        const nameB = boatB?.nome || '';
-        return nameA.localeCompare(nameB, 'pt-BR');
-      } else {
-        const timeA = a.previsaoSaida || a.horaDescida || a.horaSaida || '99:99';
-        const timeB = b.previsaoSaida || b.horaDescida || b.horaSaida || '99:99';
-        return timeA.localeCompare(timeB);
-      }
-    });
-    
-    return filtered;
-  };
-
-  const reservasDoDia = getFilteredReservations();
-  const totalDayReservations = data?.reservations?.filter((r: any) => r.data === selectedDate) || [];
-  const countAgendadosConfirmados = totalDayReservations.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado').length;
-  const countNoPier = totalDayReservations.filter((r: any) => r.horaDescida && !r.horaSaida && r.statusMarina !== 'saida' && r.statusOperacional !== 'navegando' && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
-  const countNavegando = totalDayReservations.filter((r: any) => (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
-  const countRetornaram = totalDayReservations.filter((r: any) => (r.horaChegada || r.statusMarina === 'chegada' || r.statusOperacional === 'retornou') && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
-  const countTodas = totalDayReservations.length;
-  const displayDateStr = new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-
-  // Dados reais de estoque do módulo de tanques (fuelInventory)
-  const fuelInventory = getFuelInventory();
-  const tanqueLitros = fuelInventory.tanquePrincipalLitros || 0;
-  const tanqueCapacidade = fuelInventory.tanqueCapacidadeMaxima || 10000;
-  const tanquePct = Math.min(100, Math.round((tanqueLitros / tanqueCapacidade) * 100));
-
-  const galoesQtd = fuelInventory.galoesPierQuantidade || 0;
-  const galaoParcial = fuelInventory.galaoParcialLitros || 0;
-  const totalLitrosGaloes = (galoesQtd * (fuelInventory.galoesCapacidadeLitros || 20)) + galaoParcial;
 
   return (
     <div className="min-h-screen w-full flex bg-[#f4f5f7] font-sans text-slate-800">
@@ -1298,19 +1341,31 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             {viewMode === 'lista' && (
               <div className="flex bg-white shadow-sm border border-slate-200 rounded-xl p-1 gap-1 overflow-x-auto subtle-scrollbar mb-4">
                 {[
-                  { id: 'agendadas', label: 'Agendados / Confirmados', count: countAgendadosConfirmados },
-                  { id: 'nopier', label: 'No Píer', count: countNoPier },
-                  { id: 'navegando', label: 'Navegando', count: countNavegando },
-                  { id: 'retornaram', label: 'Retornaram', count: countRetornaram },
-                  { id: 'todas', label: 'Todas', count: countTodas }
+                  { id: 'agendadas', label: 'Agendados / Confirmados', count: searchTerm ? kanbanAgendados.length : countAgendadosConfirmados, hasResults: kanbanAgendados.length > 0 },
+                  { id: 'nopier', label: 'No Píer', count: searchTerm ? kanbanNoPier.length : countNoPier, hasResults: kanbanNoPier.length > 0 },
+                  { id: 'navegando', label: 'Navegando', count: searchTerm ? kanbanNavegando.length : countNavegando, hasResults: kanbanNavegando.length > 0 },
+                  { id: 'retornaram', label: 'Retornaram', count: searchTerm ? kanbanRetornaram.length : countRetornaram, hasResults: kanbanRetornaram.length > 0 },
+                  { id: 'todas', label: 'Todas', count: searchTerm ? searchedDayReservations.length : countTodas, hasResults: searchedDayReservations.length > 0 }
                 ].map(t => (
                   <button 
                     key={t.id}
                     onClick={() => setFilterType(t.id as any)}
-                    className={`flex-1 min-w-[75px] py-2 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 ${filterType === t.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                    className={`flex-1 min-w-[75px] py-2 px-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 ${
+                      filterType === t.id 
+                        ? 'bg-blue-600 text-white shadow-sm' 
+                        : searchTerm && t.hasResults
+                          ? 'text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 border border-blue-200'
+                          : 'text-slate-500 hover:bg-slate-50'
+                    }`}
                   >
                     <span>{t.label}</span>
-                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold ${filterType === t.id ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                      filterType === t.id 
+                        ? 'bg-white/25 text-white' 
+                        : searchTerm && t.hasResults
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-100 text-slate-600'
+                    }`}>
                       {t.count}
                     </span>
                   </button>
@@ -1330,60 +1385,66 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       <span>Agendados / Confirmados</span>
                     </span>
                     <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-extrabold rounded-full text-[10px]">
-                      {countAgendadosConfirmados}
+                      {kanbanAgendados.length}
                     </span>
                   </div>
 
                   <div className="space-y-2.5 flex-1">
-                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado') || []).map((reserva: any) => {
-                      const barco = getEmbarcacao(reserva.embarcacaoId);
-                      const cliente = getCliente(reserva.clienteId);
-                      const isConfirmado = reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada';
-                      return (
-                        <div key={reserva.id} className={`bg-white p-3.5 rounded-xl border shadow-xs hover:shadow-md transition-all space-y-2 ${isConfirmado ? 'border-emerald-200 hover:border-emerald-300' : 'border-amber-100'}`}>
-                          <div className="flex items-start justify-between gap-1">
-                            <div>
-                              <span className="font-extrabold text-sm text-slate-900 block leading-tight">{barco?.nome || 'Embarcação'}</span>
-                              <div className="mt-1 flex items-center gap-1.5">
-                                <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
-                                  isConfirmado 
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80' 
-                                    : 'bg-amber-50 text-amber-800 border-amber-200/80'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${isConfirmado ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                  {isConfirmado ? 'Confirmado' : 'Agendado'}
-                                </span>
+                    {kanbanAgendados.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400">
+                        <p className="text-xs">{searchTerm ? 'Nenhum resultado' : 'Nenhum agendamento'}</p>
+                      </div>
+                    ) : (
+                      kanbanAgendados.map((reserva: any) => {
+                        const barco = getEmbarcacao(reserva.embarcacaoId);
+                        const cliente = getCliente(reserva.clienteId);
+                        const isConfirmado = reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada';
+                        return (
+                          <div key={reserva.id} className={`bg-white p-3.5 rounded-xl border shadow-xs hover:shadow-md transition-all space-y-2 ${isConfirmado ? 'border-emerald-200 hover:border-emerald-300' : 'border-amber-100'}`}>
+                            <div className="flex items-start justify-between gap-1">
+                              <div>
+                                <span className="font-extrabold text-sm text-slate-900 block leading-tight">{barco?.nome || reserva.barcoNome || 'Embarcação'}</span>
+                                <div className="mt-1 flex items-center gap-1.5">
+                                  <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
+                                    isConfirmado 
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80' 
+                                      : 'bg-amber-50 text-amber-800 border-amber-200/80'
+                                  }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isConfirmado ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                    {isConfirmado ? 'Confirmado' : 'Agendado'}
+                                  </span>
+                                </div>
                               </div>
+                              {reserva.previsaoSaida ? (
+                                <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md shrink-0">
+                                  {reserva.previsaoSaida}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-slate-100 text-slate-400 rounded-md shrink-0" title="Horário não informado">
+                                  --:--
+                                </span>
+                              )}
                             </div>
-                            {reserva.previsaoSaida ? (
-                              <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md shrink-0">
-                                {reserva.previsaoSaida}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-slate-100 text-slate-400 rounded-md shrink-0" title="Horário não informado">
-                                --:--
-                              </span>
-                            )}
+                            <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                              <span className="text-slate-400 font-medium">Vaga: {barco?.vaga || 'N/A'}</span>
+                              <button
+                                onClick={() => {
+                                  setSelectedReserva(reserva);
+                                  setChecklistFotos({});
+                                  setChecklistObservacoes('');
+                                  setChecklistMode('descida');
+                                  setChecklistOpen(true);
+                                }}
+                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer shadow-2xs"
+                              >
+                                Baixar Barco
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
-                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
-                            <span className="text-slate-400 font-medium">Vaga: {barco?.vaga || 'N/A'}</span>
-                            <button
-                              onClick={() => {
-                                setSelectedReserva(reserva);
-                                setChecklistFotos({});
-                                setChecklistObservacoes('');
-                                setChecklistMode('descida');
-                                setChecklistOpen(true);
-                              }}
-                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer shadow-2xs"
-                            >
-                              Baixar Barco
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -1395,40 +1456,46 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       <span>No Píer</span>
                     </span>
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-800 font-extrabold rounded-full text-[10px]">
-                      {countNoPier}
+                      {kanbanNoPier.length}
                     </span>
                   </div>
 
                   <div className="space-y-2.5 flex-1">
-                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && r.horaDescida && !r.horaSaida && r.statusMarina !== 'saida' && r.statusOperacional !== 'navegando' && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado') || []).map((reserva: any) => {
-                      const barco = getEmbarcacao(reserva.embarcacaoId);
-                      const cliente = getCliente(reserva.clienteId);
-                      return (
-                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-xs hover:shadow-md transition-all space-y-2">
-                          <div className="flex items-start justify-between">
-                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
-                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md">
-                              {reserva.horaDescida}
-                            </span>
+                    {kanbanNoPier.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400">
+                        <p className="text-xs">{searchTerm ? 'Nenhum resultado' : 'Nenhuma embarcação no píer'}</p>
+                      </div>
+                    ) : (
+                      kanbanNoPier.map((reserva: any) => {
+                        const barco = getEmbarcacao(reserva.embarcacaoId);
+                        const cliente = getCliente(reserva.clienteId);
+                        return (
+                          <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                            <div className="flex items-start justify-between">
+                              <span className="font-extrabold text-sm text-slate-900">{barco?.nome || reserva.barcoNome || 'Embarcação'}</span>
+                              <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md">
+                                {reserva.horaDescida}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                            <div className="flex items-center justify-between gap-1 text-[11px] pt-1 border-t border-slate-100">
+                              <button
+                                onClick={() => executeMarcarSaida(reserva)}
+                                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
+                              >
+                                Saída / Navegar
+                              </button>
+                              <button
+                                onClick={() => openFuelForChegada(reserva)}
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
+                              >
+                                Abastecer / Chegada
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
-                          <div className="flex items-center justify-between gap-1 text-[11px] pt-1 border-t border-slate-100">
-                            <button
-                              onClick={() => executeMarcarSaida(reserva)}
-                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
-                            >
-                              Saída / Navegar
-                            </button>
-                            <button
-                              onClick={() => openFuelForChegada(reserva)}
-                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
-                            >
-                              Abastecer / Chegada
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -1440,35 +1507,41 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       <span>Navegando</span>
                     </span>
                     <span className="px-2 py-0.5 bg-sky-100 text-sky-800 font-extrabold rounded-full text-[10px]">
-                      {countNavegando}
+                      {kanbanNavegando.length}
                     </span>
                   </div>
 
                   <div className="space-y-2.5 flex-1">
-                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado') || []).map((reserva: any) => {
-                      const barco = getEmbarcacao(reserva.embarcacaoId);
-                      const cliente = getCliente(reserva.clienteId);
-                      return (
-                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs hover:shadow-md transition-all space-y-2">
-                          <div className="flex items-start justify-between">
-                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
-                            <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-md ${reserva.horaSaida ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-400'}`}>
-                              {reserva.horaSaida || '--:--'}
-                            </span>
+                    {kanbanNavegando.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400">
+                        <p className="text-xs">{searchTerm ? 'Nenhum resultado' : 'Nenhuma embarcação navegando'}</p>
+                      </div>
+                    ) : (
+                      kanbanNavegando.map((reserva: any) => {
+                        const barco = getEmbarcacao(reserva.embarcacaoId);
+                        const cliente = getCliente(reserva.clienteId);
+                        return (
+                          <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                            <div className="flex items-start justify-between">
+                              <span className="font-extrabold text-sm text-slate-900">{barco?.nome || reserva.barcoNome || 'Embarcação'}</span>
+                              <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-md ${reserva.horaSaida ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-400'}`}>
+                                {reserva.horaSaida || '--:--'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                              <span className="text-sky-700 font-bold">Em Navegação</span>
+                              <button
+                                onClick={() => openFuelForChegada(reserva)}
+                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
+                              >
+                                Abastecer / Chegada
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
-                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
-                            <span className="text-sky-700 font-bold">Em Navegação</span>
-                            <button
-                              onClick={() => openFuelForChegada(reserva)}
-                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
-                            >
-                              Abastecer / Chegada
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -1480,41 +1553,47 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       <span>Retornaram</span>
                     </span>
                     <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded-full text-[10px]">
-                      {countRetornaram}
+                      {kanbanRetornaram.length}
                     </span>
                   </div>
 
                   <div className="space-y-2.5 flex-1">
-                    {(data?.reservations?.filter((r: any) => r.data === selectedDate && (r.statusMarina === 'chegada' || r.horaChegada || r.statusOperacional === 'retornou') && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado') || []).map((reserva: any) => {
-                      const barco = getEmbarcacao(reserva.embarcacaoId);
-                      const cliente = getCliente(reserva.clienteId);
-                      const litros = reserva.abastecimentoLitros || reserva.litrosAbastecidos;
-                      return (
-                        <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-xs hover:shadow-md transition-all space-y-2">
-                          <div className="flex items-start justify-between">
-                            <span className="font-extrabold text-sm text-slate-900">{barco?.nome || 'Embarcação'}</span>
-                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md">
-                              {reserva.horaChegada || 'Chegou'}
-                            </span>
+                    {kanbanRetornaram.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400">
+                        <p className="text-xs">{searchTerm ? 'Nenhum resultado' : 'Nenhuma embarcação retornada'}</p>
+                      </div>
+                    ) : (
+                      kanbanRetornaram.map((reserva: any) => {
+                        const barco = getEmbarcacao(reserva.embarcacaoId);
+                        const cliente = getCliente(reserva.clienteId);
+                        const litros = reserva.abastecimentoLitros || reserva.litrosAbastecidos;
+                        return (
+                          <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                            <div className="flex items-start justify-between">
+                              <span className="font-extrabold text-sm text-slate-900">{barco?.nome || reserva.barcoNome || 'Embarcação'}</span>
+                              <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md">
+                                {reserva.horaChegada || 'Chegou'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                              <span className="text-emerald-700 font-bold">{litros ? `${litros}L Abastecido` : 'Retornado'}</span>
+                              <button
+                                onClick={() => {
+                                  setSelectedReserva(reserva);
+                                  setChecklistFotos({});
+                                  setChecklistMode('subida');
+                                  setChecklistOpen(true);
+                                }}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
+                              >
+                                Subir Barco
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || 'Cliente'}</p>
-                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
-                            <span className="text-emerald-700 font-bold">{litros ? `${litros}L Abastecido` : 'Retornado'}</span>
-                            <button
-                              onClick={() => {
-                                setSelectedReserva(reserva);
-                                setChecklistFotos({});
-                                setChecklistMode('subida');
-                                setChecklistOpen(true);
-                              }}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
-                            >
-                              Subir Barco
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 

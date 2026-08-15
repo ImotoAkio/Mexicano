@@ -2,24 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { AtividadeFinanceira } from '../../types';
 import { Plus, GripVertical, Clock, CheckCircle, Circle, Trash2, RefreshCw } from 'lucide-react';
 
-export default function FinanceKanban() {
+export default function FinanceKanban({ setor = 'financeiro' }: { setor?: 'financeiro' | 'pecas_servicos' }) {
   const [atividades, setAtividades] = useState<AtividadeFinanceira[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showRecentConcluido, setShowRecentConcluido] = useState(false);
   const [editingItem, setEditingItem] = useState<AtividadeFinanceira | null>(null);
-  const [formData, setFormData] = useState<{ titulo: string; descricao: string; status: 'a_fazer' | 'em_andamento' | 'concluido' }>({
+  const [formData, setFormData] = useState<{ titulo: string; descricao: string; status: 'a_fazer' | 'em_andamento' | 'concluido'; setor?: 'financeiro' | 'pecas_servicos' }>({
     titulo: '',
     descricao: '',
-    status: 'a_fazer'
+    status: 'a_fazer',
+    setor: setor
   });
 
   const fetchAtividades = async (isManualRefresh = false) => {
     if (isManualRefresh) setIsRefreshing(true);
     try {
       const token = localStorage.getItem('admin_token');
-      const res = await fetch('/api/financeiro/atividades', {
+      const res = await fetch(`/api/financeiro/atividades?setor=${setor}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -138,10 +139,10 @@ export default function FinanceKanban() {
   const openModal = (item?: AtividadeFinanceira) => {
     if (item) {
       setEditingItem(item);
-      setFormData({ titulo: item.titulo, descricao: item.descricao || '', status: item.status });
+      setFormData({ titulo: item.titulo, descricao: item.descricao || '', status: item.status, setor: item.setor || setor });
     } else {
       setEditingItem(null);
-      setFormData({ titulo: '', descricao: '', status: 'a_fazer' });
+      setFormData({ titulo: '', descricao: '', status: 'a_fazer', setor: setor });
     }
     setIsModalOpen(true);
   };

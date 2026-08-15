@@ -1211,10 +1211,12 @@ app.post("/api/webhooks/asaas", async (req, res) => {
   return res.status(200).json({ received: true });
 });
 
+
 // Route: Financeiro - Atividades (Kanban)
 app.get("/api/financeiro/atividades", requireAdminAuth, async (req, res) => {
   try {
-    const atividades = await getAllAtividades();
+    const setor = req.query.setor as string | undefined;
+    const atividades = await getAllAtividades(setor);
     res.json(atividades);
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Failed to fetch atividades" });
@@ -1512,6 +1514,19 @@ app.get("/api/calendar/config", requireAnyAuth, async (req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: true, message: error.message || "Unknown config read error." });
+  }
+});
+
+// Route: Save calendar configuration and mappings
+app.post("/api/calendar/config", requireAdminAuth, async (req, res) => {
+  try {
+    const { calendar_mappings } = req.body;
+    if (calendar_mappings !== undefined) {
+      await setConfigValue("calendar_mappings", JSON.stringify(calendar_mappings));
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: true, message: error.message || "Failed to save calendar config." });
   }
 });
 
@@ -2009,7 +2024,7 @@ app.get("/api/whatsapp/groups", requireAnyAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
@@ -2040,7 +2055,7 @@ app.get("/api/whatsapp/contacts", requireAnyAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
@@ -2080,7 +2095,7 @@ app.post("/api/whatsapp/send-text", requireAdminAuth, whatsappLimiter, async (re
 
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     // Clean number unless it's a group JID (@g.us)
     let cleanedNumber = number.trim();
@@ -2129,7 +2144,7 @@ app.post("/api/whatsapp/send-custom", requireAdminAuth, whatsappLimiter, async (
 
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API não configurada na VPS." });
@@ -2279,7 +2294,7 @@ app.post("/api/whatsapp/send-calendar", requireAnyAuth, whatsappLimiter, async (
 
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });

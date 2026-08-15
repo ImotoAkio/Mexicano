@@ -208,8 +208,10 @@ export const boatDB = {
           if (!c.embarcacoes) {
             c.embarcacoes = [];
           }
-          c.embarcacoes.push({ embarcacaoId: newBoat.id, cota: '1/4' }); // default cota
-          clientsChanged = true;
+          if (!c.embarcacoes.some(eb => eb.embarcacaoId === newBoat.id)) {
+            c.embarcacoes.push({ embarcacaoId: newBoat.id, cota: '1/4' }); // default cota
+            clientsChanged = true;
+          }
         }
       });
     }

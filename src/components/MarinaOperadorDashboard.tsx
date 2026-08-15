@@ -631,7 +631,36 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
     }
   };
 
-  const totalDayReservations = data?.reservations?.filter((r: any) => (r.data || r.date) === selectedDate) || [];
+  const getSortTime = (reserva: any): string => {
+    const raw = reserva.previsaoSaida || reserva.horaSaida || reserva.horaDescida;
+    if (raw && typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (trimmed && trimmed !== 'Não informada' && trimmed !== 'Sem previsão' && trimmed !== '--:--') {
+        const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+        if (match) {
+          const hh = match[1].padStart(2, '0');
+          const mm = match[2];
+          return `${hh}:${mm}`;
+        }
+        return trimmed;
+      }
+    }
+    return '99:99';
+  };
+
+  const totalDayReservations = (data?.reservations?.filter((r: any) => (r.data || r.date) === selectedDate) || [])
+    .sort((a: any, b: any) => {
+      const timeA = getSortTime(a);
+      const timeB = getSortTime(b);
+      const timeCompare = timeA.localeCompare(timeB);
+      if (timeCompare !== 0) return timeCompare;
+
+      const boatA = getEmbarcacao(a.embarcacaoId);
+      const boatB = getEmbarcacao(b.embarcacaoId);
+      const nameA = (boatA?.nome || a.barcoNome || '').toString();
+      const nameB = (boatB?.nome || b.barcoNome || '').toString();
+      return nameA.localeCompare(nameB, 'pt-BR', { numeric: true });
+    });
 
   const getFilteredReservations = () => {
     if (!data?.reservations) return [];
@@ -676,9 +705,16 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
     }
 
     filtered.sort((a: any, b: any) => {
-      const timeA = a.previsaoSaida || a.horaDescida || '99:99';
-      const timeB = b.previsaoSaida || b.horaDescida || '99:99';
-      return timeA.localeCompare(timeB);
+      const timeA = getSortTime(a);
+      const timeB = getSortTime(b);
+      const timeCompare = timeA.localeCompare(timeB);
+      if (timeCompare !== 0) return timeCompare;
+
+      const boatA = getEmbarcacao(a.embarcacaoId);
+      const boatB = getEmbarcacao(b.embarcacaoId);
+      const nameA = (boatA?.nome || a.barcoNome || '').toString();
+      const nameB = (boatB?.nome || b.barcoNome || '').toString();
+      return nameA.localeCompare(nameB, 'pt-BR', { numeric: true });
     });
     
     return filtered;

@@ -257,6 +257,9 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN potencia VARCHAR(100);`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN acessorios TEXT;`);
+    } catch (e) {}
 
     // 3. Reservas Table
     await connection.query(`
@@ -459,10 +462,15 @@ export async function initializeDatabase() {
         titulo VARCHAR(255) NOT NULL,
         descricao TEXT,
         status VARCHAR(50) NOT NULL DEFAULT 'a_fazer',
+        setor VARCHAR(50) DEFAULT 'financeiro',
         createdAt VARCHAR(50) NOT NULL,
         updatedAt VARCHAR(50) NOT NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    try {
+      await connection.query(`ALTER TABLE AtividadesFinanceiras ADD COLUMN setor VARCHAR(50) DEFAULT 'financeiro';`);
+    } catch (e) {}
 
     // 10. Feedbacks Table
     await connection.query(`
@@ -498,6 +506,18 @@ export async function initializeDatabase() {
 
     try {
       await connection.query(`ALTER TABLE Manutencoes ADD COLUMN descricaoServico TEXT;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN tituloChamado VARCHAR(255);`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN dataChamado VARCHAR(20);`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN prazoEntrega VARCHAR(20);`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN orcamentoAprovado TINYINT(1) DEFAULT 0;`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN localizacao VARCHAR(50);`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN horasMotorAtual INT;`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN proximaRevisaoHoras INT;`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN acessorios TEXT;`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN pecas TEXT;`);
+      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN whatsappStatus VARCHAR(50);`);
     } catch (e) {}
 
     // 12. Mecanicos Table
@@ -854,6 +874,7 @@ export async function pullDatabase(forceFresh = false) {
       emManutencao: b.emManutencao === 1 || b.emManutencao === true,
       whatsappGroupId: b.whatsappGroupId || undefined,
       temSom: b.temSom === 1 || b.temSom === true,
+      acessorios: b.acessorios ? JSON.parse(b.acessorios) : undefined,
     };
   });
 
@@ -894,7 +915,12 @@ export async function pullDatabase(forceFresh = false) {
     boats: parsedBoats,
     reservations: parsedReservations,
     controlesSom: parsedControlesSom,
-    manutencoes: manutencoes as any[],
+    manutencoes: (manutencoes as any[]).map(m => ({
+      ...m,
+      orcamentoAprovado: m.orcamentoAprovado === 1 || m.orcamentoAprovado === true,
+      acessorios: m.acessorios ? JSON.parse(m.acessorios) : undefined,
+      pecas: m.pecas ? JSON.parse(m.pecas) : undefined
+    })),
     mecanicos: mecanicos as any[],
     transacoes: transacoes as any[],
     funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : [], primeiroEmprego: f.primeiroEmprego === 1})),
@@ -918,10 +944,14 @@ export async function pullDatabase(forceFresh = false) {
 
 // Upsert a single client record
 export async function upsertClient(client: any) {
+  invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  if (!client || !client.id) throw new Error("Invalid client object: id is required.");
 
-  const embarcacoesJson = client.embarcacoes ? JSON.stringify(client.embarcacoes) : null;
+  const embarcacoesJson = client.embarcacoes 
+    ? (typeof client.embarcacoes === 'string' ? client.embarcacoes : JSON.stringify(client.embarcacoes))
+    : null;
 
   const query = `
     INSERT INTO Clientes (
@@ -960,13 +990,13 @@ export async function upsertClient(client: any) {
 
   await currentPool.query(query, [
     client.id,
-    client.nome,
+    client.nome || '',
     client.embarcacaoId || null,
     client.cota || null,
     client.telefone || null,
     client.email || null,
     client.cpf || null,
-    client.dataCadastro || null,
+    client.dataCadastro || new Date().toISOString(),
     client.cep || null,
     client.logradouro || null,
     client.numeroEnd || null,
@@ -993,6 +1023,7 @@ export async function upsertClient(client: any) {
 
 // Delete a single client record
 export async function deleteClient(id: string) {
+  invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query("DELETE FROM Clientes WHERE id = ?", [id]);
@@ -1028,15 +1059,26 @@ export async function upsertRegistroAtividade(data: any) {
 
 // Upsert a single boat record
 export async function upsertBoat(boat: any) {
+  invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  if (!boat || !boat.id) throw new Error("Invalid boat object: id is required.");
 
-  const donosJson = boat.donos ? JSON.stringify(boat.donos) : JSON.stringify([]);
+  const donosJson = Array.isArray(boat.donos)
+    ? JSON.stringify(boat.donos)
+    : (typeof boat.donos === 'string' ? boat.donos : JSON.stringify([]));
+
+  const anoNum = boat.ano && !isNaN(Number(boat.ano)) ? Number(boat.ano) : null;
+  const emManutencaoVal = boat.emManutencao ? 1 : 0;
+  const temSomVal = boat.temSom ? 1 : 0;
+  const acessoriosJson = boat.acessorios 
+    ? (typeof boat.acessorios === 'string' ? boat.acessorios : JSON.stringify(boat.acessorios))
+    : null;
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -1055,17 +1097,18 @@ export async function upsertBoat(boat: any) {
       imagemUrl = VALUES(imagemUrl),
       temSom = VALUES(temSom),
       documentoUrl = VALUES(documentoUrl),
-      seguroUrl = VALUES(seguroUrl)
+      seguroUrl = VALUES(seguroUrl),
+      acessorios = VALUES(acessorios)
   `;
 
   await currentPool.query(query, [
     boat.id,
-    boat.tipo,
-    boat.nome,
+    boat.tipo || 'lancha',
+    boat.nome || '',
     boat.numero || null,
     boat.modelo || null,
     boat.fabricante || null,
-    boat.ano || null,
+    anoNum,
     boat.chassi || null,
     boat.inscricao || null,
     boat.tipo_propulsao || null,
@@ -1073,16 +1116,18 @@ export async function upsertBoat(boat: any) {
     donosJson,
     boat.googleCalendarId || null,
     boat.whatsappGroupId || null,
-    boat.emManutencao ? 1 : 0,
+    emManutencaoVal,
     boat.imagemUrl || null,
-    boat.temSom ? 1 : 0,
+    temSomVal,
     boat.documentoUrl || null,
-    boat.seguroUrl || null
+    boat.seguroUrl || null,
+    acessoriosJson
   ]);
 }
 
 // Delete a single boat record
 export async function deleteBoat(id: string) {
+  invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query("DELETE FROM Embarcacoes WHERE id = ?", [id]);
@@ -1672,10 +1717,21 @@ export async function syncClientFinancialStatus(clienteId: string) {
 
 // ---------------- Atividades Financeiras (Kanban) ----------------
 
-export async function getAllAtividades() {
+export async function getAllAtividades(setor?: string) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
-  const [rows] = await currentPool.query("SELECT * FROM AtividadesFinanceiras ORDER BY createdAt DESC");
+  
+  let query = "SELECT * FROM AtividadesFinanceiras";
+  const params: any[] = [];
+  
+  if (setor) {
+    query += " WHERE setor = ?";
+    params.push(setor);
+  }
+  
+  query += " ORDER BY createdAt DESC";
+  
+  const [rows] = await currentPool.query(query, params);
   return rows;
 }
 
@@ -1683,13 +1739,13 @@ export async function upsertAtividade(a: any) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query(
-    `INSERT INTO AtividadesFinanceiras (id, titulo, descricao, status, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO AtividadesFinanceiras (id, titulo, descricao, status, setor, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        titulo=VALUES(titulo), descricao=VALUES(descricao),
-       status=VALUES(status), updatedAt=VALUES(updatedAt)`,
+       status=VALUES(status), setor=VALUES(setor), updatedAt=VALUES(updatedAt)`,
     [
-      a.id, a.titulo, a.descricao || '', a.status, a.createdAt, a.updatedAt
+      a.id, a.titulo, a.descricao || '', a.status, a.setor || 'financeiro', a.createdAt, a.updatedAt
     ]
   );
 }
@@ -1752,15 +1808,22 @@ export async function upsertManutencao(m: any) {
   const isNew = (existing as any[]).length === 0;
 
   await currentPool.query(
-    `INSERT INTO Manutencoes (id, embarcacaoId, dataSaida, mecanico, orcamento, custo, valorRepassado, status, createdAt, descricaoServico)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO Manutencoes (id, embarcacaoId, dataSaida, mecanico, orcamento, custo, valorRepassado, status, createdAt, descricaoServico, tituloChamado, dataChamado, prazoEntrega, orcamentoAprovado, localizacao, horasMotorAtual, proximaRevisaoHoras, acessorios, pecas, whatsappStatus)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        embarcacaoId=VALUES(embarcacaoId), dataSaida=VALUES(dataSaida), mecanico=VALUES(mecanico),
        orcamento=VALUES(orcamento), custo=VALUES(custo), valorRepassado=VALUES(valorRepassado),
-       status=VALUES(status), descricaoServico=VALUES(descricaoServico)`,
+       status=VALUES(status), descricaoServico=VALUES(descricaoServico),
+       tituloChamado=VALUES(tituloChamado), dataChamado=VALUES(dataChamado), prazoEntrega=VALUES(prazoEntrega),
+       orcamentoAprovado=VALUES(orcamentoAprovado), localizacao=VALUES(localizacao), horasMotorAtual=VALUES(horasMotorAtual),
+       proximaRevisaoHoras=VALUES(proximaRevisaoHoras), acessorios=VALUES(acessorios), pecas=VALUES(pecas), whatsappStatus=VALUES(whatsappStatus)`,
     [
       m.id, m.embarcacaoId, m.dataSaida, m.mecanico || null, m.orcamento || null,
-      m.custo || null, m.valorRepassado || null, m.status || 'em_andamento', m.createdAt, m.descricaoServico || null
+      m.custo || null, m.valorRepassado || null, m.status || 'em_andamento', m.createdAt, m.descricaoServico || null,
+      m.tituloChamado || null, m.dataChamado || null, m.prazoEntrega || null, m.orcamentoAprovado ? 1 : 0,
+      m.localizacao || null, m.horasMotorAtual || null, m.proximaRevisaoHoras || null,
+      m.acessorios ? JSON.stringify(m.acessorios) : null, m.pecas ? JSON.stringify(m.pecas) : null,
+      m.whatsappStatus || null
     ]
   );
 
