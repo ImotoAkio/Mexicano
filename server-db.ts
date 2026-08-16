@@ -715,6 +715,40 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS ClienteEmpresas (
+        clienteId VARCHAR(50) NOT NULL,
+        empresa VARCHAR(50) NOT NULL,
+        PRIMARY KEY (clienteId, empresa),
+        FOREIGN KEY (clienteId) REFERENCES Clientes(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS EmbarcacaoEmpresas (
+        embarcacaoId VARCHAR(50) NOT NULL,
+        empresa VARCHAR(50) NOT NULL,
+        PRIMARY KEY (embarcacaoId, empresa),
+        FOREIGN KEY (embarcacaoId) REFERENCES Embarcacoes(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    try {
+      await connection.query(`
+        INSERT INTO ClienteEmpresas (clienteId, empresa)
+        SELECT id, 'VALE' FROM Clientes
+        WHERE id NOT IN (SELECT clienteId FROM ClienteEmpresas)
+      `);
+      await connection.query(`
+        INSERT INTO EmbarcacaoEmpresas (embarcacaoId, empresa)
+        SELECT id, 'VALE' FROM Embarcacoes
+        WHERE id NOT IN (SELECT embarcacaoId FROM EmbarcacaoEmpresas)
+      `);
+      console.log("✅ Multi-company associations migrated for existing records.");
+    } catch(migErr) {
+      console.warn("Failed to migrate multi-company associations:", migErr);
+    }
+
     try {
       const [existingEPIs] = await connection.query("SELECT COUNT(*) as cnt FROM CatalogoEPIs");
       const epiCount = (existingEPIs as any[])[0]?.cnt || 0;
@@ -790,6 +824,20 @@ export async function pullDatabase(forceFresh = false) {
 
   const [clients] = await currentPool.query("SELECT * FROM Clientes");
   const [boats] = await currentPool.query("SELECT * FROM Embarcacoes");
+  const [clienteEmpresas] = await currentPool.query("SELECT * FROM ClienteEmpresas");
+  const [embarcacaoEmpresas] = await currentPool.query("SELECT * FROM EmbarcacaoEmpresas");
+
+  const clienteEmpresasMap = new Map<string, string[]>();
+  (clienteEmpresas as any[]).forEach(row => {
+    if (!clienteEmpresasMap.has(row.clienteId)) clienteEmpresasMap.set(row.clienteId, []);
+    clienteEmpresasMap.get(row.clienteId)!.push(row.empresa);
+  });
+
+  const embarcacaoEmpresasMap = new Map<string, string[]>();
+  (embarcacaoEmpresas as any[]).forEach(row => {
+    if (!embarcacaoEmpresasMap.has(row.embarcacaoId)) embarcacaoEmpresasMap.set(row.embarcacaoId, []);
+    embarcacaoEmpresasMap.get(row.embarcacaoId)!.push(row.empresa);
+  });
   const [reservations] = await currentPool.query("SELECT * FROM Reservas");
   const [controlesSom] = await currentPool.query("SELECT * FROM ControlesSom ORDER BY createdAt DESC");
   const [manutencoes] = await currentPool.query("SELECT * FROM Manutencoes ORDER BY createdAt DESC");
@@ -847,6 +895,7 @@ export async function pullDatabase(forceFresh = false) {
     const fin = finMap.get(c.id) || { totalCnt: 0, openCnt: 0, overdueCnt: 0 };
     return {
       ...c,
+      empresas: clienteEmpresasMap.get(c.id) || ['VALE'],
       embarcacoes: list,
       temLancamentos: fin.totalCnt > 0,
       temValoresEmAberto: fin.openCnt > 0,
@@ -866,6 +915,7 @@ export async function pullDatabase(forceFresh = false) {
     }
     return {
       ...b,
+      empresas: embarcacaoEmpresasMap.get(b.id) || ['VALE'],
       chassi: b.chassi || '',
       inscricao: b.inscricao || '',
       tipo_propulsao: b.tipo_propulsao || '',
@@ -1019,6 +1069,14 @@ export async function upsertClient(client: any) {
     client.orgaoEmissorHabilitacao || null,
     client.categoriaHabilitacao || null
   ]);
+
+  if (client.empresas && Array.isArray(client.empresas)) {
+    await currentPool.query("DELETE FROM ClienteEmpresas WHERE clienteId = ?", [client.id]);
+    if (client.empresas.length > 0) {
+      const values = client.empresas.map((e: string) => [client.id, e]);
+      await currentPool.query("INSERT INTO ClienteEmpresas (clienteId, empresa) VALUES ?", [values]);
+    }
+  }
 }
 
 // Delete a single client record
@@ -1026,6 +1084,7 @@ export async function deleteClient(id: string) {
   invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM ClienteEmpresas WHERE clienteId = ?", [id]);
   await currentPool.query("DELETE FROM Clientes WHERE id = ?", [id]);
 }
 
@@ -1123,6 +1182,14 @@ export async function upsertBoat(boat: any) {
     boat.seguroUrl || null,
     acessoriosJson
   ]);
+
+  if (boat.empresas && Array.isArray(boat.empresas)) {
+    await currentPool.query("DELETE FROM EmbarcacaoEmpresas WHERE embarcacaoId = ?", [boat.id]);
+    if (boat.empresas.length > 0) {
+      const values = boat.empresas.map((e: string) => [boat.id, e]);
+      await currentPool.query("INSERT INTO EmbarcacaoEmpresas (embarcacaoId, empresa) VALUES ?", [values]);
+    }
+  }
 }
 
 // Delete a single boat record
@@ -1130,6 +1197,7 @@ export async function deleteBoat(id: string) {
   invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM EmbarcacaoEmpresas WHERE embarcacaoId = ?", [id]);
   await currentPool.query("DELETE FROM Embarcacoes WHERE id = ?", [id]);
 }
 
@@ -2025,5 +2093,6 @@ export async function upsertUserPreferences(userId: number, preferences: any) {
     preferences.greetingText || null
   ]);
 }
+
 
 

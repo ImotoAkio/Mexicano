@@ -1,4 +1,5 @@
 export interface Cliente {
+  empresas?: string[];
   id: string;
   nome: string;
   embarcacaoId: string; // ID or Code of the Embarcacao they own a share of (primary)
@@ -36,6 +37,7 @@ export interface Cliente {
 }
 
 export interface Embarcacao {
+  empresas?: string[];
   id: string;
   tipo: 'jet' | 'lancha';
   nome: string;

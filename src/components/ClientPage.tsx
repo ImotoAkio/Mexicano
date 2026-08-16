@@ -46,6 +46,18 @@ export default function ClientPage() {
   const [statusFinanceiro, setStatusFinanceiro] = useState<'em_dia' | 'inadimplente'>('em_dia');
   const [observacoesFinanceiras, setObservacoesFinanceiras] = useState('');
   const [plano, setPlano] = useState<'normal' | 'completo'>('normal');
+  const [empresas, setEmpresas] = useState<string[]>(['VALE']);
+
+  const adminRole = useMemo(() => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      if (!token) return null;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.role;
+    } catch {
+      return null;
+    }
+  }, []);
   
   // Quick Finance Update State
   const [quickFinanceClient, setQuickFinanceClient] = useState<Cliente | null>(null);
@@ -60,6 +72,7 @@ export default function ClientPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [filterBoat, setFilterBoat] = useState<string>('all');
+  const [filterEmpresa, setFilterEmpresa] = useState<string>('all');
   const [filterFinance, setFilterFinance] = useState<string>('all');
   const [filterBoatType, setFilterBoatType] = useState<string>('all');
   const [filterPlano, setFilterPlano] = useState<string>('all');
@@ -441,6 +454,19 @@ export default function ClientPage() {
         matchesBoat = clientBoatsList.includes(filterBoat);
       }
 
+      // 2.5 Filter by empresa
+      let matchesEmpresa = true;
+      const isAdminOrFinance = adminRole === 'admin' || adminRole === 'financeiro';
+      
+      if (!isAdminOrFinance) {
+        // Strict access rule: other roles only see their own company's clients
+        const userEmpresa = (adminRole === 'marina' || adminRole === 'marina_operador' || adminRole === 'marina_gerente') ? 'MARINA' : 
+                          (adminRole === 'comercial' ? 'MEXICANO' : 'VALE');
+        matchesEmpresa = (c.empresas || ['VALE']).includes(userEmpresa);
+      } else if (filterEmpresa !== 'all') {
+        matchesEmpresa = (c.empresas || ['VALE']).includes(filterEmpresa);
+      }
+
       // 3. Filter by finance
       let matchesFinance = true;
       if (filterFinance !== 'all') {
@@ -466,7 +492,7 @@ export default function ClientPage() {
         matchesPlano = (c.plano || 'normal') === filterPlano;
       }
 
-      return matchesSearch && matchesBoat && matchesFinance && matchesBoatType && matchesPlano;
+      return matchesSearch && matchesBoat && matchesFinance && matchesBoatType && matchesPlano && matchesEmpresa;
     })
     .sort((a, b) => {
       if (sortBy === 'name-asc') {

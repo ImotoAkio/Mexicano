@@ -12,6 +12,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
   const [boats, setBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
   const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll());
   const [search, setSearch] = useState('');
+  const [filterEmpresa, setFilterEmpresa] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
   // Form states
@@ -42,6 +43,18 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
   const [documentoUrl, setDocumentoUrl] = useState('');
   const [isUploadingDocumento, setIsUploadingDocumento] = useState(false);
   const [seguroUrl, setSeguroUrl] = useState('');
+  const [empresas, setEmpresas] = useState<string[]>(['VALE']);
+
+  const adminRole = useMemo(() => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      if (!token) return null;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.role;
+    } catch {
+      return null;
+    }
+  }, []);
   const [isUploadingSeguro, setIsUploadingSeguro] = useState(false);
 
   // Custom Confirm State
