@@ -630,18 +630,14 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
         </div>
 
         {/* Filtro de Empresa */}
-        <div className="w-full sm:w-52">
-          <select
+        <div className="w-full sm:w-56">
+          <SearchableSelect
             id="select-filter-empresa"
             value={filterEmpresa}
-            onChange={(e) => setFilterEmpresa(e.target.value)}
-            className="w-full px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent cursor-pointer"
-          >
-            <option value="all">Todas as Empresas</option>
-            <option value="VALE">Vale Administradora</option>
-            <option value="MARINA">Marina Club</option>
-            <option value="MEXICANO">Mexicano Lanchas</option>
-          </select>
+            onChange={setFilterEmpresa}
+            placeholder="Buscar empresa..."
+            options={EMPRESA_OPTIONS}
+          />
         </div>
 
         <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 shrink-0 self-start sm:self-auto">
@@ -708,29 +704,16 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                               <img src={boat.imagemUrl} alt={boat.nome} className="w-full h-full object-cover" />
                             </div>
                           ) : (
-                            <div className={`w-9 h-9 rounded-lg shrink-0 flex items-center justify-center border shadow-2xs ${
-                              boat.tipo === 'jet' ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-sky-50 text-sky-600 border-sky-200'
-                            }`}>
+                            <div className="w-9 h-9 rounded-lg shrink-0 flex items-center justify-center bg-slate-100 text-slate-500 border border-slate-200">
                               <Anchor className="w-4 h-4" />
                             </div>
                           )}
                           <div>
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-slate-900 text-xs">{boat.nome}</span>
-                              <span className={`px-1.5 py-0.2 text-[8px] font-extrabold uppercase rounded ${
-                                boat.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
-                              }`}>
-                                {boat.tipo === 'jet' ? 'Jet' : 'Lancha'}
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                ({boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
                               </span>
-                              {(boat.empresas || ['VALE']).map(emp => (
-                                <span key={emp} className={`px-1.5 py-0.2 text-[8px] font-extrabold uppercase rounded border ${
-                                  emp === 'MARINA' ? 'bg-teal-50 text-teal-700 border-teal-200' :
-                                  emp === 'MEXICANO' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                  'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                }`}>
-                                  {emp === 'VALE' ? 'Vale' : emp === 'MARINA' ? 'Marina' : 'Mexicano'}
-                                </span>
-                              ))}
                             </div>
                             <span className="text-[10px] text-slate-400 block font-mono">
                               {boat.fabricante ? `${boat.fabricante} (${boat.ano || 'N/I'})` : `Ano: ${boat.ano || 'N/I'}`}
@@ -741,7 +724,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
 
                       {/* Código / Vaga */}
                       <td className="py-3 px-4 font-mono">
-                        <span className="inline-block px-2 py-0.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-md">
+                        <span className="text-xs font-semibold text-slate-800">
                           M{boat.numero.padStart(2, '0')}
                         </span>
                         {boat.vaga && (
@@ -766,10 +749,14 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                             ownerNames.map(owner => {
                               const ownerCota = owner.embarcacoes?.find(e => e.embarcacaoId === boat.id)?.cota || owner.cota;
                               return (
-                                <span key={owner.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] border border-slate-200">
-                                  <span className="font-bold">{owner.nome.split(' ')[0]}</span>
-                                  {ownerCota && <span className="text-indigo-600 font-extrabold font-mono">({ownerCota})</span>}
-                                </span>
+                                <div key={owner.id} className="flex items-center gap-1.5 text-xs">
+                                  <span className="font-semibold text-slate-850">{owner.nome.split(' ')[0]}</span>
+                                  {ownerCota && (
+                                    <span className="text-[10px] text-slate-600 font-mono bg-slate-100 px-1.5 py-0.5 rounded font-medium">
+                                      Cota {ownerCota}
+                                    </span>
+                                  )}
+                                </div>
                               );
                             })
                           ) : (
@@ -780,20 +767,14 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
 
                       {/* Status / Equip. */}
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {boat.emManutencao ? (
-                            <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-rose-100 text-rose-800 border border-rose-200 flex items-center">
-                              <Wrench className="w-3 h-3 mr-1" />
-                              Manutenção
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              Ativa
-                            </span>
-                          )}
+                        <div className="inline-flex items-center justify-center gap-1.5 text-xs">
+                          <span className={`w-2 h-2 rounded-full ${boat.emManutencao ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                          <span className={boat.emManutencao ? 'text-rose-700 font-semibold' : 'text-slate-700 font-medium'}>
+                            {boat.emManutencao ? 'Manutenção' : 'Ativa'}
+                          </span>
                           {boat.temSom && (
-                            <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200" title="Possui Som">
-                              <Volume2 className="w-3 h-3" />
+                            <span className="text-[10px] text-slate-400 ml-1" title="Possui Som">
+                              • Som
                             </span>
                           )}
                         </div>
