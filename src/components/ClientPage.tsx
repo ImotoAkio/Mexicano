@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
-import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download, List, LayoutGrid, ChevronDown, Zap, Building2 } from 'lucide-react';
+import { User, Plus, Search, Ship, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download, List, LayoutGrid, ChevronDown, Zap, Building2 } from 'lucide-react';
 import ClientProfileModal from './ClientProfileModal';
 import { generateContract } from './ContractGenerator';
 import jsPDF from 'jspdf';
@@ -13,14 +13,30 @@ interface SearchableEmpresaSelectProps {
   onChange: (val: string) => void;
 }
 
-const EMPRESA_OPTIONS = [
+interface SearchableSelectOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+interface SearchableSelectProps {
+  id?: string;
+  label: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  value: string;
+  options: SearchableSelectOption[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+}
+
+const EMPRESA_OPTIONS: SearchableSelectOption[] = [
   { id: 'all', label: 'Todas as empresas', description: 'VALE, MARINA e MEXICANO' },
   { id: 'VALE', label: 'VALE NÁUTICA', description: 'Operações Vale Náutica' },
   { id: 'MARINA', label: 'MARINA', description: 'Operações Marina' },
   { id: 'MEXICANO', label: 'MEXICANO', description: 'Operações Mexicano' }
 ];
 
-function SearchableEmpresaSelect({ value, onChange }: SearchableEmpresaSelectProps) {
+function SearchableSelect({ id, label, icon: Icon, value, options, onChange, placeholder = "Buscar..." }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -35,29 +51,29 @@ function SearchableEmpresaSelect({ value, onChange }: SearchableEmpresaSelectPro
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const selectedOption = EMPRESA_OPTIONS.find(opt => opt.id === value) || EMPRESA_OPTIONS[0];
+  const selectedOption = options.find(opt => opt.id === value) || options[0];
 
-  const filteredOptions = EMPRESA_OPTIONS.filter(opt =>
+  const filteredOptions = options.filter(opt =>
     opt.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    opt.description.toLowerCase().includes(searchTerm.toLowerCase())
+    (opt.description && opt.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
     <div className="relative w-full" ref={containerRef}>
       <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-        <Building2 className="w-3 h-3 text-slate-400" />
-        Empresa Vinculada
+        {Icon && <Icon className="w-3 h-3 text-slate-400" />}
+        {label}
       </label>
 
       {/* Select Trigger Button */}
       <button
         type="button"
-        id="select-filter-empresa"
+        id={id}
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-950 transition-all cursor-pointer shadow-xs text-left text-slate-700 font-semibold"
       >
         <span className="truncate">
-          {selectedOption.label}
+          {selectedOption ? selectedOption.label : 'Selecione...'}
         </span>
         <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-1 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -72,16 +88,17 @@ function SearchableEmpresaSelect({ value, onChange }: SearchableEmpresaSelectPro
               <input
                 type="text"
                 autoFocus
-                placeholder="Buscar empresa..."
+                placeholder={placeholder}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-800 placeholder-slate-400 font-medium"
               />
               {searchTerm && (
                 <button 
+                  type="button"
                   onClick={() => setSearchTerm('')}
                   className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5"
-                  aria-label="Limpar busca de empresa"
+                  aria-label="Limpar busca"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -90,7 +107,7 @@ function SearchableEmpresaSelect({ value, onChange }: SearchableEmpresaSelectPro
           </div>
 
           {/* Options List */}
-          <div className="max-h-48 overflow-y-auto p-1 space-y-0.5">
+          <div className="max-h-56 overflow-y-auto p-1 space-y-0.5">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt) => {
                 const isSelected = opt.id === value;
@@ -111,7 +128,9 @@ function SearchableEmpresaSelect({ value, onChange }: SearchableEmpresaSelectPro
                       <span className="text-xs font-semibold text-slate-800">
                         {opt.label}
                       </span>
-                      <span className="text-[10px] text-slate-400 mt-0.5">{opt.description}</span>
+                      {opt.description && (
+                        <span className="text-[10px] text-slate-400 mt-0.5">{opt.description}</span>
+                      )}
                     </div>
                     {isSelected && <Check className="w-3.5 h-3.5 text-slate-900 shrink-0 ml-2" />}
                   </button>
@@ -119,7 +138,7 @@ function SearchableEmpresaSelect({ value, onChange }: SearchableEmpresaSelectPro
               })
             ) : (
               <div className="px-3 py-4 text-center text-xs text-slate-400 font-medium">
-                Nenhuma empresa encontrada
+                Nenhum item encontrado
               </div>
             )}
           </div>
