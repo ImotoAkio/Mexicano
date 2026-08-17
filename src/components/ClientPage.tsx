@@ -81,6 +81,7 @@ function SearchableEmpresaSelect({ value, onChange }: SearchableEmpresaSelectPro
                 <button 
                   onClick={() => setSearchTerm('')}
                   className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5"
+                  aria-label="Limpar busca de empresa"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -744,6 +745,7 @@ export default function ClientPage() {
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
               }`}
               title="Filtros Avançados"
+              aria-label="Alternar painel de filtros avançados"
             >
               <SlidersHorizontal className="w-4 h-4 mr-2" />
               Filtros { (filterBoat !== 'all' || filterEmpresa !== 'all' || filterFinance !== 'all' || filterBoatType !== 'all' || filterPlano !== 'all') && '•' }
@@ -975,6 +977,7 @@ export default function ClientPage() {
                             onClick={() => setViewProfileId(client.id)}
                             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
                             title="Ver Perfil e Documentos"
+                            aria-label="Ver perfil e documentos do cliente"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -982,6 +985,7 @@ export default function ClientPage() {
                             onClick={() => handleOpenContractModal(client)}
                             className="p-1.5 hover:bg-amber-50 rounded-lg text-amber-600 hover:text-amber-700 transition-colors cursor-pointer"
                             title="Gerar Contrato (PDF)"
+                            aria-label="Gerar contrato do cliente"
                           >
                             <FileText className="w-4 h-4" />
                           </button>
@@ -989,6 +993,7 @@ export default function ClientPage() {
                             onClick={() => handleOpenEditModal(client)}
                             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
                             title="Editar"
+                            aria-label="Editar dados do cliente"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -996,6 +1001,7 @@ export default function ClientPage() {
                             onClick={() => initiateDelete(client.id, client.nome)}
                             className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Remover"
+                            aria-label="Excluir cliente"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
