@@ -865,9 +865,13 @@ export default function ClientPage() {
         </div>
       ) : viewMode === 'table' ? (
         /* VISÃO EM TABELA / LISTA */
-        <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600 border-collapse">
+        <div>
+          <div className="md:flex lg:hidden hidden items-center justify-end text-[11px] text-slate-400 font-medium mb-1.5 px-1">
+            <span>Swipe para navegar na tabela ➔</span>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+          <div className="overflow-x-auto touch-pan-x scrollbar-thin scrollbar-thumb-slate-200">
+            <table className="w-full min-w-[840px] text-left text-xs text-slate-600 border-collapse">
               <thead className="bg-slate-50/80 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="py-3.5 px-4">Proprietário / Cliente</th>
@@ -1014,6 +1018,7 @@ export default function ClientPage() {
             </table>
           </div>
         </div>
+      </div>
       ) : (
         /* VISÃO EM BLOCOS / CARDS */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
