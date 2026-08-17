@@ -417,12 +417,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
 
   const filteredBoats = boats.filter(b => {
     let matchesEmpresa = true;
-    const isAdminOrFinance = adminRole === 'admin' || adminRole === 'financeiro' || !adminRole;
-    if (!isAdminOrFinance && adminRole) {
-      const userEmpresa = (adminRole === 'marina' || adminRole === 'marina_operador' || adminRole === 'marina_gerente') ? 'MARINA' : 
-                        (adminRole === 'comercial' ? 'MEXICANO' : 'VALE');
-      matchesEmpresa = (b.empresas || ['VALE']).includes(userEmpresa);
-    } else if (filterEmpresa !== 'all') {
+    if (filterEmpresa !== 'all') {
       matchesEmpresa = (b.empresas || ['VALE']).includes(filterEmpresa);
     }
 
@@ -498,21 +493,19 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
         </div>
 
         {/* Filtro de Empresa */}
-        {(adminRole === 'admin' || adminRole === 'financeiro' || !adminRole) && (
-          <div className="w-full sm:w-52">
-            <select
-              id="select-filter-empresa"
-              value={filterEmpresa}
-              onChange={(e) => setFilterEmpresa(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent cursor-pointer"
-            >
-              <option value="all">Todas as Empresas</option>
-              <option value="VALE">Vale Administradora</option>
-              <option value="MARINA">Marina Club</option>
-              <option value="MEXICANO">Mexicano Lanchas</option>
-            </select>
-          </div>
-        )}
+        <div className="w-full sm:w-52">
+          <select
+            id="select-filter-empresa"
+            value={filterEmpresa}
+            onChange={(e) => setFilterEmpresa(e.target.value)}
+            className="w-full px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent cursor-pointer"
+          >
+            <option value="all">Todas as Empresas</option>
+            <option value="VALE">Vale Administradora</option>
+            <option value="MARINA">Marina Club</option>
+            <option value="MEXICANO">Mexicano Lanchas</option>
+          </select>
+        </div>
 
         <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 shrink-0 self-start sm:self-auto">
           <button
@@ -968,40 +961,38 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
               </div>
 
               {/* Vínculo com Empresa(s) */}
-              {(adminRole === 'admin' || adminRole === 'financeiro' || !adminRole) && (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Empresas Vinculadas</label>
-                  <div className="flex flex-wrap gap-3">
-                    {[
-                      { id: 'VALE', label: 'Vale Administradora', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
-                      { id: 'MARINA', label: 'Marina Club', color: 'text-teal-700 bg-teal-50 border-teal-200' },
-                      { id: 'MEXICANO', label: 'Mexicano Lanchas', color: 'text-amber-700 bg-amber-50 border-amber-200' },
-                    ].map(item => (
-                      <label key={item.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
-                        empresas.includes(item.id) ? item.color : 'bg-white text-slate-500 border-slate-200 opacity-60'
-                      }`}>
-                        <input
-                          type="checkbox"
-                          checked={empresas.includes(item.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEmpresas([...empresas, item.id]);
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Empresas Vinculadas</label>
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    { id: 'VALE', label: 'Vale Administradora', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
+                    { id: 'MARINA', label: 'Marina Club', color: 'text-teal-700 bg-teal-50 border-teal-200' },
+                    { id: 'MEXICANO', label: 'Mexicano Lanchas', color: 'text-amber-700 bg-amber-50 border-amber-200' },
+                  ].map(item => (
+                    <label key={item.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
+                      empresas.includes(item.id) ? item.color : 'bg-white text-slate-500 border-slate-200 opacity-60'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={empresas.includes(item.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEmpresas([...empresas, item.id]);
+                          } else {
+                            if (empresas.length > 1) {
+                              setEmpresas(empresas.filter(x => x !== item.id));
                             } else {
-                              if (empresas.length > 1) {
-                                setEmpresas(empresas.filter(x => x !== item.id));
-                              } else {
-                                showToast('Selecione pelo menos uma empresa.', 'error');
-                              }
+                              showToast('Selecione pelo menos uma empresa.', 'error');
                             }
-                          }}
-                          className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900"
-                        />
-                        <span>{item.label}</span>
-                      </label>
-                    ))}
-                  </div>
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900"
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
                 </div>
-              )}
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
