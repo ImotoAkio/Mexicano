@@ -720,6 +720,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               </button>
 
               <button 
+                onClick={() => setActiveTab('clientes')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'clientes' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Cadastro e Controle de Clientes"
+              >
+                <UserIcon className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Clientes</span>}
+              </button>
+
+              <button 
                 onClick={() => setActiveTab('embarcacoes')}
                 className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'embarcacoes' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
                 title="Lista de Embarcações"
@@ -874,6 +883,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  <button 
+                    onClick={() => setActiveTab('clientes')}
+                    className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <UserIcon className="w-4 h-4" />
+                    <span>Clientes</span>
+                  </button>
                   <button 
                     onClick={() => setActiveTab('operacao')}
                     className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
