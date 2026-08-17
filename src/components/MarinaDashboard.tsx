@@ -7,6 +7,7 @@ import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
 import BoatPage from './BoatPage';
+import ClientPage from './ClientPage';
 import FinanceSchedulesPage from './FinanceSchedulesPage';
 import SettingsPage from './SettingsPage';
 import ControleFolgasPage from './ControleFolgasPage';
@@ -86,7 +87,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
 
   // Bottom Navigation Tab & Sidebar state
-  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques' | 'embarcacoes' | 'agendamentos' | 'folgas' | 'configuracoes'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques' | 'clientes' | 'embarcacoes' | 'agendamentos' | 'folgas' | 'configuracoes'>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
 
@@ -1881,6 +1882,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             operadorNome={operadorNome}
             showToast={showToast}
           />
+        )}
+
+        {activeTab === 'clientes' && (
+          <div className="max-w-7xl mx-auto">
+            <ClientPage />
+          </div>
         )}
 
         {activeTab === 'embarcacoes' && (
