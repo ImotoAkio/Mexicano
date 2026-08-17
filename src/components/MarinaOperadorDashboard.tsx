@@ -33,7 +33,10 @@ import {
   Building2,
   FileCheck,
   Paperclip,
-  Eye
+  Eye,
+  Plus,
+  PlusCircle,
+  Trash2
 } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
@@ -293,31 +296,47 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
   };
 
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>, angleId: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
     setUploadingAngle(angleId);
     try {
-      const formData = new FormData();
-      formData.append('image', file);
+      const uploadedUrls: string[] = [];
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('image', file);
 
-      const res = await fetch('/api/upload/checklist-image', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
-        body: formData
-      });
+        const res = await fetch('/api/upload/checklist-image', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+          body: formData
+        });
 
-      const json = await res.json();
-      if (!json.url && !json.imageUrl) throw new Error(json.message || 'Erro upload');
+        const json = await res.json();
+        if (!json.url && !json.imageUrl) throw new Error(json.message || 'Erro upload');
 
-      const imgUrl = json.url || json.imageUrl;
-      setChecklistFotos(prev => ({ ...prev, [angleId]: [...(prev[angleId] || []), imgUrl] }));
-      showToast(`Foto (${angleId}) adicionada!`, 'success');
+        const imgUrl = json.url || json.imageUrl;
+        uploadedUrls.push(imgUrl);
+      }
+
+      setChecklistFotos(prev => ({ 
+        ...prev, 
+        [angleId]: [...(prev[angleId] || []), ...uploadedUrls] 
+      }));
+      showToast(`${uploadedUrls.length} foto(s) adicionada(s)!`, 'success');
     } catch (err) {
-      showToast('Erro ao fazer upload da foto.', 'warning');
+      showToast('Erro ao fazer upload da(s) foto(s).', 'warning');
     } finally {
       setUploadingAngle(null);
+      if (e.target) e.target.value = '';
     }
+  };
+
+  const handleRemovePhoto = (angleId: string, index: number) => {
+    setChecklistFotos(prev => ({
+      ...prev,
+      [angleId]: (prev[angleId] || []).filter((_, i) => i !== index)
+    }));
   };
 
   const handleUploadComprovante = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1921,9 +1940,12 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                       </div>
                     </div>
 
-                    {/* Photos Summary */}
-                    <div className="space-y-2">
-                      <span className="text-xs font-bold text-slate-800 block">📸 Ângulos Fotográficos:</span>
+                    {/* Photos Summary & Extra Photos */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 block">📸 Ângulos Fotográficos:</span>
+                      </div>
+                      
                       <div className="grid grid-cols-3 gap-2">
                         {CHECKLIST_ANGLES.map((angle) => {
                           const fotos = checklistFotos[angle.id] || [];
@@ -1940,12 +1962,68 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                               <div className="min-w-0 flex-1">
                                 <span className="text-[10px] font-bold text-slate-900 truncate block">{angle.label.split(' ')[0]}</span>
                                 <span className={`text-[9px] font-semibold block ${hasPhoto ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                  {hasPhoto ? '✓ OK' : 'Sem foto'}
+                                  {hasPhoto ? `✓ OK (${fotos.length})` : 'Sem foto'}
                                 </span>
                               </div>
                             </div>
                           );
                         })}
+                      </div>
+
+                      {/* Extra Photos Container */}
+                      <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <PlusCircle className="w-4 h-4 text-blue-600" />
+                            <span>Fotografias Adicionais / Extras:</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-semibold">
+                            {(checklistFotos['extras'] || []).length} foto(s) extra(s)
+                          </span>
+                        </div>
+
+                        {/* Gallery of extra photos */}
+                        {(checklistFotos['extras'] || []).length > 0 && (
+                          <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
+                            {(checklistFotos['extras'] || []).map((url, idx) => (
+                              <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-300 shadow-xs">
+                                <img src={url} alt={`Foto extra ${idx + 1}`} className="w-full h-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemovePhoto('extras', idx)}
+                                  className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full opacity-90 hover:opacity-100 transition-opacity shadow-md cursor-pointer"
+                                  title="Remover foto"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Button to add as many extra photos as desired */}
+                        <div className="relative">
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            multiple
+                            onChange={(e) => handleUploadPhoto(e, 'extras')}
+                            className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
+                            disabled={uploadingAngle !== null}
+                          />
+                          <button
+                            type="button"
+                            disabled={uploadingAngle !== null}
+                            className="w-full py-3 px-4 bg-blue-50 hover:bg-blue-100 border border-blue-200/90 text-blue-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-98"
+                          >
+                            {uploadingAngle === 'extras' ? (
+                              <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                            ) : (
+                              <Plus className="w-4 h-4 text-blue-600" />
+                            )}
+                            <span>+ Adicionar Mais Fotografias (Sem Limite)</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
 

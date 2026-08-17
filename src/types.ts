@@ -46,6 +46,8 @@ export interface Embarcacao {
   modelo: string;
   fabricante: string;
   ano: number;
+  vaga?: string;
+  tamanho?: string | number;
   chassi?: string; // N° do Chassi
   inscricao?: string; // N° de Inscrição na Marinha
   tipo_propulsao?: string; // Tipo de propulsão (ex: MOTOR, JET)
@@ -104,6 +106,7 @@ export interface Reserva {
   observacoesChecklistChegada?: string;
   observacoesChecklistSubida?: string;
   statusMarina?: 'agendado' | 'descida' | 'pier' | 'saida' | 'chegada' | 'guardada';
+  statusOperacional?: string;
   operadorDescida?: string;
   operadorSaida?: string;
   operadorChegada?: string;
@@ -299,6 +302,17 @@ export interface HistoricoEPIMensal {
   mesAno: string; // Ex: "2026-07"
   dadosSnapshot: string; // JSON content of the table at the time
   createdAt: string;
+}
+
+export type Boat = Embarcacao;
+
+export interface RegistroAtividade {
+  id: string;
+  createdAt: string;
+  operadorNome?: string;
+  acao?: string;
+  detalhes?: string;
+  embarcacaoId?: string;
 }
 
 export interface CatalogoEpi {

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { reservationDB, boatDB, clientDB } from '../db';
-import { Embarcacao, Cliente, Reserva } from '../types';
+import { Embarcacao, Cliente, Reserva, TransacaoFinanceira } from '../types';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
+import { toPng } from 'html-to-image';
+import logoUrl from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { ShieldAlert, Smartphone, UserCheck, UserX, QrCode, LogOut, CheckCircle, MessageSquare, Calendar as CalendarIcon, Check, AlertTriangle, 
   RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet, Paperclip, FileText, Users, Plus, Trash2, Play, Pause, X, CheckSquare, Square, File, Image as ImageIcon, Sparkles, Filter
 } from 'lucide-react';
@@ -38,10 +40,61 @@ const getQuando = (targetDateStr: string): string => {
 };
 
 
+const BLOQUEIO_VARIATIONS_DIA = [
+  "Oi, {nome}! 😊\n\nEstou tentando gerar a *OS* para a marina descer sua embarcação, mas o sistema *não permite* a emissão porque identificou valores em aberto no cadastro.\n\nComo sua reserva é *hoje*, você consegue verificar isso com urgência? Se já pagou, envie o comprovante para conferirmos e tentarmos liberar a OS a tempo. 👍",
+  "Olá, {nome}! Tudo bem? ⚓\n\nFui emitir a *Ordem de Serviço* para a equipe da marina preparar a sua embarcação para hoje, mas o sistema bloqueou indicando uma pendência financeira no cadastro.\n\nComo o seu passeio é *hoje*, consegue dar uma olhadinha nisso para nós? Se o pagamento já foi realizado, manda o comprovante aqui para liberarmos a sua OS o quanto antes! 👍",
+  "Oi, {nome}! 😉\n\nJá estamos organizando os atendimentos de *hoje*, mas ao tentar gerar a *OS* para descer seu barco, o sistema travou a emissão por conta de um valor em aberto.\n\nComo queremos deixar tudo pronto para o seu passeio, você consegue verificar para a gente? Caso já tenha feito o pagamento, basta nos enviar o comprovante por aqui. 👍",
+  "Olá, {nome}! 😊\n\nPassando para avisar que tentei emitir a *OS de descida* da sua embarcação para hoje, porém o sistema não liberou devido a uma pendência no seu cadastro.\n\nComo sua reserva é para *hoje*, precisamos regularizar isso com urgência. Se já efetuou o pagamento, nos mande o comprovante para fazermos a liberação manual da OS! 👍",
+  "Oi, {nome}! Tudo joia? 🚤\n\nEstamos na fase de liberação das *Ordens de Serviço* da marina para hoje, mas constou um impedimento no sistema referente a valores pendentes no seu cadastro.\n\nVocê consegue conferir para nós? Se o pagamento já tiver sido feito, nos envie o comprovante agora para podermos liberar a OS sem atrasar seu atendimento! 👍",
+  "Olá, {nome}! 😊\n\nTudo pronto para o seu passeio de *hoje*? Só tive um probleminha aqui: ao tentar gerar a *OS* para descer a embarcação, o sistema bloqueou por pendência financeira.\n\nPara garantirmos a liberação a tempo, você pode dar uma checada? Se já pagou, é só enviar o comprovante aqui na conversa. Obrigado! 👍",
+  "Oi, {nome}! ⚓\n\nEstava gerando as *OSs* do dia para a marinharia preparar os barcos, mas o sistema não permitiu a emissão do seu devido a um débito em aberto no cadastro.\n\nComo a sua reserva é *hoje*, peço que verifique isso quanto antes. Caso já tenha realizado o pagamento, mande o comprovante por aqui para tentarmos a liberação imediata! 👍",
+  "Olá, {nome}! 😉\n\nPara deixar sua embarcação pronta para descer *hoje*, fui rodar a *Ordem de Serviço*, mas apareceu uma trava no sistema por conta de um valor pendente.\n\nVocê consegue dar uma olhada nisso pra gente? Se o pagamento já foi feito, manda o comprovante por aqui que a gente já checa e tenta liberar sua OS! 👍",
+  "Oi, {nome}! 😊\n\nSua reserva é *hoje* e já estamos preparando a movimentação das embarcações! Porém, o sistema não autorizou a geração da *OS* porque acusou pendência no cadastro.\n\nVocê pode verificar para nós por gentileza? Se o comprovante já estiver em mãos, manda aqui para agilizarmos a autorização da sua descida! 👍",
+  "Olá, {nome}! Tudo bem? 🚤\n\nEstou no sistema tentando emitir a *OS* para a marina descer seu barco para a reserva de *hoje*, mas constou um aviso de bloqueio por valor em aberto.\n\nComo o horário está próximo, você consegue conferir com urgência? Se já foi pago, é só mandar o comprovante aqui para conferirmos e liberarmos a OS a tempo. 👍"
+];
+
+const BLOQUEIO_VARIATIONS_VESPERA = [
+  "Oi, {nome}! 😊 Tudo bem?\n\nSua reserva está marcada para {data}.\n\nEstamos fazendo uma conferência rápida nos cadastros e apareceu um valor pendente no seu. Você consegue verificar para nós? Caso já tenha pago, é só mandar o comprovante por aqui.\n\nAssim deixamos tudo certinho para a sua reserva! 👍",
+  "Olá, {nome}! Tudo joia? ⚓\n\nSua reserva para {data} já está no nosso radar! Durante a conferência dos cadastros de amanhã, notamos um valor pendente no seu usuário.\n\nConsegue dar uma olhada para nós? Se já tiver pago, nos envie o comprovante por aqui para deixarmos a sua liberação 100% pronta! 👍",
+  "Oi, {nome}! 😊\n\nPassando para lembrar que sua reserva é {data}. Tivemos uma notificação de pendência no seu cadastro ao revisar as descidas.\n\nVocê consegue conferir para a gente? Caso o pagamento já tenha sido realizado, basta mandar o comprovante aqui na conversa. Obrigado! 👍",
+  "Olá, {nome}! Tudo bem? 🚤\n\nJá estamos adiantando a organização para {data}, mas apareceu um aviso de pendência financeira no seu cadastro.\n\nVocê pode dar uma checada? Se já estiver pago, envie o comprovante por aqui para deixarmos a Ordem de Serviço liberada antecipadamente! 👍",
+  "Oi, {nome}! 😉\n\nTudo certo para a sua reserva do dia {data}? Fazendo a conferência prévia, identificamos um valor pendente na sua ficha.\n\nVocê consegue verificar por favor? Se o pagamento já foi feito, mande o comprovante aqui para deixarmos tudo ajustado a tempo! 👍",
+  "Olá, {nome}! ⚓\n\nSua reserva para {data} se aproxima! Durante a nossa verificação interna, o sistema indicou uma pendência em seu cadastro.\n\nPoderia verificar para nós? Se já realizou o pagamento, envie o comprovante por aqui para evitarmos qualquer imprevisto na sua descida! 👍",
+  "Oi, {nome}! 😊\n\nEstamos preparando os agendamentos do dia {data} e vimos que há um valor em aberto registrado no seu cadastro.\n\nVocê consegue conferir? Se o pagamento já foi concluído, é só mandar o comprovante para nós que atualizamos tudo por aqui. 👍",
+  "Olá, {nome}! Tudo joia? 😉\n\nAmanhã temos a sua reserva marcada ({data})! Ao rodar a pré-conferência das embarcações, constou uma pendência cadastral.\n\nVocê consegue nos ajudar verificando esse ponto? Caso já tenha pago, envie o comprovante aqui para deixarmos sua descida autorizada! 👍",
+  "Oi, {nome}! 🚤\n\nConferindo os cadastros das reservas de {data}, notamos um lançamento pendente em seu nome.\n\nPode dar uma olhada para nós? Se o comprovante já estiver com você, manda por aqui para deixarmos tudo alinhado para a sua navegação! 👍",
+  "Olá, {nome}! 😊\n\nSua navegação para {data} está chegando! Ao verificar as fichas de atendimento, o sistema apontou um valor em aberto.\n\nConsegue checar pra gente? Se o pagamento já foi efetuado, por favor mande o comprovante por aqui para garantirmos sua liberação sem atropelos! 👍"
+];
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const calculateTransactionInterest = (t: TransacaoFinanceira) => {
+  const originalVal = Number(t.valor) || 0;
+  if (t.status === 'pago' || !t.dataVencimento) {
+    return { daysOverdue: 0, interest: 0, total: originalVal };
+  }
+  const [y, m, d] = t.dataVencimento.split('-').map(Number);
+  const dueDate = new Date(y, m - 1, d);
+  dueDate.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diffTime = today.getTime() - dueDate.getTime();
+  const daysOverdue = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  if (daysOverdue <= 0) {
+    return { daysOverdue: 0, interest: 0, total: originalVal };
+  }
+
+  const multa = originalVal * 0.02;
+  const jurosDiarios = originalVal * 0.00033 * daysOverdue;
+  const interest = multa + jurosDiarios;
+  return { daysOverdue, interest, total: originalVal + interest };
+};
+
 export default function WhatsAppPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'calendars' | 'custom' | 'config'>('confirmations');
+  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'config'>('confirmations');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [confTemplate1, setConfTemplate1] = useState(() => {
@@ -560,6 +613,236 @@ export default function WhatsAppPage() {
     showToast('Processo de disparo concluído!', 'success');
   };
 
+  // --- BLOQUEIO LOGIC ---
+  const [bloqueioMode, setBloqueioMode] = useState<'vespera' | 'dia'>('vespera');
+  const [bloqueioDate, setBloqueioDate] = useState(() => {
+    const today = new Date();
+    today.setDate(today.getDate() + 1);
+    return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  });
+
+  const [bloqueioTemplateVespera, setBloqueioTemplateVespera] = useState(() => {
+    return localStorage.getItem('whatsapp_bloqueio_template_vespera') || 
+      "Oi, {nome}! 😊 Tudo bem?\n\nSua reserva está marcada para {data}.\n\nEstamos fazendo uma conferência rápida nos cadastros e apareceu um valor pendente no seu. Você consegue verificar para nós? Caso já tenha pago, é só mandar o comprovante por aqui.\n\nAssim deixamos tudo certinho para a sua reserva! 👍";
+  });
+
+  const [bloqueioTemplateDia, setBloqueioTemplateDia] = useState(() => {
+    const defaultTemplate = "Oi, {nome}! 😊\n\nEstou tentando gerar a *OS* para a marina descer sua embarcação, mas o sistema *não permite* a emissão porque identificou valores em aberto no cadastro.\n\nComo sua reserva é *hoje*, você consegue verificar isso com urgência? Se já pagou, envie o comprovante para conferirmos e tentarmos liberar a OS a tempo. 👍";
+    const saved = localStorage.getItem('whatsapp_bloqueio_template_dia');
+    if (!saved || saved.includes("queremos muito garantir o passeio")) {
+      localStorage.setItem('whatsapp_bloqueio_template_dia', defaultTemplate);
+      return defaultTemplate;
+    }
+    return saved;
+  });
+
+  const [showBloqueioTemplatesEditor, setShowBloqueioTemplatesEditor] = useState(false);
+  const [useBloqueioVariations, setUseBloqueioVariations] = useState(true);
+  const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
+
+  useEffect(() => {
+    fetch('/api/financeiro/transacoes', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTransacoes(data);
+      })
+      .catch(console.warn);
+  }, []);
+
+  const getNextBloqueioVariation = (mode: 'vespera' | 'dia') => {
+    const variations = mode === 'vespera' ? BLOQUEIO_VARIATIONS_VESPERA : BLOQUEIO_VARIATIONS_DIA;
+    const currentCount = parseInt(localStorage.getItem('whatsapp_bloqueio_counter') || '0', 10);
+    const selectedText = variations[currentCount % variations.length];
+    localStorage.setItem('whatsapp_bloqueio_counter', String(currentCount + 1));
+    return selectedText;
+  };
+
+  const handleSaveBloqueioTemplateVespera = (val: string) => {
+    setBloqueioTemplateVespera(val);
+    localStorage.setItem('whatsapp_bloqueio_template_vespera', val);
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_template_vespera: val }) }).catch(console.warn);
+  };
+
+  const handleSaveBloqueioTemplateDia = (val: string) => {
+    setBloqueioTemplateDia(val);
+    localStorage.setItem('whatsapp_bloqueio_template_dia', val);
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_template_dia: val }) }).catch(console.warn);
+  };
+
+  const [bloqueioSearch, setBloqueioSearch] = useState('');
+  const [bloqueioFilter, setBloqueioFilter] = useState<'all' | 'with_contact' | 'without_contact'>('all');
+  const [bloqueioSelectedIds, setBloqueioSelectedIds] = useState<string[]>([]);
+  const [bloqueioSendingStatus, setBloqueioSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
+  const [bloqueioSendResults, setBloqueioSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
+  const [bloqueioReservations, setBloqueioReservations] = useState<Reserva[]>([]);
+
+  const handleChangeBloqueioMode = (mode: 'vespera' | 'dia') => {
+    setBloqueioMode(mode);
+    const today = new Date();
+    if (mode === 'vespera') {
+      today.setDate(today.getDate() + 1);
+    }
+    const localStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    setBloqueioDate(localStr);
+  };
+
+  useEffect(() => {
+    const allRes = reservationDB.getAll().filter(r => r.data === bloqueioDate && (r.status === 'agendado' || r.status === 'confirmado'));
+    
+    // Filter strictly to inadimplente clients
+    const pendingRes = allRes.filter(r => {
+      const client = clientDB.getById(r.clienteId);
+      if (!client) return false;
+      return client.statusFinanceiro === 'inadimplente';
+    });
+
+    setBloqueioReservations(pendingRes);
+
+    // Auto-select clients with phone numbers
+    const initialSelected = pendingRes
+      .filter(r => {
+        const client = clientDB.getById(r.clienteId);
+        return !!client?.telefone;
+      })
+      .map(r => r.id);
+    setBloqueioSelectedIds(initialSelected);
+
+    const initialResults: Record<string, 'pending' | 'sending' | 'success' | 'error'> = {};
+    pendingRes.forEach(r => {
+      initialResults[r.id] = (bloqueioMode === 'vespera' ? (r as any).bloqueioVesperaEnviado : (r as any).bloqueioDiaEnviado) ? 'success' : 'pending';
+    });
+    setBloqueioSendResults(initialResults);
+    setBloqueioSendingStatus('idle');
+  }, [bloqueioDate, bloqueioMode]);
+
+  const filteredBloqueioRes = bloqueioReservations.filter(res => {
+    const client = clientDB.getById(res.clienteId);
+    const boat = boatDB.getById(res.embarcacaoId);
+    const search = bloqueioSearch.toLowerCase();
+
+    const matchesSearch = !search || 
+      client?.nome?.toLowerCase().includes(search) || 
+      boat?.nome?.toLowerCase().includes(search) || 
+      String(boat?.numero).includes(search);
+
+    if (!matchesSearch) return false;
+
+    const hasPhone = !!client?.telefone;
+    if (bloqueioFilter === 'with_contact' && !hasPhone) return false;
+    if (bloqueioFilter === 'without_contact' && hasPhone) return false;
+
+    return true;
+  });
+
+  const visibleBloqueioIdsWithPhone = filteredBloqueioRes
+    .filter(res => !!clientDB.getById(res.clienteId)?.telefone)
+    .map(res => res.id);
+
+  const allVisibleBloqueioSelected = visibleBloqueioIdsWithPhone.length > 0 && visibleBloqueioIdsWithPhone.every(id => bloqueioSelectedIds.includes(id));
+
+  const handleBloqueioToggleSelect = (id: string) => {
+    setBloqueioSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleBloqueioToggleSelectAll = () => {
+    if (allVisibleBloqueioSelected) {
+      setBloqueioSelectedIds(prev => prev.filter(id => !visibleBloqueioIdsWithPhone.includes(id)));
+    } else {
+      const newSelection = new Set([...bloqueioSelectedIds, ...visibleBloqueioIdsWithPhone]);
+      setBloqueioSelectedIds(Array.from(newSelection));
+    }
+  };
+
+  const handleSendBloqueio = async () => {
+    if (bloqueioSelectedIds.length === 0) {
+      showToast('Nenhum agendamento selecionado.', 'error');
+      return;
+    }
+    setBloqueioSendingStatus('sending');
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    let itemIndex = 0;
+    for (const resId of bloqueioSelectedIds) {
+      const res = bloqueioReservations.find(r => r.id === resId);
+      if (!res) continue;
+      const client = clientDB.getById(res.clienteId);
+      const boat = boatDB.getById(res.embarcacaoId);
+      if (!client || !client.telefone) continue;
+
+      const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
+      const clientFirstName = client.nome ? formatFirstName(client.nome) : '';
+      
+      const dateParts = res.data.split('-');
+      const dateBr = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : res.data;
+
+      // Select template variation dynamically (cycling through the 10 variations)
+      const selectedVariation = useBloqueioVariations 
+        ? getNextBloqueioVariation(bloqueioMode)
+        : (bloqueioMode === 'vespera' ? bloqueioTemplateVespera : bloqueioTemplateDia);
+
+      const text = selectedVariation
+        .replace(/\[nome\]|\{nome\}|\{cliente\}/g, clientFirstName)
+        .replace(/\[data\]|\{data\}/g, dateBr)
+        .replace(/\{barco\}/g, boatCode);
+
+      itemIndex++;
+
+      // Generate image for client debit statement card
+      let base64Image: string | null = null;
+      try {
+        const captureEl = document.getElementById(`bloqueio-invoice-capture-${client.id}`);
+        if (captureEl) {
+          base64Image = await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 2, skipFonts: true });
+        }
+      } catch (imgErr) {
+        console.warn('Erro ao gerar imagem do extrato de débito:', imgErr);
+      }
+
+      setBloqueioSendResults(prev => ({ ...prev, [resId]: 'sending' }));
+
+      try {
+        const endpoint = base64Image ? '/api/whatsapp/send-custom' : '/api/whatsapp/send-text';
+        const bodyPayload = base64Image ? {
+          number: client.telefone,
+          text: text,
+          media: base64Image,
+          mimetype: 'image/png',
+          fileName: `Fatura-${clientFirstName}.png`
+        } : {
+          number: client.telefone,
+          text: text
+        };
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(bodyPayload)
+        });
+        if (!response.ok) throw new Error('Falha no envio');
+
+        setBloqueioSendResults(prev => ({ ...prev, [resId]: 'success' }));
+        reservationDB.update(resId, { 
+          [bloqueioMode === 'vespera' ? 'bloqueioVesperaEnviado' : 'bloqueioDiaEnviado']: true 
+        });
+      } catch (err) {
+        setBloqueioSendResults(prev => ({ ...prev, [resId]: 'error' }));
+      }
+      await sleep(4000);
+    }
+    setBloqueioSendingStatus('completed');
+    showToast('Disparo de avisos de bloqueio concluído!', 'success');
+  };
+
   const fetchWaStatus = async () => {
     setIsFetchingWaStatus(true);
     try {
@@ -885,6 +1168,14 @@ export default function WhatsAppPage() {
           <Check className="w-4 h-4" /> Confirmações Diárias
         </button>
         <button 
+          onClick={() => setActiveMainTab('bloqueio')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+            activeMainTab === 'bloqueio' ? 'bg-white shadow-xs text-amber-700 font-bold' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+          }`}
+        >
+          <ShieldAlert className="w-4 h-4 text-amber-600" /> Bloqueio Financeiro
+        </button>
+        <button 
           onClick={() => setActiveMainTab('calendars')}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
             activeMainTab === 'calendars' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
@@ -1058,6 +1349,261 @@ export default function WhatsAppPage() {
               >
                 {confSendingStatus === 'sending' ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
                 {confSendingStatus === 'sending' ? `Enviando...` : `Disparar para ${confSelectedIds.length} clientes`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* BLOQUEIO TAB */}
+        {activeMainTab === 'bloqueio' && (
+          <div className="flex flex-col h-full space-y-4">
+            
+            {/* Top Control Bar */}
+            <div className="flex flex-wrap gap-4 items-center justify-between shrink-0 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+              
+              {/* Mode Pills (Véspera vs Dia) */}
+              <div className="flex flex-col space-y-1">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tipo de Envio (Bloqueio)</label>
+                <div className="flex gap-1.5 bg-slate-200/70 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => handleChangeBloqueioMode('vespera')}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                      bloqueioMode === 'vespera'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Dia Anterior (Véspera)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChangeBloqueioMode('dia')}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                      bloqueioMode === 'dia'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Dia do Agendamento</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Date Filter */}
+              <div className="w-44">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Data dos Agendamentos</label>
+                <input 
+                  type="date" 
+                  value={bloqueioDate} 
+                  onChange={e => setBloqueioDate(e.target.value)}
+                  className="w-full text-sm py-1.5 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-white font-medium"
+                />
+              </div>
+
+              {/* Search Bar */}
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Pesquisar</label>
+                <div className="relative w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Nome do cliente ou embarcação..."
+                    value={bloqueioSearch}
+                    onChange={(e) => setBloqueioSearch(e.target.value)}
+                    className="w-full text-sm pl-9 pr-4 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Edit Templates & Variation Toggle Buttons */}
+              <div className="self-end mb-[2px] flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setUseBloqueioVariations(prev => !prev)}
+                  title="Quando ativo, o sistema alterna automaticamente entre 10 variações amigáveis do texto a cada envio para evitar detecção por robôs"
+                  className={`text-xs font-bold flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-colors h-[38px] cursor-pointer ${
+                    useBloqueioVariations
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                  }`}
+                >
+                  <Sparkles className={`w-4 h-4 ${useBloqueioVariations ? 'text-emerald-600' : 'text-slate-400'}`} /> 
+                  <span>{useBloqueioVariations ? 'Rodízio Antirrobô: Ativo (10 Variações)' : 'Rodízio Antirrobô: Desativado'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowBloqueioTemplatesEditor(prev => !prev)}
+                  className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1.5 bg-amber-50 px-3 py-2 rounded-xl border border-amber-200 hover:bg-amber-100 transition-colors h-[38px] cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4" /> 
+                  {showBloqueioTemplatesEditor ? 'Ocultar Modelos' : 'Editar Modelos'}
+                </button>
+              </div>
+            </div>
+
+            {/* Template Editors */}
+            {showBloqueioTemplatesEditor && (
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
+                <div className="flex flex-col space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Modelo Véspera (Dia Anterior ao Agendamento)</span>
+                  </label>
+                  <textarea
+                    value={bloqueioTemplateVespera}
+                    onChange={e => handleSaveBloqueioTemplateVespera(e.target.value)}
+                    rows={6}
+                    className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none resize-none font-sans"
+                    placeholder="Oi, {nome}! 😊 Tudo bem?..."
+                  />
+                </div>
+                
+                <div className="flex flex-col space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Modelo Dia do Agendamento (Mesmo Dia)</span>
+                  </label>
+                  <textarea
+                    value={bloqueioTemplateDia}
+                    onChange={e => handleSaveBloqueioTemplateDia(e.target.value)}
+                    rows={6}
+                    className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none resize-none font-sans"
+                    placeholder="Oi, {nome}! 😊..."
+                  />
+                </div>
+                
+                <div className="md:col-span-2 text-[10px] text-slate-500 flex flex-wrap gap-x-4 gap-y-1.5 bg-white p-2.5 rounded-lg border border-slate-200">
+                  <span className="font-bold text-slate-700">Variáveis disponíveis:</span>
+                  <span><code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-700">[nome]</code> ou <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-700">{'{nome}'}</code> (Primeiro nome)</span>
+                  <span><code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-700">[data]</code> ou <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-700">{'{data}'}</code> (Data da reserva formatada)</span>
+                  <span><code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-700">{'{barco}'}</code> (Código da embarcação)</span>
+                  <span className="w-full pt-1 border-t border-slate-100 text-amber-700 font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
+                    <span><b>Rodízio Antirrobô Ativo:</b> O disparo alterna automaticamente entre 10 variações amigáveis e naturais da mensagem a cada cliente para evitar repetição do mesmo texto.</span>
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Filter Pills & Select All Bar */}
+            <div className="flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                  <button onClick={() => setBloqueioFilter('all')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${bloqueioFilter === 'all' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>Todos</button>
+                  <button onClick={() => setBloqueioFilter('with_contact')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${bloqueioFilter === 'with_contact' ? 'bg-white shadow-xs text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Com Telefone</button>
+                  <button onClick={() => setBloqueioFilter('without_contact')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${bloqueioFilter === 'without_contact' ? 'bg-white shadow-xs text-rose-600' : 'text-slate-500 hover:text-slate-700'}`}>Sem Telefone</button>
+                </div>
+                <span className="text-xs font-bold text-rose-800 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200/80 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                  {bloqueioReservations.length} cliente(s) inadimplente(s) em {bloqueioDate.split('-').reverse().join('/')}
+                </span>
+              </div>
+
+              <button 
+                type="button"
+                onClick={handleBloqueioToggleSelectAll}
+                className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer"
+              >
+                <Check className="w-4 h-4" /> Selecionar Todos Filtrados
+              </button>
+            </div>
+
+            {/* Client Cards List */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-2 border-t border-slate-100 pt-4 subtle-scrollbar">
+              {filteredBloqueioRes.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-sm flex flex-col items-center justify-center gap-2">
+                  <UserCheck className="w-8 h-8 text-emerald-500" />
+                  <span className="font-semibold text-slate-600">Nenhum cliente inadimplente agendado para esta data!</span>
+                  <span className="text-xs text-slate-400">Todos os clientes agendados para este dia estão com a situação regular.</span>
+                </div>
+              ) : (
+                filteredBloqueioRes.map(res => {
+                  const client = clientDB.getById(res.clienteId);
+                  const boat = boatDB.getById(res.embarcacaoId);
+                  const hasPhone = !!client?.telefone;
+                  const isSelected = bloqueioSelectedIds.includes(res.id);
+                  const status = bloqueioSendResults[res.id] || 'pending';
+                  const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
+
+                  return (
+                    <div 
+                      key={res.id} 
+                      className={`flex flex-col p-3.5 rounded-xl border transition-all ${
+                        isSelected ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-300/50' : 'bg-slate-50 border-slate-200'
+                      } ${!hasPhone ? 'opacity-60 bg-slate-100 grayscale' : 'cursor-pointer hover:border-amber-400'}`} 
+                      onClick={() => hasPhone && bloqueioSendingStatus !== 'sending' && handleBloqueioToggleSelect(res.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <button 
+                            type="button"
+                            disabled={!hasPhone || bloqueioSendingStatus === 'sending'} 
+                            className={`flex items-center justify-center w-5 h-5 rounded border transition-colors ${
+                              isSelected ? 'bg-amber-600 border-amber-600 text-white' : 'bg-white border-slate-300 text-transparent'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs bg-slate-200 px-1.5 py-0.5 rounded text-slate-800 font-mono">{boatCode}</span>
+                              <span className="font-bold text-sm text-slate-900">{client?.nome || 'Desconhecido'}</span>
+                              
+                              {client?.statusFinanceiro === 'inadimplente' ? (
+                                <span className="font-extrabold text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded-md flex items-center gap-1 uppercase tracking-wider border border-rose-200" title="Cliente marcado como Inadimplente">
+                                  <AlertTriangle className="w-3 h-3 text-rose-600" /> Inadimplente
+                                </span>
+                              ) : (client?.temValoresEmAberto || client?.statusFinanceiro === 'pendente') ? (
+                                <span className="font-extrabold text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md flex items-center gap-1 uppercase tracking-wider border border-amber-200" title="Possui valores em aberto no cadastro">
+                                  <Wallet className="w-3 h-3 text-amber-600" /> Valores Em Aberto
+                                </span>
+                              ) : client?.temLancamentos ? (
+                                <span className="font-extrabold text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md flex items-center gap-1 uppercase tracking-wider border border-blue-200" title="Possui lançamentos no sistema">
+                                  <Wallet className="w-3 h-3 text-blue-600" /> Com Lançamentos
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-1 flex items-center gap-3">
+                              {hasPhone ? (
+                                <span className="text-xs text-slate-500 font-medium">{client.telefone}</span>
+                              ) : (
+                                <span className="text-xs text-rose-600 font-bold flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3"/> Sem telefone cadastrado
+                                </span>
+                              )}
+                              <span className="text-[11px] text-slate-400">Reserva: {res.data.split('-').reverse().join('/')} ({res.periodo === 'dia_inteiro' ? 'Dia Inteiro' : res.periodo === 'manha' ? 'Manhã' : 'Tarde'})</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-xs font-bold">
+                          {status === 'sending' && <span className="text-blue-600 flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200"><RefreshCw className="w-3.5 h-3.5 animate-spin"/> Enviando...</span>}
+                          {status === 'success' && <span className="text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200">✅ Enviado</span>}
+                          {status === 'error' && <span className="text-rose-700 bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200">❌ Erro</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Bottom Dispatch Button */}
+            <div className="shrink-0 pt-4 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                disabled={bloqueioSendingStatus === 'sending' || bloqueioSelectedIds.length === 0}
+                onClick={handleSendBloqueio}
+                className="bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white px-6 py-3 rounded-xl font-extrabold text-sm flex items-center gap-2 disabled:opacity-50 transition-colors shadow-md cursor-pointer"
+              >
+                {bloqueioSendingStatus === 'sending' ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
+                {bloqueioSendingStatus === 'sending' ? `Enviando avisos...` : `Disparar para ${bloqueioSelectedIds.length} clientes`}
               </button>
             </div>
           </div>
@@ -1839,6 +2385,101 @@ export default function WhatsAppPage() {
            />
          </div>
       )}
+
+      {/* Hidden processing block for Bloqueio Debit Invoices */}
+      <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none aria-hidden">
+        {bloqueioReservations.map(res => {
+          const client = clientDB.getById(res.clienteId);
+          if (!client) return null;
+
+          const clientUnpaid = transacoes.filter(t => t.clienteId === client.id && t.status !== 'pago' && t.status !== 'cancelado');
+          const totalGeral = clientUnpaid.reduce((acc, t) => {
+            const { total } = calculateTransactionInterest(t);
+            return acc + total;
+          }, 0);
+
+          return (
+            <div 
+              key={`bloqueio-invoice-${client.id}`} 
+              id={`bloqueio-invoice-capture-${client.id}`} 
+              className="bg-white p-10 w-[800px] text-slate-800 font-sans shadow-none rounded-none border-none"
+            >
+              <div className="flex justify-between items-start mb-8 border-b-2 border-slate-900 pb-6">
+                <img src={logoUrl} alt="Logo" className="h-16 object-contain" />
+                <div className="text-right">
+                  <h1 className="text-3xl font-black text-slate-900 tracking-tight">Extrato de Débitos em Aberto</h1>
+                  <p className="text-slate-500 mt-1 font-semibold text-sm">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+                </div>
+              </div>
+              
+              <div className="mb-8 bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                <h2 className="text-2xl font-black text-slate-900">{client.nome}</h2>
+                <p className="text-slate-600 text-sm mt-1 font-medium">Telefone: {client.telefone || 'Não informado'}</p>
+                {client.email && <p className="text-slate-600 text-sm mt-0.5 font-medium">E-mail: {client.email}</p>}
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-700 border border-rose-200 uppercase tracking-wider">
+                  ⚠️ Status de Cobrança: INADIMPLENTE
+                </div>
+              </div>
+
+              {clientUnpaid.length > 0 ? (
+                <table className="w-full text-left mb-8 border-collapse">
+                  <thead className="bg-slate-100 border-y-2 border-slate-800">
+                    <tr>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider">Categoria / Descrição</th>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider">Vencimento</th>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Valor Orig.</th>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Juros/Atraso</th>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 text-sm">
+                    {clientUnpaid.map(t => {
+                      const { interest, total } = calculateTransactionInterest(t);
+                      const catName = t.categoria ? t.categoria.replace('Servi??o', 'Serviço').replace('??', 'ç') : 'Lançamento';
+                      return (
+                        <tr key={t.id}>
+                          <td className="py-3.5 px-4 font-bold text-slate-900">
+                            {catName}
+                            {t.descricao && <p className="text-xs text-slate-500 font-normal mt-0.5">{t.descricao}</p>}
+                          </td>
+                          <td className="py-3.5 px-4 font-semibold text-slate-700">
+                            {t.dataVencimento ? t.dataVencimento.split('-').reverse().join('/') : '-'}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-700 text-right font-mono">
+                            R$ {Number(t.valor).toFixed(2)}
+                          </td>
+                          <td className="py-3.5 px-4 text-rose-600 font-bold text-right font-mono">
+                            {interest > 0 ? `+ R$ ${interest.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="py-3.5 px-4 font-black text-slate-900 text-right font-mono">
+                            R$ {total.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="p-6 bg-slate-50 rounded-xl border text-center text-slate-500 text-sm font-medium mb-8">
+                  Pendência financeira ativa no cadastro. Entre em contato para maiores informações.
+                </div>
+              )}
+
+              <div className="border-t-2 border-slate-900 pt-6 flex justify-between items-center">
+                <div className="text-xs text-slate-400 font-medium">
+                  Mexicano Gestão Náutica • Central de Atendimento
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Total Geral Pendente</p>
+                  <p className="text-4xl font-black text-rose-600 tracking-tight font-mono">
+                    R$ {totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
     </div>
   );

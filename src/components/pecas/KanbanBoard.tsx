@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Clock, Tool, Wrench, AlertTriangle, FileText, CheckCircle, Ship, MapPin } from 'lucide-react';
+import { Plus, Clock, Wrench, AlertTriangle, FileText, CheckCircle, Ship, MapPin } from 'lucide-react';
 import { Manutencao, Embarcacao, Mecanico } from '../../types';
 import { maintenanceDB } from '../../db';
 
