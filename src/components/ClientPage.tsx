@@ -705,7 +705,7 @@ export default function ClientPage() {
               placeholder="Buscar cliente por nome, cota, email ou CPF..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white transition-colors"
+              className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-1 focus:bg-white transition-all duration-200"
             />
           </div>
 
@@ -847,7 +847,7 @@ export default function ClientPage() {
           {hasActiveFilters && (
             <button
               onClick={handleClearFilters}
-              className="inline-flex items-center text-xs font-bold text-rose-600 hover:text-rose-800 transition-colors cursor-pointer"
+              className="inline-flex items-center text-xs font-bold text-rose-600 hover:text-rose-800 transition-all duration-150 hover:scale-105 active:scale-95 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1" />
               Limpar Filtros e Busca
