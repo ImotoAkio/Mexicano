@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
@@ -9,6 +9,7 @@ import MarinaTanksView from './MarinaTanksView';
 import BoatPage from './BoatPage';
 import FinanceSchedulesPage from './FinanceSchedulesPage';
 import SettingsPage from './SettingsPage';
+import ControleFolgasPage from './ControleFolgasPage';
 import { getFuelInventory } from '../utils/fuelInventory';
 import { ZoomableImage } from './ZoomableImage';
 
@@ -85,7 +86,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
 
   // Bottom Navigation Tab & Sidebar state
-  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques' | 'embarcacoes' | 'agendamentos' | 'configuracoes'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques' | 'embarcacoes' | 'agendamentos' | 'folgas' | 'configuracoes'>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
 
@@ -742,6 +743,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               >
                 <CalendarDays className="w-4 h-4 shrink-0" />
                 {isSidebarOpen && <span>Consulta Agendamentos</span>}
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('folgas')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'folgas' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Controle de Folgas"
+              >
+                <Calendar className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Controle de Folgas</span>}
               </button>
             </nav>
           </div>
@@ -1882,6 +1892,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         {activeTab === 'agendamentos' && (
           <div className="max-w-7xl mx-auto">
             <FinanceSchedulesPage />
+          </div>
+        )}
+
+        {activeTab === 'folgas' && (
+          <div className="max-w-7xl mx-auto">
+            <ControleFolgasPage />
           </div>
         )}
 

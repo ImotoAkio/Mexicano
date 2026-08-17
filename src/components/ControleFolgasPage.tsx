@@ -55,7 +55,7 @@ export default function ControleFolgasPage() {
   const [folgaFeriado, setFolgaFeriado] = useState('');
   const [folgaWarning, setFolgaWarning] = useState<string | null>(null);
 
-  const openFolgaModal = (folga?: Folga) => {
+  const openFolgaModal = (folga?: Folga, initialDate?: string) => {
     if (folga) {
       setFolgaId(folga.id);
       setFolgaFuncId(folga.funcionarioId);
@@ -67,7 +67,7 @@ export default function ControleFolgasPage() {
     } else {
       setFolgaId('');
       setFolgaFuncId('');
-      setFolgaData(new Date().toISOString().split('T')[0]);
+      setFolgaData(initialDate || new Date().toISOString().split('T')[0]);
       setFolgaTipo('semana');
       setFolgaStatus('aprovada'); // Default aprovada for admin
       setFolgaObs('');
@@ -232,7 +232,13 @@ export default function ControleFolgasPage() {
             
             <div className="flex-1 overflow-y-auto p-4">
               {viewMode === 'calendar' ? (
-                <CalendarView folgas={folgas} funcionarios={funcionarios} onEditFolga={openFolgaModal} />
+                <CalendarView 
+                  folgas={folgas} 
+                  funcionarios={funcionarios} 
+                  onEditFolga={(f) => openFolgaModal(f)} 
+                  onAddFolgaForDate={(dateStr) => openFolgaModal(undefined, dateStr)}
+                  onDeleteFolga={handleDeleteFolga}
+                />
               ) : folgas.length === 0 ? (
                 <div className="text-center py-10 text-slate-400 text-sm">Nenhuma folga registrada.</div>
               ) : (
@@ -362,8 +368,22 @@ export default function ControleFolgasPage() {
                 <textarea rows={2} value={folgaObs} onChange={e => setFolgaObs(e.target.value)} className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
               </div>
 
-              <div className="flex justify-end pt-4 border-t border-slate-100">
-                <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2">
+              <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                {folgaId ? (
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      handleDeleteFolga(folgaId);
+                      setIsFolgaModalOpen(false);
+                    }} 
+                    className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 text-xs transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" /> Excluir Folga
+                  </button>
+                ) : (
+                  <div />
+                )}
+                <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 text-xs transition-colors cursor-pointer">
                   <Check className="w-4 h-4"/> Salvar Folga
                 </button>
               </div>
@@ -377,7 +397,19 @@ export default function ControleFolgasPage() {
 }
 
 // Subcomponente de Calendário
-function CalendarView({ folgas, funcionarios, onEditFolga }: { folgas: Folga[], funcionarios: Funcionario[], onEditFolga: (f: Folga) => void }) {
+function CalendarView({ 
+  folgas, 
+  funcionarios, 
+  onEditFolga,
+  onAddFolgaForDate,
+  onDeleteFolga
+}: { 
+  folgas: Folga[], 
+  funcionarios: Funcionario[], 
+  onEditFolga: (f: Folga) => void,
+  onAddFolgaForDate: (dateStr: string) => void,
+  onDeleteFolga: (id: string) => void
+}) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const year = currentDate.getFullYear();
@@ -404,9 +436,18 @@ function CalendarView({ folgas, funcionarios, onEditFolga }: { folgas: Folga[], 
     const isToday = dateStr === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     return (
-      <div key={d} className={`p-2 border-r border-b border-slate-100 min-h-[100px] flex flex-col ${isToday ? 'bg-emerald-50/20' : 'bg-white'}`}>
-        <div className={`text-xs font-bold mb-2 w-max ${isToday ? 'bg-emerald-600 text-white px-2 py-0.5 rounded-md' : 'text-slate-500'}`}>
-          {d}
+      <div 
+        key={d} 
+        onClick={() => onAddFolgaForDate(dateStr)}
+        className={`p-2 border-r border-b border-slate-100 min-h-[100px] flex flex-col cursor-pointer transition-colors hover:bg-emerald-50/40 group relative ${isToday ? 'bg-emerald-50/20' : 'bg-white'}`}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className={`text-xs font-bold w-max ${isToday ? 'bg-emerald-600 text-white px-2 py-0.5 rounded-md' : 'text-slate-500 group-hover:text-emerald-700'}`}>
+            {d}
+          </span>
+          <span className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded bg-emerald-100 text-emerald-700" title="Adicionar folga nesta data">
+            <Plus className="w-3.5 h-3.5" />
+          </span>
         </div>
         <div className="flex-1 flex flex-col gap-1 overflow-y-auto max-h-[120px] pr-1">
           {dayFolgas.map(f => {
@@ -414,15 +455,29 @@ function CalendarView({ folgas, funcionarios, onEditFolga }: { folgas: Folga[], 
             return (
               <div 
                 key={f.id} 
-                onClick={() => onEditFolga(f)}
-                className={`text-[10px] px-2 py-1 rounded cursor-pointer truncate border shadow-xs transition-colors ${
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditFolga(f);
+                }}
+                className={`group/badge text-[10px] px-2 py-1 rounded cursor-pointer border shadow-xs transition-colors flex items-center justify-between gap-1 ${
                   f.status === 'aprovada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' :
                   f.status === 'rejeitada' ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' :
                   'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
                 }`}
-                title={`${func?.nome || 'Desconhecido'} - ${f.tipo.replace('_', ' ')}`}
+                title={`${func?.nome || 'Desconhecido'} - ${f.tipo.replace('_', ' ')} (Clique para editar)`}
               >
-                <span className="font-semibold truncate block">{func?.nome || 'Desc.'}</span>
+                <span className="font-semibold truncate block flex-1">{func?.nome || 'Desc.'}</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteFolga(f.id);
+                  }}
+                  className="opacity-0 group-hover/badge:opacity-100 p-0.5 hover:bg-rose-200 text-rose-600 rounded transition-opacity shrink-0"
+                  title="Remover folga"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
               </div>
             );
           })}

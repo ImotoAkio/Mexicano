@@ -345,7 +345,8 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
           temSom,
           imagemUrl: imagemUrl || undefined,
           documentoUrl: documentoUrl || undefined,
-          seguroUrl: seguroUrl || undefined
+          seguroUrl: seguroUrl || undefined,
+          empresas
         });
         showToast('Embarcação atualizada com sucesso!');
       } else {
@@ -414,11 +415,25 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     }
   };
 
-  const filteredBoats = boats.filter(b => 
-    b.nome.toLowerCase().includes(search.toLowerCase()) ||
-    b.numero.includes(search) ||
-    b.modelo.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredBoats = boats.filter(b => {
+    let matchesEmpresa = true;
+    const isAdminOrFinance = adminRole === 'admin' || adminRole === 'financeiro' || !adminRole;
+    if (!isAdminOrFinance && adminRole) {
+      const userEmpresa = (adminRole === 'marina' || adminRole === 'marina_operador' || adminRole === 'marina_gerente') ? 'MARINA' : 
+                        (adminRole === 'comercial' ? 'MEXICANO' : 'VALE');
+      matchesEmpresa = (b.empresas || ['VALE']).includes(userEmpresa);
+    } else if (filterEmpresa !== 'all') {
+      matchesEmpresa = (b.empresas || ['VALE']).includes(filterEmpresa);
+    }
+
+    const matchesSearch = !search || (
+      b.nome.toLowerCase().includes(search.toLowerCase()) ||
+      b.numero.includes(search) ||
+      b.modelo.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return matchesSearch && matchesEmpresa;
+  });
 
   return (
     <div id="boats-list-section" className="space-y-6">
@@ -481,6 +496,23 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
             className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
           />
         </div>
+
+        {/* Filtro de Empresa */}
+        {(adminRole === 'admin' || adminRole === 'financeiro' || !adminRole) && (
+          <div className="w-full sm:w-52">
+            <select
+              id="select-filter-empresa"
+              value={filterEmpresa}
+              onChange={(e) => setFilterEmpresa(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent cursor-pointer"
+            >
+              <option value="all">Todas as Empresas</option>
+              <option value="VALE">Vale Administradora</option>
+              <option value="MARINA">Marina Club</option>
+              <option value="MEXICANO">Mexicano Lanchas</option>
+            </select>
+          </div>
+        )}
 
         <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 shrink-0 self-start sm:self-auto">
           <button
@@ -553,13 +585,22 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                             </div>
                           )}
                           <div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-slate-900 text-xs">{boat.nome}</span>
                               <span className={`px-1.5 py-0.2 text-[8px] font-extrabold uppercase rounded ${
                                 boat.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
                               }`}>
                                 {boat.tipo === 'jet' ? 'Jet' : 'Lancha'}
                               </span>
+                              {(boat.empresas || ['VALE']).map(emp => (
+                                <span key={emp} className={`px-1.5 py-0.2 text-[8px] font-extrabold uppercase rounded border ${
+                                  emp === 'MARINA' ? 'bg-teal-50 text-teal-700 border-teal-200' :
+                                  emp === 'MEXICANO' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                  'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                }`}>
+                                  {emp === 'VALE' ? 'Vale' : emp === 'MARINA' ? 'Marina' : 'Mexicano'}
+                                </span>
+                              ))}
                             </div>
                             <span className="text-[10px] text-slate-400 block font-mono">
                               {boat.fabricante ? `${boat.fabricante} (${boat.ano || 'N/I'})` : `Ano: ${boat.ano || 'N/I'}`}
@@ -680,13 +721,22 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                         </div>
                       )}
                       <div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                           <h4 className="font-semibold text-slate-900 text-lg leading-tight">{boat.nome}</h4>
                           <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${
                             boat.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
                           }`}>
                             {boat.tipo === 'jet' ? 'Jet' : 'Lancha'}
                           </span>
+                          {(boat.empresas || ['VALE']).map(emp => (
+                            <span key={emp} className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-md border ${
+                              emp === 'MARINA' ? 'bg-teal-50 text-teal-700 border-teal-200' :
+                              emp === 'MEXICANO' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            }`}>
+                              {emp === 'VALE' ? 'Vale' : emp === 'MARINA' ? 'Marina' : 'Mexicano'}
+                            </span>
+                          ))}
                           {boat.emManutencao && (
                             <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-rose-100 text-rose-800 flex items-center shadow-xs">
                               <Wrench className="w-3 h-3 mr-1" />
@@ -910,12 +960,48 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                     </div>
                   ) : (
                     <div className="flex flex-col items-center py-2 text-slate-500 group-hover:text-indigo-500 transition-colors">
-                      <Upload className="w-5 h-5 mb-2" />
+                  <Upload className="w-5 h-5 mb-2" />
                       <span className="text-[11px] font-semibold uppercase tracking-wider">Apólice de Seguro</span>
                     </div>
                   )}
                 </div>
               </div>
+
+              {/* Vínculo com Empresa(s) */}
+              {(adminRole === 'admin' || adminRole === 'financeiro' || !adminRole) && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Empresas Vinculadas</label>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { id: 'VALE', label: 'Vale Administradora', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
+                      { id: 'MARINA', label: 'Marina Club', color: 'text-teal-700 bg-teal-50 border-teal-200' },
+                      { id: 'MEXICANO', label: 'Mexicano Lanchas', color: 'text-amber-700 bg-amber-50 border-amber-200' },
+                    ].map(item => (
+                      <label key={item.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
+                        empresas.includes(item.id) ? item.color : 'bg-white text-slate-500 border-slate-200 opacity-60'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={empresas.includes(item.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEmpresas([...empresas, item.id]);
+                            } else {
+                              if (empresas.length > 1) {
+                                setEmpresas(empresas.filter(x => x !== item.id));
+                              } else {
+                                showToast('Selecione pelo menos uma empresa.', 'error');
+                              }
+                            }
+                          }}
+                          className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900"
+                        />
+                        <span>{item.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
