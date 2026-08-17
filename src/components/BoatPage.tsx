@@ -825,7 +825,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                         </div>
                       ))
                     ) : (
-                      <span className="text-xs text-rose-500 italic bg-rose-50 px-2 py-1 rounded border border-rose-100">
+<span className="text-xs text-rose-500 italic bg-rose-50 px-2 py-1 rounded border border-rose-100">
                         Nenhum proprietário associado!
                       </span>
                     )}
@@ -839,486 +839,465 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
 
       {/* Modal: Cadastro / Edição de Embarcação */}
       {isModalOpen && (
-        <div id="boat-modal" className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+        <div id="boat-modal" className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[95vh] lg:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
             
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <div className="flex items-center space-x-2">
-                <Anchor className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-semibold text-slate-900">
-                  {editingId ? 'Editar Embarcação' : 'Nova Embarcação'}
-                </h3>
+            {/* Header */}
+            <div className="px-6 py-3.5 border-b border-slate-100 flex justify-between items-center bg-slate-50/80 shrink-0">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                  <Anchor className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base leading-tight">
+                    {editingId ? 'Editar Embarcação' : 'Nova Embarcação'}
+                  </h3>
+                  <p className="text-xs text-slate-500">Preencha as informações do veículo náutico (navegação fluida por TAB)</p>
+                </div>
               </div>
               <button 
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                className="p-1.5 hover:bg-slate-200/70 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                title="Fechar"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-4">
+            {/* Form Container */}
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 sm:p-6 flex flex-col justify-between space-y-6">
               
-              {/* Image Upload Area */}
-              <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
-                <input 
-                  type="file" 
-                  accept="image/png, image/jpeg, image/jpg, image/webp" 
-                  onChange={handleImageUpload}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  title="Clique para enviar uma foto"
-                />
-                {isUploadingImage ? (
-                  <div className="flex flex-col items-center py-4">
-                    <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin mb-2" />
-                    <span className="text-xs font-semibold text-slate-600">Enviando foto...</span>
+              {/* 3-Column Grid for Widescreen */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* Coluna 1: Dados de Identificação & Ficha Técnica (5 cols) */}
+                <div className="lg:col-span-5 space-y-4">
+                  <div className="flex items-center space-x-2 pb-1 border-b border-slate-100">
+                    <Ship className="w-4 h-4 text-indigo-600" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">1. Identificação Principal</h4>
                   </div>
-                ) : imagemUrl ? (
-                  <div className="flex flex-col items-center space-y-3">
-                    <div className="w-24 h-24 rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-                      <img src={imagemUrl} alt="Preview" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="flex items-center text-xs font-semibold text-indigo-600 group-hover:text-indigo-700">
-                      <Edit2 className="w-3 h-3 mr-1" /> Trocar foto
-                    </div>
+
+                  {/* Nome da Embarcação (Destaque Principal) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">Nome da Embarcação *</label>
+                    <input
+                      id="input-boat-name"
+                      type="text"
+                      required
+                      tabIndex={1}
+                      placeholder="Ex: Poseidon"
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white focus:border-transparent font-medium"
+                      autoFocus
+                    />
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center py-4 text-slate-500 group-hover:text-indigo-500 transition-colors">
-                    <div className="w-12 h-12 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center mb-3">
-                      <ImageIcon className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-semibold">Adicionar Foto da Embarcação</span>
-                    <span className="text-[10px] mt-1 text-slate-400 font-medium">JPG, PNG ou WEBP (Max 5MB)</span>
-                  </div>
-                )}
-              </div>
 
-              {/* Documentos Upload Area */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
-                  <input 
-                    type="file" 
-                    accept="application/pdf, image/png, image/jpeg" 
-                    onChange={(e) => handleDocumentUpload(e, 'documento')}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    title="Anexar Documento da Embarcação"
-                  />
-                  {isUploadingDocumento ? (
-                    <div className="flex flex-col items-center py-2">
-                      <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin mb-1" />
-                      <span className="text-[10px] font-semibold text-slate-600">Enviando...</span>
-                    </div>
-                  ) : documentoUrl ? (
-                    <div className="flex flex-col items-center space-y-2">
-                      <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-                        <Check className="w-5 h-5" />
-                      </div>
-                      <span className="text-xs font-semibold text-emerald-700">Documento Anexado</span>
-                      <div className="flex gap-3 mt-1">
-                        <a href={documentoUrl} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600 hover:underline z-20 relative">Ver Arquivo</a>
-                        <button type="button" onClick={() => setDocumentoUrl('')} className="text-[10px] font-semibold text-rose-600 hover:underline z-20 relative">Remover</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center py-2 text-slate-500 group-hover:text-indigo-500 transition-colors">
-                      <Upload className="w-5 h-5 mb-2" />
-                      <span className="text-[11px] font-semibold uppercase tracking-wider">Documento do Barco</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
-                  <input 
-                    type="file" 
-                    accept="application/pdf, image/png, image/jpeg" 
-                    onChange={(e) => handleDocumentUpload(e, 'seguro')}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    title="Anexar Apólice de Seguro"
-                  />
-                  {isUploadingSeguro ? (
-                    <div className="flex flex-col items-center py-2">
-                      <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin mb-1" />
-                      <span className="text-[10px] font-semibold text-slate-600">Enviando...</span>
-                    </div>
-                  ) : seguroUrl ? (
-                    <div className="flex flex-col items-center space-y-2">
-                      <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-                        <Check className="w-5 h-5" />
-                      </div>
-                      <span className="text-xs font-semibold text-emerald-700">Seguro Anexado</span>
-                      <div className="flex gap-3 mt-1">
-                        <a href={seguroUrl} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600 hover:underline z-20 relative">Ver Arquivo</a>
-                        <button type="button" onClick={() => setSeguroUrl('')} className="text-[10px] font-semibold text-rose-600 hover:underline z-20 relative">Remover</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center py-2 text-slate-500 group-hover:text-indigo-500 transition-colors">
-                  <Upload className="w-5 h-5 mb-2" />
-                      <span className="text-[11px] font-semibold uppercase tracking-wider">Apólice de Seguro</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Vínculo com Empresa(s) */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Empresas Vinculadas</label>
-                <div className="flex flex-wrap gap-3">
-                  {[
-                    { id: 'VALE', label: 'Vale Administradora', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
-                    { id: 'MARINA', label: 'Marina Club', color: 'text-teal-700 bg-teal-50 border-teal-200' },
-                    { id: 'MEXICANO', label: 'Mexicano Lanchas', color: 'text-amber-700 bg-amber-50 border-amber-200' },
-                  ].map(item => (
-                    <label key={item.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
-                      empresas.includes(item.id) ? item.color : 'bg-white text-slate-500 border-slate-200 opacity-60'
-                    }`}>
+                  {/* Numeração e Tipo */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Código / N° *</label>
                       <input
-                        type="checkbox"
-                        checked={empresas.includes(item.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setEmpresas([...empresas, item.id]);
-                          } else {
-                            if (empresas.length > 1) {
-                              setEmpresas(empresas.filter(x => x !== item.id));
-                            } else {
-                              showToast('Selecione pelo menos uma empresa.', 'error');
-                            }
-                          }
-                        }}
-                        className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900"
+                        id="input-boat-number"
+                        type="text"
+                        required
+                        tabIndex={2}
+                        placeholder="Ex: 03 ou 12"
+                        value={numero}
+                        onChange={(e) => setNumero(e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white"
                       />
-                      <span>{item.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">Google Cal: M{numero || '00'}</span>
+                    </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Tipo de Veículo *</label>
-                  <select
-                    id="select-boat-type"
-                    value={tipo}
-                    onChange={(e) => setTipo(e.target.value as 'jet' | 'lancha')}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                  >
-                    <option value="lancha">Lancha</option>
-                    <option value="jet">Jet Ski</option>
-                  </select>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Tipo de Veículo *</label>
+                      <select
+                        id="select-boat-type"
+                        tabIndex={3}
+                        value={tipo}
+                        onChange={(e) => setTipo(e.target.value as 'jet' | 'lancha')}
+                        className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white cursor-pointer"
+                      >
+                        <option value="lancha">Lancha</option>
+                        <option value="jet">Jet Ski</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Fabricante, Modelo, Ano */}
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Fabricante</label>
+                      <input
+                        id="input-boat-builder"
+                        type="text"
+                        tabIndex={4}
+                        placeholder="Ex: Yamaha"
+                        value={fabricante}
+                        onChange={(e) => setFabricante(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Modelo</label>
+                      <input
+                        id="input-boat-model"
+                        type="text"
+                        tabIndex={5}
+                        placeholder="Ex: Focker 255"
+                        value={modelo}
+                        onChange={(e) => setModelo(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Ano</label>
+                      <input
+                        id="input-boat-year"
+                        type="number"
+                        tabIndex={6}
+                        placeholder="Ex: 2023"
+                        value={ano || ''}
+                        onChange={(e) => setAno(Number(e.target.value))}
+                        className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Especificações Técnicas para Contrato */}
+                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2.5">
+                    <span className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">Especificações Técnicas (Contratos)</span>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">N° do Chassi</label>
+                        <input
+                          id="input-boat-chassi"
+                          type="text"
+                          tabIndex={7}
+                          placeholder="Ex: BR-MEX12345"
+                          value={chassi}
+                          onChange={(e) => setChassi(e.target.value)}
+                          className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">N° Inscrição Marinha</label>
+                        <input
+                          id="input-boat-inscricao"
+                          type="text"
+                          tabIndex={8}
+                          placeholder="Ex: 401-123456-7"
+                          value={inscricao}
+                          onChange={(e) => setInscricao(e.target.value)}
+                          className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Propulsão</label>
+                        <input
+                          id="input-boat-propulsao"
+                          type="text"
+                          tabIndex={9}
+                          placeholder="Ex: MOTOR"
+                          value={tipoPropulsao}
+                          onChange={(e) => setTipoPropulsao(e.target.value)}
+                          className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Potência (HP/CV)</label>
+                        <input
+                          id="input-boat-potencia"
+                          type="text"
+                          tabIndex={10}
+                          placeholder="Ex: 250 HP"
+                          value={potencia}
+                          onChange={(e) => setPotencia(e.target.value)}
+                          className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Cód. Identificação / Numeração *</label>
-                  <input
-                    id="input-boat-number"
-                    type="text"
-                    required
-                    placeholder="Ex: 03 ou 12"
-                    value={numero}
-                    onChange={(e) => setNumero(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                    title="Utilizado para montar o título M00 no Google Calendar"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Gera prefixo Google Calendar: M{numero || '00'}</p>
-                </div>
-              </div>
+                {/* Coluna 2: Coproprietários, Integrações & Status (4 cols) */}
+                <div className="lg:col-span-4 space-y-4">
+                  <div className="flex items-center space-x-2 pb-1 border-b border-slate-100">
+                    <User className="w-4 h-4 text-indigo-600" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">2. Coproprietários & Sistema</h4>
+                  </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Nome da Embarcação *</label>
-                <input
-                  id="input-boat-name"
-                  type="text"
-                  required
-                  placeholder="Ex: Poseidon"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                  autoFocus
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-1">
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Fabricante</label>
-                  <input
-                    id="input-boat-builder"
-                    type="text"
-                    placeholder="Ex: Yamaha"
-                    value={fabricante}
-                    onChange={(e) => setFabricante(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                  />
-                </div>
-                <div className="sm:col-span-1">
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Modelo</label>
-                  <input
-                    id="input-boat-model"
-                    type="text"
-                    placeholder="Ex: Focker 255"
-                    value={modelo}
-                    onChange={(e) => setModelo(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                  />
-                </div>
-                <div className="sm:col-span-1">
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Ano</label>
-                  <input
-                    id="input-boat-year"
-                    type="number"
-                    placeholder="Ex: 2023"
-                    value={ano}
-                    onChange={(e) => setAno(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Dados Técnicos para Contratos */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Especificações Técnicas (Contratos)</span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Proprietários Multi-select */}
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">N° do Chassi</label>
-                    <input
-                      id="input-boat-chassi"
-                      type="text"
-                      placeholder="Ex: BR-MEX12345678"
-                      value={chassi}
-                      onChange={(e) => setChassi(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">N° de Inscrição (Marinha)</label>
-                    <input
-                      id="input-boat-inscricao"
-                      type="text"
-                      placeholder="Ex: 401-123456-7"
-                      value={inscricao}
-                      onChange={(e) => setInscricao(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Tipo de Propulsão</label>
-                    <input
-                      id="input-boat-propulsao"
-                      type="text"
-                      placeholder="Ex: MOTOR"
-                      value={tipoPropulsao}
-                      onChange={(e) => setTipoPropulsao(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">Potência (HP / CV)</label>
-                    <input
-                      id="input-boat-potencia"
-                      type="text"
-                      placeholder="Ex: 250 HP"
-                      value={potencia}
-                      onChange={(e) => setPotencia(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Google Calendar ID Field */}
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">ID da Agenda Google (Opcional)</label>
-                <input
-                  id="input-boat-calendar-id"
-                  type="text"
-                  placeholder="Ex: abcdefg...@group.calendar.google.com"
-                  value={googleCalendarId}
-                  onChange={(e) => setGoogleCalendarId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Insira o ID se quiser associar este barco a uma agenda específica do Google Calendar.</p>
-              </div>
-
-              {/* WhatsApp Group ID Field */}
-              {showWhatsAppMapping && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-medium text-slate-700">ID do Grupo do WhatsApp - Evolution API (Opcional)</label>
-                    <button 
-                      type="button" 
-                      onClick={handleFetchGroups}
-                      disabled={isFetchingGroups}
-                      className="text-[10px] text-teal-600 font-semibold hover:text-teal-700 flex items-center cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingGroups ? 'animate-spin' : ''}`} />
-                      {isFetchingGroups ? 'Buscando...' : 'Buscar Grupos'}
-                    </button>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Coproprietários (Clientes) *</label>
+                    {clients.length === 0 ? (
+                      <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">
+                        Nenhum cliente cadastrado no sistema.
+                      </p>
+                    ) : (
+                      <Select
+                        tabIndex={11}
+                        isMulti
+                        options={clients.map(c => ({ value: c.id, label: c.nome }))}
+                        value={clients.filter(c => selectedDonos.includes(c.id)).map(c => ({ value: c.id, label: c.nome }))}
+                        onChange={(selected: any) => {
+                          setSelectedDonos(selected ? selected.map((s: any) => s.value) : []);
+                        }}
+                        placeholder="Buscar e adicionar cotistas..."
+                        className="react-select-container text-xs"
+                        classNamePrefix="react-select"
+                        noOptionsMessage={() => "Nenhum cliente encontrado"}
+                        styles={{
+                          control: (base, state) => ({
+                            ...base,
+                            backgroundColor: '#f8fafc',
+                            borderColor: state.isFocused ? '#6366f1' : '#e2e8f0',
+                            borderRadius: '0.75rem',
+                            minHeight: '38px',
+                          }),
+                          valueContainer: (base) => ({
+                            ...base,
+                            maxHeight: '80px',
+                            overflowY: 'auto'
+                          })
+                        }}
+                      />
+                    )}
                   </div>
 
-                  {availableGroups.length > 0 ? (
-                    <select
-                      id="input-boat-whatsapp-id-select"
-                      value={whatsappGroupId}
-                      onChange={(e) => setWhatsappGroupId(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white focus:border-transparent font-mono"
-                    >
-                      <option value="">-- Selecione o Grupo do Barco --</option>
-                      {availableGroups.map((g: any) => (
-                        <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
-                      ))}
-                    </select>
-                  ) : (
+                  {/* Agenda Google ID */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">ID Agenda Google Calendar (Opcional)</label>
                     <input
-                      id="input-boat-whatsapp-id"
+                      id="input-boat-calendar-id"
                       type="text"
-                      placeholder="Ex: 120363123456789012@g.us"
-                      value={whatsappGroupId}
-                      onChange={(e) => setWhatsappGroupId(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white focus:border-transparent font-mono"
+                      tabIndex={12}
+                      placeholder="Ex: xxx@group.calendar.google.com"
+                      value={googleCalendarId}
+                      onChange={(e) => setGoogleCalendarId(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white font-mono"
                     />
+                  </div>
+
+                  {/* WhatsApp Group ID */}
+                  {showWhatsAppMapping && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-semibold text-slate-700">Grupo WhatsApp (Evolution API)</label>
+                        <button 
+                          type="button" 
+                          onClick={handleFetchGroups}
+                          disabled={isFetchingGroups}
+                          className="text-[10px] text-teal-600 font-semibold hover:text-teal-700 flex items-center cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingGroups ? 'animate-spin' : ''}`} />
+                          {isFetchingGroups ? 'Buscando...' : 'Buscar Grupos'}
+                        </button>
+                      </div>
+
+                      {availableGroups.length > 0 ? (
+                        <select
+                          id="input-boat-whatsapp-id-select"
+                          tabIndex={13}
+                          value={whatsappGroupId}
+                          onChange={(e) => setWhatsappGroupId(e.target.value)}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
+                        >
+                          <option value="">-- Selecione o Grupo do Barco --</option>
+                          {availableGroups.map((g: any) => (
+                            <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          id="input-boat-whatsapp-id"
+                          type="text"
+                          tabIndex={13}
+                          placeholder="Ex: 120363123456789012@g.us"
+                          value={whatsappGroupId}
+                          onChange={(e) => setWhatsappGroupId(e.target.value)}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
+                        />
+                      )}
+                    </div>
                   )}
-                  <p className="text-[10px] text-slate-400">Insira o JID do grupo manualmente ou busque da Evolution API para receber calendários automáticos.</p>
-                </div>
-              )}
 
-              {/* Maintenance Toggle */}
-              <div className="border border-rose-100 bg-rose-50/50 p-3 rounded-lg flex items-start space-x-3 mt-2">
-                <div className="flex items-center h-5">
-                  <input
-                    id="boat-maintenance-checkbox"
-                    type="checkbox"
-                    checked={emManutencao}
-                    onChange={(e) => setEmManutencao(e.target.checked)}
-                    className="w-4 h-4 text-rose-600 bg-white border-rose-300 rounded focus:ring-rose-500 focus:ring-2"
-                  />
+                  {/* Toggles: Manutenção & Som */}
+                  <div className="space-y-2 pt-1">
+                    <div className="border border-rose-200/80 bg-rose-50/40 p-2.5 rounded-xl flex items-center space-x-2.5">
+                      <input
+                        id="boat-maintenance-checkbox"
+                        type="checkbox"
+                        tabIndex={14}
+                        checked={emManutencao}
+                        onChange={(e) => setEmManutencao(e.target.checked)}
+                        className="w-4 h-4 text-rose-600 bg-white border-rose-300 rounded focus:ring-rose-500 cursor-pointer"
+                      />
+                      <label htmlFor="boat-maintenance-checkbox" className="text-xs font-semibold text-rose-900 cursor-pointer select-none">
+                        Embarcação em Manutenção
+                      </label>
+                    </div>
+
+                    <div className="border border-indigo-200/80 bg-indigo-50/40 p-2.5 rounded-xl flex items-center space-x-2.5">
+                      <input
+                        id="boat-sound-checkbox"
+                        type="checkbox"
+                        tabIndex={15}
+                        checked={temSom}
+                        onChange={(e) => setTemSom(e.target.checked)}
+                        className="w-4 h-4 text-indigo-600 bg-white border-indigo-300 rounded focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <label htmlFor="boat-sound-checkbox" className="text-xs font-semibold text-indigo-900 cursor-pointer select-none">
+                        Possui Sistema de Som Obrigatório
+                      </label>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-1 text-sm">
-                  <label htmlFor="boat-maintenance-checkbox" className="font-semibold text-rose-900 cursor-pointer">
-                    Embarcação em Manutenção
-                  </label>
-                  <p className="text-xs text-rose-700/80 mt-0.5">
-                    Marca a embarcação com uma tag de manutenção no sistema para fácil visualização.
-                  </p>
+
+                {/* Coluna 3: Mídia & Vínculo de Empresa (3 cols) */}
+                <div className="lg:col-span-3 space-y-4">
+                  <div className="flex items-center space-x-2 pb-1 border-b border-slate-100">
+                    <ImageIcon className="w-4 h-4 text-indigo-600" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">3. Fotos & Vínculos</h4>
+                  </div>
+
+                  {/* Vínculo com Empresa(s) */}
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2">
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">Empresas Vinculadas</label>
+                    <div className="flex flex-col gap-2">
+                      {[
+                        { id: 'VALE', label: 'Vale Administradora', color: 'text-indigo-700 bg-indigo-50 border-indigo-200', tabIdx: 16 },
+                        { id: 'MARINA', label: 'Marina Club', color: 'text-teal-700 bg-teal-50 border-teal-200', tabIdx: 17 },
+                        { id: 'MEXICANO', label: 'Mexicano Lanchas', color: 'text-amber-700 bg-amber-50 border-amber-200', tabIdx: 18 },
+                      ].map(item => (
+                        <label key={item.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
+                          empresas.includes(item.id) ? item.color : 'bg-white text-slate-500 border-slate-200 opacity-70'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            tabIndex={item.tabIdx}
+                            checked={empresas.includes(item.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEmpresas([...empresas, item.id]);
+                              } else {
+                                if (empresas.length > 1) {
+                                  setEmpresas(empresas.filter(x => x !== item.id));
+                                } else {
+                                  showToast('Selecione pelo menos uma empresa.', 'error');
+                                }
+                              }
+                            }}
+                            className="w-3.5 h-3.5 rounded text-slate-900 focus:ring-slate-900 cursor-pointer"
+                          />
+                          <span>{item.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Foto da Embarcação */}
+                  <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
+                    <input 
+                      type="file" 
+                      accept="image/png, image/jpeg, image/jpg, image/webp" 
+                      onChange={handleImageUpload}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      title="Clique para enviar uma foto"
+                    />
+                    {isUploadingImage ? (
+                      <div className="flex flex-col items-center py-2">
+                        <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin mb-1" />
+                        <span className="text-[10px] font-semibold text-slate-600">Enviando foto...</span>
+                      </div>
+                    ) : imagemUrl ? (
+                      <div className="flex flex-col items-center space-y-1.5">
+                        <div className="w-20 h-16 rounded-lg overflow-hidden shadow-xs border border-slate-200">
+                          <img src={imagemUrl} alt="Preview" className="w-full h-full object-cover" />
+                        </div>
+                        <span className="text-[10px] font-semibold text-indigo-600 flex items-center"><Edit2 className="w-3 h-3 mr-1" /> Trocar foto</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center py-2 text-slate-500 group-hover:text-indigo-500 transition-colors">
+                        <ImageIcon className="w-5 h-5 mb-1 text-slate-400" />
+                        <span className="text-xs font-semibold">Foto da Embarcação</span>
+                        <span className="text-[9px] text-slate-400">PNG/JPG (Max 5MB)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Anexos de Documento & Seguro */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col items-center justify-center p-2 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
+                      <input 
+                        type="file" 
+                        accept="application/pdf, image/png, image/jpeg" 
+                        onChange={(e) => handleDocumentUpload(e, 'documento')}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        title="Anexar Documento"
+                      />
+                      {documentoUrl ? (
+                        <div className="flex flex-col items-center">
+                          <Check className="w-4 h-4 text-emerald-600 mb-0.5" />
+                          <span className="text-[9px] font-bold text-emerald-700">Doc Anexado</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center text-slate-500">
+                          <Upload className="w-4 h-4 mb-0.5" />
+                          <span className="text-[9px] font-bold uppercase">Documento</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col items-center justify-center p-2 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
+                      <input 
+                        type="file" 
+                        accept="application/pdf, image/png, image/jpeg" 
+                        onChange={(e) => handleDocumentUpload(e, 'seguro')}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        title="Anexar Seguro"
+                      />
+                      {seguroUrl ? (
+                        <div className="flex flex-col items-center">
+                          <Check className="w-4 h-4 text-emerald-600 mb-0.5" />
+                          <span className="text-[9px] font-bold text-emerald-700">Seguro Anexado</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center text-slate-500">
+                          <Upload className="w-4 h-4 mb-0.5" />
+                          <span className="text-[9px] font-bold uppercase">Apólice Seguro</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
+
               </div>
 
-              {/* Sound System Toggle */}
-              <div className="border border-indigo-100 bg-indigo-50/50 p-3 rounded-lg flex items-start space-x-3 mt-2">
-                <div className="flex items-center h-5">
-                  <input
-                    id="boat-sound-checkbox"
-                    type="checkbox"
-                    checked={temSom}
-                    onChange={(e) => setTemSom(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 bg-white border-indigo-300 rounded focus:ring-indigo-500 focus:ring-2"
-                  />
-                </div>
-                <div className="flex-1 text-sm">
-                  <label htmlFor="boat-sound-checkbox" className="font-semibold text-indigo-900 cursor-pointer">
-                    Possui Sistema de Som Obrigatório
-                  </label>
-                  <p className="text-xs text-indigo-700/80 mt-0.5">
-                    Habilita a checagem obrigatória do checklist de som durante a confirmação de saída.
-                  </p>
-                </div>
-              </div>
-
-              {/* Owner Multi-select */}
-              <div className="border-t border-slate-100 pt-3">
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-slate-700 uppercase">
-                    Selecione os Proprietários
-                  </label>
-                </div>
-                {clients.length === 0 ? (
-                  <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100 mb-2">
-                    Atenção: É necessário registrar pelo menos um cliente para associá-lo como proprietário.
-                  </p>
-                ) : (
-                  <Select
-                    isMulti
-                    options={clients.map(c => ({ value: c.id, label: c.nome }))}
-                    value={clients.filter(c => selectedDonos.includes(c.id)).map(c => ({ value: c.id, label: c.nome }))}
-                    onChange={(selected: any) => {
-                      setSelectedDonos(selected ? selected.map((s: any) => s.value) : []);
-                    }}
-                    placeholder="Busque e selecione proprietários..."
-                    className="react-select-container text-sm"
-                    classNamePrefix="react-select"
-                    noOptionsMessage={() => "Nenhum cliente encontrado"}
-                    styles={{
-                      control: (base, state) => ({
-                        ...base,
-                        backgroundColor: '#f8fafc',
-                        borderColor: state.isFocused ? '#6366f1' : '#e2e8f0',
-                        boxShadow: state.isFocused ? '0 0 0 1px #6366f1' : 'none',
-                        '&:hover': {
-                          borderColor: state.isFocused ? '#6366f1' : '#cbd5e1',
-                        },
-                        borderRadius: '0.5rem',
-                        padding: '0.125rem',
-                      }),
-                      menu: (base) => ({
-                        ...base,
-                        borderRadius: '0.5rem',
-                        overflow: 'hidden',
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                      }),
-                      option: (base, state) => ({
-                        ...base,
-                        backgroundColor: state.isSelected ? '#e0e7ff' : state.isFocused ? '#f1f5f9' : 'white',
-                        color: state.isSelected ? '#3730a3' : '#334155',
-                        cursor: 'pointer',
-                        '&:active': {
-                          backgroundColor: '#e0e7ff',
-                        },
-                      }),
-                      multiValue: (base) => ({
-                        ...base,
-                        backgroundColor: '#e0e7ff',
-                        borderRadius: '0.375rem',
-                      }),
-                      multiValueLabel: (base) => ({
-                        ...base,
-                        color: '#3730a3',
-                        fontWeight: '500',
-                      }),
-                      multiValueRemove: (base) => ({
-                        ...base,
-                        color: '#3730a3',
-                        ':hover': {
-                          backgroundColor: '#c7d2fe',
-                          color: '#312e81',
-                        },
-                      }),
-                      valueContainer: (base) => ({
-                        ...base,
-                        maxHeight: '120px',
-                        overflowY: 'auto'
-                      })
-                    }}
-                  />
-                )}
-              </div>
-
-              <div className="flex space-x-3 pt-4 border-t border-slate-100">
+              {/* Action Buttons (Footer) */}
+              <div className="flex space-x-3 pt-3 border-t border-slate-100 shrink-0">
                 <button
                   id="cancel-save-boat"
                   type="button"
+                  tabIndex={19}
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                  className="flex-1 sm:flex-initial sm:w-36 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer text-center"
                 >
                   Cancelar
                 </button>
                 <button
                   id="submit-save-boat"
                   type="submit"
-                  className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                  tabIndex={20}
+                  className="flex-1 sm:flex-initial sm:w-48 inline-flex items-center justify-center px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer"
                 >
-                  <Check className="w-4 h-4 mr-2" />
-                  Salvar
+                  <Check className="w-4 h-4 mr-1.5" />
+                  Salvar Embarcação
                 </button>
               </div>
+
             </form>
           </div>
         </div>
