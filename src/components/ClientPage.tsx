@@ -780,60 +780,72 @@ export default function ClientPage() {
             {/* Filter by Boat */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Embarcação Vinculada</label>
-              <select
-                value={filterBoat}
-                onChange={(e) => setFilterBoat(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-medium cursor-pointer"
-              >
-                <option value="all">Todas as embarcações</option>
-                {[...boats].sort((a, b) => a.nome.localeCompare(b.nome)).map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.nome} ({b.tipo === 'jet' ? 'Jet' : 'Lancha'})
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={filterBoat}
+                  onChange={(e) => setFilterBoat(e.target.value)}
+                  className="w-full px-3 py-1.5 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-md hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-semibold cursor-pointer appearance-none shadow-xs transition-all"
+                >
+                  <option value="all">Todas as embarcações</option>
+                  {[...boats].sort((a, b) => a.nome.localeCompare(b.nome)).map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.nome} ({b.tipo === 'jet' ? 'Jet' : 'Lancha'})
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-slate-400 pointer-events-none" />
+              </div>
             </div>
 
             {/* Filter by Boat Type */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Tipo de Embarcação</label>
-              <select
-                value={filterBoatType}
-                onChange={(e) => setFilterBoatType(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-medium cursor-pointer"
-              >
-                <option value="all">Todos os tipos</option>
-                <option value="lancha">Lancha</option>
-                <option value="jet">Jet</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={filterBoatType}
+                  onChange={(e) => setFilterBoatType(e.target.value)}
+                  className="w-full px-3 py-1.5 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-md hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-semibold cursor-pointer appearance-none shadow-xs transition-all"
+                >
+                  <option value="all">Todos os tipos</option>
+                  <option value="lancha">Lancha</option>
+                  <option value="jet">Jet</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-slate-400 pointer-events-none" />
+              </div>
             </div>
 
             {/* Filter by Financial Status */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Status Financeiro</label>
-              <select
-                value={filterFinance}
-                onChange={(e) => setFilterFinance(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-medium cursor-pointer"
-              >
-                <option value="all">Todos os status</option>
-                <option value="em_dia">Em Dia</option>
-                <option value="inadimplente">Inadimplente</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={filterFinance}
+                  onChange={(e) => setFilterFinance(e.target.value)}
+                  className="w-full px-3 py-1.5 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-md hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-semibold cursor-pointer appearance-none shadow-xs transition-all"
+                >
+                  <option value="all">Todos os status</option>
+                  <option value="em_dia">Em Dia</option>
+                  <option value="inadimplente">Inadimplente</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-slate-400 pointer-events-none" />
+              </div>
             </div>
 
             {/* Filter by Plan */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Plano</label>
-              <select
-                value={filterPlano}
-                onChange={(e) => setFilterPlano(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-medium cursor-pointer"
-              >
-                <option value="all">Todos os Planos</option>
-                <option value="normal">Normal</option>
-                <option value="completo">Completo</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={filterPlano}
+                  onChange={(e) => setFilterPlano(e.target.value)}
+                  className="w-full px-3 py-1.5 pr-8 text-xs bg-slate-50 border border-slate-200 rounded-md hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-semibold cursor-pointer appearance-none shadow-xs transition-all"
+                >
+                  <option value="all">Todos os Planos</option>
+                  <option value="normal">Normal</option>
+                  <option value="completo">Completo</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-slate-400 pointer-events-none" />
+              </div>
             </div>
           </div>
         )}
