@@ -961,23 +961,21 @@ export default function ClientPage() {
 
                       {/* Embarcações & Cotas */}
                       <td className="py-3 px-4">
-                        <div className="flex flex-wrap gap-1.5 max-w-[280px]">
+                        <div className="flex flex-col gap-1 max-w-[280px]">
                           {list.map((item, idx) => {
                             const b = boats.find(boat => boat.id === item.embarcacaoId);
                             return (
-                              <div key={idx} className="inline-flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[11px]">
-                                <span className="font-bold text-slate-800 font-mono">
+                              <div key={idx} className="flex items-center gap-1.5 text-xs">
+                                <span className="font-semibold text-slate-850">
                                   {b ? b.nome : 'Sem Barco'}
                                 </span>
                                 {b && (
-                                  <span className={`px-1.5 py-0.2 text-[8px] font-extrabold uppercase rounded ${
-                                    b.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
-                                  }`}>
-                                    {b.tipo === 'jet' ? 'Jet' : 'Lancha'}
+                                  <span className="text-[10px] text-slate-400 font-medium">
+                                    ({b.tipo === 'jet' ? 'Jet' : 'Lancha'})
                                   </span>
                                 )}
-                                <span className="font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded text-[10px] border border-indigo-100">
-                                  Cota: {item.cota || 'N/A'}
+                                <span className="text-[10px] text-slate-600 font-mono bg-slate-100 px-1.5 py-0.5 rounded font-medium ml-auto">
+                                  Cota {item.cota || 'N/A'}
                                 </span>
                               </div>
                             );
@@ -987,20 +985,17 @@ export default function ClientPage() {
 
                       {/* Status Financeiro */}
                       <td className="py-3 px-4 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
-                          client.statusFinanceiro === 'inadimplente'
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        }`}>
-                          {client.statusFinanceiro === 'inadimplente' ? 'Inadimplente' : 'Em Dia'}
-                        </span>
+                        <div className="inline-flex items-center justify-center gap-1.5 text-xs">
+                          <span className={`w-2 h-2 rounded-full ${client.statusFinanceiro === 'inadimplente' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                          <span className={client.statusFinanceiro === 'inadimplente' ? 'text-rose-700 font-semibold' : 'text-slate-700 font-medium'}>
+                            {client.statusFinanceiro === 'inadimplente' ? 'Inadimplente' : 'Em Dia'}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Plano */}
                       <td className="py-3 px-4 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
-                          client.plano === 'completo' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}>
+                        <span className={`text-xs font-semibold ${client.plano === 'completo' ? 'text-indigo-900 font-bold' : 'text-slate-600'}`}>
                           {client.plano === 'completo' ? 'Completo' : 'Normal'}
                         </span>
                       </td>
@@ -1133,9 +1128,7 @@ export default function ClientPage() {
                                 <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                   <span>Veículo #{index + 1}</span>
                                   {b && (
-                                    <span className={`px-1.5 py-0.2 text-[8px] font-bold uppercase rounded-md ${
-                                      b.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
-                                    }`}>
+                                    <span className={`text-[10px] text-slate-500 font-medium`}>
                                       {b.tipo === 'jet' ? 'Jet' : 'Lancha'}
                                     </span>
                                   )}
@@ -1154,7 +1147,7 @@ export default function ClientPage() {
                                 </div>
                                 <div className="flex items-center justify-between">
                                   <span className="text-slate-500 flex items-center"><Percent className="w-3.5 h-3.5 mr-1 text-slate-400" /> Cota de Direito:</span>
-                                  <span className="font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded text-[10px]">
+                                  <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-xs font-mono">
                                     {item.cota || 'N/A'}
                                   </span>
                                 </div>
