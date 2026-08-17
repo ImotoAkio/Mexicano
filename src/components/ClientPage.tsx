@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
-import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download, List, LayoutGrid } from 'lucide-react';
+import { User, Plus, Search, Trash2, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download, List, LayoutGrid, ChevronDown, Zap, Building2 } from 'lucide-react';
 import ClientProfileModal from './ClientProfileModal';
 import { generateContract } from './ContractGenerator';
 import jsPDF from 'jspdf';
@@ -21,6 +21,7 @@ export default function ClientPage() {
   
   // Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [clientBoats, setClientBoats] = useState<Array<{ embarcacaoId: string; cota: string }>>([{ embarcacaoId: '', cota: '' }]);
@@ -1080,130 +1081,65 @@ export default function ClientPage() {
       {/* Modal - Create/Edit customer */}
       {isModalOpen && (
         <div id="client-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-100 max-w-md w-full overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-150">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
-              <h3 className="text-lg font-medium text-slate-900">
-                {editingId ? 'Editar Cadastro do Cliente' : 'Cadastrar Novo Cliente'}
-              </h3>
+          <div className="bg-white rounded-xl shadow-xl border border-slate-100 max-w-6xl w-full overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0 bg-slate-50/50">
+              <div className="flex items-center space-x-2">
+                <User className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-lg font-bold text-slate-900">
+                  {editingId ? 'Editar Cadastro do Cliente' : 'Cadastrar Novo Cliente'}
+                </h3>
+              </div>
               <button
                 id="close-client-modal"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-1.5 hover:bg-slate-200/60 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4 overflow-y-auto subtle-scrollbar flex-1">
-              <div>
-                <label className="block text-xs font-semibold text-slate-800 mb-1">Nome Completo *</label>
-                <input
-                  id="input-client-name"
-                  type="text"
-                  required
-                  placeholder="Nome do Cliente"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                  autoFocus
-                />
-              </div>
+            <form onSubmit={handleSave} className="p-6 overflow-y-auto subtle-scrollbar flex-1 space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* COLUNA 1: IDENTIFICAÇÃO E CONTATOS (4 cols) */}
+                <div className="lg:col-span-4 space-y-4 border-b lg:border-b-0 lg:border-r border-slate-100 pb-4 lg:pb-0 lg:pr-6">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center">
+                    <User className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Identificação & Contatos
+                  </h4>
 
-              {/* Seção das Embarcações e Cotas (Suporta Múltiplos Veículos) */}
-              <div className="border border-slate-100 p-3.5 rounded-lg bg-slate-50/50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-slate-800 uppercase tracking-wider">
-                    Veículos Vinculados / Cotas *
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setClientBoats([...clientBoats, { embarcacaoId: boats[0]?.id || '', cota: 'C1' }])}
-                    className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5 mr-1" />
-                    Adicionar Veículo
-                  </button>
-                </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1">Nome Completo *</label>
+                    <input
+                      id="input-client-name"
+                      type="text"
+                      tabIndex={1}
+                      required
+                      placeholder="Nome do Cliente"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-medium"
+                      autoFocus
+                    />
+                  </div>
 
-                <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
-                  {clientBoats.map((cb, idx) => (
-                    <div key={idx} className="flex items-start bg-white border border-slate-200/80 p-3 rounded-lg relative space-x-3 shadow-xs">
-                      <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1 sm:pb-0">
-                        <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Embarcação Vinculada #{idx + 1}</label>
-                          <select
-                            required
-                            value={cb.embarcacaoId}
-                            onChange={(e) => {
-                              const newList = [...clientBoats];
-                              newList[idx].embarcacaoId = e.target.value;
-                              setClientBoats(newList);
-                            }}
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-250 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          >
-                            <option value="">Selecione...</option>
-                            {[...boats].sort((a, b) => a.nome.localeCompare(b.nome)).map(b => (
-                              <option key={b.id} value={b.id}>
-                                {b.nome}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Telefone / Celular (WhatsApp)</label>
+                    <input
+                      id="input-client-phone"
+                      type="text"
+                      tabIndex={2}
+                      placeholder="Ex: (11) 99999-9999"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono"
+                    />
+                  </div>
 
-                        <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Cota da Embarcação #{idx + 1}</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Ex: C1, C3"
-                            value={cb.cota}
-                            onChange={(e) => {
-                              const newList = [...clientBoats];
-                              newList[idx].cota = e.target.value;
-                              setClientBoats(newList);
-                            }}
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      {clientBoats.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setClientBoats(clientBoats.filter((_, i) => i !== idx));
-                          }}
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors self-end mt-4 sm:self-center sm:mt-0 cursor-pointer"
-                          title="Remover veículo"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border-t border-slate-100 pt-4 mt-2 space-y-4">
-                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Contatos Adicionais (Opcionais)</p>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Telefone / Celular</label>
-                  <input
-                    id="input-client-phone"
-                    type="text"
-                    placeholder="Ex: (11) 99999-9999"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Email</label>
                     <input
                       id="input-client-email"
                       type="email"
+                      tabIndex={3}
                       placeholder="Ex: joao@exemplo.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -1216,242 +1152,388 @@ export default function ClientPage() {
                     <input
                       id="input-client-cpf"
                       type="text"
+                      tabIndex={4}
                       placeholder="Ex: 000.000.000-00"
                       value={cpf}
                       onChange={(e) => setCpf(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Documentação & Habilitação Náutica */}
-              <div className="border border-slate-100 p-3.5 rounded-lg bg-slate-50/50 space-y-3">
-                <p className="text-[11px] font-semibold text-slate-800 uppercase tracking-wider">Documentação & Habilitação Náutica</p>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">RG</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 12.345.678-9"
-                      value={rg}
-                      onChange={(e) => setRg(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Órgão Emissor do RG</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: SSP/SP"
-                      value={orgaoEmissor}
-                      onChange={(e) => setOrgaoEmissor(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
+                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Nº Habilitação Náutica (Arrais/CHA)</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 381M2021005"
-                      value={numeroHabilitacao}
-                      onChange={(e) => setNumeroHabilitacao(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Categoria da Habilitação</label>
-                    <select
-                      value={categoriaHabilitacao}
-                      onChange={(e) => setCategoriaHabilitacao(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="Arrais-Amador">Arrais-Amador</option>
-                      <option value="Motonauta">Motonauta</option>
-                      <option value="Arrais e Motonauta">Arrais e Motonauta</option>
-                      <option value="Mestre-Amador">Mestre-Amador</option>
-                      <option value="Capitão-Amador">Capitão-Amador</option>
-                    </select>
-                  </div>
-                </div>
+                {/* COLUNA 2: EMBARCAÇÕES & EMPRESAS VINCULADAS (4 cols) */}
+                <div className="lg:col-span-4 space-y-4 border-b lg:border-b-0 lg:border-r border-slate-100 pb-4 lg:pb-0 lg:pr-6">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center">
+                    <Anchor className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Veículos & Empresas
+                  </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Data de Expiração / Validade</label>
-                    <input
-                      type="date"
-                      value={validadeHabilitacao}
-                      onChange={(e) => setValidadeHabilitacao(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Órgão Emissor da Habilitação</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Capitania Fluvial de Juazeiro"
-                      value={orgaoEmissorHabilitacao}
-                      onChange={(e) => setOrgaoEmissorHabilitacao(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
-                    />
-                  </div>
-                </div>
-              </div>
+                  {/* Seção das Embarcações e Cotas (Suporta Múltiplos Veículos) */}
+                  <div className="border border-slate-200/80 p-3.5 rounded-xl bg-slate-50/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-slate-800 uppercase tracking-wider">
+                        Veículos Vinculados / Cotas *
+                      </label>
+                      <button
+                        type="button"
+                        tabIndex={5}
+                        onClick={() => setClientBoats([...clientBoats, { embarcacaoId: boats[0]?.id || '', cota: 'C1' }])}
+                        className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1" />
+                        Adicionar Veículo
+                      </button>
+                    </div>
 
-              <div className="border-t border-slate-100 pt-4 mt-2 space-y-4">
-                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Endereço Residencial (Opcional)</p>
-                
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2 relative">
-                    <label className="block text-xs font-semibold text-slate-800 mb-1 flex items-center justify-between">
-                      <span>CEP</span>
-                      {isFetchingCep && <Loader2 className="w-3.5 h-3.5 text-indigo-600 animate-spin" />}
-                    </label>
-                    <input
-                      id="input-client-cep"
-                      type="text"
-                      placeholder="Ex: 01001-000"
-                      value={cep}
-                      onChange={handleCepChange}
-                      onBlur={handleCepBlur}
-                      maxLength={9}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-550 focus:bg-white focus:border-transparent font-mono"
-                    />
-                  </div>
-                  <div className="col-span-1 flex items-end">
-                    <button
-                      type="button"
-                      disabled={isFetchingCep || cep.replace(/\D/g, '').length !== 8}
-                      onClick={() => fetchCep(cep.replace(/\D/g, ''))}
-                      className="w-full py-2 text-xs font-bold text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 disabled:opacity-50 disabled:bg-slate-50 disabled:text-slate-450 rounded-lg border border-indigo-100 disabled:border-slate-200 transition-all h-[38px] cursor-pointer"
-                    >
-                      Buscar
-                    </button>
-                  </div>
-                </div>
+                    <div className="space-y-3 max-h-56 overflow-y-auto subtle-scrollbar pr-1">
+                      {clientBoats.map((cb, idx) => (
+                        <div key={idx} className="flex items-start bg-white border border-slate-200 p-3 rounded-lg relative space-x-2.5 shadow-xs">
+                          <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Embarcação #{idx + 1}</label>
+                              <select
+                                required
+                                tabIndex={6 + (idx * 2)}
+                                value={cb.embarcacaoId}
+                                onChange={(e) => {
+                                  const newList = [...clientBoats];
+                                  newList[idx].embarcacaoId = e.target.value;
+                                  setClientBoats(newList);
+                                }}
+                                className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                              >
+                                <option value="">Selecione...</option>
+                                {[...boats].sort((a, b) => a.nome.localeCompare(b.nome)).map(b => (
+                                  <option key={b.id} value={b.id}>
+                                    {b.nome}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Rua / Logradouro</label>
-                  <input
-                    id="input-client-logradouro"
-                    type="text"
-                    placeholder="Ex: Avenida Paulista"
-                    value={logradouro}
-                    onChange={(e) => setLogradouro(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                  />
-                </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Cota #{idx + 1}</label>
+                              <input
+                                type="text"
+                                required
+                                tabIndex={7 + (idx * 2)}
+                                placeholder="Ex: C1, C3"
+                                value={cb.cota}
+                                onChange={(e) => {
+                                  const newList = [...clientBoats];
+                                  newList[idx].cota = e.target.value;
+                                  setClientBoats(newList);
+                                }}
+                                className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-mono"
+                              />
+                            </div>
+                          </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-1">
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Número</label>
-                    <input
-                      id="input-client-numero-end"
-                      type="text"
-                      placeholder="Ex: 1000"
-                      value={numeroEnd}
-                      onChange={(e) => setNumeroEnd(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Complemento</label>
-                    <input
-                      id="input-client-complemento"
-                      type="text"
-                      placeholder="Ex: Apto 12"
-                      value={complemento}
-                      onChange={(e) => setComplemento(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Bairro</label>
-                  <input
-                    id="input-client-bairro"
-                    type="text"
-                    placeholder="Ex: Bela Vista"
-                    value={bairro}
-                    onChange={(e) => setBairro(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Cidade</label>
-                    <input
-                      id="input-client-cidade"
-                      type="text"
-                      placeholder="Ex: São Paulo"
-                      value={cidade}
-                      onChange={(e) => setCidade(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                    />
-                  </div>
-                  <div className="col-span-1">
-                    <label className="block text-xs font-medium text-slate-700 mb-1">UF</label>
-                    <input
-                      id="input-client-estado"
-                      type="text"
-                      placeholder="Ex: SP"
-                      value={estado}
-                      onChange={(e) => setEstado(e.target.value)}
-                      maxLength={2}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent uppercase"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Status Financeiro */}
-              <div className="border border-slate-100 p-3.5 rounded-lg bg-orange-50/30 space-y-3">
-                <h4 className="text-xs font-semibold text-orange-800 uppercase tracking-wider flex items-center mb-1">
-                  <AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> Situação Financeira do Cliente
-                </h4>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex-1">
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Status de Pagamento (Adminstração/Peças)</label>
-                    <div
-                      className={`w-full px-3 py-2 text-sm border rounded-lg font-semibold flex items-center h-[38px] ${
-                        statusFinanceiro === 'inadimplente' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      }`}
-                      title="Status calculado automaticamente pelo sistema."
-                    >
-                      {statusFinanceiro === 'inadimplente' ? 'Inadimplente (Bloqueado)' : 'Em Dia (Regular)'}
+                          {clientBoats.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setClientBoats(clientBoats.filter((_, i) => i !== idx));
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors self-center mt-3 cursor-pointer"
+                              title="Remover veículo"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Observações Financeiras (Opcional)</label>
-                    <textarea
-                      placeholder="Taxa de janeiro pendente, faróis para pagar..."
-                      value={observacoesFinanceiras}
-                      onChange={(e) => setObservacoesFinanceiras(e.target.value)}
-                      rows={2}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white resize-none"
-                    ></textarea>
+
+                  {/* Empresas Vinculadas */}
+                  <div className="border border-slate-200/80 p-3.5 rounded-xl bg-slate-50/50 space-y-2">
+                    <label className="block text-xs font-semibold text-slate-800 uppercase tracking-wider flex items-center">
+                      <Building2 className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Empresas Vinculadas *
+                    </label>
+                    <p className="text-[11px] text-slate-500">Selecione onde este cliente pode ser gerenciado:</p>
+                    <div className="space-y-2 pt-1">
+                      {[
+                        { id: 'VALE', label: 'Vale Administradora (Gestão Principal)' },
+                        { id: 'MARINA', label: 'Marina Club (Controle de Garagem & Vagas)' },
+                        { id: 'MEXICANO', label: 'Mexicano Lanchas' }
+                      ].map((emp, empIdx) => (
+                        <label key={emp.id} className="flex items-center space-x-2.5 text-xs text-slate-700 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            tabIndex={10 + empIdx}
+                            checked={empresas.includes(emp.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEmpresas([...empresas, emp.id]);
+                              } else {
+                                if (empresas.length === 1) {
+                                  showToast('O cliente precisa estar vinculado a pelo menos 1 empresa.', 'error');
+                                  return;
+                                }
+                                setEmpresas(empresas.filter(x => x !== emp.id));
+                              }
+                            }}
+                            className="w-4 h-4 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500"
+                          />
+                          <span className="font-medium">{emp.label}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                
-                <div className="grid grid-cols-1 gap-4 pt-2 border-t border-orange-200/50">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Plano de Agendamento</label>
-                    <select
-                      value={plano}
-                      onChange={(e) => setPlano(e.target.value as 'normal' | 'completo')}
-                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950"
+
+                {/* COLUNA 3: CAMPOS AVANÇADOS (ACORDEÃO RECOLHÍVEL) (4 cols) */}
+                <div className="lg:col-span-4 space-y-4">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center">
+                    <Zap className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Informações Complementares
+                  </h4>
+
+                  {/* Bloco Sanfonado de Campos Avançados */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                    <button
+                      type="button"
+                      onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                      className="w-full px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-slate-700 bg-slate-100/70 hover:bg-slate-100 transition-colors cursor-pointer"
+                      tabIndex={13}
                     >
-                      <option value="normal">Normal (Sem acesso a seg/ter)</option>
-                      <option value="completo">Plano Completo (Acesso total)</option>
-                    </select>
+                      <span className="flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-indigo-600" />
+                        Campos Avançados (Doc., Endereço & Fin.)
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {(rg || numeroHabilitacao || cep || logradouro || cidade || observacoesFinanceiras || plano === 'completo') && (
+                          <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Ativo</span>
+                        )}
+                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isAdvancedOpen ? 'rotate-180' : ''}`} />
+                      </div>
+                    </button>
+
+                    {isAdvancedOpen && (
+                      <div className="p-3.5 space-y-4 bg-white border-t border-slate-200 animate-in fade-in duration-150 max-h-[55vh] overflow-y-auto subtle-scrollbar">
+                        {/* Documentação & Habilitação Náutica */}
+                        <div className="space-y-3">
+                          <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-100 pb-1">
+                            Documentação & Habilitação Náutica
+                          </p>
+                          
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">RG</label>
+                              <input
+                                type="text"
+                                tabIndex={14}
+                                placeholder="Ex: 12.345.678-9"
+                                value={rg}
+                                onChange={(e) => setRg(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">Órgão Emissor</label>
+                              <input
+                                type="text"
+                                tabIndex={15}
+                                placeholder="Ex: SSP/SP"
+                                value={orgaoEmissor}
+                                onChange={(e) => setOrgaoEmissor(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">Nº Habilitação (Arrais/CHA)</label>
+                              <input
+                                type="text"
+                                tabIndex={16}
+                                placeholder="Ex: 381M2021005"
+                                value={numeroHabilitacao}
+                                onChange={(e) => setNumeroHabilitacao(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">Categoria CHA</label>
+                              <select
+                                tabIndex={17}
+                                value={categoriaHabilitacao}
+                                onChange={(e) => setCategoriaHabilitacao(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                              >
+                                <option value="">Selecione...</option>
+                                <option value="Arrais-Amador">Arrais-Amador</option>
+                                <option value="Motonauta">Motonauta</option>
+                                <option value="Arrais e Motonauta">Arrais e Motonauta</option>
+                                <option value="Mestre-Amador">Mestre-Amador</option>
+                                <option value="Capitão-Amador">Capitão-Amador</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">Validade CHA</label>
+                              <input
+                                type="date"
+                                tabIndex={18}
+                                value={validadeHabilitacao}
+                                onChange={(e) => setValidadeHabilitacao(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">Órgão CHA</label>
+                              <input
+                                type="text"
+                                tabIndex={19}
+                                placeholder="Ex: Capitania Fluvial"
+                                value={orgaoEmissorHabilitacao}
+                                onChange={(e) => setOrgaoEmissorHabilitacao(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Endereço Residencial */}
+                        <div className="space-y-3 pt-2 border-t border-slate-100">
+                          <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider pb-1">
+                            Endereço Residencial
+                          </p>
+                          
+                          <div className="grid grid-cols-3 gap-2.5">
+                            <div className="col-span-2 relative">
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                                <span>CEP</span>
+                                {isFetchingCep && <Loader2 className="w-3 h-3 text-indigo-600 animate-spin" />}
+                              </label>
+                              <input
+                                id="input-client-cep"
+                                type="text"
+                                tabIndex={20}
+                                placeholder="Ex: 01001-000"
+                                value={cep}
+                                onChange={handleCepChange}
+                                onBlur={handleCepBlur}
+                                maxLength={9}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white font-mono"
+                              />
+                            </div>
+                            <div className="col-span-1 flex items-end">
+                              <button
+                                type="button"
+                                disabled={isFetchingCep || cep.replace(/D/g, '').length !== 8}
+                                onClick={() => fetchCep(cep.replace(/D/g, ''))}
+                                className="w-full py-1.5 text-xs font-bold text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 disabled:opacity-50 disabled:bg-slate-50 disabled:text-slate-400 rounded-lg border border-indigo-100 transition-all h-[34px] cursor-pointer"
+                              >
+                                Buscar
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-medium text-slate-700 mb-1">Rua / Logradouro</label>
+                            <input
+                              id="input-client-logradouro"
+                              type="text"
+                              tabIndex={21}
+                              placeholder="Ex: Avenida Paulista"
+                              value={logradouro}
+                              onChange={(e) => setLogradouro(e.target.value)}
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2.5">
+                            <div className="col-span-1">
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">Número</label>
+                              <input
+                                id="input-client-numero-end"
+                                type="text"
+                                tabIndex={22}
+                                placeholder="Ex: 1000"
+                                value={numeroEnd}
+                                onChange={(e) => setNumeroEnd(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">Complemento</label>
+                              <input
+                                id="input-client-complemento"
+                                type="text"
+                                tabIndex={23}
+                                placeholder="Ex: Apto 12"
+                                value={complemento}
+                                onChange={(e) => setComplemento(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2.5">
+                            <div className="col-span-2">
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">Cidade</label>
+                              <input
+                                id="input-client-cidade"
+                                type="text"
+                                tabIndex={24}
+                                placeholder="Ex: São Paulo"
+                                value={cidade}
+                                onChange={(e) => setCidade(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                              />
+                            </div>
+                            <div className="col-span-1">
+                              <label className="block text-[11px] font-medium text-slate-700 mb-1">UF</label>
+                              <input
+                                id="input-client-estado"
+                                type="text"
+                                tabIndex={25}
+                                placeholder="Ex: SP"
+                                value={estado}
+                                onChange={(e) => setEstado(e.target.value)}
+                                maxLength={2}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white uppercase"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Situação Financeira & Plano */}
+                        <div className="space-y-3 pt-2 border-t border-slate-100">
+                          <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider pb-1">
+                            Situação Financeira & Plano
+                          </p>
+                          
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Observações Financeiras</label>
+                            <textarea
+                              tabIndex={26}
+                              placeholder="Taxa de janeiro pendente, faróis para pagar..."
+                              value={observacoesFinanceiras}
+                              onChange={(e) => setObservacoesFinanceiras(e.target.value)}
+                              rows={2}
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white resize-none"
+                            ></textarea>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Plano de Agendamento</label>
+                            <select
+                              tabIndex={27}
+                              value={plano}
+                              onChange={(e) => setPlano(e.target.value as 'normal' | 'completo')}
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-medium"
+                            >
+                              <option value="normal">Normal (Sem acesso a seg/ter)</option>
+                              <option value="completo">Plano Completo (Acesso total)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1460,6 +1542,7 @@ export default function ClientPage() {
                 <button
                   id="cancel-save-client"
                   type="button"
+                  tabIndex={28}
                   onClick={() => setIsModalOpen(false)}
                   className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
                 >
@@ -1468,6 +1551,7 @@ export default function ClientPage() {
                 <button
                   id="submit-save-client"
                   type="submit"
+                  tabIndex={29}
                   className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                 >
                   <Check className="w-4 h-4 mr-2" />
@@ -1479,7 +1563,7 @@ export default function ClientPage() {
         </div>
       )}
 
-      {/* State-Based Custom Confirmation Modal (Bypasses Window Confirm) */}
+{/* State-Based Custom Confirmation Modal (Bypasses Window Confirm) */}
       {deleteConfirmation && (
         <div id="delete-confirm-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden border border-rose-50 animate-in fade-in zoom-in-95 duration-100">

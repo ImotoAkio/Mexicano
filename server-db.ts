@@ -177,6 +177,7 @@ export async function initializeDatabase() {
         validadeHabilitacao VARCHAR(50),
         orgaoEmissorHabilitacao VARCHAR(100),
         categoriaHabilitacao VARCHAR(50),
+        dataNascimento VARCHAR(50),
         statusFinanceiro VARCHAR(50) DEFAULT 'em_dia',
         observacoesFinanceiras TEXT,
         plano VARCHAR(20) DEFAULT 'normal',
@@ -184,6 +185,7 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN dataNascimento VARCHAR(50);`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN statusFinanceiro VARCHAR(50) DEFAULT 'em_dia';`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN observacoesFinanceiras TEXT;`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN cnh_cha VARCHAR(50);`); } catch (e) {}
@@ -1005,9 +1007,9 @@ export async function upsertClient(client: any) {
 
   const query = `
     INSERT INTO Clientes (
-      id, nome, embarcacaoId, cota, telefone, email, cpf, dataCadastro, 
+      id, nome, embarcacaoId, cota, telefone, email, cpf, dataNascimento, dataCadastro, 
       cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId, cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       nome = VALUES(nome),
       embarcacaoId = VALUES(embarcacaoId),
@@ -1015,6 +1017,7 @@ export async function upsertClient(client: any) {
       telefone = VALUES(telefone),
       email = VALUES(email),
       cpf = VALUES(cpf),
+      dataNascimento = VALUES(dataNascimento),
       cep = VALUES(cep),
       logradouro = VALUES(logradouro),
       numeroEnd = VALUES(numeroEnd),
@@ -1046,6 +1049,7 @@ export async function upsertClient(client: any) {
     client.telefone || null,
     client.email || null,
     client.cpf || null,
+    client.dataNascimento || null,
     client.dataCadastro || new Date().toISOString(),
     client.cep || null,
     client.logradouro || null,
@@ -1350,13 +1354,13 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
       const embarcacoesJson = client.embarcacoes ? JSON.stringify(client.embarcacoes) : null;
       await connection.query(`
         INSERT INTO Clientes (
-          id, nome, embarcacaoId, cota, telefone, email, cpf, dataCadastro, 
+          id, nome, embarcacaoId, cota, telefone, email, cpf, dataNascimento, dataCadastro, 
           cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras,
           cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           nome = VALUES(nome), embarcacaoId = VALUES(embarcacaoId), cota = VALUES(cota),
-          telefone = VALUES(telefone), email = VALUES(email), cpf = VALUES(cpf),
+          telefone = VALUES(telefone), email = VALUES(email), cpf = VALUES(cpf), dataNascimento = VALUES(dataNascimento),
           cep = VALUES(cep), logradouro = VALUES(logradouro), numeroEnd = VALUES(numeroEnd),
           complemento = VALUES(complemento), bairro = VALUES(bairro), cidade = VALUES(cidade),
           estado = VALUES(estado), embarcacoes = VALUES(embarcacoes),
@@ -1367,7 +1371,7 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
           categoriaHabilitacao = VALUES(categoriaHabilitacao)
       `, [
         client.id, client.nome, client.embarcacaoId || null, client.cota || null,
-        client.telefone || null, client.email || null, client.cpf || null,
+        client.telefone || null, client.email || null, client.cpf || null, client.dataNascimento || null,
         client.dataCadastro || null, client.cep || null, client.logradouro || null,
         client.numeroEnd || null, client.complemento || null, client.bairro || null,
         client.cidade || null, client.estado || null, embarcacoesJson,

@@ -78,6 +78,12 @@ export default function ClientProfileModal({ client, boats, onClose }: ClientPro
                     <span className="font-semibold font-mono text-slate-800">{client.cpf || 'Não informado'}</span>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Data de Nascimento</span> 
+                    <span className="font-semibold font-mono text-slate-800">
+                      {client.dataNascimento ? new Date(client.dataNascimento + 'T00:00:00').toLocaleDateString('pt-BR') : 'Não informada'}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 sm:col-span-2">
                     <span className="text-slate-400 text-xs font-bold uppercase tracking-wider block mb-1">Situação Financeira</span> 
                     <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border ${
                       client.statusFinanceiro === 'inadimplente' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
