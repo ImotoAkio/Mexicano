@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente } from '../types';
-import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid } from 'lucide-react';
+import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid, ChevronDown } from 'lucide-react';
 import Select from 'react-select';
 
 interface BoatPageProps {
@@ -56,6 +56,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     }
   }, []);
   const [isUploadingSeguro, setIsUploadingSeguro] = useState(false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   // Custom Confirm State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string; name: string } | null>(null);
@@ -93,6 +94,8 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     setImagemUrl('');
     setDocumentoUrl('');
     setSeguroUrl('');
+    setEmpresas(['VALE']);
+    setIsAdvancedOpen(false);
     setIsModalOpen(true);
   };
 
@@ -131,6 +134,8 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     setImagemUrl(boat.imagemUrl || '');
     setDocumentoUrl(boat.documentoUrl || '');
     setSeguroUrl(boat.seguroUrl || '');
+    setEmpresas(boat.empresas && boat.empresas.length > 0 ? boat.empresas : ['VALE']);
+    setIsAdvancedOpen(Boolean(mappedId || boat.whatsappGroupId));
     setIsModalOpen(true);
   };
 
@@ -313,7 +318,6 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
       return;
     }
 
-    // Double check numeric pad
     const cleanNum = numero.trim().toUpperCase().replace(/M/g, '').replace(/\D/g, '');
     if (!cleanNum) {
       showToast('Por favor, informe uma numeração válida para o veículo.', 'error');
@@ -1067,62 +1071,86 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                     )}
                   </div>
 
-                  {/* Agenda Google ID */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">ID Agenda Google Calendar (Opcional)</label>
-                    <input
-                      id="input-boat-calendar-id"
-                      type="text"
-                      tabIndex={12}
-                      placeholder="Ex: xxx@group.calendar.google.com"
-                      value={googleCalendarId}
-                      onChange={(e) => setGoogleCalendarId(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white font-mono"
-                    />
-                  </div>
-
-                  {/* WhatsApp Group ID */}
-                  {showWhatsAppMapping && (
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-xs font-semibold text-slate-700">Grupo WhatsApp (Evolution API)</label>
-                        <button 
-                          type="button" 
-                          onClick={handleFetchGroups}
-                          disabled={isFetchingGroups}
-                          className="text-[10px] text-teal-600 font-semibold hover:text-teal-700 flex items-center cursor-pointer disabled:opacity-50"
-                        >
-                          <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingGroups ? 'animate-spin' : ''}`} />
-                          {isFetchingGroups ? 'Buscando...' : 'Buscar Grupos'}
-                        </button>
+                  {/* Configurações Avançadas (Google Calendar & WhatsApp ID - Recolhido por Padrão) */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                    <button
+                      type="button"
+                      onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                      className="w-full px-3 py-2 flex items-center justify-between text-xs font-semibold text-slate-700 bg-slate-100/70 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-indigo-600" />
+                        Campos Avançados (Google & WhatsApp)
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {(googleCalendarId || whatsappGroupId) && (
+                          <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Ativo</span>
+                        )}
+                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isAdvancedOpen ? 'rotate-180' : ''}`} />
                       </div>
+                    </button>
 
-                      {availableGroups.length > 0 ? (
-                        <select
-                          id="input-boat-whatsapp-id-select"
-                          tabIndex={13}
-                          value={whatsappGroupId}
-                          onChange={(e) => setWhatsappGroupId(e.target.value)}
-                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
-                        >
-                          <option value="">-- Selecione o Grupo do Barco --</option>
-                          {availableGroups.map((g: any) => (
-                            <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          id="input-boat-whatsapp-id"
-                          type="text"
-                          tabIndex={13}
-                          placeholder="Ex: 120363123456789012@g.us"
-                          value={whatsappGroupId}
-                          onChange={(e) => setWhatsappGroupId(e.target.value)}
-                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
-                        />
-                      )}
-                    </div>
-                  )}
+                    {isAdvancedOpen && (
+                      <div className="p-3 space-y-3 bg-white border-t border-slate-200 animate-in fade-in duration-150">
+                        {/* Agenda Google ID */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">ID Agenda Google Calendar (Opcional)</label>
+                          <input
+                            id="input-boat-calendar-id"
+                            type="text"
+                            tabIndex={12}
+                            placeholder="Ex: xxx@group.calendar.google.com"
+                            value={googleCalendarId}
+                            onChange={(e) => setGoogleCalendarId(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white font-mono"
+                          />
+                        </div>
+
+                        {/* WhatsApp Group ID */}
+                        {showWhatsAppMapping && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-[11px] font-semibold text-slate-700">Grupo WhatsApp (Evolution API)</label>
+                              <button 
+                                type="button" 
+                                onClick={handleFetchGroups}
+                                disabled={isFetchingGroups}
+                                className="text-[10px] text-teal-600 font-semibold hover:text-teal-700 flex items-center cursor-pointer disabled:opacity-50"
+                              >
+                                <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingGroups ? 'animate-spin' : ''}`} />
+                                {isFetchingGroups ? 'Buscando...' : 'Buscar Grupos'}
+                              </button>
+                            </div>
+
+                            {availableGroups.length > 0 ? (
+                              <select
+                                id="input-boat-whatsapp-id-select"
+                                tabIndex={13}
+                                value={whatsappGroupId}
+                                onChange={(e) => setWhatsappGroupId(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
+                              >
+                                <option value="">-- Selecione o Grupo do Barco --</option>
+                                {availableGroups.map((g: any) => (
+                                  <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                id="input-boat-whatsapp-id"
+                                type="text"
+                                tabIndex={13}
+                                placeholder="Ex: 120363123456789012@g.us"
+                                value={whatsappGroupId}
+                                onChange={(e) => setWhatsappGroupId(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Toggles: Manutenção & Som */}
                   <div className="space-y-2 pt-1">
