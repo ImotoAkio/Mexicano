@@ -455,16 +455,9 @@ export default function ClientPage() {
         matchesBoat = clientBoatsList.includes(filterBoat);
       }
 
-      // 2.5 Filter by empresa
+      // 2.5 Filter by empresa (Universal filter)
       let matchesEmpresa = true;
-      const isAdminOrFinance = adminRole === 'admin' || adminRole === 'financeiro';
-      
-      if (!isAdminOrFinance) {
-        // Strict access rule: other roles only see their own company's clients
-        const userEmpresa = (adminRole === 'marina' || adminRole === 'marina_operador' || adminRole === 'marina_gerente') ? 'MARINA' : 
-                          (adminRole === 'comercial' ? 'MEXICANO' : 'VALE');
-        matchesEmpresa = (c.empresas || ['VALE']).includes(userEmpresa);
-      } else if (filterEmpresa !== 'all') {
+      if (filterEmpresa !== 'all') {
         matchesEmpresa = (c.empresas || ['VALE']).includes(filterEmpresa);
       }
 
@@ -635,7 +628,23 @@ export default function ClientPage() {
 
         {/* Expandable Advanced Filters */}
         {isFiltersVisible && (
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-3 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 pt-3 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+            {/* Filter by Empresa */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Empresa Vinculada</label>
+              <select
+                id="select-filter-empresa"
+                value={filterEmpresa}
+                onChange={(e) => setFilterEmpresa(e.target.value as any)}
+                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white text-slate-700 font-medium cursor-pointer"
+              >
+                <option value="all">Todas as empresas</option>
+                <option value="VALE">VALE NÁUTICA</option>
+                <option value="MARINA">MARINA</option>
+                <option value="MEXICANO">MEXICANO</option>
+              </select>
+            </div>
+
             {/* Filter by Boat */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Embarcação Vinculada</label>
