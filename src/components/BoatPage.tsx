@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente } from '../types';
 import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid } from 'lucide-react';
