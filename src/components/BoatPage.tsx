@@ -678,7 +678,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                           </button>
                           <button
                             onClick={() => initiateDelete(boat.id, boat.nome)}
-                            className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-700 hover:text-rose-800 hover:bg-rose-100 transition-colors cursor-pointer"
                             title="Remover"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -775,7 +775,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                       <button
                         id={`delete-boat-${boat.id}`}
                         onClick={() => initiateDelete(boat.id, boat.nome)}
-                        className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                        className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-700 hover:text-rose-800 hover:bg-rose-100 transition-colors cursor-pointer"
                         title="Remover"
                       >
                         <Trash2 className="w-4 h-4" />

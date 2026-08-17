@@ -14,9 +14,9 @@ interface SearchableEmpresaSelectProps {
 }
 
 const EMPRESA_OPTIONS = [
-  { id: 'all', label: 'Todas as empresas', description: 'VALE, MARINA e MEXICANO', badgeBg: 'bg-slate-100 text-slate-700 border-slate-200' },
+  { id: 'all', label: 'Todas as empresas', description: 'VALE, MARINA e MEXICANO', badgeBg: 'bg-slate-100 text-slate-800 border-slate-300' },
   { id: 'VALE', label: 'VALE NÁUTICA', description: 'Operações Vale Náutica', badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { id: 'MARINA', label: 'MARINA', description: 'Operações Marina', badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { id: 'MARINA', label: 'MARINA', description: 'Operações Marina', badgeBg: 'bg-indigo-50 text-indigo-900 border-indigo-200' },
   { id: 'MEXICANO', label: 'MEXICANO', description: 'Operações Mexicano', badgeBg: 'bg-amber-50 text-amber-700 border-amber-200' }
 ];
 
@@ -764,7 +764,7 @@ export default function ClientPage() {
                 <option value="date-desc">Inscrição (Recente)</option>
                 <option value="date-asc">Inscrição (Antigo)</option>
               </select>
-              <div className="absolute right-2.5 top-3.5 pointer-events-none border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-slate-500"></div>
+              <ChevronDown className="w-4 h-4 absolute right-2.5 text-slate-400 pointer-events-none" />
             </div>
           </div>
         </div>
@@ -994,7 +994,7 @@ export default function ClientPage() {
                           </button>
                           <button
                             onClick={() => initiateDelete(client.id, client.nome)}
-                            className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Remover"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1067,7 +1067,7 @@ export default function ClientPage() {
                       <button
                         id={`delete-client-${client.id}`}
                         onClick={() => initiateDelete(client.id, client.nome)}
-                        className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                        className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-700 hover:text-rose-800 hover:bg-rose-100 transition-colors cursor-pointer"
                         title="Remover"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1373,7 +1373,7 @@ export default function ClientPage() {
                               onClick={() => {
                                 setClientBoats(clientBoats.filter((_, i) => i !== idx));
                               }}
-                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors self-center mt-3 cursor-pointer"
+                              className="p-1 text-rose-700 hover:text-rose-800 hover:bg-rose-100 hover:bg-rose-50 rounded transition-colors self-center mt-3 cursor-pointer"
                               title="Remover veículo"
                             >
                               <X className="w-4 h-4" />
