@@ -23,6 +23,7 @@ const UsersPage = lazy(() => import('./components/UsersPage'));
 const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
 const PecasKanbanPage = lazy(() => import('./components/PecasKanbanPage'));
+const ChamadosPage = lazy(() => import('./components/ChamadosPage'));
 const PecasHorimetrosPage = lazy(() => import('./components/pecas/PecasHorimetrosPage'));
 const PecasAcessoriosPage = lazy(() => import('./components/pecas/PecasAcessoriosPage'));
 const PecasWhatsAppPage = lazy(() => import('./components/pecas/PecasWhatsAppPage'));
@@ -43,6 +44,29 @@ const AuditLogsPage = lazy(() => import('./components/AuditLogsPage'));
 const SharedChecklistPage = lazy(() => import('./components/SharedChecklistPage'));
 const ContractGeneratorPage = lazy(() => import('./components/ContractGeneratorPage'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
+import { 
+  Compass, 
+  Calendar as CalendarIcon, 
+  Users, 
+  Ship, 
+  Anchor, 
+  Settings, 
+  Speaker,
+  Shield,
+  Menu,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  Wallet,
+  FileSearch,
+  FileText,
+  TrendingUp,
+  ClipboardList,
+  MessageSquare,
+  CheckCircle,
+  Wrench,
+  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package
+} from 'lucide-react';
 
 // Wrappers para reuso dos componentes da Marina no Admin
 const AdminChecklistsWrapper = () => {
@@ -96,30 +120,6 @@ const AdminFuelWrapper = () => {
 
   return <AdminFuelPage data={data} setData={setData} reloadData={loadData} />;
 };
-import { 
-  Compass, 
-  Calendar as CalendarIcon, 
-  Users, 
-  Ship, 
-  Anchor, 
-  Settings, 
-  Speaker,
-  Shield,
-  Menu,
-  ChevronLeft,
-  ChevronRight,
-  Database,
-  Wallet,
-  FileSearch,
-  FileText,
-  TrendingUp,
-  ClipboardList,
-  MessageSquare,
-  CheckCircle,
-  Wrench,
-  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package
-} from 'lucide-react';
-
 
 type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios';
 
@@ -142,7 +142,9 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return !!localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
   });
-  const [adminRole, setAdminRole] = useState<'admin' | 'marina' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial' | null>(null);
+  const [adminRole, setAdminRole] = useState<string | null>(() => {
+    return localStorage.getItem('admin_role') || null;
+  });
   const [adminName, setAdminName] = useState<string>('');
   const [isRoleLoading, setIsRoleLoading] = useState(false);
   const [isAdminDbLoaded, setIsAdminDbLoaded] = useState(false);
@@ -177,12 +179,14 @@ export default function App() {
       .then(data => {
         if (data.valid) {
           setAdminRole(data.role as any);
+          localStorage.setItem('admin_role', data.role || '');
           setAdminName(data.nome || data.username || 'Operador');
-          if (data.role === 'financeiro') {
+          const roleStr = (data.role || '').toLowerCase().trim();
+          if (roleStr === 'financeiro' || roleStr.includes('financ')) {
             setActiveTab('finance-lancamentos');
-          } else if (data.role === 'pecas_servicos') {
+          } else if (roleStr === 'pecas_servicos' || roleStr.includes('pecas') || roleStr.includes('servico')) {
             setActiveTab('manutencoes');
-          } else if (data.role === 'comercial') {
+          } else if (roleStr === 'comercial' || roleStr.includes('comerc')) {
             setActiveTab('contratos');
           }
         } else {
@@ -220,62 +224,58 @@ export default function App() {
         localStorage.removeItem('client_data_cache');
         setClientToken(null);
         setClientData(null);
-        throw new Error('Token inválido ou expirado');
-      }
-      if (!res.ok) {
-        throw new Error('Erro ao buscar dados do cliente');
-      }
-      const data = await res.json();
-      setClientData(data);
-      try {
+      } else if (res.ok) {
+        const data = await res.json();
+        setClientData(data);
         localStorage.setItem('client_data_cache', JSON.stringify(data));
-      } catch (err) {}
+      }
     } catch (e) {
-      console.error("Erro no polling do cliente:", e);
+      console.warn('Erro ao carregar dados do cliente:', e);
     } finally {
       if (showLoading) setClientLoading(false);
     }
   };
 
-  // Fetch client data from API using JWT
   useEffect(() => {
-    if (clientToken && !clientData && !clientLoading) {
+    if (clientToken) {
       fetchClientData(true);
-    } else if (clientToken && clientData) {
-      // Re-fetch in background without blocking UI
-      fetchClientData(false);
+      const interval = setInterval(() => fetchClientData(false), 15000);
+      return () => clearInterval(interval);
     }
   }, [clientToken]);
 
-  // Polling to keep client data updated in the background
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (clientToken) {
-      interval = setInterval(() => {
-        fetchClientData(false);
-      }, 15000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [clientToken]);
+  const effectiveRole = (adminRole || localStorage.getItem('admin_role') || '').toLowerCase().trim();
+  const isPecasServicos = effectiveRole === 'pecas_servicos' || effectiveRole === 'pecas-servicos' || effectiveRole.includes('pecas') || effectiveRole.includes('servico');
+  const isFinanceiro = effectiveRole === 'financeiro' || effectiveRole.includes('financ');
+  const isComercial = effectiveRole === 'comercial' || effectiveRole.includes('comerc');
 
   const menuGroups = [
     {
-      group: 'Visão Geral & Operação',
+      group: 'Visão Geral & Reservas',
       items: [
         { id: 'dashboard' as TabType, label: 'Painel Geral', icon: Compass },
-        { id: 'schedules' as TabType, label: 'Agenda de Reservas', icon: CalendarIcon },
+        { id: 'schedules' as TabType, label: 'Agendamentos', icon: CalendarIcon },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
+      ]
+    },
+    {
+      group: 'Operação de Pátio',
+      items: [
         { id: 'checklists' as TabType, label: 'Checklists Diários', icon: ClipboardList },
         { id: 'fuel' as TabType, label: 'Abastecimento', icon: Droplets },
         { id: 'sound' as TabType, label: 'Vistoria de Som', icon: Speaker },
-        { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
+        { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
+      ]
+    },
+    {
+      group: 'Manutenção & Peças',
+      items: [
         { id: 'manutencoes' as TabType, label: 'Painel de Manutenções', icon: Wrench },
+        { id: 'chamados' as TabType, label: 'Controle de Manutenções', icon: ClipboardList },
         { id: 'pecas-horimetros' as TabType, label: 'Controle de Horímetros', icon: Clock },
         { id: 'pecas-acessorios' as TabType, label: 'Checklist de Acessórios', icon: Package },
-        { id: 'pecas-whatsapp' as TabType, label: 'WhatsApp (Peças/Serviços)', icon: MessageSquare },
         { id: 'pecas-atividades' as TabType, label: 'Quadro de Atividades', icon: ClipboardList },
+        { id: 'pecas-whatsapp' as TabType, label: 'WhatsApp (Peças/Serviços)', icon: MessageSquare },
       ]
     },
     {
@@ -284,6 +284,7 @@ export default function App() {
         { id: 'contratos' as TabType, label: 'Gerador de Contratos', icon: FileText },
         { id: 'clients' as TabType, label: 'Cadastro de Clientes', icon: Users },
         { id: 'boats' as TabType, label: 'Cadastro de Embarcações', icon: Ship },
+        { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
       ]
     },
     {
@@ -307,24 +308,23 @@ export default function App() {
       ]
     },
     {
-      group: 'Administração',
+      group: 'Administração & Sistema',
       items: [
         { id: 'portal-interno' as TabType, label: 'Portal Interno', icon: MessageSquare },
-        { id: 'feedback' as TabType, label: 'Central de Feedback', icon: MessageSquare },
         { id: 'users' as TabType, label: 'Gestão de Usuários', icon: Shield },
         { id: 'integrations' as TabType, label: 'Configurações & Integrações', icon: Settings },
+        { id: 'feedback' as TabType, label: 'Central de Feedback', icon: MessageSquare },
         { id: 'audit-logs' as TabType, label: 'Registro de Atividades', icon: History },
-        { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
       ]
     }
   ].map(group => ({
     ...group,
     items: group.items.filter(item => {
-      if (adminRole === 'financeiro') {
+      if (isFinanceiro) {
         return ['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id);
-      } else if (adminRole === 'pecas_servicos') {
-        return ['schedules', 'checklists', 'pecas-whatsapp', 'pecas-atividades', 'manutencoes', 'pecas-horimetros', 'pecas-acessorios'].includes(item.id);
-      } else if (adminRole === 'comercial') {
+      } else if (isPecasServicos) {
+        return ['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules'].includes(item.id);
+      } else if (isComercial) {
         return ['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(item.id);
       }
       return true;
@@ -332,14 +332,14 @@ export default function App() {
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
-    if (adminRole === 'financeiro' && !['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
+    if (isFinanceiro && !['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
       setActiveTab('finance-lancamentos');
-    } else if (adminRole === 'pecas_servicos' && !['schedules', 'checklists', 'pecas-whatsapp', 'pecas-atividades', 'manutencoes', 'pecas-horimetros', 'pecas-acessorios'].includes(activeTab)) {
+    } else if (isPecasServicos && !['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules'].includes(activeTab)) {
       setActiveTab('manutencoes');
-    } else if (adminRole === 'comercial' && !['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(activeTab)) {
+    } else if (isComercial && !['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(activeTab)) {
       setActiveTab('contratos');
     }
-  }, [adminRole, activeTab]);
+  }, [effectiveRole, activeTab]);
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
@@ -348,6 +348,9 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_name');
+    localStorage.removeItem('admin_role');
     setIsAuthenticated(false);
   };
 
@@ -377,93 +380,57 @@ export default function App() {
 
   // ═══════════ SHARED CHECKLIST PAGE (/checklist/share/:id) ═══════════
   if (isSharedChecklistRoute) {
-    const checklistId = currentPath.split('/')[3];
     return (
-      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-[#050505]"><div className="w-8 h-8 border-4 border-[#B69D74] border-t-transparent rounded-full animate-spin"></div></div>}>
-        <SharedChecklistPage checklistId={checklistId} />
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <SharedChecklistPage />
       </Suspense>
     );
   }
 
-  // ═══════════ LANDING PAGE (/) ═══════════
-  if (isLandingRoute) {
-    // Temporariamente inativo - redirecionando para o portal
-    window.location.replace('/portal');
-    return null;
-  }
-
-  // ═══════════ PORTAL DO CLIENTE (/portal) ═══════════
+  // ═══════════ PORTAL DO CLIENTE (Módulo PWA) ═══════════
   if (isPortalRoute) {
     if (!clientToken) {
       return (
         <ClientLoginPage 
-          onLoginSuccess={(token) => {
-            localStorage.setItem('client_token', token);
+          onLoginSuccess={(token, data) => {
             setClientToken(token);
-          }}
+            setClientData(data);
+          }} 
         />
       );
     }
-
-    if (clientLoading || !clientData) {
-      return (
-        <div className="min-h-[100dvh] w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white">
-          <div className="absolute inset-0 w-full h-full pointer-events-none opacity-40 mix-blend-screen">
-            <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(ellipse_at_center,_rgba(255,255,255,0.02)_0%,_transparent_50%)]"></div>
-          </div>
-          
-          <div className="flex-1 flex flex-col items-center justify-center relative z-10">
-            <div className="relative w-28 h-28 flex items-center justify-center animate-pulse">
-              <div className="w-full h-full opacity-90 p-4">
-                <Logo className="w-full h-full text-[#B69D74]" />
-              </div>
-            </div>
-            <div className="mt-8 flex flex-col items-center">
-              <h1 className="text-xl font-medium tracking-[0.2em] text-white/90">
-                VILA NÁUTICA
-              </h1>
-              <div className="h-[1px] bg-[#B69D74]/30 mt-4 w-12 [animation:luxury-line-expand_2.5s_ease-in-out_infinite]"></div>
-            </div>
-          </div>
+    return (
+      <Suspense fallback={
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
+          <div className="w-10 h-10 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-xs text-slate-400 font-medium animate-pulse">Carregando dados da sua embarcação...</span>
         </div>
-      );
-    }
-
-    return (
-      <ErrorBoundary>
-        <Suspense fallback={<div className="min-h-[100dvh] w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white"><div className="relative w-28 h-28 flex items-center justify-center animate-pulse"><div className="w-full h-full opacity-90 p-4"><Logo className="w-full h-full text-[#B69D74]" /></div></div></div>}>
-          <ClientDashboardPage 
-            client={clientData.client}
-            boats={clientData.boats}
-            reservations={clientData.reservations}
-            transacoes={clientData.transacoes || []}
-            onRefresh={() => fetchClientData(false)}
-            onLogout={() => {
-              localStorage.removeItem('client_token');
-              localStorage.removeItem('client_data_cache');
-              setClientToken(null);
-              setClientData(null);
-            }}
-          />
-        </Suspense>
-      </ErrorBoundary>
+      }>
+        <ClientDashboardPage 
+          clientData={clientData}
+          onLogout={() => {
+            localStorage.removeItem('client_token');
+            localStorage.removeItem('client_data_cache');
+            setClientToken(null);
+            setClientData(null);
+          }}
+          onRefresh={() => fetchClientData(false)}
+        />
+      </Suspense>
     );
   }
 
+  // ═══════════ LANDING PAGE PÚBLICA (/) ═══════════
+  if (isLandingRoute) {
+    return <LandingPage />;
+  }
+
+  // ═══════════ PAINEL ADMINISTRATIVO (/admin) ═══════════
   if (!isAuthenticated) {
-    return (
-      <LoginPage 
-        onLogin={(status) => {
-          if (status) {
-            setIsAuthenticated(true);
-            setAdminRole(null); // Reset to trigger fetch
-          }
-        }} 
-      />
-    );
+    return <LoginPage onLogin={() => setIsAuthenticated(true)} />;
   }
 
-  if (isRoleLoading || !adminRole || !isAdminDbLoaded) {
+  if (isRoleLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
@@ -512,112 +479,108 @@ export default function App() {
   }
 
   return (
-    <div className="admin-panel h-screen w-full flex bg-slate-50 text-slate-900 font-sans overflow-hidden">
+    <div className="admin-panel h-screen w-full flex bg-[#eaeff3] text-slate-900 font-sans overflow-hidden">
       
-      {/* Mobile Top Bar (Only visible on small screens) */}
+      {/* Mobile Top Bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-100 z-50 flex items-center justify-between px-4">
         <div className="flex items-center space-x-2">
-          <Logo className="h-8 w-auto text-[#B69D74]" />
-          <span className="font-bold text-sm tracking-tight">Reservas Náuticas</span>
+          <Logo className={`h-8 w-auto ${isPecasServicos ? 'text-[#B69D74]' : 'text-[#186b77]'}`} />
+          {isPecasServicos ? (
+            <span className="text-xs font-black text-slate-800 uppercase">Vale Administradora</span>
+          ) : (
+            <span className="text-xs font-bold text-[#186b77] bg-teal-50 px-2 py-0.5 rounded border border-teal-100 uppercase">Admin</span>
+          )}
         </div>
-        <button 
+        <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+          className="p-2 text-slate-600 hover:text-slate-900 focus:outline-none"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-6 h-6" />
         </button>
       </div>
 
-      {/* Sidebar Overlay for Mobile */}
-      {isMobileMenuOpen && (
-        <div 
-          className="md:hidden fixed inset-0 bg-slate-900/50 z-40 backdrop-blur-sm"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-
       {/* Sidebar Navigation */}
-      <aside 
-        className={`fixed md:static inset-y-0 left-0 z-50 bg-white border-r border-slate-100 flex flex-col transition-all duration-300 ease-in-out overflow-x-hidden ${
-          isSidebarOpen ? 'w-64' : 'w-20'
-        } ${
-          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-        } shadow-xl md:shadow-none`}
-      >
-        {/* Sidebar Header / Logo */}
-        <div 
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className={`h-16 flex items-center border-b border-slate-100 px-4 ${isSidebarOpen ? 'justify-between' : 'justify-center'} shrink-0 cursor-pointer hover:bg-slate-50 transition-colors`}
-          title={isSidebarOpen ? "Recolher Menu" : "Expandir Menu"}
-        >
-          {/* Expanded Logo */}
-          {isSidebarOpen ? (
-            <div className="flex items-center justify-center w-full overflow-hidden transition-all px-2">
-              <Logo className="h-10 w-full text-[#B69D74]" />
+      <aside className={`
+        fixed md:static inset-y-0 left-0 z-40
+        ${isSidebarOpen ? 'w-64' : 'w-20'}
+        bg-white border-r border-slate-200/80 flex flex-col justify-between
+        transition-all duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <div className="flex flex-col h-full overflow-hidden">
+          
+          {/* Logo & Header */}
+          <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 shrink-0">
+            <div className="flex items-center space-x-3 overflow-hidden">
+              <Logo className={`h-8 w-auto ${isPecasServicos ? 'text-[#B69D74]' : 'text-[#186b77]'}`} />
+              {isPecasServicos && isSidebarOpen && (
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-xs font-black text-slate-800 leading-tight tracking-tight uppercase truncate">
+                    Vale Administradora
+                  </span>
+                  <span className="text-[10px] font-bold text-[#B69D74] leading-none truncate">
+                    Peças & Serviços
+                  </span>
+                </div>
+              )}
             </div>
-          ) : (
-            /* Collapsed Logo Only */
-            <div className="hidden md:flex justify-center w-full">
-              <Logo className="h-8 w-auto text-[#B69D74]" />
-            </div>
-          )}
-        </div>
 
-        {/* Navigation Links */}
-        <div className="flex-1 overflow-y-auto subtle-scrollbar py-4 px-3 space-y-6">
-          {menuGroups.map((group, groupIdx) => (
-            <div key={groupIdx} className="space-y-1">
-              {/* Group Title */}
-              <div className={`px-3 mb-2 transition-all duration-200 ${isSidebarOpen ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden m-0 p-0'}`}>
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  {group.group}
-                </h3>
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="hidden md:flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* Navigation Links */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+            {menuGroups.map((group, idx) => (
+              <div key={idx} className="space-y-1">
+                {isSidebarOpen && (
+                  <div className="px-3 py-1 text-[10px] uppercase font-black tracking-wider text-slate-400">
+                    {group.group}
+                  </div>
+                )}
+                {group.items.map(item => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleTabChange(item.id)}
+                      title={!isSidebarOpen ? item.label : undefined}
+                      className={`
+                        w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer
+                        ${isActive 
+                          ? 'bg-[#186b77] text-white shadow-xs' 
+                          : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}
+                      `}
+                    >
+                      <Icon className={`w-4 h-4 shrink-0 ${isSidebarOpen ? 'mr-3' : 'mx-auto'} ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                      {isSidebarOpen && <span className="truncate">{item.label}</span>}
+                    </button>
+                  );
+                })}
               </div>
-              
-              {/* Group Items */}
-              <div className="space-y-1">
-                {group.items.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleTabChange(item.id)}
-                    className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-all duration-150 cursor-pointer group ${
-                      activeTab === item.id
-                        ? 'bg-slate-900 text-white shadow-md'
-                        : 'text-slate-500 hover:text-slate-950 hover:bg-slate-100'
-                    } ${!isSidebarOpen ? 'justify-center' : 'justify-start'}`}
-                    title={!isSidebarOpen ? item.label : undefined}
-                  >
-                    <item.icon className={`w-[18px] h-[18px] shrink-0 ${isSidebarOpen ? 'mr-3' : 'mr-0'}`} />
-                    <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-200 ${
-                      isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 hidden md:block'
-                    }`}>
-                      {item.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        {/* Logout Button */}
-        <div className="p-3 border-t border-slate-100">
-          <button
-            onClick={handleLogout}
-            className={`w-full flex items-center px-3 py-2.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all duration-150 group ${!isSidebarOpen ? 'justify-center' : 'justify-start'}`}
-            title={!isSidebarOpen ? 'Sair' : undefined}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className={`w-5 h-5 shrink-0 ${isSidebarOpen ? 'mr-3' : 'mr-0'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            <span className={`text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-200 ${
-              isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 hidden md:block'
-            }`}>
-              Sair
-            </span>
-          </button>
-        </div>
+          {/* User & Logout Footer */}
+          <div className="p-3 border-t border-slate-100 shrink-0">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 shrink-0 ${isSidebarOpen ? 'mr-3' : 'mx-auto'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              {isSidebarOpen && <span>Sair</span>}
+            </button>
+          </div>
 
+        </div>
       </aside>
 
       {/* Main Content Area */}
@@ -636,6 +599,7 @@ export default function App() {
                 {activeTab === 'boats' && <BoatPage />}
                 {activeTab === 'contratos' && <ContractGeneratorPage />}
                 {activeTab === 'sound' && <SoundControlsPage />}
+                {activeTab === 'chamados' && <ChamadosPage onNavigateToOS={() => setActiveTab('manutencoes')} />}
                 {activeTab === 'manutencoes' && <PecasKanbanPage />}
                 {activeTab === 'pecas-horimetros' && <PecasHorimetrosPage />}
                 {activeTab === 'pecas-acessorios' && <PecasAcessoriosPage />}

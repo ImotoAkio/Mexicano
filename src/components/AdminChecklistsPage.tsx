@@ -5,10 +5,12 @@ import {
   ArrowDownCircle, ArrowUpCircle, Anchor, Image as ImageIcon, 
   Clock, CheckCircle2, MoreVertical, X, List, LayoutList, GitCommit,
   Link as LinkIcon, Share2, Compass, AlertTriangle, Shield, Volume2, LifeBuoy, Flame,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Sliders
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
 import { ZoomableImage } from './ZoomableImage';
+import UserAvatarMenu from './header/UserAvatarMenu';
+import SystemSettingsModal from './header/SystemSettingsModal';
 
 interface AdminChecklistsPageProps {
   data: {
@@ -21,6 +23,7 @@ interface AdminChecklistsPageProps {
 }
 
 export default function AdminChecklistsPage({ data, setData, reloadData }: AdminChecklistsPageProps) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -185,29 +188,59 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto font-sans">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div className="w-full min-h-screen bg-[#eaeff3] p-4 sm:p-6 space-y-6 font-sans text-slate-800">
+      
+      {/* 1. Header Padronizado (Breadcrumb, Título & Ícones Utilitários à Direita) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
-            <ClipboardCheck className="w-8 h-8 text-blue-600" />
-            Checklists
+          <nav className="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-1.5">
+            <span>Frotas</span>
+            <span>/</span>
+            <span className="text-[#186b77] font-bold">Checklists Diários</span>
+          </nav>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Checklists Diários
           </h1>
-          <p className="text-slate-500 mt-1">Gerencie os checklists de descida, chegada e subida.</p>
         </div>
-        
-        <div className="flex items-center gap-3">
-          {storageSize && (
-            <div className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full flex items-center gap-2 border border-slate-200">
-              <ImageIcon className="w-3.5 h-3.5" />
-              {(storageSize.checklistsBytes / 1024 / 1024).toFixed(1)} MB em fotos
-            </div>
-          )}
-          <button onClick={exportCSV} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm shadow-sm">
-            <Download className="w-4 h-4" /> Exportar Dados
+
+        {/* Botões Utilitários Circulares Padronizados */}
+        <div className="flex items-center gap-2.5 self-end sm:self-auto">
+          <button 
+            onClick={() => {
+              const input = document.querySelector('input[placeholder*="Nome do cliente"]') as HTMLInputElement;
+              if (input) input.focus();
+            }}
+            className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
+            title="Buscar"
+          >
+            <Search className="w-4 h-4" />
           </button>
-          <button onClick={handleCleanup} className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm shadow-sm">
-            <Trash2 className="w-4 h-4" /> Limpar Antigos
+
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
+            title="Configurações do Sistema"
+          >
+            <Sliders className="w-4 h-4" />
           </button>
+
+          <button 
+            onClick={exportCSV}
+            className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
+            title="Exportar Dados (CSV)"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+
+          <button 
+            onClick={handleCleanup}
+            className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
+            title="Limpar Antigos"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+
+          <UserAvatarMenu />
         </div>
       </div>
 
@@ -701,6 +734,14 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
             <ChevronRight className="w-8 h-8" />
           </button>
         </div>
+      )}
+       {/* System & Horímetro Settings Modal */}
+      {isSettingsOpen && (
+        <SystemSettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onRefresh={reloadData}
+        />
       )}
 
     </div>

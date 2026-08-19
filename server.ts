@@ -402,14 +402,28 @@ app.post("/api/auth/admin", authLimiter, async (req, res) => {
       return res.status(401).json({ error: true, message: "Usuário ou senha inválidos." });
     }
 
+    // Buscar o nome do funcionário vinculado ao usuário
+    let funcionarioNome = admin.nome || admin.username;
+    if (admin.funcionarioId) {
+      try {
+        const dbData = await pullDatabase();
+        const func = (dbData.funcionarios || []).find((f: any) => f.id === admin.funcionarioId);
+        if (func && func.nome) {
+          funcionarioNome = func.nome;
+        }
+      } catch (e) {
+        console.warn("Falha ao buscar funcionário vinculado:", e);
+      }
+    }
+
     const token = jwt.sign(
-      { id: admin.id, username: admin.username, role: admin.role || "admin" },
+      { id: admin.id, username: admin.username, nome: funcionarioNome, role: admin.role || "admin" },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRY }
     );
 
     writeAuditLog(admin.username, "admin", "LOGIN_SUCCESS", req.ip);
-    res.json({ success: true, token, username: admin.username });
+    res.json({ success: true, token, username: admin.username, nome: funcionarioNome, role: admin.role || "admin" });
   } catch (err: any) {
     console.error("Admin login error:", err);
     res.status(500).json({ error: true, message: "Erro interno de autenticação." });
@@ -555,7 +569,7 @@ app.post("/api/auth/client/register", authLimiter, async (req, res) => {
 });
 
 // Route: Validate JWT token (for frontend session checks)
-app.get("/api/auth/validate", (req, res) => {
+app.get("/api/auth/validate", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ valid: false });
@@ -563,7 +577,26 @@ app.get("/api/auth/validate", (req, res) => {
 
   try {
     const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
-    res.json({ valid: true, role: decoded.role, username: decoded.username, nome: decoded.nome, id: decoded.id });
+    let funcionarioNome = decoded.nome || decoded.username;
+    
+    if (decoded.username) {
+      try {
+        const admin = await getAdminByUsername(decoded.username);
+        if (admin && admin.funcionarioId) {
+          const dbData = await pullDatabase();
+          const func = (dbData.funcionarios || []).find((f: any) => f.id === admin.funcionarioId);
+          if (func && func.nome) {
+            funcionarioNome = func.nome;
+          }
+        } else if (admin && admin.nome) {
+          funcionarioNome = admin.nome;
+        }
+      } catch (e) {
+        console.warn("Falha ao resolver nome do funcionário em validate:", e);
+      }
+    }
+
+    res.json({ valid: true, role: decoded.role, username: decoded.username, nome: funcionarioNome || decoded.username, id: decoded.id });
   } catch {
     res.status(401).json({ valid: false });
   }
@@ -1801,16 +1834,36 @@ app.get("/api/whatsapp/connect", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = (req.query.instance as string) || process.env.EVOLUTION_INSTANCE || "mexicano";
 
     if (!apiUrl || !apiKey) {
       return res.json({ base64: null, count: 0, message: "Evolution API não configurada nas variáveis de ambiente." });
     }
 
-    const response = await evolutionFetch(`${apiUrl}/instance/connect/${instance}`, {
+    let response = await evolutionFetch(`${apiUrl}/instance/connect/${instance}`, {
       method: "GET",
       headers: { "apikey": apiKey }
     });
+
+    if (!response.ok) {
+      const statusText = (response.statusText || '').toLowerCase();
+      if (response.status === 404 || statusText.includes('not found')) {
+        console.log(`[WhatsApp Connect] Instance '${instance}' not found on Evolution API. Creating automatically...`);
+        const createRes = await evolutionFetch(`${apiUrl}/instance/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+          body: JSON.stringify({ instanceName: instance, qrcode: true, integration: "WHATSAPP-BAILEYS" })
+        });
+
+        if (createRes.ok || createRes.status === 403 || createRes.status === 409) {
+          await new Promise(r => setTimeout(r, 1500));
+          response = await evolutionFetch(`${apiUrl}/instance/connect/${instance}`, {
+            method: "GET",
+            headers: { "apikey": apiKey }
+          });
+        }
+      }
+    }
 
     if (!response.ok) {
       return res.json({ base64: null, count: 0, message: `Evolution API instance connect: ${response.statusText}` });

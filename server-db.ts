@@ -262,6 +262,18 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN acessorios TEXT;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN horasMotor INT DEFAULT 0;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN ultimaAtualizacaoHoras VARCHAR(100);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN horasUltimaManutencao INT DEFAULT 0;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN historicoHoras TEXT;`);
+    } catch (e) {}
 
     // 3. Reservas Table
     await connection.query(`
@@ -927,6 +939,10 @@ export async function pullDatabase(forceFresh = false) {
       whatsappGroupId: b.whatsappGroupId || undefined,
       temSom: b.temSom === 1 || b.temSom === true,
       acessorios: b.acessorios ? JSON.parse(b.acessorios) : undefined,
+      horasMotor: b.horasMotor ? Number(b.horasMotor) : 0,
+      ultimaAtualizacaoHoras: b.ultimaAtualizacaoHoras || undefined,
+      horasUltimaManutencao: b.horasUltimaManutencao ? Number(b.horasUltimaManutencao) : 0,
+      historicoHoras: b.historicoHoras ? (typeof b.historicoHoras === 'string' ? JSON.parse(b.historicoHoras) : b.historicoHoras) : undefined,
     };
   });
 
@@ -1137,11 +1153,14 @@ export async function upsertBoat(boat: any) {
   const acessoriosJson = boat.acessorios 
     ? (typeof boat.acessorios === 'string' ? boat.acessorios : JSON.stringify(boat.acessorios))
     : null;
+  const historicoHorasJson = boat.historicoHoras
+    ? (typeof boat.historicoHoras === 'string' ? boat.historicoHoras : JSON.stringify(boat.historicoHoras))
+    : null;
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -1161,7 +1180,11 @@ export async function upsertBoat(boat: any) {
       temSom = VALUES(temSom),
       documentoUrl = VALUES(documentoUrl),
       seguroUrl = VALUES(seguroUrl),
-      acessorios = VALUES(acessorios)
+      acessorios = VALUES(acessorios),
+      horasMotor = VALUES(horasMotor),
+      ultimaAtualizacaoHoras = VALUES(ultimaAtualizacaoHoras),
+      horasUltimaManutencao = VALUES(horasUltimaManutencao),
+      historicoHoras = VALUES(historicoHoras)
   `;
 
   await currentPool.query(query, [
@@ -1184,7 +1207,11 @@ export async function upsertBoat(boat: any) {
     temSomVal,
     boat.documentoUrl || null,
     boat.seguroUrl || null,
-    acessoriosJson
+    acessoriosJson,
+    boat.horasMotor !== undefined ? Number(boat.horasMotor) : 0,
+    boat.ultimaAtualizacaoHoras || null,
+    boat.horasUltimaManutencao !== undefined ? Number(boat.horasUltimaManutencao) : 0,
+    historicoHorasJson
   ]);
 
   if (boat.empresas && Array.isArray(boat.empresas)) {

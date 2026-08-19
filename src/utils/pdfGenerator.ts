@@ -253,3 +253,188 @@ export async function generateAvisoSaidaPDF(
 
   return doc;
 }
+
+
+export async function generateOrcamentoOSPDF(
+  manutencao: any,
+  embarcacao?: any,
+  cliente?: any
+) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const leftMargin = 20;
+  let currentY = 15;
+
+  // Header Title
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(24, 107, 119); // #186b77
+  doc.text('VILA NÁUTICA - ORÇAMENTO DE MANUTENÇÃO', leftMargin, currentY);
+
+  currentY += 7;
+  doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139);
+  const osCode = manutencao.codigoOS || ('OS-' + (manutencao.id || '').substring(0, 6).toUpperCase());
+  doc.text(`Documento Oficial • Ordem de Serviço: ${osCode}`, leftMargin, currentY);
+
+  currentY += 5;
+  doc.setLineWidth(0.5);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(leftMargin, currentY, 190, currentY);
+
+  currentY += 10;
+
+  // Boat & Owner Data Box
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(leftMargin, currentY, 170, 32, 3, 3, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(leftMargin, currentY, 170, 32, 3, 3, 'D');
+
+  let boxY = currentY + 7;
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Embarcação: ${embarcacao?.nome || 'N/A'} (${embarcacao?.numero ? 'M' + embarcacao.numero : 'N/A'})`, leftMargin + 5, boxY);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(71, 85, 105);
+  boxY += 5.5;
+  doc.text(`Modelo / Tipo: ${embarcacao?.modelo || 'N/A'} (${embarcacao?.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})`, leftMargin + 5, boxY);
+
+  boxY += 5.5;
+  doc.text(`Proprietário / Cliente: ${cliente?.nome || 'Proprietário Registrado'}`, leftMargin + 5, boxY);
+
+  boxY += 5.5;
+  doc.text(`Data de Abertura: ${manutencao.dataChamado ? new Date(manutencao.dataChamado).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')} • Horímetro Entrada: ${manutencao.horasMotorAtual || embarcacao?.horasMotor || 0} h`, leftMargin + 5, boxY);
+
+  currentY += 40;
+
+  // OS Details & Title
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Descrição do Serviço / Chamado: ${manutencao.tituloChamado || 'Manutenção Geral'}`, leftMargin, currentY);
+
+  if (manutencao.descricaoServico) {
+    currentY += 6;
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(71, 85, 105);
+    const splitDesc = doc.splitTextToSize(manutencao.descricaoServico, 170);
+    doc.text(splitDesc, leftMargin, currentY);
+    currentY += (splitDesc.length * 4.5);
+  }
+
+  currentY += 8;
+
+  // Table of Items / Parts
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(24, 107, 119);
+  doc.text('Detalhamento das Peças & Materiais', leftMargin, currentY);
+  currentY += 5;
+
+  // Table Header
+  doc.setFillColor(241, 245, 249);
+  doc.rect(leftMargin, currentY, 170, 7, 'F');
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(51, 65, 85);
+  doc.text('Item / Peça', leftMargin + 3, currentY + 5);
+  doc.text('Qtd.', leftMargin + 105, currentY + 5, { align: 'right' });
+  doc.text('Val. Unitário', leftMargin + 138, currentY + 5, { align: 'right' });
+  doc.text('Total', leftMargin + 167, currentY + 5, { align: 'right' });
+
+  currentY += 7;
+
+  const pecasList = manutencao.pecas || [];
+  let valorTotal = 0;
+
+  if (pecasList.length === 0) {
+    doc.setFont('Helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.setTextColor(148, 163, 184);
+    doc.text('Nenhum item específico listado (Mão de Obra / Serviço Geral)', leftMargin + 3, currentY + 5);
+    currentY += 8;
+  } else {
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+
+    pecasList.forEach((item: any, idx: number) => {
+      const lineTotal = (item.quantidade || 1) * (item.valorUnitario || 0);
+      valorTotal += lineTotal;
+
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(leftMargin, currentY, 170, 6.5, 'F');
+      }
+
+      doc.text(String(item.nome || 'Peça'), leftMargin + 3, currentY + 4.5);
+      doc.text(String(item.quantidade || 1), leftMargin + 105, currentY + 4.5, { align: 'right' });
+      doc.text((item.valorUnitario || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), leftMargin + 138, currentY + 4.5, { align: 'right' });
+      doc.text(lineTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), leftMargin + 167, currentY + 4.5, { align: 'right' });
+
+      currentY += 6.5;
+    });
+  }
+
+  // Use orcamento if explicitly defined, otherwise sum of pecas
+  const totalGeral = manutencao.orcamento && manutencao.orcamento > 0 ? manutencao.orcamento : valorTotal;
+
+  currentY += 5;
+  doc.setLineWidth(0.5);
+  doc.setDrawColor(24, 107, 119);
+  doc.line(leftMargin, currentY, 190, currentY);
+
+  currentY += 8;
+
+  // Total Display Box
+  doc.setFillColor(240, 253, 250);
+  doc.roundedRect(120, currentY, 70, 16, 2, 2, 'F');
+  doc.setDrawColor(153, 246, 228);
+  doc.roundedRect(120, currentY, 70, 16, 2, 2, 'D');
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(20, 83, 91);
+  doc.text('VALOR TOTAL:', 125, currentY + 6);
+  doc.setFontSize(12);
+  doc.text(totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), 185, currentY + 11, { align: 'right' });
+
+  currentY += 28;
+
+  // Terms & Approval Signature
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Termos de Aprovação:', leftMargin, currentY);
+  currentY += 4.5;
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Proposta válida por 15 dias a contar da data de emissão. A aprovação autoriza o início dos serviços.', leftMargin, currentY);
+
+  currentY += 22;
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(148, 163, 184);
+  doc.line(leftMargin + 30, currentY, leftMargin + 140, currentY);
+  currentY += 5;
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Assinatura do Proprietário / Responsável', 105, currentY, { align: 'center' });
+
+  // Open PDF Blob URL
+  const pdfBlob = doc.output('blob');
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  window.open(pdfUrl, '_blank');
+
+  return doc;
+}

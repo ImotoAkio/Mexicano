@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { reservationDB, boatDB, clientDB } from '../../db';
-import { Embarcacao, Cliente, Reserva } from '../../types';
-import MonthlyCalendarGenerator from '../MonthlyCalendarGenerator';
-import { ShieldAlert, Smartphone, UserCheck, UserX, QrCode, LogOut, CheckCircle, MessageSquare, Calendar as CalendarIcon, Check, AlertTriangle, 
-  RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet, Paperclip, FileText, Users, Plus, Trash2, Play, Pause, X, CheckSquare, Square, File, Image as ImageIcon, Sparkles, Filter
+import React, { useState, useEffect, useMemo } from 'react';
+import { maintenanceDB, boatDB, clientDB } from '../../db';
+import { Embarcacao, Cliente, Manutencao } from '../../types';
+import { getHorimetroSettings, calcularStatusRevisao } from '../../utils/horimetroUtils';
+import { 
+  User, Users, ShieldAlert, Smartphone, UserCheck, QrCode, LogOut, CheckCircle, MessageSquare, Clock, Check, AlertTriangle, 
+  RefreshCw, Search, Send, Wrench, Paperclip, Trash2, X, Sparkles
 } from 'lucide-react';
 
 const formatFirstName = (fullName: string): string => {
@@ -13,131 +14,374 @@ const formatFirstName = (fullName: string): string => {
   return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
 };
 
-const getQuando = (targetDateStr: string): string => {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const [y, m, d] = targetDateStr.split('-').map(Number);
-    const target = new Date(y, m - 1, d);
-    target.setHours(0, 0, 0, 0);
-    
-    const diffTime = target.getTime() - today.getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) {
-      return 'hoje';
-    } else if (diffDays === 1) {
-      return 'amanhã';
-    } else {
-      return `no dia ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
-    }
-  } catch (e) {
-    return 'amanhã';
-  }
-};
-
-
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function PecasWhatsAppPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'calendars' | 'custom' | 'config'>('confirmations');
+  const [activeMainTab, setActiveMainTab] = useState<'maintenances' | 'engine_hours' | 'custom' | 'config'>('maintenances');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
-  const [confTemplate1, setConfTemplate1] = useState(() => {
-    return localStorage.getItem('whatsapp_conf_template1') || "Olá, *{cliente}*! 😃\nPosso confirmar sua saída *{quando}* com a embarcação *{barco}*?";
-  });
-
-  const [confTemplate2, setConfTemplate2] = useState(() => {
-    return localStorage.getItem('whatsapp_conf_template2') || "⚠️ *ATENÇÃO: DADOS OBRIGATÓRIOS PARA NAVEGAÇÃO!* ⚠️\nCaso o passeio esteja confirmado, por favor responda com:\n\n📍 *Destino:*\n⏰ *Previsão de saída às:*\n⏰ *Previsão de chegada às:*\n👥 *Número de pessoas a bordo:*\n\n🚨 *A Marinha exige o Plano de Navegação prévio. Com esses dados, adiantaremos o preenchimento obrigatório para sua segurança!*";
-  });
-
-  const [showTemplatesEditor, setShowTemplatesEditor] = useState(false);
-
-  const handleSaveConfTemplate1 = (val: string) => {
-    setConfTemplate1(val);
-    localStorage.setItem('whatsapp_conf_template1', val);
-    // Persist to centralized database
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template1: val }) }).catch(console.warn);
-  };
-
-  const handleSaveConfTemplate2 = (val: string) => {
-    setConfTemplate2(val);
-    localStorage.setItem('whatsapp_conf_template2', val);
-    // Persist to centralized database
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template2: val }) }).catch(console.warn);
-  };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
 
-  // --- WHATSAPP CONFIG LOGIC ---
-  // WhatsApp States
-  const [activeTab, setActiveTab] = useState<'conta' | 'contatos' | 'grupos'>('conta');
-  const [waStatus, setWaStatus] = useState<string>('loading');
-  const [waQrCode, setWaQrCode] = useState<string | null>(null);
-  const [isFetchingWaStatus, setIsFetchingWaStatus] = useState(false);
+  // --- TAB 1: MANUTENÇÕES & ORDENS DE SERVIÇO ---
+  const [maintenances, setMaintenances] = useState<Manutencao[]>([]);
+  const [maintSearch, setMaintSearch] = useState('');
+  const [maintStatusFilter, setMaintStatusFilter] = useState<'todos' | 'pendente' | 'aguardando_peca' | 'em_andamento' | 'concluido'>('todos');
+  const [maintSelectedIds, setMaintSelectedIds] = useState<string[]>([]);
+  const [maintTemplateType, setMaintTemplateType] = useState<'inicio' | 'aprovacao' | 'conclusao'>('conclusao');
 
-  // WhatsApp Contacts Sync States
+  const [maintTemplateInicio, setMaintTemplateInicio] = useState(() => {
+    return localStorage.getItem('whatsapp_maint_template_inicio') || "Olá, *{cliente}*! 🛠️\nInformamos que os serviços de manutenção (*{servico}*) na sua embarcação *{barco}* foram iniciados pela nossa equipe de Peças & Serviços.";
+  });
+
+  const [maintTemplateAprovacao, setMaintTemplateAprovacao] = useState(() => {
+    return localStorage.getItem('whatsapp_maint_template_aprovacao') || "Olá, *{cliente}*! ⏳\nA manutenção (*{servico}*) na embarcação *{barco}* necessita da sua aprovação do orçamento para prosseguimento. Por favor, entre em contato para autorização.";
+  });
+
+  const [maintTemplateConclusao, setMaintTemplateConclusao] = useState(() => {
+    return localStorage.getItem('whatsapp_maint_template_conclusao') || "Olá, *{cliente}*! ✅\nInformamos que os serviços de manutenção (*{servico}*) na sua embarcação *{barco}* foram concluídos com sucesso! Ela já está pronta para uso.";
+  });
+
+  const [showMaintTemplateEditor, setShowMaintTemplateEditor] = useState(false);
+  const [maintSendingStatus, setMaintSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
+  const [maintSendResults, setMaintSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
+
+  useEffect(() => {
+    const list = maintenanceDB.getAll();
+    setMaintenances(list);
+  }, []);
+
+  const handleSaveMaintTemplate = (type: 'inicio' | 'aprovacao' | 'conclusao', val: string) => {
+    if (type === 'inicio') {
+      setMaintTemplateInicio(val);
+      localStorage.setItem('whatsapp_maint_template_inicio', val);
+    } else if (type === 'aprovacao') {
+      setMaintTemplateAprovacao(val);
+      localStorage.setItem('whatsapp_maint_template_aprovacao', val);
+    } else {
+      setMaintTemplateConclusao(val);
+      localStorage.setItem('whatsapp_maint_template_conclusao', val);
+    }
+  };
+
+  const filteredMaintenances = maintenances.filter(m => {
+    const boat = boatDB.getById(m.embarcacaoId);
+    const client = m.clienteId ? clientDB.getById(m.clienteId) : null;
+    const search = maintSearch.toLowerCase();
+
+    const matchesSearch = !search || 
+      (m.titulo && m.titulo.toLowerCase().includes(search)) ||
+      (boat && boat.nome.toLowerCase().includes(search)) ||
+      (boat && String(boat.numero).includes(search)) ||
+      (client && client.nome.toLowerCase().includes(search));
+
+    if (!matchesSearch) return false;
+
+    if (maintStatusFilter !== 'todos') {
+      if (maintStatusFilter === 'pendente' && m.status !== 'pendente') return false;
+      if (maintStatusFilter === 'aguardando_peca' && m.status !== 'aguardando_peca') return false;
+      if (maintStatusFilter === 'em_andamento' && m.status !== 'em_andamento') return false;
+      if (maintStatusFilter === 'concluido' && m.status !== 'concluido') return false;
+    }
+
+    return true;
+  });
+
+  const visibleMaintWithTarget = filteredMaintenances.filter(m => {
+    const boat = boatDB.getById(m.embarcacaoId);
+    const client = m.clienteId ? clientDB.getById(m.clienteId) : null;
+    const hasClientPhone = !!client?.telefone;
+    const hasGroup = !!boat?.whatsappGroupId;
+    const hasCotistaPhone = boat?.cotistas?.some(c => {
+      const cl = clientDB.getById(c.clienteId);
+      return !!cl?.telefone;
+    });
+    return hasClientPhone || hasGroup || hasCotistaPhone;
+  }).map(m => m.id);
+
+  const allMaintVisibleSelected = visibleMaintWithTarget.length > 0 && visibleMaintWithTarget.every(id => maintSelectedIds.includes(id));
+
+  const handleMaintToggleSelect = (id: string) => {
+    setMaintSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleMaintToggleSelectAll = () => {
+    if (allMaintVisibleSelected) {
+      setMaintSelectedIds(prev => prev.filter(id => !visibleMaintWithTarget.includes(id)));
+    } else {
+      const newSelection = new Set([...maintSelectedIds, ...visibleMaintWithTarget]);
+      setMaintSelectedIds(Array.from(newSelection));
+    }
+  };
+
+  const handleSendMaintNotifications = async () => {
+    if (maintSelectedIds.length === 0) {
+      showToast('Nenhuma manutenção selecionada.', 'error');
+      return;
+    }
+    setMaintSendingStatus('sending');
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    let currentTemplate = maintTemplateConclusao;
+    if (maintTemplateType === 'inicio') currentTemplate = maintTemplateInicio;
+    if (maintTemplateType === 'aprovacao') currentTemplate = maintTemplateAprovacao;
+
+    for (const id of maintSelectedIds) {
+      const maint = maintenances.find(m => m.id === id);
+      if (!maint) continue;
+      const boat = boatDB.getById(maint.embarcacaoId);
+      const client = maint.clienteId ? clientDB.getById(maint.clienteId) : null;
+      
+      let targetNumber = client?.telefone;
+      let recipientName = client?.nome ? formatFirstName(client.nome) : '';
+
+      if (!targetNumber && boat?.whatsappGroupId) {
+        targetNumber = boat.whatsappGroupId;
+        recipientName = boat.nome;
+      }
+
+      if (!targetNumber && boat?.cotistas) {
+        for (const c of boat.cotistas) {
+          const cl = clientDB.getById(c.clienteId);
+          if (cl?.telefone) {
+            targetNumber = cl.telefone;
+            recipientName = formatFirstName(cl.nome);
+            break;
+          }
+        }
+      }
+
+      if (!targetNumber) continue;
+
+      const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
+      const text = currentTemplate
+        .replace(/{cliente}/g, recipientName || 'Cotistas')
+        .replace(/{barco}/g, boatCode)
+        .replace(/{servico}/g, maint.titulo || 'Manutenção');
+
+      setMaintSendResults(prev => ({ ...prev, [id]: 'sending' }));
+
+      try {
+        const response = await fetch('/api/whatsapp/send-text?instance=pecas_servicos', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ number: targetNumber, text })
+        });
+        if (!response.ok) throw new Error('Falha no envio');
+
+        setMaintSendResults(prev => ({ ...prev, [id]: 'success' }));
+      } catch (err) {
+        setMaintSendResults(prev => ({ ...prev, [id]: 'error' }));
+      }
+      await sleep(3000);
+    }
+    setMaintSendingStatus('completed');
+    showToast('Disparo de notificações concluído!', 'success');
+  };
+
+  // --- TAB 2: ALERTAS DE HORÍMETRO & REVISÕES ---
+  const [boats, setBoats] = useState<Embarcacao[]>([]);
+  const [hoursSearch, setHoursSearch] = useState('');
+  const [hoursBoatFilterId, setHoursBoatFilterId] = useState<string>('todas');
+  const [hoursStatusFilter, setHoursStatusFilter] = useState<'todos' | 'vencido' | 'proximo' | 'ok'>('todos');
+  const [hoursSelectedIds, setHoursSelectedIds] = useState<string[]>([]);
+
+  const defaultHoursTemplate = "Olá, *{cliente}*! ⏰\nInformamos que a embarcação *{barco}* atingiu *{horimetro}h* de uso e será encaminhada para a manutenção preventiva. Qualquer dúvida, estamos à disposição!";
+  
+  const [hoursMessageTemplate, setHoursMessageTemplate] = useState(() => {
+    return localStorage.getItem('whatsapp_hours_template') || defaultHoursTemplate;
+  });
+
+  const [hoursSendingStatus, setHoursSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
+  const [hoursSendResults, setHoursSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
+
+  useEffect(() => {
+    setBoats(boatDB.getAll());
+  }, []);
+
+  const handleSaveHoursTemplate = (val: string) => {
+    setHoursMessageTemplate(val);
+    localStorage.setItem('whatsapp_hours_template', val);
+  };
+
+  const handleResetHoursTemplate = () => {
+    setHoursMessageTemplate(defaultHoursTemplate);
+    localStorage.setItem('whatsapp_hours_template', defaultHoursTemplate);
+    showToast('Mensagem padrão restaurada!');
+  };
+
+  const horimetroSettings = getHorimetroSettings();
+
+  // Map each boat to all of its cotistas/clients so every cotista can be selected/notified
+  const boatCotistaList = useMemo(() => {
+    const items: Array<{
+      key: string;
+      boat: Embarcacao;
+      statusRevisao: ReturnType<typeof calcularStatusRevisao>;
+      client: Cliente | null;
+    }> = [];
+
+    const allClients = clientDB.getAll();
+
+    boats.forEach(b => {
+      const statusRevisao = calcularStatusRevisao(b, maintenances, horimetroSettings);
+      
+      const clientMap = new Map<string, Cliente>();
+      
+      if (b.cotistas && b.cotistas.length > 0) {
+        b.cotistas.forEach(c => {
+          const found = allClients.find(cl => cl.id === c.clienteId);
+          if (found) clientMap.set(found.id, found);
+        });
+      }
+
+      allClients.forEach(c => {
+        if (c.embarcacaoId === b.id || c.embarcacoes?.some(e => e.embarcacaoId === b.id)) {
+          clientMap.set(c.id, c);
+        }
+      });
+
+      const clientList = Array.from(clientMap.values());
+
+      if (clientList.length > 0) {
+        clientList.forEach(cl => {
+          items.push({
+            key: `${b.id}_${cl.id}`,
+            boat: b,
+            statusRevisao,
+            client: cl
+          });
+        });
+      } else {
+        items.push({
+          key: `${b.id}_none`,
+          boat: b,
+          statusRevisao,
+          client: null
+        });
+      }
+    });
+
+    return items;
+  }, [boats, maintenances, horimetroSettings]);
+
+  const filteredBoatHours = boatCotistaList.filter(item => {
+    if (hoursBoatFilterId !== 'todas' && item.boat.id !== hoursBoatFilterId) {
+      return false;
+    }
+
+    const search = hoursSearch.toLowerCase();
+    const boatCode = item.boat.numero ? `M${item.boat.numero}` : item.boat.nome;
+    const matchesSearch = !search ||
+      item.boat.nome.toLowerCase().includes(search) ||
+      boatCode.toLowerCase().includes(search) ||
+      (item.client && item.client.nome.toLowerCase().includes(search));
+
+    if (!matchesSearch) return false;
+
+    if (hoursStatusFilter === 'vencido' && item.statusRevisao.status !== 'vencido') return false;
+    if (hoursStatusFilter === 'proximo' && item.statusRevisao.status !== 'proximo') return false;
+    if (hoursStatusFilter === 'ok' && item.statusRevisao.status !== 'ok') return false;
+
+    return true;
+  });
+
+  const visibleHoursWithPhone = filteredBoatHours
+    .filter(item => !!item.client?.telefone)
+    .map(item => item.key);
+
+  const allHoursVisibleSelected = visibleHoursWithPhone.length > 0 && visibleHoursWithPhone.every(key => hoursSelectedIds.includes(key));
+
+  const handleHoursToggleSelect = (key: string) => {
+    setHoursSelectedIds(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  };
+
+  const handleHoursToggleSelectAll = () => {
+    if (allHoursVisibleSelected) {
+      setHoursSelectedIds(prev => prev.filter(key => !visibleHoursWithPhone.includes(key)));
+    } else {
+      const newSelection = new Set([...hoursSelectedIds, ...visibleHoursWithPhone]);
+      setHoursSelectedIds(Array.from(newSelection));
+    }
+  };
+
+  const handleSendHoursNotifications = async () => {
+    if (hoursSelectedIds.length === 0) {
+      showToast('Nenhum cliente selecionado.', 'error');
+      return;
+    }
+    setHoursSendingStatus('sending');
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    for (const key of hoursSelectedIds) {
+      const item = boatCotistaList.find(i => i.key === key);
+      if (!item || !item.client || !item.client.telefone) continue;
+
+      const boatCode = item.boat.numero ? `M${item.boat.numero}` : item.boat.nome;
+      const clientFirstName = item.client.nome ? formatFirstName(item.client.nome) : '';
+      const text = hoursMessageTemplate
+        .replace(/{cliente}/g, clientFirstName)
+        .replace(/{barco}/g, boatCode)
+        .replace(/{horimetro}/g, String(item.boat.horimetroActual || 0));
+
+      setHoursSendResults(prev => ({ ...prev, [key]: 'sending' }));
+
+      try {
+        const response = await fetch('/api/whatsapp/send-text?instance=pecas_servicos', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ number: item.client.telefone, text })
+        });
+        if (!response.ok) throw new Error('Falha no envio');
+
+        setHoursSendResults(prev => ({ ...prev, [key]: 'success' }));
+      } catch (err) {
+        setHoursSendResults(prev => ({ ...prev, [key]: 'error' }));
+      }
+      await sleep(3000);
+    }
+    setHoursSendingStatus('completed');
+    showToast('Disparo de alertas de horímetro concluído!', 'success');
+  };
+
+  // --- TAB 3: COMUNICADOS DE OFICINA & ENVIO AVULSO ---
   const [clients, setClients] = useState<Cliente[]>([]);
   const setClientsFiltered = (allClients: Cliente[]) => {
     setClients(allClients.filter(c => !c.nome.toLowerCase().includes('vila nautica')));
   };
-  const [whatsAppContacts, setWhatsAppContacts] = useState<any[]>([]);
-  const [isFetchingContacts, setIsFetchingContacts] = useState(false);
-  const [activeContactsTab, setActiveContactsTab] = useState<'todos' | 'sem_telefone' | 'vinculados'>('sem_telefone');
-  const [clientSearch, setClientSearch] = useState('');
-  const [activeManualSyncClientId, setActiveManualSyncClientId] = useState<string | null>(null);
-  const [contactQuery, setContactQuery] = useState('');
 
-  
-  // WhatsApp Groups Sync States
-  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
-  const [isFetchingGroups, setIsFetchingGroups] = useState(false);
-  const [mappingState, setMappingState] = useState<Record<string, string>>({});
-  const [boats, setBoats] = useState<any[]>([]);
-
-  
-
-  // --- CUSTOM MESSAGES LOGIC ---
   const [customTargetType, setCustomTargetType] = useState<'clients' | 'groups' | 'custom_number'>('clients');
-  const [customClientFilterBoatId, setCustomClientFilterBoatId] = useState<string>('all');
   const [customSearch, setCustomSearch] = useState('');
   
-  // Selected IDs
   const [customSelectedClientIds, setCustomSelectedClientIds] = useState<string[]>([]);
   const [customSelectedGroupIds, setCustomSelectedGroupIds] = useState<string[]>([]);
   const [customManualNumbers, setCustomManualNumbers] = useState<string>('');
   
-  // Message Content & Media
   const [customText, setCustomText] = useState('');
   const [customMedia, setCustomMedia] = useState<{ base64: string; mimetype: string; fileName: string } | null>(null);
   
-  // Templates
   const [customTemplates, setCustomTemplates] = useState<Array<{ id: string; title: string; text: string }>>(() => {
     try {
-      const saved = localStorage.getItem('whatsapp_custom_templates');
+      const saved = localStorage.getItem('whatsapp_custom_templates_pecas');
       return saved ? JSON.parse(saved) : [
-        { id: '1', title: 'Comunicado Geral', text: 'Prezado(a) *{cliente}*,\n\nInformamos que ...\n\nQualquer dúvida estamos à disposição! ⚓' },
-        { id: '2', title: 'Aviso de Manutenção', text: 'Atenção cotistas da embarcação *{barco}* ⚠️\n\nA embarcação passará por manutenção preventiva no período de ...\n\nAgradecemos a compreensão!' }
+        { id: '1', title: 'Aviso de Manutenção Programada', text: 'Prezado(a) *{cliente}*,\n\nInformamos que a embarcação *{barco}* passará por manutenção preventiva no período de ...\n\nQualquer dúvida estamos à disposição! 🛠️' },
+        { id: '2', title: 'Solicitação de Peças / Orçamento', text: 'Atenção cotistas da embarcação *{barco}* ⚠️\n\nO orçamento para a substituição de peças está disponível para aprovação.\n\nAgradecemos a confirmação!' }
       ];
     } catch {
       return [];
     }
   });
+
   const [newTemplateTitle, setNewTemplateTitle] = useState('');
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
 
-  // Send Execution & Delay
-  const [customDelaySeconds, setCustomDelaySeconds] = useState<number>(3);
+  const [customDelaySeconds] = useState<number>(3);
   const [customSendingStatus, setCustomSendingStatus] = useState<'idle' | 'sending' | 'paused' | 'completed'>('idle');
   const [customSendQueue, setCustomSendQueue] = useState<Array<{
     id: string;
@@ -145,9 +389,8 @@ export default function PecasWhatsAppPage() {
     target: string;
     status: 'pending' | 'sending' | 'success' | 'error';
     error?: string;
-    clientObj?: Cliente;
   }>>([]);
-  const [cancelSendingRef, setCancelSendingRef] = useState<boolean>(false);
+  const [cancelSendingRef] = useState<boolean>(false);
 
   const handleSaveCustomTemplate = () => {
     if (!newTemplateTitle.trim() || !customText.trim()) {
@@ -157,11 +400,7 @@ export default function PecasWhatsAppPage() {
     const newT = { id: Date.now().toString(), title: newTemplateTitle.trim(), text: customText };
     const updated = [...customTemplates, newT];
     setCustomTemplates(updated);
-    localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_custom_templates: JSON.stringify(updated) }) }).catch(console.warn);
+    localStorage.setItem('whatsapp_custom_templates_pecas', JSON.stringify(updated));
     setNewTemplateTitle('');
     setShowSaveTemplateModal(false);
     showToast('Modelo salvo com sucesso!');
@@ -170,7 +409,7 @@ export default function PecasWhatsAppPage() {
   const handleDeleteCustomTemplate = (id: string) => {
     const updated = customTemplates.filter(t => t.id !== id);
     setCustomTemplates(updated);
-    localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
+    localStorage.setItem('whatsapp_custom_templates_pecas', JSON.stringify(updated));
     showToast('Modelo removido.');
   };
 
@@ -199,11 +438,6 @@ export default function PecasWhatsAppPage() {
     showToast('Anexo removido.');
   };
 
-  const handleInsertVariable = (variableStr: string) => {
-    setCustomText(prev => prev + variableStr);
-  };
-
-  // Helper lists for custom selection
   const filteredCustomClients = clients.filter(c => {
     if (!c.telefone) return false;
     if (customSearch) {
@@ -212,19 +446,11 @@ export default function PecasWhatsAppPage() {
       const matchPhone = c.telefone.includes(s);
       if (!matchName && !matchPhone) return false;
     }
-    if (customClientFilterBoatId !== 'all') {
-      const boat = boats.find(b => b.id === customClientFilterBoatId);
-      if (!boat || !boat.cotistas?.some((cot: any) => cot.clienteId === c.id)) {
-        return false;
-      }
-    }
     return true;
   });
 
   const handleToggleSelectClient = (id: string) => {
-    setCustomSelectedClientIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+    setCustomSelectedClientIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
   const handleToggleSelectAllClients = () => {
@@ -238,10 +464,12 @@ export default function PecasWhatsAppPage() {
     }
   };
 
-  // Groups selection helper
+  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [isFetchingGroups, setIsFetchingGroups] = useState(false);
+  const [mappingState, setMappingState] = useState<Record<string, string>>({});
+
   const allAvailableGroupsList = () => {
     const list: Array<{ id: string; name: string; boatName?: string }> = [];
-    // Mapped boat groups
     boats.forEach(b => {
       if (b.whatsappGroupId) {
         list.push({
@@ -251,7 +479,6 @@ export default function PecasWhatsAppPage() {
         });
       }
     });
-    // Fetched groups from VPS
     availableGroups.forEach(g => {
       if (g.id && !list.some(l => l.id === g.id)) {
         list.push({
@@ -270,9 +497,7 @@ export default function PecasWhatsAppPage() {
   });
 
   const handleToggleSelectGroup = (id: string) => {
-    setCustomSelectedGroupIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+    setCustomSelectedGroupIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
   const handleToggleSelectAllGroups = () => {
@@ -292,7 +517,7 @@ export default function PecasWhatsAppPage() {
       return;
     }
 
-    const queue: Array<{ id: string; name: string; target: string; status: 'pending' | 'sending' | 'success' | 'error'; clientObj?: Cliente }> = [];
+    const queue: Array<{ id: string; name: string; target: string; status: 'pending' | 'sending' | 'success' | 'error' }> = [];
 
     if (customTargetType === 'clients') {
       if (customSelectedClientIds.length === 0) {
@@ -306,8 +531,7 @@ export default function PecasWhatsAppPage() {
             id: client.id,
             name: client.nome,
             target: client.telefone,
-            status: 'pending',
-            clientObj: client
+            status: 'pending'
           });
         }
       }
@@ -350,40 +574,23 @@ export default function PecasWhatsAppPage() {
     }
 
     setCustomSendQueue(queue);
-    setCancelSendingRef(false);
     setCustomSendingStatus('sending');
-    startSendingCustomQueue(queue);
+    startCustomSendLoop(queue);
   };
 
-  const startSendingCustomQueue = async (initialQueue: typeof customSendQueue) => {
+  const startCustomSendLoop = async (initialQueue: typeof customSendQueue) => {
     const token = localStorage.getItem('admin_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     for (let i = 0; i < initialQueue.length; i++) {
-      if (cancelSendingRef) {
-        showToast('Envio de mensagens cancelado pelo usuário.', 'error');
-        setCustomSendingStatus('idle');
-        return;
-      }
-
+      if (cancelSendingRef) break;
       const item = initialQueue[i];
 
-      // Build custom message variables
       let finalMsg = customText;
-      if (item.clientObj) {
-        const clientFirstName = formatFirstName(item.clientObj.nome);
-        const clientBoats = boats.filter(b => b.cotistas?.some((c: any) => c.clienteId === item.clientObj?.id));
-        const boatName = clientBoats.map(b => b.nome).join(', ') || 'Vila Náutica';
-        finalMsg = finalMsg
-          .replace(/{cliente}/g, item.clientObj.nome)
-          .replace(/{primeiro_nome}/g, clientFirstName)
-          .replace(/{barco}/g, boatName);
-      } else {
-        finalMsg = finalMsg
-          .replace(/{cliente}/g, item.name)
-          .replace(/{primeiro_nome}/g, item.name.split(' ')[0])
-          .replace(/{barco}/g, 'Vila Náutica');
+      if (item.name) {
+        const firstName = formatFirstName(item.name);
+        finalMsg = finalMsg.replace(/{cliente}/g, firstName).replace(/{barco}/g, 'Vila Náutica');
       }
 
       setCustomSendQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sending' } : q));
@@ -411,7 +618,6 @@ export default function PecasWhatsAppPage() {
         setCustomSendQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', error: err.message } : q));
       }
 
-      // Delay between sending items
       if (i < initialQueue.length - 1) {
         await sleep(customDelaySeconds * 1000);
       }
@@ -421,143 +627,69 @@ export default function PecasWhatsAppPage() {
     showToast('Processo de disparo concluído!', 'success');
   };
 
-  const handleStopCustomSend = () => {
-    setCancelSendingRef(true);
-    setCustomSendingStatus('idle');
-    showToast('Interrompendo envios...');
-  };
+  // --- TAB 4: CONFIGURAÇÕES & CONEXÃO ---
+  const [activeTab, setActiveTab] = useState<'conta' | 'contatos' | 'grupos'>('conta');
+  const [waStatus, setWaStatus] = useState<string>('loading');
+  const [waQrCode, setWaQrCode] = useState<string | null>(null);
+  const [isFetchingWaStatus, setIsFetchingWaStatus] = useState(false);
 
-  // --- CONFIRMATIONS LOGIC ---
-  const [confDate, setConfDate] = useState(() => {
-    const today = new Date();
-    const localStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-    return localStr;
-  });
-  
-  const [confReservations, setConfReservations] = useState<Reserva[]>([]);
-  const [confSearch, setConfSearch] = useState('');
-  const [confFilter, setConfFilter] = useState<'all' | 'with_contact' | 'without_contact'>('all');
-  const [confSelectedIds, setConfSelectedIds] = useState<string[]>([]);
-  const [confSendingStatus, setConfSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
-  const [confSendResults, setConfSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
+  const [whatsAppContacts, setWhatsAppContacts] = useState<any[]>([]);
+  const [isFetchingContacts, setIsFetchingContacts] = useState(false);
+  const [activeContactsTab, setActiveContactsTab] = useState<'todos' | 'sem_telefone' | 'vinculados'>('sem_telefone');
+  const [clientSearch, setClientSearch] = useState('');
+  const [activeManualSyncClientId, setActiveManualSyncClientId] = useState<string | null>(null);
+  const [contactQuery, setContactQuery] = useState('');
 
-  useEffect(() => {
-    const res = reservationDB.getAll().filter(r => r.data === confDate && (r.status === 'agendado' || r.status === 'confirmado'));
-    setConfReservations(res);
-    
-    // Auto-seleciona apenas os que têm telefone e AINDA NÃO tiveram confirmação enviada
-    const initialSelected = res
-      .filter(r => {
-        const client = clientDB.getById(r.clienteId);
-        return !!client?.telefone && !r.confirmacaoEnviada && client?.statusFinanceiro !== 'inadimplente';
-      })
-      .map(r => r.id);
-    setConfSelectedIds(initialSelected);
+  const fetchWaQrCode = async () => {
+    setIsFetchingWaStatus(true);
+    try {
+      let res = await fetch('/api/whatsapp/connect?instance=pecas_servicos', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+      });
+      let data = await res.json();
+      let qr = data?.base64 || data?.qrcode?.base64 || data?.code;
 
-    // Inicializa o status visual mostrando quais já foram enviados no passado
-    const initialResults: Record<string, 'pending' | 'sending' | 'success' | 'error'> = {};
-    res.forEach(r => {
-      initialResults[r.id] = r.confirmacaoEnviada ? 'success' : 'pending';
-    });
-    setConfSendResults(initialResults);
-    setConfSendingStatus('idle');
-  }, [confDate]);
-
-  const filteredConfRes = confReservations.filter(res => {
-    const client = clientDB.getById(res.clienteId);
-    const boat = boatDB.getById(res.embarcacaoId);
-    const search = confSearch.toLowerCase();
-    
-    const matchesSearch = !search || 
-      client?.nome?.toLowerCase().includes(search) || 
-      boat?.nome?.toLowerCase().includes(search) || 
-      String(boat?.numero).includes(search);
-      
-    if (!matchesSearch) return false;
-    
-    const hasPhone = !!client?.telefone;
-    if (confFilter === 'with_contact' && !hasPhone) return false;
-    if (confFilter === 'without_contact' && hasPhone) return false;
-    
-    return true;
-  });
-
-  const visibleIdsWithPhone = filteredConfRes
-    .filter(res => !!clientDB.getById(res.clienteId)?.telefone)
-    .map(res => res.id);
-  
-  const allVisibleSelected = visibleIdsWithPhone.length > 0 && visibleIdsWithPhone.every(id => confSelectedIds.includes(id));
-
-  const handleConfToggleSelect = (id: string) => {
-    setConfSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  };
-
-  const handleConfToggleSelectAll = () => {
-    if (allVisibleSelected) {
-      setConfSelectedIds(prev => prev.filter(id => !visibleIdsWithPhone.includes(id)));
-    } else {
-      const newSelection = new Set([...confSelectedIds, ...visibleIdsWithPhone]);
-      setConfSelectedIds(Array.from(newSelection));
-    }
-  };
-
-  const handleSendConfirmations = async () => {
-    if (confSelectedIds.length === 0) {
-      showToast('Nenhum agendamento selecionado.', 'error');
-      return;
-    }
-    setConfSendingStatus('sending');
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    for (const resId of confSelectedIds) {
-      const res = confReservations.find(r => r.id === resId);
-      if (!res) continue;
-      const client = clientDB.getById(res.clienteId);
-      const boat = boatDB.getById(res.embarcacaoId);
-      if (!client || !client.telefone) continue;
-
-      const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
-      const clientFirstName = client.nome ? formatFirstName(client.nome) : '';
-      const quando = getQuando(res.data);
-      const text1 = confTemplate1
-        .replace(/{cliente}/g, clientFirstName)
-        .replace(/{barco}/g, boatCode)
-        .replace(/{quando}/g, quando);
-      const text2 = confTemplate2
-        .replace(/{cliente}/g, clientFirstName)
-        .replace(/{barco}/g, boatCode)
-        .replace(/{quando}/g, quando);
-
-      setConfSendResults(prev => ({ ...prev, [resId]: 'sending' }));
-
-      try {
-        let response = await fetch('/api/whatsapp/send-text?instance=pecas_servicos', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ number: client.telefone, text: text1 })
-        });
-        if (!response.ok) throw new Error('Falha 1');
-        
-        await sleep(4000);
-        
-        response = await fetch('/api/whatsapp/send-text?instance=pecas_servicos', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ number: client.telefone, text: text2 })
-        });
-        if (!response.ok) throw new Error('Falha 2');
-
-        setConfSendResults(prev => ({ ...prev, [resId]: 'success' }));
-        reservationDB.update(resId, { confirmacaoEnviada: true });
-      } catch (err) {
-        setConfSendResults(prev => ({ ...prev, [resId]: 'error' }));
+      if (!qr) {
+        const msgLower = (data?.message || '').toLowerCase();
+        if (data?.error || msgLower.includes('not found') || msgLower.includes('404') || msgLower.includes('502') || data?.instance?.state === 'not_created') {
+          showToast('Criando instância pecas_servicos no WhatsApp...', 'success');
+          const createRes = await fetch('/api/whatsapp/instance/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            },
+            body: JSON.stringify({ instanceName: 'pecas_servicos' })
+          });
+          
+          if (createRes.ok) {
+            await sleep(2000);
+            res = await fetch('/api/whatsapp/connect?instance=pecas_servicos', {
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+            });
+            data = await res.json();
+            qr = data?.base64 || data?.qrcode?.base64 || data?.code;
+          }
+        }
       }
-      await sleep(5000);
+
+      if (qr) {
+        setWaQrCode(qr);
+        setWaStatus('connecting');
+        showToast('QR Code gerado com sucesso! Escaneie pelo WhatsApp.', 'success');
+      } else if (data?.instance?.state === 'open') {
+        setWaStatus('open');
+        setWaQrCode(null);
+        showToast('WhatsApp já está conectado!', 'success');
+      } else {
+        showToast(data?.message || 'Não foi possível obter o QR Code. Tente novamente.', 'error');
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast('Erro de conexão ao gerar QR Code.', 'error');
+    } finally {
+      setIsFetchingWaStatus(false);
     }
-    setConfSendingStatus('completed');
-    showToast('Processo de disparo concluído!', 'success');
   };
 
   const fetchWaStatus = async () => {
@@ -570,7 +702,7 @@ export default function PecasWhatsAppPage() {
       const state = data?.instance?.state || 'close';
       setWaStatus(state);
       if (state !== 'open') {
-        fetchWaQrCode();
+        await fetchWaQrCode();
       } else {
         setWaQrCode(null);
       }
@@ -579,24 +711,6 @@ export default function PecasWhatsAppPage() {
       setWaStatus('error');
     } finally {
       setIsFetchingWaStatus(false);
-    }
-  };
-
-  const fetchWaQrCode = async () => {
-    try {
-      const res = await fetch('/api/whatsapp/connect?instance=pecas_servicos', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
-      });
-      const data = await res.json();
-      const qr = data.base64 || data.qrcode?.base64 || data.code;
-      if (qr) {
-        setWaQrCode(qr);
-      } else if (data.instance?.state === 'open') {
-        setWaStatus('open');
-        setWaQrCode(null);
-      }
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -614,9 +728,6 @@ export default function PecasWhatsAppPage() {
       showToast('Erro ao desconectar', 'error');
     }
   };
-
-
-  
 
   const handleFetchGroups = async () => {
     setIsFetchingGroups(true);
@@ -716,1130 +827,1202 @@ export default function PecasWhatsAppPage() {
     return raw;
   };
 
-  
-
-
   useEffect(() => {
     fetchWaStatus();
     setClientsFiltered(clientDB.getAll());
     setBoats(boatDB.getAll());
   }, []);
 
-  // --- CALENDARS LOGIC ---
-  const [calMonth, setCalMonth] = useState(() => {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-  });
-  
-  const [calBoats, setCalBoats] = useState<Embarcacao[]>([]);
-  const [calSearch, setCalSearch] = useState('');
-  const [calSelectedIds, setCalSelectedIds] = useState<string[]>([]);
-  const [calSendingStatus, setCalSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
-  const [calSendResults, setCalSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
-  const [currentBoatIdx, setCurrentBoatIdx] = useState<number>(-1);
-
-  const [calMessageTemplate, setCalMessageTemplate] = useState(() => {
-    return localStorage.getItem('whatsapp_cal_template') || "Olá pessoal! 📅 Segue o calendário de reservas da embarcação {barco} para o mês de {mes}. Bom uso a todos! ☀️⛵";
-  });
-
-  const handleSaveCalTemplate = (val: string) => {
-    setCalMessageTemplate(val);
-    localStorage.setItem('whatsapp_cal_template', val);
-    // Persist to centralized database
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_cal_template: val }) }).catch(console.warn);
-  };
-
-  useEffect(() => {
-    // Only boats with WhatsApp groups
-    const all = boatDB.getAll().filter(b => b.whatsappGroupId);
-    setCalBoats(all);
-  }, []);
-
-  const filteredCalBoats = calBoats.filter(b => {
-    if (!calSearch) return true;
-    const s = calSearch.toLowerCase();
-    return b.nome.toLowerCase().includes(s) || String(b.numero).includes(s);
-  });
-
-  const calAllSelected = filteredCalBoats.length > 0 && filteredCalBoats.every(b => calSelectedIds.includes(b.id));
-
-  const handleCalToggleSelectAll = () => {
-    if (calAllSelected) {
-      setCalSelectedIds(prev => prev.filter(id => !filteredCalBoats.some(b => b.id === id)));
-    } else {
-      const newSelection = new Set([...calSelectedIds, ...filteredCalBoats.map(b => b.id)]);
-      setCalSelectedIds(Array.from(newSelection));
-    }
-  };
-
-  const handleStartCalSend = () => {
-    if (calSelectedIds.length === 0) {
-      showToast('Selecione pelo menos uma embarcação.', 'error');
-      return;
-    }
-    setCalSendingStatus('sending');
-    setCurrentBoatIdx(0);
-    // Initializes the results mapping
-    const initialResults: Record<string, 'pending' | 'sending' | 'success' | 'error'> = {};
-    calSelectedIds.forEach(id => initialResults[id] = 'pending');
-    setCalSendResults(initialResults);
-  };
-
-  // Called when MonthlyCalendarGenerator triggers onExport
-  const handleCalendarExported = async (base64Image: string) => {
-    const boatId = calSelectedIds[currentBoatIdx];
-    const boat = boatDB.getById(boatId);
-    if (!boat || !boat.whatsappGroupId) {
-       nextCalendar();
-       return;
-    }
-    
-    setCalSendResults(prev => ({ ...prev, [boatId]: 'sending' }));
-    
-    try {
-      const token = localStorage.getItem('admin_token');
-      
-      const groupObj = availableGroups.find(g => g.id === boat.whatsappGroupId);
-      const groupName = groupObj ? (groupObj.subject || groupObj.name || boat.whatsappGroupId) : boat.nome;
-      
-      const [year, month] = calMonth.split('-');
-      const monthsPt = [
-        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-      ];
-      const monthName = monthsPt[parseInt(month, 10) - 1] || month;
-      
-      const caption = calMessageTemplate
-        .replace(/{barco}/g, boat.nome)
-        .replace(/{grupo}/g, groupName)
-        .replace(/{mes}/g, `${monthName} de ${year}`)
-        .replace(/{ano}/g, year);
-
-      const response = await fetch('/api/whatsapp/send-calendar?instance=pecas_servicos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          base64Image: base64Image,
-          groupId: boat.whatsappGroupId,
-          boatName: boat.nome,
-          caption: caption
-        })
-      });
-      
-      if (!response.ok) throw new Error('Falha no envio');
-      setCalSendResults(prev => ({ ...prev, [boatId]: 'success' }));
-    } catch (err) {
-      setCalSendResults(prev => ({ ...prev, [boatId]: 'error' }));
-    }
-    
-    await sleep(3000); // Wait 3 seconds before moving to next boat
-    nextCalendar();
-  };
-
-  const nextCalendar = () => {
-    if (currentBoatIdx + 1 < calSelectedIds.length) {
-      setCurrentBoatIdx(currentBoatIdx + 1);
-    } else {
-      setCalSendingStatus('completed');
-      setCurrentBoatIdx(-1);
-      showToast('Envio de calendários concluído!', 'success');
-    }
-  };
-
-  const activeProcessingBoatId = currentBoatIdx >= 0 ? calSelectedIds[currentBoatIdx] : null;
-
   return (
-    <div className="h-full flex flex-col p-6 space-y-6">
-      <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
-        <div>
-          <h1 className="text-xl font-black tracking-tight text-slate-900 flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-emerald-600" /> WhatsApp - Pe�as e Servi�os
-          </h1>
-          <p className="text-sm text-slate-500 mt-1 font-medium">Dispare confirmações e calendários em massa de forma automatizada</p>
-        </div>
-      </div>
-
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      {/* TOAST NOTIFICATION */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold flex items-center gap-2 z-50 animate-in slide-in-from-bottom-5 ${
-          toast.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-        }`}>
-          {toast.type === 'error' ? <AlertTriangle className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+        <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-xl text-xs font-bold text-white transition-all flex items-center gap-2 animate-in fade-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+          {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
           {toast.message}
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex space-x-2 bg-slate-200/50 p-1 rounded-xl w-max">
-        <button 
-          onClick={() => setActiveMainTab('confirmations')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-            activeMainTab === 'confirmations' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+      {/* HEADER BANNER */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100">
+            <Wrench className="w-8 h-8" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 flex items-center gap-2">
+              WhatsApp - Peças & Serviços
+              <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full uppercase tracking-wider">Instância pecas_servicos</span>
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Notifique clientes e cotistas sobre status de Manutenções, Ordens de Serviço, Revisões Preventivas de Horímetro e Comunicados Técnicos.
+            </p>
+          </div>
+        </div>
+
+        {/* STATUS BADGE */}
+        <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 shrink-0">
+          <span className="relative flex h-2.5 w-2.5 ml-1">
+            {waStatus === 'open' ? (
+              <>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </>
+            ) : (
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+            )}
+          </span>
+          <span className="text-xs font-bold text-slate-700">
+            {waStatus === 'open' ? 'WhatsApp Conectado' : isFetchingWaStatus ? 'Buscando conexão...' : 'WhatsApp Desconectado'}
+          </span>
+          {waStatus !== 'open' && (
+            <button
+              onClick={() => setActiveMainTab('config')}
+              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 underline ml-1 cursor-pointer"
+            >
+              Conectar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* TABS NAVIGATION */}
+      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto subtle-scrollbar">
+        <button
+          onClick={() => setActiveMainTab('maintenances')}
+          className={`px-4 py-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeMainTab === 'maintenances'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
-          <Check className="w-4 h-4" /> Confirmações Diárias
+          <Wrench className="w-4 h-4" />
+          Manutenções & O.S.
         </button>
-        <button 
-          onClick={() => setActiveMainTab('calendars')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-            activeMainTab === 'calendars' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+
+        <button
+          onClick={() => setActiveMainTab('engine_hours')}
+          className={`px-4 py-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeMainTab === 'engine_hours'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
-          <CalendarIcon className="w-4 h-4" /> Calendários Mensais
+          <Clock className="w-4 h-4" />
+          Alertas de Horímetro
         </button>
-        <button 
+
+        <button
           onClick={() => setActiveMainTab('custom')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-            activeMainTab === 'custom' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+          className={`px-4 py-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeMainTab === 'custom'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
-          <Send className="w-4 h-4 text-emerald-600" /> Envio Avulso / Personalizado
+          <Send className="w-4 h-4" />
+          Comunicados de Oficina
         </button>
-        <button 
+
+        <button
           onClick={() => setActiveMainTab('config')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-            activeMainTab === 'config' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+          className={`px-4 py-3 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeMainTab === 'config'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
-          <Smartphone className="w-4 h-4" /> Configurações & Conexão
+          <Smartphone className="w-4 h-4" />
+          Configurações & Conexão
         </button>
       </div>
 
-      <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-xs p-6 flex flex-col h-0 overflow-hidden">
-        
-        {/* CONFIRMATIONS TAB */}
-        {activeMainTab === 'confirmations' && (
-          <div className="flex flex-col h-full space-y-4">
-            <div className="flex gap-4 items-center mb-2 shrink-0">
-              <div className="w-48">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Data dos Agendamentos</label>
-                <input 
-                  type="date" 
-                  value={confDate} 
-                  onChange={e => setConfDate(e.target.value)}
-                  className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+      {/* TAB CONTENT 1: MANUTENÇÕES & ORDENS DE SERVIÇO */}
+      {activeMainTab === 'maintenances' && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-xs p-6 space-y-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-emerald-600" />
+                Notificações de Ordens de Serviço (O.S.)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Selecione as manutenções em aberto ou concluídas para avisar os clientes sobre o andamento e liberação do serviço.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowMaintTemplateEditor(!showMaintTemplateEditor)}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer self-start lg:self-auto"
+            >
+              <MessageSquare className="w-4 h-4" />
+              {showMaintTemplateEditor ? 'Ocultar Modelos' : 'Editar Modelos de O.S.'}
+            </button>
+          </div>
+
+          {/* TEMPLATE EDITOR FOR MAINTENANCE */}
+          {showMaintTemplateEditor && (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in duration-200">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">1. Início da Manutenção</label>
+                <textarea
+                  value={maintTemplateInicio}
+                  onChange={e => handleSaveMaintTemplate('inicio', e.target.value)}
+                  rows={4}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
                 />
               </div>
-              <div className="flex-1">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Pesquisar</label>
-                <div className="relative w-full">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Nome do cliente ou embarcação..."
-                    value={confSearch}
-                    onChange={(e) => setConfSearch(e.target.value)}
-                    className="w-full text-sm pl-9 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">2. Aguardando Aprovação / Peça</label>
+                <textarea
+                  value={maintTemplateAprovacao}
+                  onChange={e => handleSaveMaintTemplate('aprovacao', e.target.value)}
+                  rows={4}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
+                />
               </div>
-              <div className="self-end mb-[2px]">
-                <button
-                  onClick={() => setShowTemplatesEditor(prev => !prev)}
-                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1.5 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100 hover:bg-emerald-100 transition-colors h-[38px]"
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">3. Conclusão / Pronta para Uso</label>
+                <textarea
+                  value={maintTemplateConclusao}
+                  onChange={e => handleSaveMaintTemplate('conclusao', e.target.value)}
+                  rows={4}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
+                />
+              </div>
+
+              <div className="md:col-span-3 text-[10px] text-slate-500 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-200 pt-2">
+                <span className="font-bold text-slate-700">Variáveis dinâmicas:</span>
+                <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{cliente}'}</code> (Primeiro nome)</span>
+                <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{barco}'}</code> (Código da embarcação)</span>
+                <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{servico}'}</code> (Título da O.S. / Manutenção)</span>
+              </div>
+            </div>
+          )}
+
+          {/* FILTERS & TEMPLATE TYPE SELECTION */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Tipo de Notificação:</span>
+              <button
+                onClick={() => setMaintTemplateType('inicio')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  maintTemplateType === 'inicio' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'
+                }`}
+              >
+                🛠️ Início de Serviço
+              </button>
+              <button
+                onClick={() => setMaintTemplateType('aprovacao')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  maintTemplateType === 'aprovacao' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'
+                }`}
+              >
+                ⏳ Aguardando Aprovação
+              </button>
+              <button
+                onClick={() => setMaintTemplateType('conclusao')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  maintTemplateType === 'conclusao' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'
+                }`}
+              >
+                ✅ Serviço Concluído
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 md:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar por barco, cliente ou título..."
+                  value={maintSearch}
+                  onChange={e => setMaintSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <select
+                value={maintStatusFilter}
+                onChange={e => setMaintStatusFilter(e.target.value as any)}
+                className="text-xs py-1.5 px-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+              >
+                <option value="todos">Todos os Status</option>
+                <option value="pendente">Pendente</option>
+                <option value="aguardando_peca">Aguardando Peça</option>
+                <option value="em_andamento">Em Andamento</option>
+                <option value="concluido">Concluído</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center px-1">
+            <button
+              onClick={handleMaintToggleSelectAll}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              {allMaintVisibleSelected ? 'Desmarcar Todos' : 'Selecionar Todos Filtrados'}
+            </button>
+            <span className="text-xs text-slate-500 font-semibold">
+              {maintSelectedIds.length} manutenções selecionadas
+            </span>
+          </div>
+
+          {/* LIST OF MAINTENANCES */}
+          <div className="space-y-2 max-h-[500px] overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl divide-y divide-slate-100 p-1">
+            {filteredMaintenances.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-sm">
+                Nenhuma manutenção encontrada com os filtros selecionados.
+              </div>
+            ) : (
+              filteredMaintenances.map(maint => {
+                const boat = boatDB.getById(maint.embarcacaoId);
+                const client = maint.clienteId ? clientDB.getById(maint.clienteId) : null;
+                const boatGroup = boat?.whatsappGroupId;
+                const cotistaWithPhone = boat?.cotistas?.map(c => clientDB.getById(c.clienteId)).find(cl => !!cl?.telefone);
+                
+                const hasDestination = !!client?.telefone || !!boatGroup || !!cotistaWithPhone;
+                const isSelected = maintSelectedIds.includes(maint.id);
+                const statusResult = maintSendResults[maint.id] || 'pending';
+                const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
+
+                return (
+                  <div
+                    key={maint.id}
+                    onClick={() => hasDestination && maintSendingStatus !== 'sending' && handleMaintToggleSelect(maint.id)}
+                    className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                      isSelected ? 'bg-emerald-50/50 border-emerald-300' : 'bg-slate-50/50 border-slate-200 hover:border-slate-300'
+                    } ${!hasDestination ? 'opacity-60 bg-slate-100 grayscale' : 'cursor-pointer'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <button
+                        disabled={!hasDestination || maintSendingStatus === 'sending'}
+                        className={`flex items-center justify-center w-5 h-5 rounded border transition-colors ${
+                          isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-300 text-transparent'
+                        }`}
+                      >
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      </button>
+
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-xs bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md font-mono">{boatCode}</span>
+                          <span className="font-bold text-sm text-slate-900">{maint.titulo}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                            maint.status === 'concluido' ? 'bg-emerald-100 text-emerald-800' :
+                            maint.status === 'em_andamento' ? 'bg-blue-100 text-blue-800' :
+                            maint.status === 'aguardando_peca' ? 'bg-amber-100 text-amber-800' :
+                            'bg-slate-200 text-slate-700'
+                          }`}>
+                            {maint.status ? maint.status.replace('_', ' ') : 'Pendente'}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                          {client?.telefone ? (
+                            <span className="font-semibold text-slate-800 flex items-center gap-1">
+                              <User className="w-3.5 h-3.5 text-blue-600" />
+                              Cliente: <span className="text-slate-900">{client.nome}</span> ({client.telefone})
+                            </span>
+                          ) : boatGroup ? (
+                            <span className="font-bold text-emerald-900 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-lg flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-emerald-700" />
+                              Grupo da Embarcação ({boat?.nome})
+                            </span>
+                          ) : cotistaWithPhone ? (
+                            <span className="font-semibold text-slate-800 flex items-center gap-1">
+                              <User className="w-3.5 h-3.5 text-blue-600" />
+                              Cotista: <span className="text-slate-900">{cotistaWithPhone.nome}</span> ({cotistaWithPhone.telefone})
+                            </span>
+                          ) : (
+                            <span className="text-rose-600 font-bold flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              Sem WhatsApp (Cadastre o cliente ou vincule um Grupo à embarcação)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-xs font-bold self-end sm:self-center">
+                      {statusResult === 'sending' && (
+                        <span className="text-blue-600 flex items-center gap-1">
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Enviando...
+                        </span>
+                      )}
+                      {statusResult === 'success' && (
+                        <span className="text-emerald-600 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                          ✓ Enviado
+                        </span>
+                      )}
+                      {statusResult === 'error' && (
+                        <span className="text-rose-600 bg-rose-100 px-2.5 py-1 rounded-lg">
+                          ✕ Erro
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-slate-100">
+            <button
+              onClick={handleSendMaintNotifications}
+              disabled={maintSendingStatus === 'sending' || maintSelectedIds.length === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
+            >
+              {maintSendingStatus === 'sending' ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Disparando para {maintSelectedIds.length} clientes...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Disparar para {maintSelectedIds.length} Manutenções
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT 2: ALERTAS DE HORÍMETRO */}
+      {activeMainTab === 'engine_hours' && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-xs p-6 space-y-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-emerald-600" />
+                Alertas de Horímetro & Revisões Preventivas
+              </h3>
+              <p className="text-xs text-slate-500">
+                Envie avisos preventivos para proprietários e cotistas sobre a necessidade de troca de óleo e encaminhamento da embarcação para manutenção.
+              </p>
+            </div>
+          </div>
+
+          {/* TEMPLATE EDITOR FOR HOURS */}
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="block text-xs font-bold text-slate-700">Modelo da Mensagem de Alerta de Horímetro</label>
+              <button
+                onClick={handleResetHoursTemplate}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 underline cursor-pointer"
+              >
+                Restaurar Mensagem Padrão
+              </button>
+            </div>
+            <textarea
+              value={hoursMessageTemplate}
+              onChange={e => handleSaveHoursTemplate(e.target.value)}
+              rows={3}
+              className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
+            />
+            <div className="text-[10px] text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
+              <span className="font-bold text-slate-700">Variáveis dinâmicas:</span>
+              <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{cliente}'}</code> (Primeiro nome)</span>
+              <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{barco}'}</code> (Código da embarcação)</span>
+              <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{horimetro}'}</code> (Horas de motor acumuladas)</span>
+            </div>
+          </div>
+
+          {/* FILTERS */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Embarcação:</span>
+                <select
+                  value={hoursBoatFilterId}
+                  onChange={e => setHoursBoatFilterId(e.target.value)}
+                  className="text-xs py-1.5 px-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 font-semibold"
                 >
-                  <MessageSquare className="w-4 h-4" /> 
-                  {showTemplatesEditor ? 'Ocultar Modelos' : 'Editar Modelos'}
+                  <option value="todas">Todas as Embarcações ({boats.length})</option>
+                  {boats.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.numero ? `M${b.numero} - ` : ''}{b.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Status:</span>
+                <button
+                  onClick={() => setHoursStatusFilter('todos')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    hoursStatusFilter === 'todos' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  Todas
+                </button>
+                <button
+                  onClick={() => setHoursStatusFilter('vencido')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    hoursStatusFilter === 'vencido' ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  ⚠️ Vencidas
+                </button>
+                <button
+                  onClick={() => setHoursStatusFilter('proximo')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    hoursStatusFilter === 'proximo' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  ⏳ Próximas
+                </button>
+                <button
+                  onClick={() => setHoursStatusFilter('ok')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    hoursStatusFilter === 'ok' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  ✅ Ok
                 </button>
               </div>
             </div>
 
-            {showTemplatesEditor && (
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
-                <div className="flex flex-col space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-700">Modelo da 1ª Mensagem (Confirmação)</label>
-                  <textarea
-                    value={confTemplate1}
-                    onChange={e => handleSaveConfTemplate1(e.target.value)}
-                    rows={4}
-                    className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
-                    placeholder="Ex: Olá, {cliente}! 😃..."
-                  />
-                </div>
-                
-                <div className="flex flex-col space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-700">Modelo da 2ª Mensagem (Dados de Navegação)</label>
-                  <textarea
-                    value={confTemplate2}
-                    onChange={e => handleSaveConfTemplate2(e.target.value)}
-                    rows={4}
-                    className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
-                    placeholder="Ex: ⚠️ ATENÇÃO: DADOS OBRIGATÓRIOS... ⚠️"
-                  />
-                </div>
-                
-                <div className="md:col-span-2 text-[10px] text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
-                  <span className="font-bold text-slate-700">Variáveis disponíveis:</span>
-                  <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{cliente}'}</code> (Primeiro nome, ex: Adhler)</span>
-                  <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{barco}'}</code> (Código da embarcação, ex: M18)</span>
-                  <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{quando}'}</code> (Dia relativo, ex: hoje / amanhã / no dia 03/07)</span>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-between items-center shrink-0">
-              <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-                 <button onClick={() => setConfFilter('all')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${confFilter === 'all' ? 'bg-white shadow' : 'text-slate-500'}`}>Todos</button>
-                 <button onClick={() => setConfFilter('with_contact')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${confFilter === 'with_contact' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Com Telefone</button>
-                 <button onClick={() => setConfFilter('without_contact')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${confFilter === 'without_contact' ? 'bg-white shadow text-rose-600' : 'text-slate-500'}`}>Sem Telefone</button>
-              </div>
-              <button 
-                onClick={handleConfToggleSelectAll}
-                className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
-              >
-                 <Check className="w-4 h-4" /> Selecionar Todos Filtrados
-              </button>
+            <div className="relative flex-1 lg:max-w-xs">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Buscar por barco ou cotista..."
+                value={hoursSearch}
+                onChange={e => setHoursSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+              />
             </div>
+          </div>
 
-            <div className="flex-1 overflow-y-auto space-y-2 pr-2 border-t pt-4">
-              {filteredConfRes.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 text-sm">Nenhum agendamento encontrado para esta data.</div>
+          <div className="flex justify-between items-center px-1">
+            <button
+              onClick={handleHoursToggleSelectAll}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              {allHoursVisibleSelected ? 'Desmarcar Todos' : 'Selecionar Todos Filtrados'}
+            </button>
+            <span className="text-xs text-slate-500 font-semibold">
+              {hoursSelectedIds.length} clientes selecionados
+            </span>
+          </div>
+
+          {/* LIST OF BOATS & HOURS */}
+          <div className="space-y-2 max-h-[500px] overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl divide-y divide-slate-100 p-1">
+            {filteredBoatHours.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-sm">
+                Nenhuma embarcação ou cotista encontrado neste filtro.
+              </div>
+            ) : (
+              filteredBoatHours.map(item => {
+                const boatCode = item.boat.numero ? `M${item.boat.numero}` : item.boat.nome;
+                const hasPhone = !!item.client?.telefone;
+                const isSelected = hoursSelectedIds.includes(item.key);
+                const statusResult = hoursSendResults[item.key] || 'pending';
+                const statusRev = item.statusRevisao;
+
+                return (
+                  <div
+                    key={item.key}
+                    onClick={() => hasPhone && hoursSendingStatus !== 'sending' && handleHoursToggleSelect(item.key)}
+                    className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                      isSelected ? 'bg-emerald-50/50 border-emerald-300' : 'bg-slate-50/50 border-slate-200 hover:border-slate-300'
+                    } ${!hasPhone ? 'opacity-60 bg-slate-100 grayscale' : 'cursor-pointer'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <button
+                        disabled={!hasPhone || hoursSendingStatus === 'sending'}
+                        className={`flex items-center justify-center w-5 h-5 rounded border transition-colors ${
+                          isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-300 text-transparent'
+                        }`}
+                      >
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      </button>
+
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-xs bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md font-mono">{boatCode}</span>
+                          <span className="font-bold text-sm text-slate-900">{item.boat.nome}</span>
+                          <span className="font-mono text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
+                            {item.boat.horimetroActual || 0} hrs
+                          </span>
+
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                            statusRev.status === 'vencido' ? 'bg-rose-100 text-rose-800' :
+                            statusRev.status === 'proximo' ? 'bg-amber-100 text-amber-800' :
+                            'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {statusRev.mensagem}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                          <span className="font-medium text-slate-700">Cotista/Cliente: {item.client?.nome || 'Sem cadastro'}</span>
+                          {hasPhone ? (
+                            <span className="text-emerald-700 font-semibold">{item.client?.telefone}</span>
+                          ) : (
+                            <span className="text-rose-600 font-bold flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Sem WhatsApp
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-xs font-bold self-end sm:self-center">
+                      {statusResult === 'sending' && (
+                        <span className="text-blue-600 flex items-center gap-1">
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Enviando...
+                        </span>
+                      )}
+                      {statusResult === 'success' && (
+                        <span className="text-emerald-600 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                          ✓ Enviado
+                        </span>
+                      )}
+                      {statusResult === 'error' && (
+                        <span className="text-rose-600 bg-rose-100 px-2.5 py-1 rounded-lg">
+                          ✕ Erro
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-slate-100">
+            <button
+              onClick={handleSendHoursNotifications}
+              disabled={hoursSendingStatus === 'sending' || hoursSelectedIds.length === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
+            >
+              {hoursSendingStatus === 'sending' ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Disparando alertas...
+                </>
               ) : (
-                filteredConfRes.map(res => {
-                  const client = clientDB.getById(res.clienteId);
-                  const boat = boatDB.getById(res.embarcacaoId);
-                  const hasPhone = !!client?.telefone;
-                  const isSelected = confSelectedIds.includes(res.id);
-                  const status = confSendResults[res.id] || 'pending';
-                  const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
-
-                  return (
-                    <div key={res.id} className={`flex flex-col p-3 rounded-xl border ${isSelected ? 'bg-emerald-50/30 border-emerald-300' : 'bg-slate-50 border-slate-200'} ${!hasPhone ? 'opacity-60 bg-slate-100 grayscale' : 'cursor-pointer hover:border-emerald-400'}`} onClick={() => hasPhone && confSendingStatus !== 'sending' && handleConfToggleSelect(res.id)}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <button disabled={!hasPhone || confSendingStatus === 'sending'} className={`flex items-center justify-center w-5 h-5 rounded border ${isSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-transparent'}`}>
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                          <div>
-                             <div className="flex items-center gap-2">
-                               <span className="font-bold text-xs bg-slate-200 px-1.5 py-0.5 rounded">{boatCode}</span>
-                               <span className="font-bold text-sm text-slate-800">{client?.nome || 'Desconhecido'}</span>
-                               {client?.statusFinanceiro === 'inadimplente' ? (
-                                 <span className="font-bold text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-wider" title="Cliente inadimplente não pode usufruir da embarcação">
-                                    <AlertTriangle className="w-3 h-3"/> Inadimplente
-                                 </span>
-                               ) : (client?.temValoresEmAberto || client?.statusFinanceiro === 'pendente') ? (
-                                 <span className="font-bold text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-wider" title="Possui valores lançados em aberto">
-                                    <Wallet className="w-3 h-3"/> Possui Lançamentos
-                                 </span>
-                               ) : client?.temLancamentos ? (
-                                 <span className="font-bold text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-wider" title="Possui lançamentos no sistema">
-                                    <Wallet className="w-3 h-3"/> Com Lançamentos
-                                 </span>
-                               ) : null}
-                             </div>
-                            <div className="mt-1">
-                              {hasPhone ? <span className="text-xs text-slate-500">{client.telefone}</span> : <span className="text-xs text-rose-600 font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> Sem telefone</span>}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-xs font-bold">
-                          {status === 'sending' && <span className="text-blue-600 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin"/> Enviando...</span>}
-                          {status === 'success' && <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded">✅ Enviado</span>}
-                          {status === 'error' && <span className="text-rose-600 bg-rose-100 px-2 py-1 rounded">❌ Erro</span>}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                <>
+                  <Send className="w-4 h-4" />
+                  Disparar Alerta para {hoursSelectedIds.length} Clientes
+                </>
               )}
-            </div>
-            
-            <div className="shrink-0 pt-4 border-t flex justify-end">
-              <button
-                disabled={confSendingStatus === 'sending' || confSelectedIds.length === 0}
-                onClick={handleSendConfirmations}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50 transition-colors"
-              >
-                {confSendingStatus === 'sending' ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
-                {confSendingStatus === 'sending' ? `Enviando...` : `Disparar para ${confSelectedIds.length} clientes`}
-              </button>
-            </div>
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* CALENDARS TAB */}
-        {activeMainTab === 'calendars' && (
-          <div className="flex flex-col h-full space-y-4">
-             <div className="flex gap-4 items-center mb-2 shrink-0">
-              <div className="w-48">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Mês de Referência</label>
-                <input 
-                  type="month" 
-                  value={calMonth} 
-                  onChange={e => setCalMonth(e.target.value)}
-                  className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Buscar Embarcação</label>
-                <div className="relative w-full">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Pesquisar..."
-                    value={calSearch}
-                    onChange={(e) => setCalSearch(e.target.value)}
-                    className="w-full text-sm pl-9 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-              </div>
-              <button 
-                onClick={handleCalToggleSelectAll}
-                className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 self-end mb-3"
-              >
-                 <Check className="w-4 h-4" /> Selecionar Todos
-              </button>
+      {/* TAB CONTENT 3: COMUNICADOS DE OFICINA & ENVIO AVULSO */}
+      {activeMainTab === 'custom' && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-xs p-6 space-y-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Send className="w-5 h-5 text-emerald-600" />
+                Comunicados de Oficina & Envio Avulso
+              </h3>
+              <p className="text-xs text-slate-500">
+                Dispare comunicados personalizados para grupos de cotistas das embarcações ou mensagens avulsas com anexo de relatórios/PDFs.
+              </p>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
-               <label className="block text-xs font-bold text-slate-700 mb-1">Mensagem de Legenda do Calendário</label>
-               <textarea
-                 value={calMessageTemplate}
-                 onChange={e => handleSaveCalTemplate(e.target.value)}
-                 rows={3}
-                 className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
-                 placeholder="Digite a mensagem padrão que será enviada junto com a foto do calendário..."
-               />
-               <p className="text-[10px] text-slate-500 mt-1">
-                 Variáveis disponíveis: <code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{barco}'}</code> (Nome da embarcação), <code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{grupo}'}</code> (Nome do grupo), <code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{mes}'}</code> (Mês por extenso, ex: Julho de 2026), <code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{ano}'}</code> (Ano, ex: 2026).
-               </p>
-            </div>
-
-            {calBoats.length === 0 && (
-              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-800 flex items-start gap-2">
-                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-                <p>Nenhuma embarcação possui <b>ID do Grupo do WhatsApp</b> configurado. Vá no Cadastro de Embarcações e informe o ID Evolution do grupo para utilizar essa função.</p>
-              </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto space-y-2 pr-2 border-t pt-4">
-               {filteredCalBoats.map(boat => {
-                  const isSelected = calSelectedIds.includes(boat.id);
-                  const status = calSendResults[boat.id] || 'pending';
-                  const boatCode = boat.numero ? `M${boat.numero}` : 'MXX';
-                  
-                  return (
-                    <div key={boat.id} className={`flex items-center justify-between p-3 rounded-xl border ${isSelected ? 'bg-emerald-50/30 border-emerald-300' : 'bg-slate-50 border-slate-200'} cursor-pointer hover:border-emerald-400`} onClick={() => calSendingStatus !== 'sending' && setCalSelectedIds(prev => prev.includes(boat.id) ? prev.filter(i => i !== boat.id) : [...prev, boat.id])}>
-                       <div className="flex items-center gap-3">
-                          <button disabled={calSendingStatus === 'sending'} className={`flex items-center justify-center w-5 h-5 rounded border ${isSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-transparent'}`}>
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                          <div>
-                            <div className="flex items-center gap-2">
-                               <Ship className="w-4 h-4 text-slate-400"/>
-                               <span className="font-bold text-xs bg-slate-200 px-1.5 py-0.5 rounded">{boatCode}</span>
-                               <span className="font-bold text-sm text-slate-800">{boat.nome}</span>
-                            </div>
-                            <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500 font-mono">
-                               ID: {boat.whatsappGroupId}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-xs font-bold">
-                          {status === 'sending' && <span className="text-blue-600 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin"/> Renderizando/Enviando...</span>}
-                          {status === 'success' && <span className="text-emerald-600 bg-emerald-100 px-2 py-1 rounded">✅ Enviado</span>}
-                          {status === 'error' && <span className="text-rose-600 bg-rose-100 px-2 py-1 rounded">❌ Erro</span>}
-                        </div>
-                    </div>
-                  );
-               })}
-            </div>
-
-            <div className="shrink-0 pt-4 border-t flex justify-between items-center">
-              <div className="text-xs text-slate-500 font-medium">
-                {calSendingStatus === 'sending' && (
-                  <span className="flex items-center gap-1 animate-pulse">
-                     <Clock className="w-3.5 h-3.5" /> 
-                     Processando {currentBoatIdx + 1} de {calSelectedIds.length}... Aguarde (Isso pode demorar um pouco).
-                  </span>
-                )}
-              </div>
-              <button
-                disabled={calSendingStatus === 'sending' || calSelectedIds.length === 0}
-                onClick={handleStartCalSend}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50 transition-colors"
-              >
-                {calSendingStatus === 'sending' ? <RefreshCw className="w-4 h-4 animate-spin"/> : <CalendarDays className="w-4 h-4"/>}
-                {calSendingStatus === 'sending' ? `Enviando...` : `Disparar Calendário p/ ${calSelectedIds.length} grupos`}
-              </button>
-            </div>
+            <button
+              onClick={() => setShowSaveTemplateModal(true)}
+              className="px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer self-start lg:self-auto"
+            >
+              <Sparkles className="w-4 h-4" />
+              Salvar como Modelo
+            </button>
           </div>
-        )}
 
-        {/* CUSTOM MESSAGES TAB */}
-        {activeMainTab === 'custom' && (
-          <div className="flex flex-col h-full space-y-4 overflow-hidden">
-            {/* Top Bar / Target Selector */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full overflow-hidden">
-              
-              {/* LEFT COLUMN: Recipient Selector */}
-              <div className="lg:col-span-5 flex flex-col h-full border border-slate-200 rounded-2xl p-4 bg-slate-50/50 overflow-hidden">
-                <div className="flex items-center justify-between mb-3 shrink-0">
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-emerald-600" /> Destinatários
-                  </h3>
-                  <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full">
-                    {customTargetType === 'clients' ? `${customSelectedClientIds.length} selecionados` :
-                     customTargetType === 'groups' ? `${customSelectedGroupIds.length} grupos selecionados` :
-                     'Inserção manual'}
-                  </span>
-                </div>
-
-                {/* Target Type Switcher */}
-                <div className="flex bg-slate-200/60 p-1 rounded-xl mb-3 shrink-0">
-                  <button
-                    onClick={() => setCustomTargetType('clients')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                      customTargetType === 'clients' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    Clientes
-                  </button>
-                  <button
-                    onClick={() => setCustomTargetType('groups')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                      customTargetType === 'groups' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    Grupos
-                  </button>
-                  <button
-                    onClick={() => setCustomTargetType('custom_number')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                      customTargetType === 'custom_number' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    Nº Avulso
-                  </button>
-                </div>
-
-                {/* CLIENTS RECIPIENT MODE */}
-                {customTargetType === 'clients' && (
-                  <div className="flex flex-col flex-1 h-0 overflow-hidden space-y-3">
-                    <div className="flex gap-2 shrink-0">
-                      <div className="relative flex-1">
-                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Buscar cliente por nome ou telefone..."
-                          value={customSearch}
-                          onChange={e => setCustomSearch(e.target.value)}
-                          className="w-full text-xs py-2 pl-9 pr-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
-                        />
-                      </div>
-                      <select
-                        value={customClientFilterBoatId}
-                        onChange={e => setCustomClientFilterBoatId(e.target.value)}
-                        className="text-xs py-2 px-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none max-w-[130px]"
-                      >
-                        <option value="all">Todas as Lanchas</option>
-                        {boats.map(b => (
-                          <option key={b.id} value={b.id}>{b.nome}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex justify-between items-center px-1 shrink-0">
-                      <button
-                        onClick={handleToggleSelectAllClients}
-                        className="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1"
-                      >
-                        <CheckSquare className="w-3.5 h-3.5" />
-                        {filteredCustomClients.length > 0 && filteredCustomClients.every(c => customSelectedClientIds.includes(c.id))
-                          ? 'Desmarcar Todos'
-                          : 'Selecionar Todos'}
-                      </button>
-                      <span className="text-[11px] text-slate-400">{filteredCustomClients.length} disponíveis</span>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl bg-white divide-y divide-slate-100">
-                      {filteredCustomClients.length === 0 ? (
-                        <div className="p-6 text-center text-xs text-slate-400">Nenhum cliente com WhatsApp encontrado neste filtro.</div>
-                      ) : (
-                        filteredCustomClients.map(client => {
-                          const isSelected = customSelectedClientIds.includes(client.id);
-                          return (
-                            <div
-                              key={client.id}
-                              onClick={() => handleToggleSelectClient(client.id)}
-                              className={`p-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors ${
-                                isSelected ? 'bg-emerald-50/70' : ''
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                                  isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300'
-                                }`}>
-                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-slate-900">{client.nome}</p>
-                                  <p className="text-[11px] text-slate-500">{client.telefone}</p>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* GROUPS RECIPIENT MODE */}
-                {customTargetType === 'groups' && (
-                  <div className="flex flex-col flex-1 h-0 overflow-hidden space-y-3">
-                    <div className="relative shrink-0">
-                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Buscar grupo..."
-                        value={customSearch}
-                        onChange={e => setCustomSearch(e.target.value)}
-                        className="w-full text-xs py-2 pl-9 pr-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
-                      />
-                    </div>
-
-                    <div className="flex justify-between items-center px-1 shrink-0">
-                      <button
-                        onClick={handleToggleSelectAllGroups}
-                        className="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1"
-                      >
-                        <CheckSquare className="w-3.5 h-3.5" />
-                        {filteredCustomGroups.length > 0 && filteredCustomGroups.every(g => customSelectedGroupIds.includes(g.id))
-                          ? 'Desmarcar Todos'
-                          : 'Selecionar Todos'}
-                      </button>
-                      <span className="text-[11px] text-slate-400">{filteredCustomGroups.length} grupos</span>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl bg-white divide-y divide-slate-100">
-                      {filteredCustomGroups.length === 0 ? (
-                        <div className="p-6 text-center text-xs text-slate-400">Nenhum grupo encontrado. Certifique-se de sincronizar grupos na aba Configurações.</div>
-                      ) : (
-                        filteredCustomGroups.map(group => {
-                          const isSelected = customSelectedGroupIds.includes(group.id);
-                          return (
-                            <div
-                              key={group.id}
-                              onClick={() => handleToggleSelectGroup(group.id)}
-                              className={`p-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors ${
-                                isSelected ? 'bg-emerald-50/70' : ''
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                                  isSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300'
-                                }`}>
-                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-slate-900">{group.name}</p>
-                                  <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">{group.id}</p>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* MANUAL NUMBER RECIPIENT MODE */}
-                {customTargetType === 'custom_number' && (
-                  <div className="flex flex-col flex-1 h-0 space-y-2">
-                    <label className="block text-xs font-semibold text-slate-700">Digite ou cole os números (um por linha ou separados por vírgula):</label>
-                    <textarea
-                      value={customManualNumbers}
-                      onChange={e => setCustomManualNumbers(e.target.value)}
-                      placeholder="Ex:&#10;5541999999999&#10;5541888888888"
-                      className="flex-1 w-full p-3 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none font-mono resize-none"
-                    />
-                    <p className="text-[11px] text-slate-400">Insira com DDD. Exemplo: 41999998888 ou 5541999998888.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* RIGHT COLUMN: Message Composer & Send Controls */}
-              <div className="lg:col-span-7 flex flex-col h-full border border-slate-200 rounded-2xl p-4 bg-white overflow-hidden space-y-3">
-                
-                {/* Templates & Variables Header */}
-                <div className="flex flex-wrap justify-between items-center gap-2 pb-2 border-b border-slate-100 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-700">Modelos:</span>
-                    <select
-                      onChange={e => {
-                        const t = customTemplates.find(tmpl => tmpl.id === e.target.value);
-                        if (t) setCustomText(t.text);
-                      }}
-                      defaultValue=""
-                      className="text-xs py-1.5 px-3 border border-slate-300 rounded-xl bg-slate-50 focus:ring-2 focus:ring-emerald-500 outline-none max-w-[200px]"
-                    >
-                      <option value="" disabled>Carregar modelo salvo...</option>
-                      {customTemplates.map(tmpl => (
-                        <option key={tmpl.id} value={tmpl.id}>{tmpl.title}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => setShowSaveTemplateModal(true)}
-                      className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-xl font-semibold transition-colors"
-                      title="Salvar mensagem atual como modelo"
-                    >
-                      + Salvar Modelo
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <span className="text-[11px] font-semibold text-slate-400">Variáveis:</span>
-                    <button
-                      onClick={() => handleInsertVariable(' {cliente}')}
-                      className="text-[11px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-mono px-2 py-1 rounded-lg border border-emerald-200 transition-colors"
-                    >
-                      {`{cliente}`}
-                    </button>
-                    <button
-                      onClick={() => handleInsertVariable(' {primeiro_nome}')}
-                      className="text-[11px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-mono px-2 py-1 rounded-lg border border-emerald-200 transition-colors"
-                    >
-                      {`{primeiro_nome}`}
-                    </button>
-                    <button
-                      onClick={() => handleInsertVariable(' {barco}')}
-                      className="text-[11px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-mono px-2 py-1 rounded-lg border border-emerald-200 transition-colors"
-                    >
-                      {`{barco}`}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Message Text Area */}
-                <div className="flex-1 flex flex-col min-h-0">
-                  <textarea
-                    value={customText}
-                    onChange={e => setCustomText(e.target.value)}
-                    placeholder="Digite a mensagem personalizada aqui... Ex: Olá *{primeiro_nome}*, seu agendamento na *{barco}* está confirmado!"
-                    className="w-full flex-1 p-3 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans leading-relaxed"
-                  />
-                </div>
-
-                {/* Media Attachment section */}
-                <div className="shrink-0 flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  {customMedia ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
-                        {customMedia.mimetype.includes('image') ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                      </div>
-                      <div className="truncate max-w-[250px]">
-                        <p className="text-xs font-semibold text-slate-900 truncate">{customMedia.fileName}</p>
-                        <p className="text-[10px] text-emerald-600 font-medium">Anexo pronto</p>
-                      </div>
-                      <button
-                        onClick={handleClearCustomMedia}
-                        className="text-rose-600 hover:text-rose-700 text-xs ml-2 p-1 font-bold"
-                      >
-                        Remover
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer hover:text-slate-900">
-                      <Paperclip className="w-4 h-4 text-emerald-600" />
-                      <span>Anexar Imagem ou Documento (PDF/PNG/JPG)</span>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={handleCustomMediaUpload}
-                        className="hidden"
-                      />
-                    </label>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 font-medium">Intervalo:</span>
-                    <select
-                      value={customDelaySeconds}
-                      onChange={e => setCustomDelaySeconds(Number(e.target.value))}
-                      className="text-xs py-1 px-2 border border-slate-300 rounded-lg bg-white outline-none"
-                    >
-                      <option value={2}>2 seg</option>
-                      <option value={3}>3 seg</option>
-                      <option value={5}>5 seg</option>
-                      <option value={8}>8 seg</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Submit / Trigger Button */}
-                <div className="shrink-0 pt-2 border-t border-slate-100 flex justify-end items-center gap-3">
-                  {customSendingStatus === 'sending' ? (
-                    <button
-                      onClick={handleStopCustomSend}
-                      className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-xs transition-colors"
-                    >
-                      <Pause className="w-4 h-4" /> Cancelar Envios
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handlePrepareCustomSend}
-                      disabled={
-                        customTargetType === 'clients' && customSelectedClientIds.length === 0 ||
-                        customTargetType === 'groups' && customSelectedGroupIds.length === 0 ||
-                        customTargetType === 'custom_number' && !customManualNumbers.trim()
-                      }
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 shadow-md hover:shadow-lg disabled:opacity-50 transition-all"
-                    >
-                      <Send className="w-4 h-4" />
-                      Disparar Mensagem Avulsa
-                    </button>
-                  )}
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* SENDING EXECUTION MODAL / PANEL */}
-            {customSendingStatus !== 'idle' && (
-              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 flex flex-col space-y-4 animate-in fade-in zoom-in-95">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <Send className="w-5 h-5 text-emerald-600" />
-                      {customSendingStatus === 'sending' ? 'Disparando Mensagens...' : 'Disparo Concluído'}
-                    </h3>
-                    {customSendingStatus === 'completed' && (
-                      <button
-                        onClick={() => setCustomSendingStatus('idle')}
-                        className="text-slate-400 hover:text-slate-600 p-1"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold">
-                      <span className="text-slate-600">Progresso dos envios</span>
-                      <span className="text-emerald-700 font-bold">
-                        {customSendQueue.filter(q => q.status === 'success' || q.status === 'error').length} / {customSendQueue.length}
-                      </span>
-                    </div>
-                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 transition-all duration-300"
-                        style={{
-                          width: `${(customSendQueue.filter(q => q.status === 'success' || q.status === 'error').length / (customSendQueue.length || 1)) * 100}%`
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Log List */}
-                  <div className="max-h-60 overflow-y-auto subtle-scrollbar border border-slate-100 rounded-xl divide-y divide-slate-100 bg-slate-50/50">
-                    {customSendQueue.map(item => (
-                      <div key={item.id} className="p-2.5 flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-900 truncate max-w-[240px]">{item.name}</span>
-                        <div>
-                          {item.status === 'pending' && <span className="text-slate-400 font-medium">Aguardando</span>}
-                          {item.status === 'sending' && <span className="text-blue-600 font-bold flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Enviando</span>}
-                          {item.status === 'success' && <span className="text-emerald-600 font-bold">✅ Enviado</span>}
-                          {item.status === 'error' && <span className="text-rose-600 font-bold" title={item.error}>❌ Falha</span>}
-                        </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* LEFT COLUMN: MESSAGE COMPOSER & ATTACHMENTS */}
+            <div className="lg:col-span-7 space-y-4">
+              {/* SAVED TEMPLATES */}
+              {customTemplates.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Modelos Salvos de Peças & Serviços</label>
+                  <div className="flex flex-wrap gap-2">
+                    {customTemplates.map(t => (
+                      <div key={t.id} className="group relative flex items-center bg-slate-100 hover:bg-slate-200/80 rounded-xl px-3 py-1.5 transition-colors">
+                        <button
+                          onClick={() => setCustomText(t.text)}
+                          className="text-xs font-semibold text-slate-800 text-left pr-4 cursor-pointer"
+                        >
+                          {t.title}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCustomTemplate(t.id)}
+                          className="text-slate-400 hover:text-rose-600 transition-colors p-0.5 rounded cursor-pointer"
+                          title="Remover modelo"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
 
-                  <div className="flex justify-end pt-2">
-                    {customSendingStatus === 'sending' ? (
-                      <button
-                        onClick={handleStopCustomSend}
-                        className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl text-xs font-bold"
-                      >
-                        Pausar / Interromper
-                      </button>
+              {/* MESSAGE TEXTAREA */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs font-bold text-slate-700">Texto da Mensagem</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCustomText(prev => prev + '{cliente}')}
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded font-mono font-bold text-slate-700 cursor-pointer"
+                    >
+                      +{'{cliente}'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomText(prev => prev + '{barco}')}
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded font-mono font-bold text-slate-700 cursor-pointer"
+                    >
+                      +{'{barco}'}
+                    </button>
+                  </div>
+                </div>
+
+                <textarea
+                  value={customText}
+                  onChange={e => setCustomText(e.target.value)}
+                  rows={6}
+                  placeholder="Escreva aqui sua mensagem de peças ou serviços..."
+                  className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
+                />
+              </div>
+
+              {/* ATTACHMENT */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">Anexo (Fotos de Peças, Orçamentos em PDF)</label>
+                {customMedia ? (
+                  <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <Paperclip className="w-4 h-4 text-emerald-700" />
+                      <span className="text-xs font-bold text-emerald-900">{customMedia.fileName}</span>
+                    </div>
+                    <button onClick={handleClearCustomMedia} className="text-xs text-rose-600 font-bold hover:underline cursor-pointer">
+                      Remover
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-slate-200 hover:border-emerald-400 bg-slate-50 hover:bg-emerald-50/40 rounded-xl cursor-pointer transition-colors">
+                    <Paperclip className="w-4 h-4 text-slate-400" />
+                    <span className="text-xs font-semibold text-slate-600">Clique para anexar um arquivo (máx. 10MB)</span>
+                    <input type="file" onChange={handleCustomMediaUpload} className="hidden" />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: RECIPIENT SELECTION */}
+            <div className="lg:col-span-5 flex flex-col space-y-4">
+              <label className="block text-xs font-bold text-slate-700">Destinatários</label>
+              
+              <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+                <button
+                  onClick={() => setCustomTargetType('clients')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    customTargetType === 'clients' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                  }`}
+                >
+                  Clientes
+                </button>
+                <button
+                  onClick={() => setCustomTargetType('groups')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    customTargetType === 'groups' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                  }`}
+                >
+                  Grupos de Cotistas
+                </button>
+                <button
+                  onClick={() => setCustomTargetType('custom_number')}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    customTargetType === 'custom_number' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                  }`}
+                >
+                  Número Avulso
+                </button>
+              </div>
+
+              {/* CLIENTS RECIPIENTS */}
+              {customTargetType === 'clients' && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Buscar cliente..."
+                        value={customSearch}
+                        onChange={e => setCustomSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <select
+                      value={customClientFilterBoatId}
+                      onChange={e => setCustomClientFilterBoatId(e.target.value)}
+                      className="text-xs py-1.5 px-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 max-w-[140px]"
+                    >
+                      <option value="all">Todas as Embarcações</option>
+                      {boats.map(b => (
+                        <option key={b.id} value={b.id}>{b.numero ? `M${b.numero} - ` : ''}{b.nome}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <button onClick={handleToggleSelectAllClients} className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer">
+                      <Check className="w-3.5 h-3.5" />
+                      {filteredCustomClients.length > 0 && filteredCustomClients.every(c => customSelectedClientIds.includes(c.id)) ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                    </button>
+                    <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+                      {customSelectedClientIds.length} selecionados
+                    </span>
+                  </div>
+
+                  {/* REMOVABLE CHIPS LIST OF SELECTED CLIENTS */}
+                  {customSelectedClientIds.length > 0 && (
+                    <div className="p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-emerald-900">
+                        <span>Clientes Selecionados ({customSelectedClientIds.length}):</span>
+                        <button onClick={() => setCustomSelectedClientIds([])} className="text-rose-600 hover:underline cursor-pointer">Limpar tudo</button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto subtle-scrollbar">
+                        {customSelectedClientIds.map(id => {
+                          const c = clients.find(cl => cl.id === id);
+                          if (!c) return null;
+                          return (
+                            <span key={id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-emerald-300 text-emerald-950 font-bold text-xs rounded-lg shadow-2xs">
+                              {c.nome}
+                              <button onClick={(e) => { e.stopPropagation(); handleToggleSelectClient(id); }} className="text-slate-400 hover:text-rose-600 cursor-pointer">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="max-h-64 overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl divide-y divide-slate-100 p-1 space-y-1">
+                    {filteredCustomClients.length === 0 ? (
+                      <div className="p-6 text-center text-slate-400 text-xs">Nenhum cliente encontrado.</div>
                     ) : (
-                      <button
-                        onClick={() => setCustomSendingStatus('idle')}
-                        className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-xl text-xs font-bold"
-                      >
-                        Fechar
-                      </button>
+                      filteredCustomClients.map(c => {
+                        const isSel = customSelectedClientIds.includes(c.id);
+                        return (
+                          <div
+                            key={c.id}
+                            onClick={() => handleToggleSelectClient(c.id)}
+                            className={`p-2.5 rounded-lg flex items-center justify-between text-xs cursor-pointer transition-all border ${
+                              isSel 
+                                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold shadow-2xs' 
+                                : 'bg-white hover:bg-slate-50 border-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+                                isSel ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-300'
+                              }`}>
+                                {isSel && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <span className="font-semibold">{c.nome}</span>
+                            </div>
+                            <span className={`text-[11px] ${isSel ? 'text-emerald-800 font-bold' : 'text-slate-500'}`}>{c.telefone}</span>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* SAVE TEMPLATE MODAL */}
-            {showSaveTemplateModal && (
-              <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
-                  <h4 className="text-sm font-bold text-slate-900">Salvar como Modelo</h4>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Título do Modelo</label>
+              {/* GROUPS RECIPIENTS */}
+              {customTargetType === 'groups' && (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
-                      placeholder="Ex: Comunicado de Manutenção"
-                      value={newTemplateTitle}
-                      onChange={e => setNewTemplateTitle(e.target.value)}
-                      className="w-full text-xs p-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="Buscar grupo..."
+                      value={customSearch}
+                      onChange={e => setCustomSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button
-                      onClick={() => setShowSaveTemplateModal(false)}
-                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-                    >
-                      Cancelar
+
+                  <div className="flex justify-between items-center">
+                    <button onClick={handleToggleSelectAllGroups} className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer">
+                      <Check className="w-3.5 h-3.5" />
+                      {filteredCustomGroups.length > 0 && filteredCustomGroups.every(g => customSelectedGroupIds.includes(g.id)) ? 'Desmarcar Todos' : 'Selecionar Todos'}
                     </button>
-                    <button
-                      onClick={handleSaveCustomTemplate}
-                      className="px-4 py-2 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl"
-                    >
-                      Salvar Modelo
-                    </button>
+                    <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+                      {customSelectedGroupIds.length} selecionados
+                    </span>
+                  </div>
+
+                  {/* REMOVABLE CHIPS LIST OF SELECTED GROUPS */}
+                  {customSelectedGroupIds.length > 0 && (
+                    <div className="p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-emerald-900">
+                        <span>Grupos Selecionados ({customSelectedGroupIds.length}):</span>
+                        <button onClick={() => setCustomSelectedGroupIds([])} className="text-rose-600 hover:underline cursor-pointer">Limpar tudo</button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto subtle-scrollbar">
+                        {customSelectedGroupIds.map(id => {
+                          const g = allAvailableGroupsList().find(gr => gr.id === id);
+                          return (
+                            <span key={id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-emerald-300 text-emerald-950 font-bold text-xs rounded-lg shadow-2xs">
+                              {g ? g.name : id}
+                              <button onClick={(e) => { e.stopPropagation(); handleToggleSelectGroup(id); }} className="text-slate-400 hover:text-rose-600 cursor-pointer">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="max-h-64 overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl divide-y divide-slate-100 p-1 space-y-1">
+                    {filteredCustomGroups.length === 0 ? (
+                      <div className="p-6 text-center text-slate-400 text-xs">Nenhum grupo encontrado.</div>
+                    ) : (
+                      filteredCustomGroups.map(g => {
+                        const isSel = customSelectedGroupIds.includes(g.id);
+                        return (
+                          <div
+                            key={g.id}
+                            onClick={() => handleToggleSelectGroup(g.id)}
+                            className={`p-2.5 rounded-lg flex items-center justify-between text-xs cursor-pointer transition-all border ${
+                              isSel 
+                                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold shadow-2xs' 
+                                : 'bg-white hover:bg-slate-50 border-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+                                isSel ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-300'
+                              }`}>
+                                {isSel && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <span className="font-semibold">{g.name}</span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-          </div>
-        )}
+              {/* MANUAL NUMBER */}
+              {customTargetType === 'custom_number' && (
+                <div className="space-y-2">
+                  <textarea
+                    value={customManualNumbers}
+                    onChange={e => setCustomManualNumbers(e.target.value)}
+                    rows={5}
+                    placeholder="Digite os números separados por vírgula ou linha (ex: 61999998888)..."
+                    className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl outline-none"
+                  />
+                </div>
+              )}
 
-      </div>
-
-      
-        {/* CONFIG TAB */}
-        {activeMainTab === 'config' && (
-          <div className="flex flex-col h-full overflow-y-auto subtle-scrollbar -mx-6">
-            <div className="flex items-center border-b border-slate-100 bg-slate-50/50 px-4">
               <button
-                onClick={() => setActiveTab('conta')}
-                className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors ${activeTab === 'conta' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                onClick={handlePrepareCustomSend}
+                disabled={customSendingStatus === 'sending'}
+                className="mt-auto bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                Status da Conta
-              </button>
-              <button
-                onClick={() => setActiveTab('grupos')}
-                className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors ${activeTab === 'grupos' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-              >
-                Sincronizar Grupos
-              </button>
-              <button
-                onClick={() => setActiveTab('contatos')}
-                className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors ${activeTab === 'contatos' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-              >
-                Sincronizar Contatos
+                <Send className="w-4 h-4" />
+                Disparar Comunicado
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* TAB CONTENT: CONTA / QR CODE */}
-            {activeTab === 'conta' && (
-              <div className="p-8 max-w-2xl mx-auto flex flex-col items-center justify-center">
-                {isFetchingWaStatus ? (
-                  <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
-                ) : waStatus === 'open' ? (
-                  <div className="text-center space-y-4">
-                    <div className="w-20 h-20 rounded-full bg-emerald-50 border-4 border-emerald-100 flex items-center justify-center mx-auto">
-                      <CheckCircle className="w-10 h-10 text-emerald-500" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-bold text-slate-900">WhatsApp Conectado</h4>
-                      <p className="text-sm text-slate-500">A API Evolution está pronta para enviar e receber mensagens.</p>
-                    </div>
-                    <button onClick={handleWaLogout} className="mt-4 bg-rose-50 text-rose-600 hover:bg-rose-100 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 mx-auto transition-colors">
+      {/* TAB CONTENT 4: CONFIGURAÇÕES & CONEXÃO */}
+      {activeMainTab === 'config' && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-xs flex flex-col h-full overflow-hidden">
+          <div className="flex items-center border-b border-slate-100 bg-slate-50/50 px-4">
+            <button
+              onClick={() => setActiveTab('conta')}
+              className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer ${activeTab === 'conta' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              Status da Conta
+            </button>
+            <button
+              onClick={() => setActiveTab('grupos')}
+              className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer ${activeTab === 'grupos' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              Sincronizar Grupos
+            </button>
+            <button
+              onClick={() => setActiveTab('contatos')}
+              className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer ${activeTab === 'contatos' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              Sincronizar Contatos
+            </button>
+          </div>
+
+          {/* CONTA / QR CODE */}
+          {activeTab === 'conta' && (
+            <div className="p-8 max-w-2xl mx-auto flex flex-col items-center justify-center">
+              {isFetchingWaStatus ? (
+                <div className="text-center space-y-4 py-8">
+                  <RefreshCw className="w-10 h-10 text-emerald-500 animate-spin mx-auto" />
+                  <p className="text-xs font-semibold text-slate-500">Conectando ao WhatsApp...</p>
+                </div>
+              ) : waStatus === 'open' ? (
+                <div className="text-center space-y-4">
+                  <div className="w-20 h-20 rounded-full bg-emerald-50 border-4 border-emerald-100 flex items-center justify-center mx-auto">
+                    <CheckCircle className="w-10 h-10 text-emerald-500" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-bold text-slate-900">WhatsApp Conectado</h4>
+                    <p className="text-sm text-slate-500">A API Evolution está pronta para enviar e receber mensagens (Instância: pecas_servicos).</p>
+                  </div>
+                  <div className="flex justify-center gap-3 pt-2">
+                    <button onClick={fetchWaStatus} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer">
+                      <RefreshCw className="w-4 h-4" /> Verificar Status
+                    </button>
+                    <button onClick={handleWaLogout} className="bg-rose-50 text-rose-600 hover:bg-rose-100 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer">
                       <LogOut className="w-4 h-4" /> Desconectar
                     </button>
                   </div>
-                ) : waQrCode ? (
-                  <div className="text-center space-y-6">
-                    <div>
-                      <h4 className="text-lg font-bold text-slate-900">Conectar WhatsApp</h4>
-                      <p className="text-sm text-slate-500">Abra o WhatsApp no celular, vá em Aparelhos Conectados e escaneie o código abaixo:</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 inline-block">
-                      <img src={waQrCode} alt="QR Code WhatsApp" className="w-64 h-64" />
-                    </div>
-                    <button onClick={fetchWaStatus} className="text-xs text-slate-500 hover:text-slate-800 underline">Atualizar Status</button>
+                </div>
+              ) : waQrCode ? (
+                <div className="text-center space-y-6">
+                  <div>
+                    <h4 className="text-lg font-bold text-slate-900">Conectar WhatsApp</h4>
+                    <p className="text-sm text-slate-500">Abra o WhatsApp no celular, vá em <strong>Aparelhos Conectados</strong> e escaneie o código abaixo:</p>
                   </div>
-                ) : (
-                  <div className="text-center space-y-4">
-                    <ShieldAlert className="w-12 h-12 text-amber-500 mx-auto" />
-                    <p className="text-sm font-semibold text-slate-800">Serviço Indisponível ou Desconectado</p>
-                    <button onClick={fetchWaQrCode} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 mx-auto">
-                      <QrCode className="w-4 h-4" /> Gerar Novo QR Code
+                  <div className="bg-white p-4 rounded-3xl shadow-md border border-slate-200 inline-block">
+                    <img
+                      src={waQrCode.startsWith('data:') ? waQrCode : `data:image/png;base64,${waQrCode}`}
+                      alt="QR Code WhatsApp"
+                      className="w-64 h-64 object-contain"
+                    />
+                  </div>
+                  <div className="flex justify-center items-center gap-4">
+                    <button onClick={fetchWaStatus} disabled={isFetchingWaStatus} className="text-xs text-emerald-600 font-bold hover:underline flex items-center gap-1 cursor-pointer">
+                      <RefreshCw className={`w-3.5 h-3.5 ${isFetchingWaStatus ? 'animate-spin' : ''}`} /> Atualizar Status
+                    </button>
+                    <span className="text-slate-300">•</span>
+                    <button onClick={fetchWaQrCode} disabled={isFetchingWaStatus} className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer">
+                      Gerar Novo QR Code
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB CONTENT: GRUPOS */}
-            {activeTab === 'grupos' && (
-              <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-slate-500">Associe as embarcações aos grupos do WhatsApp encontrados na Evolution API para disparo de calendários.</p>
-                  <button onClick={handleFetchGroups} disabled={isFetchingGroups} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors">
-                    <RefreshCw className={`w-3.5 h-3.5 ${isFetchingGroups ? 'animate-spin' : ''}`} /> Puxar Grupos do WhatsApp
+                </div>
+              ) : (
+                <div className="text-center space-y-4">
+                  <ShieldAlert className="w-12 h-12 text-amber-500 mx-auto" />
+                  <p className="text-sm font-semibold text-slate-800">WhatsApp Desconectado</p>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">Clique no botão abaixo para criar a sessão e obter o QR Code de autenticação.</p>
+                  <button
+                    onClick={fetchWaQrCode}
+                    disabled={isFetchingWaStatus}
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 mx-auto cursor-pointer transition-all shadow-sm"
+                  >
+                    {isFetchingWaStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+                    {isFetchingWaStatus ? 'Gerando QR Code...' : 'Gerar Novo QR Code'}
                   </button>
                 </div>
+              )}
+            </div>
+          )}
 
-                {availableGroups.length > 0 ? (
-                  <div className="space-y-3">
-                    {boats.map(boat => (
-                      <div key={boat.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                        <div className="mb-2 sm:mb-0">
-                          <p className="text-sm font-semibold text-slate-800">{boat.nome}</p>
-                          <p className="text-xs text-slate-500">Lancha/Jet: {boat.numero}</p>
-                        </div>
-                        <div className="w-full sm:w-1/2">
-                          <select
-                            value={mappingState[boat.id] || ''}
-                            onChange={(e) => handleMappingChange(boat.id, e.target.value)}
-                            className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
-                          >
-                            <option value="">-- Sem Grupo Associado --</option>
-                            {availableGroups.map(g => (
-                              <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="pt-4 flex justify-end">
-                      <button onClick={handleSaveGroupMapping} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm">
-                        Salvar Associações de Grupos
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-slate-400 text-sm">
-                    Nenhum grupo carregado. Clique em "Puxar Grupos do WhatsApp".
-                  </div>
-                )}
+          {/* GRUPOS */}
+          {activeTab === 'grupos' && (
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-500">Associe as embarcações aos grupos do WhatsApp encontrados na Evolution API para disparo de comunicados.</p>
+                <button onClick={handleFetchGroups} disabled={isFetchingGroups} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer">
+                  <RefreshCw className={`w-3.5 h-3.5 ${isFetchingGroups ? 'animate-spin' : ''}`} /> Puxar Grupos do WhatsApp
+                </button>
               </div>
-            )}
 
-            {/* TAB CONTENT: CONTATOS */}
-            {activeTab === 'contatos' && (
-              <div className="p-6 space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl w-fit">
-                    <button onClick={() => setActiveContactsTab('sem_telefone')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${activeContactsTab === 'sem_telefone' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-500'}`}>Sem WhatsApp</button>
-                    <button onClick={() => setActiveContactsTab('vinculados')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${activeContactsTab === 'vinculados' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-500'}`}>Mapeados</button>
-                    <button onClick={() => setActiveContactsTab('todos')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${activeContactsTab === 'todos' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-500'}`}>Todos</button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder="Pesquisar..."
-                        value={clientSearch}
-                        onChange={(e) => setClientSearch(e.target.value)}
-                        className="pl-8 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400"
-                      />
+              {availableGroups.length > 0 ? (
+                <div className="space-y-3">
+                  {boats.map(boat => (
+                    <div key={boat.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-xl">
+                      <div className="mb-2 sm:mb-0">
+                        <p className="text-sm font-semibold text-slate-800">{boat.nome}</p>
+                        <p className="text-xs text-slate-500">Lancha/Jet: {boat.numero}</p>
+                      </div>
+                      <div className="w-full sm:w-1/2">
+                        <select
+                          value={mappingState[boat.id] || ''}
+                          onChange={(e) => handleMappingChange(boat.id, e.target.value)}
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                        >
+                          <option value="">-- Sem Grupo Associado --</option>
+                          {availableGroups.map(g => (
+                            <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                    <button onClick={fetchWhatsAppContactsList} disabled={isFetchingContacts} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors">
-                      <RefreshCw className={`w-3.5 h-3.5 ${isFetchingContacts ? 'animate-spin' : ''}`} /> Puxar
+                  ))}
+                  <div className="pt-4 flex justify-end">
+                    <button onClick={handleSaveGroupMapping} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm cursor-pointer">
+                      Salvar Associações de Grupos
                     </button>
                   </div>
                 </div>
+              ) : (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  Nenhum grupo carregado. Clique em "Puxar Grupos do WhatsApp".
+                </div>
+              )}
+            </div>
+          )}
 
-                <div className="border border-slate-100 rounded-xl divide-y divide-slate-100">
-                  {(() => {
-                    const filteredClients = clients.filter(c => {
-                      if (clientSearch && !c.nome.toLowerCase().includes(clientSearch.toLowerCase())) return false;
-                      if (activeContactsTab === 'sem_telefone') return !c.telefone;
-                      if (activeContactsTab === 'vinculados') return !!c.telefone;
-                      return true;
-                    });
+          {/* CONTATOS */}
+          {activeTab === 'contatos' && (
+            <div className="p-6 space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl w-fit">
+                  <button onClick={() => setActiveContactsTab('sem_telefone')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${activeContactsTab === 'sem_telefone' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-500'}`}>Sem WhatsApp</button>
+                  <button onClick={() => setActiveContactsTab('vinculados')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${activeContactsTab === 'vinculados' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-500'}`}>Mapeados</button>
+                  <button onClick={() => setActiveContactsTab('todos')} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${activeContactsTab === 'todos' ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-500'}`}>Todos</button>
+                </div>
 
-                    if (filteredClients.length === 0) return <div className="p-8 text-center text-slate-400 text-xs">Nenhum cliente encontrado neste filtro.</div>;
-
-                    return filteredClients.map((client) => {
-                      return (
-                        <div key={client.id} className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
-                          <div className="space-y-1 max-w-md">
-                            <span className="font-semibold text-slate-900 text-xs">{client.nome}</span>
-                          </div>
-
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-3 lg:justify-end flex-1">
-                            {client.telefone ? (
-                              <div className="flex items-center justify-between sm:justify-end gap-3 w-full">
-                                <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-800 text-[11px] font-medium flex items-center gap-1.5">
-                                  <UserCheck className="w-3.5 h-3.5" /> {formatPhoneNumber(client.telefone)}
-                                </div>
-                                <button onClick={() => handleUnlinkPhone(client.id)} className="text-[11px] text-rose-600 font-medium">Remover</button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2 w-full justify-between sm:justify-end">
-                                {activeManualSyncClientId === client.id ? (
-                                  <div className="relative flex-1 max-w-xs flex items-center gap-1.5">
-                                    <input
-                                      type="text"
-                                      placeholder="Buscar contato puxado..."
-                                      value={contactQuery}
-                                      onChange={(e) => setContactQuery(e.target.value)}
-                                      className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none"
-                                      autoFocus
-                                    />
-                                    <button onClick={() => { setActiveManualSyncClientId(null); setContactQuery(''); }} className="text-[10px] text-slate-400 px-1 py-1">Cancelar</button>
-                                    {contactQuery.trim().length > 0 && (
-                                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto z-40 divide-y divide-slate-100 subtle-scrollbar">
-                                        {whatsAppContacts.filter(c => (c.pushName && c.pushName.toLowerCase().includes(contactQuery.toLowerCase())) || c.remoteJid.includes(contactQuery)).slice(0, 10).map(contact => (
-                                          <button
-                                            key={contact.id}
-                                            onClick={() => { handleLinkPhone(client.id, contact.remoteJid.split('@')[0]); setActiveManualSyncClientId(null); setContactQuery(''); }}
-                                            className="w-full text-left p-2 hover:bg-slate-50 text-[11px] transition-colors flex flex-col"
-                                          >
-                                            <span className="font-semibold text-slate-950">{contact.pushName || 'Sem Nome'}</span>
-                                            <span className="text-[9px] text-slate-400 font-mono">{formatPhoneNumber(contact.remoteJid)}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <button onClick={() => { setActiveManualSyncClientId(client.id); setContactQuery(''); }} className="text-[11px] text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5">
-                                    <Smartphone className="w-3.5 h-3.5" /> Vincular Manualmente
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Pesquisar..."
+                      value={clientSearch}
+                      onChange={(e) => setClientSearch(e.target.value)}
+                      className="pl-8 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    />
+                  </div>
+                  <button onClick={fetchWhatsAppContactsList} disabled={isFetchingContacts} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer">
+                    <RefreshCw className={`w-3.5 h-3.5 ${isFetchingContacts ? 'animate-spin' : ''}`} /> Puxar
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
-        )}
 
+              <div className="border border-slate-100 rounded-xl divide-y divide-slate-100">
+                {(() => {
+                  const filteredClients = clients.filter(c => {
+                    if (clientSearch && !c.nome.toLowerCase().includes(clientSearch.toLowerCase())) return false;
+                    if (activeContactsTab === 'sem_telefone') return !c.telefone;
+                    if (activeContactsTab === 'vinculados') return !!c.telefone;
+                    return true;
+                  });
 
-      {/* Hidden processing block for Calendars */}
-      {activeMainTab === 'calendars' && calSendingStatus === 'sending' && activeProcessingBoatId && (
-         <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none">
-           <MonthlyCalendarGenerator 
-             initialBoatId={activeProcessingBoatId}
-             initialDate={`${calMonth}-01`}
-             autoExport={true}
-             onExport={(base64) => {
-                handleCalendarExported(base64);
-             }}
-           />
-         </div>
+                  if (filteredClients.length === 0) return <div className="p-8 text-center text-slate-400 text-xs">Nenhum cliente encontrado neste filtro.</div>;
+
+                  return filteredClients.map((client) => {
+                    return (
+                      <div key={client.id} className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
+                        <div className="space-y-1 max-w-md">
+                          <span className="font-semibold text-slate-900 text-xs">{client.nome}</span>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 lg:justify-end flex-1">
+                          {client.telefone ? (
+                            <div className="flex items-center justify-between sm:justify-end gap-3 w-full">
+                              <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-800 text-[11px] font-medium flex items-center gap-1.5">
+                                <UserCheck className="w-3.5 h-3.5" /> {formatPhoneNumber(client.telefone)}
+                              </div>
+                              <button onClick={() => handleUnlinkPhone(client.id)} className="text-[11px] text-rose-600 font-medium cursor-pointer">Remover</button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 w-full justify-between sm:justify-end">
+                              {activeManualSyncClientId === client.id ? (
+                                <div className="relative flex-1 max-w-xs flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    placeholder="Buscar contato..."
+                                    value={contactQuery}
+                                    onChange={(e) => setContactQuery(e.target.value)}
+                                    className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none"
+                                    autoFocus
+                                  />
+                                  <button onClick={() => { setActiveManualSyncClientId(null); setContactQuery(''); }} className="text-[10px] text-slate-400 px-1 py-1 cursor-pointer">Cancelar</button>
+                                  {contactQuery.trim().length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto z-40 divide-y divide-slate-100 subtle-scrollbar">
+                                      {whatsAppContacts.filter(c => (c.pushName && c.pushName.toLowerCase().includes(contactQuery.toLowerCase())) || c.remoteJid.includes(contactQuery)).slice(0, 10).map(contact => (
+                                        <button
+                                          key={contact.id}
+                                          onClick={() => { handleLinkPhone(client.id, contact.remoteJid.split('@')[0]); setActiveManualSyncClientId(null); setContactQuery(''); }}
+                                          className="w-full text-left p-2 hover:bg-slate-50 text-[11px] transition-colors flex flex-col cursor-pointer"
+                                        >
+                                          <span className="font-semibold text-slate-950">{contact.pushName || 'Sem Nome'}</span>
+                                          <span className="text-[9px] text-slate-400 font-mono">{formatPhoneNumber(contact.remoteJid)}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <button onClick={() => { setActiveManualSyncClientId(client.id); setContactQuery(''); }} className="text-[11px] text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer">
+                                  <Smartphone className="w-3.5 h-3.5" /> Vincular Manualmente
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
+      {/* SAVE TEMPLATE MODAL */}
+      {showSaveTemplateModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <h4 className="text-sm font-bold text-slate-900">Salvar como Modelo de Oficina</h4>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Título do Modelo</label>
+              <input
+                type="text"
+                placeholder="Ex: Comunicado de Manutenção Preventiva"
+                value={newTemplateTitle}
+                onChange={e => setNewTemplateTitle(e.target.value)}
+                className="w-full text-xs p-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowSaveTemplateModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveCustomTemplate}
+                className="px-4 py-2 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl cursor-pointer"
+              >
+                Salvar Modelo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

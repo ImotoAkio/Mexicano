@@ -37,6 +37,37 @@ export interface Cliente {
   categoriaHabilitacao?: string;
 }
 
+export interface RegistroHoras {
+  id: string;
+  embarcacaoId: string;
+  horas: number;
+  data: string; // ISO Timestamp
+  observacao?: string;
+  registradoPor?: string;
+  createdAt: string;
+}
+
+export interface RegistroAcessorios {
+  id: string;
+  embarcacaoId: string;
+  data: string; // ISO Timestamp
+  horasMotor?: number; // Engine hours recorded at conference time
+  tenda?: boolean;
+  mesa?: boolean;
+  bancosCadeiras?: boolean;
+  churrasqueira?: boolean;
+  observacoes?: string;
+  statusConferencia?: 'conforme' | 'com_pendencia';
+  registradoPor?: string;
+  createdAt: string;
+}
+
+export interface ConfiguracaoHorimetro {
+  intervaloPadraoLancha: number;
+  intervaloPadraoJet: number;
+  intervalosPorModeloJet?: Record<string, number>;
+}
+
 export interface Embarcacao {
   empresas?: string[];
   id: string;
@@ -61,12 +92,21 @@ export interface Embarcacao {
   seguroUrl?: string; // URL for the boat insurance PDF
   temSom?: boolean; // Indicates if the boat requires sound control checks
   horasMotor?: number; // Track current engine hours
+  ultimaAtualizacaoHoras?: string;
+  horasUltimaManutencao?: number;
+  proximaRevisaoHoras?: number;
+  proprietarioId?: string;
+  cotistas?: any[];
+  horimetroActual?: number;
+  historicoHoras?: RegistroHoras[];
   acessorios?: {
     tenda?: boolean;
     mesa?: boolean;
     bancosCadeiras?: boolean;
     churrasqueira?: boolean;
     observacoes?: string;
+    ultimaConferencia?: string;
+    historico?: RegistroAcessorios[];
   };
 }
 
@@ -186,10 +226,36 @@ export interface Feedback {
   createdAt: string;
 }
 
+export interface Chamado {
+  id: string;
+  codigoChamado: string;
+  embarcacaoId: string;
+  solicitanteTipo: 'gerente' | 'administrador' | 'cliente' | 'pecas_servicos';
+  solicitanteNome: string;
+  clienteId?: string;
+  titulo: string;
+  descricaoAvaria: string;
+  urgencia: 'baixa' | 'media' | 'alta' | 'critica';
+  status: 'pendente' | 'em_analise' | 'os_gerada' | 'rejeitado' | 'concluido';
+  osId?: string;
+  dataAbertura: string;
+  observacoesAnalise?: string;
+  createdAt: string;
+}
+
 export interface Manutencao {
+  codigoOS?: string;
+  chamadoId?: string;
+  dataEntradaOficina?: string;
+  concluidoEm?: string;
+  titulo?: string;
+  clienteId?: string;
+  urgencia?: 'baixa' | 'media' | 'alta' | 'critica';
   id: string;
   embarcacaoId: string;
-  tituloChamado?: string; // Short description for Kanban
+  tituloChamado?: string;
+  tipoManutencaoId?: string;
+  tipoManutencaoNome?: string; // Short description for Kanban
   dataSaida: string; // YYYY-MM-DD
   dataChamado?: string; // YYYY-MM-DD
   prazoEntrega?: string; // YYYY-MM-DD
@@ -223,6 +289,8 @@ export interface Mecanico {
   id: string;
   nome: string;
   cnpj?: string;
+  telefone?: string;
+  tipo?: "interno" | "oficina_externa";
   createdAt: string;
 }
 
@@ -322,4 +390,9 @@ export interface CatalogoEpi {
   createdAt: string;
 }
 
-// trigger action
+export interface TipoManutencao {
+  id: string;
+  nome: string;
+  descricao?: string;
+  createdAt: string;
+}

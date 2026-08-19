@@ -1,10 +1,38 @@
-import { Cliente, Embarcacao, Reserva, Manutencao, Funcionario, Folga, Mecanico, EpiEntrega, CatalogoEpi, HistoricoEPIMensal } from './types';
+import { Cliente, Embarcacao, Reserva, Manutencao, Chamado, TipoManutencao, Funcionario, Folga, Mecanico, EpiEntrega, CatalogoEpi, HistoricoEPIMensal, RegistroHoras, RegistroAcessorios } from './types';
 
 // In-Memory Database Arrays (No LocalStorage)
 let memoryClients: Cliente[] = [];
 let memoryBoats: Embarcacao[] = [];
 let memoryReservations: Reserva[] = [];
 let memoryManutencoes: Manutencao[] = [];
+let memoryChamados: Chamado[] = [
+  {
+    id: 'chm_mock_1',
+    codigoChamado: 'CHM-2026-001',
+    embarcacaoId: 'boat_3',
+    solicitanteTipo: 'gerente',
+    solicitanteNome: 'Carlos Gerência',
+    titulo: 'Vazamento de óleo no motor de popa',
+    descricaoAvaria: 'Verificada presença de óleo na rampa de descida após último teste no mar. Necessário vistoria técnica.',
+    urgencia: 'alta',
+    status: 'pendente',
+    dataAbertura: '2026-08-17',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'chm_mock_2',
+    codigoChamado: 'CHM-2026-002',
+    embarcacaoId: 'boat_1',
+    solicitanteTipo: 'cliente',
+    solicitanteNome: 'Marcelo Oliveira (Proprietário)',
+    titulo: 'Ruído incomum no sistema elétrico e bomba de porão',
+    descricaoAvaria: 'Bomba de porão acionando com frequência e luz de alerta piscando no painel.',
+    urgencia: 'media',
+    status: 'em_analise',
+    dataAbertura: '2026-08-18',
+    createdAt: new Date().toISOString()
+  }
+];
 let memoryMecanicos: Mecanico[] = [];
 let memoryFuncionarios: Funcionario[] = [];
 let memoryFolgas: Folga[] = [];
@@ -267,6 +295,112 @@ export const boatDB = {
 
     return updatedBoat;
   },
+  registrarHoras: (
+    boatId: string, 
+    horas: number, 
+    observacao?: string, 
+    dataCustom?: string,
+    registradoPor?: string
+  ): Embarcacao => {
+    const boat = memoryBoats.find(b => b.id === boatId);
+    if (!boat) throw new Error('Embarcação não encontrada.');
+
+    const timestamp = dataCustom || new Date().toISOString();
+    const novoRegistro: RegistroHoras = {
+      id: `reg_hr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      embarcacaoId: boatId,
+      horas: Number(horas),
+      data: timestamp,
+      observacao,
+      registradoPor,
+      createdAt: new Date().toISOString()
+    };
+
+    const historicoAtual = boat.historicoHoras || [];
+    const novoHistorico = [novoRegistro, ...historicoAtual].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+
+    return boatDB.update(boatId, {
+      horasMotor: Number(horas),
+      ultimaAtualizacaoHoras: timestamp,
+      historicoHoras: novoHistorico
+    });
+  },
+  registrarConferenciaAcessorios: (
+    boatId: string,
+    acessoriosData: {
+      tenda?: boolean;
+      mesa?: boolean;
+      bancosCadeiras?: boolean;
+      churrasqueira?: boolean;
+      observacoes?: string;
+    },
+    horasMotor?: number,
+    dataCustom?: string,
+    registradoPor?: string
+  ): Embarcacao => {
+    const boat = memoryBoats.find(b => b.id === boatId);
+    if (!boat) throw new Error('Embarcação não encontrada.');
+
+    const timestamp = dataCustom || new Date().toISOString();
+    
+    const isFullyEquipped = 
+      acessoriosData.tenda !== false && 
+      acessoriosData.mesa !== false && 
+      acessoriosData.bancosCadeiras !== false && 
+      acessoriosData.churrasqueira !== false;
+
+    const novoRegistro: RegistroAcessorios = {
+      id: `reg_acc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      embarcacaoId: boatId,
+      data: timestamp,
+      horasMotor: horasMotor !== undefined ? Number(horasMotor) : boat.horasMotor,
+      tenda: !!acessoriosData.tenda,
+      mesa: !!acessoriosData.mesa,
+      bancosCadeiras: !!acessoriosData.bancosCadeiras,
+      churrasqueira: !!acessoriosData.churrasqueira,
+      observacoes: acessoriosData.observacoes || '',
+      statusConferencia: isFullyEquipped ? 'conforme' : 'com_pendencia',
+      registradoPor,
+      createdAt: new Date().toISOString()
+    };
+
+    const historicoAtual = boat.acessorios?.historico || [];
+    const novoHistoricoAcc = [novoRegistro, ...historicoAtual].sort(
+      (a, b) => new Date(b.data).getTime() - new Date(a.data).getTime()
+    );
+
+    const updateFields: Partial<Omit<Embarcacao, 'id'>> = {
+      acessorios: {
+        tenda: !!acessoriosData.tenda,
+        mesa: !!acessoriosData.mesa,
+        bancosCadeiras: !!acessoriosData.bancosCadeiras,
+        churrasqueira: !!acessoriosData.churrasqueira,
+        observacoes: acessoriosData.observacoes || '',
+        ultimaConferencia: timestamp,
+        historico: novoHistoricoAcc
+      }
+    };
+
+    if (horasMotor !== undefined && horasMotor !== boat.horasMotor) {
+      const autoRegHoras: RegistroHoras = {
+        id: `reg_hr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        embarcacaoId: boatId,
+        horas: Number(horasMotor),
+        data: timestamp,
+        observacao: 'Conferência semanal de acessórios e horímetro',
+        registradoPor,
+        createdAt: new Date().toISOString()
+      };
+      const historicoHorasAtual = boat.historicoHoras || [];
+      updateFields.horasMotor = Number(horasMotor);
+      updateFields.ultimaAtualizacaoHoras = timestamp;
+      updateFields.historicoHoras = [autoRegHoras, ...historicoHorasAtual].sort(
+        (a, b) => new Date(b.data).getTime() - new Date(a.data).getTime()
+      );
+    }
+
+    return boatDB.update(boatId, updateFields);
+  },
   delete: (id: string): void => {
     memoryBoats = memoryBoats.filter(b => b.id !== id);
 
@@ -351,6 +485,71 @@ export const reservationDB = {
   delete: (id: string): void => {
     memoryReservations = memoryReservations.filter(r => r.id !== id);
     saveToRemoteDB('reservations', 'delete', { id });
+  }
+};
+
+// Chamado DB Operations
+export const chamadoDB = {
+  getAll: (): Chamado[] => {
+    return memoryChamados.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+  getById: (id: string): Chamado | undefined => {
+    return memoryChamados.find(c => c.id === id);
+  },
+  getByEmbarcacaoId: (embarcacaoId: string): Chamado[] => {
+    return memoryChamados.filter(c => c.embarcacaoId === embarcacaoId);
+  },
+  create: (chamado: Omit<Chamado, 'id' | 'codigoChamado' | 'createdAt'>): Chamado => {
+    const nextNum = memoryChamados.length + 1;
+    const numPadded = String(nextNum).padStart(3, '0');
+    const newChamado: Chamado = {
+      ...chamado,
+      id: `chm_${Date.now()}`,
+      codigoChamado: `CHM-2026-${numPadded}`,
+      status: chamado.status || 'pendente',
+      dataAbertura: chamado.dataAbertura || new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString()
+    };
+    memoryChamados.push(newChamado);
+    return newChamado;
+  },
+  update: (id: string, updatedFields: Partial<Chamado>): Chamado => {
+    const idx = memoryChamados.findIndex(c => c.id === id);
+    if (idx === -1) throw new Error('Chamado não encontrado.');
+    const updated = { ...memoryChamados[idx], ...updatedFields };
+    memoryChamados[idx] = updated;
+    return updated;
+  },
+  delete: (id: string): void => {
+    memoryChamados = memoryChamados.filter(c => c.id !== id);
+  }
+};
+
+let memoryTiposManutencao: TipoManutencao[] = [
+  { id: 'tip_1', nome: 'Revisão Preventiva (100h / 200h)', descricao: 'Troca de óleos, filtros, velas e inspeção geral', createdAt: new Date().toISOString() },
+  { id: 'tip_2', nome: 'Troca de Óleo e Filtros', descricao: 'Substituição de óleo do motor e elemento filtrante', createdAt: new Date().toISOString() },
+  { id: 'tip_3', nome: 'Reparo de Motor / Rabeta', descricao: 'Serviço mecânico em bloco, cabeçote, hélice ou rabeta', createdAt: new Date().toISOString() },
+  { id: 'tip_4', nome: 'Sistema Elétrico & Baterias', descricao: 'Inspeção de chicote, alternador, baterias e fiação', createdAt: new Date().toISOString() },
+  { id: 'tip_5', nome: 'Bomba de Porão & Automático', descricao: 'Troca ou reparo da bomba de esgotamento e sensor', createdAt: new Date().toISOString() },
+  { id: 'tip_6', nome: 'Tapeçaria & Estofamento', descricao: 'Reparo de bancos, capas e acabamento de couro náutico', createdAt: new Date().toISOString() },
+  { id: 'tip_7', nome: 'Pintura, Fibra & Gel Coat', descricao: 'Reparos de casco, polimento, retoque de tinta e gel coat', createdAt: new Date().toISOString() },
+  { id: 'tip_8', nome: 'Instalação de Eletrônicos & Som', descricao: 'Instalação de GPS, sonar, som náutico e acessórios', createdAt: new Date().toISOString() },
+  { id: 'tip_9', nome: 'Manutenção de Jet Ski', descricao: 'Revisão de turbina, cinta, vela e motor de jet ski', createdAt: new Date().toISOString() },
+  { id: 'tip_10', nome: 'Outros Serviços Náuticos', descricao: 'Serviços gerais sob demanda', createdAt: new Date().toISOString() }
+];
+
+export const tipoManutencaoDB = {
+  getAll: (): TipoManutencao[] => {
+    return memoryTiposManutencao.sort((a, b) => a.nome.localeCompare(b.nome));
+  },
+  create: (tipo: Omit<TipoManutencao, 'id' | 'createdAt'>): TipoManutencao => {
+    const newTipo: TipoManutencao = {
+      ...tipo,
+      id: `tip_${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    memoryTiposManutencao.push(newTipo);
+    return newTipo;
   }
 };
 

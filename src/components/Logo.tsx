@@ -5,9 +5,10 @@ interface LogoProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string;
   editable?: boolean;
   useCustomLogo?: boolean;
+  variant?: string;
 }
 
-export default function Logo({ className = "w-full h-full text-[#B69D74]", editable = false, useCustomLogo = false, ...props }: LogoProps) {
+export default function Logo({ className = "h-9 w-auto text-[#B69D74]", editable = false, useCustomLogo = false, variant, ...props }: LogoProps) {
   const [customLogo, setCustomLogo] = useState<string | null>(() => {
     return localStorage.getItem('custom_sidebar_logo');
   });
@@ -67,7 +68,7 @@ export default function Logo({ className = "w-full h-full text-[#B69D74]", edita
 
   return (
     <div 
-      className={`relative inline-flex items-center justify-center group ${editable ? 'cursor-pointer' : ''}`} 
+      className={`relative inline-flex items-center justify-center shrink-0 group ${editable ? 'cursor-pointer' : ''}`} 
       onClick={triggerUpload}
       title={editable ? "Clique para alterar a logo da sidebar" : undefined}
       {...props}
@@ -86,14 +87,14 @@ export default function Logo({ className = "w-full h-full text-[#B69D74]", edita
         <img 
           src={displayLogo} 
           alt="Logo Marina" 
-          className={`${className} object-contain max-h-full`} 
+          className={`${className} object-contain max-h-9 max-w-[140px]`} 
         />
       ) : (
         <svg 
           viewBox="0 0 100 100" 
           fill="currentColor" 
           xmlns="http://www.w3.org/2000/svg" 
-          className={className}
+          className={`${className} h-9 w-auto max-h-9 max-w-[140px]`}
         >
           {/* Bottom Triangle */}
           <polygon points="12,75 80,75 85,55" />

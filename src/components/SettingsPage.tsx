@@ -16,9 +16,15 @@ import {
   LayoutGrid, 
   Kanban,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Clock,
+  Ship,
+  Plus,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import Logo from './Logo';
+import { getHorimetroSettings, saveHorimetroSettings, ConfiguracaoHorimetro } from '../utils/horimetroUtils';
 
 interface SettingsPageProps {
   operadorNome?: string;
@@ -48,6 +54,44 @@ export default function SettingsPage({ operadorNome = 'Operador', showToast }: S
   const [soundAlerts, setSoundAlerts] = useState<boolean>(() => {
     return localStorage.getItem('marina_sound_alerts') !== 'false';
   });
+
+  // Horímetro & Revisão Settings State
+  const [horimetroSettings, setHorimetroSettings] = useState<ConfiguracaoHorimetro>(() => getHorimetroSettings());
+  const [novoModeloJet, setNovoModeloJet] = useState('');
+  const [novoHorasJet, setNovoHorasJet] = useState<number | ''>(50);
+
+  const handleSaveHorimetroSettings = () => {
+    saveHorimetroSettings(horimetroSettings);
+    if (showToast) showToast('Configurações de revisão salvas com sucesso!', 'success');
+  };
+
+  const handleAddModeloJet = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novoModeloJet.trim() || novoHorasJet === '' || Number(novoHorasJet) <= 0) return;
+
+    const key = novoModeloJet.trim().toUpperCase();
+    setHorimetroSettings(prev => ({
+      ...prev,
+      intervalosPorModeloJet: {
+        ...prev.intervalosPorModeloJet,
+        [key]: Number(novoHorasJet)
+      }
+    }));
+
+    setNovoModeloJet('');
+    setNovoHorasJet(50);
+  };
+
+  const handleRemoveModeloJet = (modeloKey: string) => {
+    setHorimetroSettings(prev => {
+      const updated = { ...prev.intervalosPorModeloJet };
+      delete updated[modeloKey];
+      return {
+        ...prev,
+        intervalosPorModeloJet: updated
+      };
+    });
+  };
 
   useEffect(() => {
     const handleLogoUpdate = () => {
@@ -417,6 +461,157 @@ export default function SettingsPage({ operadorNome = 'Operador', showToast }: S
             </label>
           </div>
         </div>
+      </div>
+
+      {/* Section 4: Horímetros & Intervalos de Revisão */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-6">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-200 shrink-0">
+              <Clock className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Alertas & Intervalos de Revisão Programada</h2>
+              <p className="text-xs text-slate-500">
+                Defina após quantas horas de uso as embarcações exibem o alerta de tempo de revisão programada.
+              </p>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={handleSaveHorimetroSettings} 
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Save className="w-3.5 h-3.5" /> Salvar Regras de Revisão
+          </button>
+        </div>
+
+        {/* Global Default Hours for Lanchas & Jets */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="flex items-center gap-2">
+              <Ship className="w-4 h-4 text-blue-600" />
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Intervalo Padrão - Lanchas (Horas)
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                value={horimetroSettings.intervaloPadraoLancha}
+                onChange={(e) => setHorimetroSettings({ ...horimetroSettings, intervaloPadraoLancha: Number(e.target.value) || 50 })}
+                className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl font-mono text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <span className="text-xs font-bold text-slate-500">horas</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Exibe alerta de revisão quando a lancha rodar este limite de horas desde a última revisão.
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="flex items-center gap-2">
+              <Ship className="w-4 h-4 text-cyan-600" />
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Intervalo Padrão - Jets Ski (Horas)
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                value={horimetroSettings.intervaloPadraoJet}
+                onChange={(e) => setHorimetroSettings({ ...horimetroSettings, intervaloPadraoJet: Number(e.target.value) || 50 })}
+                className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl font-mono text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <span className="text-xs font-bold text-slate-500">horas</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Intervalo geral para jets que não possuírem regra de modelo específico abaixo.
+            </p>
+          </div>
+        </div>
+
+        {/* Model Specific Jet Rules */}
+        <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                Intervalos Específicos por Modelo de Jet Ski
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Modelos de jet ski possuem autonomias e exigências de revisão distintas.
+              </p>
+            </div>
+          </div>
+
+          {/* Form to add model exception */}
+          <form onSubmit={handleAddModeloJet} className="flex flex-wrap items-end gap-3 bg-white p-3 rounded-xl border border-slate-200">
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                Nome do Modelo
+              </label>
+              <input
+                type="text"
+                value={novoModeloJet}
+                onChange={(e) => setNovoModeloJet(e.target.value)}
+                placeholder="Ex: WAKE 170, RXT 300, VX 1100..."
+                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none uppercase"
+              />
+            </div>
+
+            <div className="w-32">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                Horas Revisão
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={novoHorasJet}
+                onChange={(e) => setNovoHorasJet(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="50"
+                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Adicionar Modelo
+            </button>
+          </form>
+
+          {/* List of registered jet model rules */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            {Object.entries(horimetroSettings.intervalosPorModeloJet || {}).map(([modelo, horas]) => (
+              <div
+                key={modelo}
+                className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs"
+              >
+                <div>
+                  <span className="text-xs font-bold text-slate-900 tracking-wide">{modelo}</span>
+                  <div className="text-[11px] font-mono text-cyan-700 font-bold mt-0.5">
+                    Revisão a cada <span className="text-sm font-extrabold">{horas} h</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleRemoveModeloJet(modelo)}
+                  className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                  title="Remover regra deste modelo"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+        </div>
+
       </div>
 
     </div>
