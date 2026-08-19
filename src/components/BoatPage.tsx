@@ -144,6 +144,17 @@ function SearchableSelect({ id, label, icon: Icon, value, options, onChange, pla
 export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) {
   const [boats, setBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
   const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll());
+
+  React.useEffect(() => {
+    const checkData = () => {
+      const dbBoats = boatDB.getAll();
+      const dbClients = clientDB.getAll();
+      if (dbBoats.length > 0 && boats.length === 0) setBoats(dbBoats);
+      if (dbClients.length > 0 && clients.length === 0) setClients(dbClients);
+    };
+    const interval = setInterval(checkData, 500);
+    return () => clearInterval(interval);
+  }, [boats.length, clients.length]);
   const [search, setSearch] = useState('');
   const [filterEmpresa, setFilterEmpresa] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
@@ -559,9 +570,9 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     }
 
     const matchesSearch = !search || (
-      b.nome.toLowerCase().includes(search.toLowerCase()) ||
-      b.numero.includes(search) ||
-      b.modelo.toLowerCase().includes(search.toLowerCase())
+      (b.nome || '').toLowerCase().includes(search.toLowerCase()) ||
+      (b.numero || '').includes(search) ||
+      (b.modelo || '').toLowerCase().includes(search.toLowerCase())
     );
 
     return matchesSearch && matchesEmpresa;
@@ -571,7 +582,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     <div id="boats-list-section" className="space-y-6">
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 border transition-all duration-300 ${
+        <div className={`fixed bottom-4 right-4 z-[9999] px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 border transition-all duration-300 ${
           toast.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-800 border-rose-200'
         }`}>
           <span className="text-sm font-medium">{toast.message}</span>
@@ -725,7 +736,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                       {/* Código / Vaga */}
                       <td className="py-3 px-4 font-mono">
                         <span className="text-xs font-semibold text-slate-800">
-                          M{boat.numero.padStart(2, '0')}
+                          M{(boat.numero || '').padStart(2, '0')}
                         </span>
                         {boat.vaga && (
                           <span className="text-[10px] text-slate-500 block mt-0.5 font-sans font-medium">
@@ -862,7 +873,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                           )}
                         </div>
                         <span className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-sm mt-1 inline-block">
-                          Código Google Calendar: M{boat.numero.padStart(2, '0')}
+                          Código Google Calendar: M{(boat.numero || '').padStart(2, '0')}
                         </span>
                         {boat.googleCalendarId && (
                           <div className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md mt-1 truncate max-w-[210px] border border-emerald-100/50" title={boat.googleCalendarId}>

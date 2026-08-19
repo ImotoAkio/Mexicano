@@ -679,7 +679,7 @@ export default function ClientPage() {
     <div id="clients-section" className="space-y-6">
       {/* Toast Feedback */}
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 border translate-y-0 transition-transform ${
+        <div className={`fixed bottom-4 right-4 z-[9999] px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 border translate-y-0 transition-transform ${
           toast.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-800 border-rose-200'
         }`}>
           <span className="text-sm font-medium">{toast.message}</span>

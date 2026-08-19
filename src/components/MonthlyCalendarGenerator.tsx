@@ -158,7 +158,7 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
       setIsSendingWhatsapp(false);
     }
   };
-  const boatCode = activeBoat ? `M${activeBoat.numero.padStart(2, '0')}` : 'M00';
+  const boatCode = activeBoat ? `M${(activeBoat.numero || '').padStart(2, '0')}` : 'M00';
 
   useEffect(() => {
     if (initialDate) {

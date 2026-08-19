@@ -11,3 +11,5 @@ backup-nautica-epi.zip
 scratch/
 *.zip
 uploads/
+
+.agents/

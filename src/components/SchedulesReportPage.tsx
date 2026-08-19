@@ -98,7 +98,7 @@ export default function SchedulesReportPage() {
 
   const getBoatCode = (boat: Embarcacao | undefined) => {
     if (!boat) return 'M00';
-    return boat.numero ? `M${boat.numero.padStart(2, '0')}` : boat.nome.split(' ')[0];
+    return boat.numero ? `M${(boat.numero || '').padStart(2, '0')}` : boat.nome.split(' ')[0];
   };
 
   const getOwnerName = (res: Reserva, client: Cliente | undefined) => {

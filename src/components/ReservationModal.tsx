@@ -305,7 +305,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
       } else {
         const parts = [];
         if (syncResult.boatCalendarSynced) {
-          parts.push(`Agenda Barco M${b.numero.padStart(2, '0')}`);
+          parts.push(`Agenda Barco M${(b.numero || '').padStart(2, '0')}`);
         }
         if (syncResult.marinaCalendarSynced) {
           parts.push('Agenda Marina');
