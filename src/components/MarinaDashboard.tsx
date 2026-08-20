@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getBoatCode } from '../utils/boatUtils';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2 } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
@@ -8,29 +8,20 @@ import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
 import BoatPage from './BoatPage';
-import ClientPage from './ClientPage';
-import FinanceSchedulesPage from './FinanceSchedulesPage';
-import SettingsPage from './SettingsPage';
-import ControleFolgasPage from './ControleFolgasPage';
-import { getFuelInventory } from '../utils/fuelInventory';
-import { ZoomableImage } from './ZoomableImage';
+import { getFuelInventory, consumeFuelForEmbarcacao } from '../utils/fuelInventory';
 
 interface MarinaDashboardProps {
-  onLogout: () => void;
+  onLogout?: () => void;
   operadorNome?: string;
 }
 
 const CHECKLIST_ANGLES = [
-  { id: 'painel', label: 'Painel', icon: Ship },
-  { id: 'lateral_direita', label: 'Lateral Direita', icon: Camera },
-  { id: 'lateral_esquerda', label: 'Lateral Esquerda', icon: Camera },
-  { id: 'casco', label: 'Casco', icon: Layers },
-  { id: 'superior', label: 'Superior', icon: ArrowUpCircle },
-  { id: 'frontal_45_dir', label: '45° Frontal Direita', icon: Camera },
-  { id: 'frontal_45_esq', label: '45° Frontal Esquerda', icon: Camera },
-  { id: 'traseira_45_dir', label: '45° Traseira Direita', icon: Camera },
-  { id: 'traseira_45_esq', label: '45° Traseira Esquerda', icon: Camera },
-  { id: 'traseira_inf', label: 'Traseira Inferior', icon: ArrowDownCircle }
+  { id: 'proa', label: 'Proa (Frente)', icon: Navigation },
+  { id: 'popa', label: 'Popa (Motor/Traseira)', icon: Anchor },
+  { id: 'bombordo', label: 'Lateral Esquerda', icon: Camera },
+  { id: 'estibordo', label: 'Lateral Direita', icon: Camera },
+  { id: 'painel', label: 'Interior / Painel', icon: Ship },
+  { id: 'casco', label: 'Casco (Ângulo Inferior)', icon: Layers }
 ];
 
 const getFormattedDate = (date: Date) => {
@@ -40,96 +31,86 @@ const getFormattedDate = (date: Date) => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-const parseFotos = (fotosStr: any): string[] => {
-  if (!fotosStr) return [];
-  if (Array.isArray(fotosStr)) return fotosStr;
-  if (typeof fotosStr !== 'string') return [];
-  try {
-    const parsed = JSON.parse(fotosStr);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    return fotosStr.split(',').filter((f: string) => f.trim().length > 0);
-  }
+const formatDisplayDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const yyyy = parseInt(parts[0], 10);
+  const mm = parseInt(parts[1], 10) - 1;
+  const dd = parseInt(parts[2], 10);
+  const d = new Date(yyyy, mm, dd);
+  const months = ['Jan.', 'Fev.', 'Mar.', 'Abr.', 'Mai.', 'Jun.', 'Jul.', 'Ago.', 'Set.', 'Out.', 'Nov.', 'Dez.'];
+  const dayStr = String(d.getDate()).padStart(2, '0');
+  return `${dayStr} De ${months[d.getMonth()]}`;
 };
+
+function ZoomableImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [scale, setScale] = useState(1);
+  return (
+    <img 
+      src={src} 
+      alt={alt} 
+      className={className} 
+      style={{ transform: `scale(${scale})`, transition: 'transform 0.2s ease-in-out' }}
+      onClick={() => setScale(s => s === 1 ? 2 : 1)}
+    />
+  );
+}
 
 export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashboardProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Date state
   const [selectedDate, setSelectedDate] = useState<string>(getFormattedDate(new Date()));
-  
-  // Fuel Modal state
-  const [fuelModalOpen, setFuelModalOpen] = useState(false);
-  const [selectedReserva, setSelectedReserva] = useState<any>(null);
-  const [liters, setLiters] = useState('');
-  const [paymentType, setPaymentType] = useState<'pix' | 'credit' | 'admin'>('pix');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
-  // Checklist state
-  const [checklistOpen, setChecklistOpen] = useState(false);
-  const [checklistMode, setChecklistMode] = useState<'descida' | 'chegada' | 'subida'>('descida');
-  const [checklistFotos, setChecklistFotos] = useState<Record<string, string[]>>({});
-  const [lightbox, setLightbox] = useState<{ currentIndex: number, urls: string[], title: string } | null>(null);
-  const [checklistObservacoes, setChecklistObservacoes] = useState('');
-  const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'info' | 'success' | 'warning' } | null>(null);
+  const showToast = (msg: string, type: 'info' | 'success' | 'warning' = 'info') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
-  const [filterType, setFilterType] = useState<'agendadas' | 'confirmadas' | 'prontas' | 'retornaram' | 'todas' | 'agendados' | 'nopier' | 'navegando'>('agendadas');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'combustivel' | 'tanques' | 'configuracoes'>('home');
+  const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
+  const [filterType, setFilterType] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'hora_saida' | 'alfabetica'>('hora_saida');
-  const [tempFuelData, setTempFuelData] = useState<{liters: number, paymentType: string, comprovanteUrl: string | null} | null>(null);
-  
+  const [sortBy, setSortBy] = useState<'horario' | 'alfabetica'>('horario');
+  const [selectedReserva, setSelectedReserva] = useState<any>(null);
+  const [checklistMode, setChecklistMode] = useState<'descida' | 'subida'>('descida');
+  const [checklistFotos, setChecklistFotos] = useState<Record<string, string[]>>({});
+  const [checklistObservacoes, setChecklistObservacoes] = useState('');
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
+  const [fuelModalOpen, setFuelModalOpen] = useState(false);
+  const [liters, setLiters] = useState('');
+  const [paymentType, setPaymentType] = useState('pix');
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
   const [isUploadingComprovante, setIsUploadingComprovante] = useState(false);
-  
-  // Details Modal
-  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [lightbox, setLightbox] = useState<{ urls: string[]; currentIndex: number; title: string } | null>(null);
 
-  // Bottom Navigation Tab & Sidebar state
-  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'checklists' | 'combustivel' | 'tanques' | 'clientes' | 'embarcacoes' | 'agendamentos' | 'folgas' | 'configuracoes'>('home');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
-
-  // Toast notification state
-  const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showToast = useCallback((message: string, type: 'info' | 'success' | 'warning' = 'info') => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ message, type });
-    toastTimer.current = setTimeout(() => setToast(null), 4000);
-  }, []);
-
-  const dataRef = useRef<any>(null);
-  useEffect(() => {
-    dataRef.current = data;
-  }, [data]);
+  const parseFotos = (fotos: any): string[] => {
+    if (!fotos) return [];
+    if (Array.isArray(fotos)) return fotos;
+    try {
+      return JSON.parse(fotos);
+    } catch {
+      return [];
+    }
+  };
 
   useEffect(() => {
     fetchData(true);
-
-    const token = localStorage.getItem('admin_token');
-    if (!token || token === 'null' || token === 'undefined') return;
-
-    const socket = io(window.location.origin, {
-      auth: { token },
-      transports: ['polling', 'websocket'],
-      reconnectionAttempts: 5
-    });
-    
-    socket.on('connect', () => {
-      fetchData();
-    });
-
+    const socket = io();
     socket.on('marina_update', (payload: any) => {
-      const reservationData = payload?.reservation || payload?.data;
-      if (!reservationData || (payload.type && payload.type !== 'reservations')) {
-        // Fallback: se não veio payload ou não é reserva, faz fetch completo
-        fetchData();
-        return;
-      }
+      if (!payload || !payload.reservation) return;
+      const reservationData = payload.reservation;
+      if (!reservationData || !reservationData.id) return;
 
       const reservation = reservationData;
       const { action } = payload;
@@ -421,16 +402,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       alert('Preencha os litros corretamente.');
       return;
     }
-    if ((paymentType === 'pix' || paymentType === 'credit') && Number(liters) > 0 && !comprovanteUrl) {
-      alert('É obrigatório enviar o comprovante para pagamentos realizados na hora.');
-      return;
-    }
-
+    
     setIsSubmitting(true);
     
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const litersNum = Number(liters) || 0;
-    const currentOperator = operadorNome || localStorage.getItem('user_name') || localStorage.getItem('usuario_nome') || 'Marinheiro';
+    const currentOperator = operadorNome || localStorage.getItem('user_name') || localStorage.getItem('usuario_nome') || 'Gerente';
     
     const updatedReserva = { 
       ...selectedReserva, 
@@ -440,6 +417,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       abastecimentoOperador: currentOperator,
       litrosAbastecidos: litersNum > 0 ? litersNum.toString() : (selectedReserva.litrosAbastecidos || '0'),
       abastecimentoLitros: litersNum > 0 ? litersNum : (selectedReserva.abastecimentoLitros || 0),
+      abastecimentoFormaPagamento: paymentType,
+      abastecimentoComprovanteUrl: comprovanteUrl || selectedReserva.abastecimentoComprovanteUrl || null,
       abastecimentoStatusCobranca: litersNum > 0 ? 'pendente' : (selectedReserva.abastecimentoStatusCobranca || 'sem_abastecimento'),
       abastecimentoDataHora: selectedReserva.abastecimentoDataHora || new Date().toISOString()
     };
@@ -2196,27 +2175,56 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
               {Number(liters) > 0 && (
                 <div className="space-y-3">
-                  <label className="text-sm font-bold text-slate-700 block">Forma de Cobrança</label>
+                  <label className="text-sm font-bold text-slate-700 block">Forma de Cobrança *</label>
                   <div className="grid grid-cols-1 gap-2">
-                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'pix' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white'}`}>
+                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'dinheiro' ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'border-slate-200 bg-white'}`}>
+                      <input type="radio" name="payment" value="dinheiro" checked={paymentType === 'dinheiro'} onChange={() => setPaymentType('dinheiro')} className="sr-only" />
+                      <div className="flex-1">
+                        <span className="block font-bold text-sm text-emerald-950 flex items-center gap-1.5">
+                          <Banknote className="w-4 h-4 text-emerald-600" />
+                          <span>Dinheiro (Caixa Físico)</span>
+                        </span>
+                        <span className="block text-xs text-emerald-700 font-medium mt-0.5">R$ 9,00/L (Entrada de cédulas físicas no caixa da marina)</span>
+                      </div>
+                    </label>
+                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'pix' ? 'border-cyan-500 bg-cyan-50 ring-1 ring-cyan-500' : 'border-slate-200 bg-white'}`}>
                       <input type="radio" name="payment" value="pix" checked={paymentType === 'pix'} onChange={() => setPaymentType('pix')} className="sr-only" />
                       <div className="flex-1">
-                        <span className="block font-bold text-sm text-slate-900">Pix / Dinheiro</span>
-                        <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 9,00/L (Recebido agora)</span>
+                        <span className="block font-bold text-sm text-cyan-950 flex items-center gap-1.5">
+                          <QrCode className="w-4 h-4 text-cyan-600" />
+                          <span>PIX (Conta Bancária)</span>
+                        </span>
+                        <span className="block text-xs text-cyan-700 font-medium mt-0.5">R$ 9,00/L (Transferência / QR Code da marina)</span>
                       </div>
                     </label>
                     <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'credit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white'}`}>
                       <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
                       <div className="flex-1">
-                        <span className="block font-bold text-sm text-slate-900">Cartão de Crédito</span>
-                        <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 10,00/L (Recebido agora)</span>
+                        <span className="block font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                          <CreditCard className="w-4 h-4 text-blue-600" />
+                          <span>Cartão de Crédito</span>
+                        </span>
+                        <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 10,00/L (Maquininha de Cartão)</span>
                       </div>
                     </label>
-                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'admin' ? 'border-amber-500 bg-amber-50 ring-1 ring-amber-500' : 'border-slate-200 bg-white'}`}>
+                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'debit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white'}`}>
+                      <input type="radio" name="payment" value="debit" checked={paymentType === 'debit'} onChange={() => setPaymentType('debit')} className="sr-only" />
+                      <div className="flex-1">
+                        <span className="block font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                          <CreditCard className="w-4 h-4 text-blue-600" />
+                          <span>Cartão de Débito</span>
+                        </span>
+                        <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 9,00/L (Maquininha de Cartão)</span>
+                      </div>
+                    </label>
+                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'admin' ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500' : 'border-slate-200 bg-white'}`}>
                       <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
                       <div className="flex-1">
-                        <span className="block font-bold text-sm text-amber-900">Enviar para a Administradora</span>
-                        <span className="block text-xs text-amber-700 font-medium mt-0.5">R$ 13,00/L (Faturado Pós-pago)</span>
+                        <span className="block font-bold text-sm text-purple-950 flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4 text-purple-600" />
+                          <span>Enviar para a Administradora</span>
+                        </span>
+                        <span className="block text-xs text-purple-700 font-medium mt-0.5">R$ 13,00/L (Faturado Pós-pago)</span>
                       </div>
                     </label>
                   </div>
@@ -2224,11 +2232,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   <div className="mt-2 p-4 bg-slate-900 rounded-2xl text-white flex justify-between items-center shadow-inner">
                     <span className="text-sm font-bold text-slate-300">Total a lançar:</span>
                     <span className="font-black text-2xl font-mono text-[#B69D74]">
-                      R$ {(Number(liters) * (paymentType === 'pix' ? 9 : paymentType === 'credit' ? 10 : 13)).toFixed(2).replace('.', ',')}
+                      R$ {(Number(liters) * (paymentType === 'credit' ? 10 : paymentType === 'admin' ? 13 : 9)).toFixed(2).replace('.', ',')}
                     </span>
                   </div>
 
-                  {(paymentType === 'pix' || paymentType === 'credit') && (
+                  {(paymentType === 'pix' || paymentType === 'credit' || paymentType === 'debit') && (
                     <div className="mt-4 p-4 border border-slate-200 rounded-2xl bg-white space-y-3">
                       <label className="text-sm font-bold text-slate-700 block">Comprovante de Pagamento *</label>
                       

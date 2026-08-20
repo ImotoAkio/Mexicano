@@ -543,10 +543,10 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
         // Criar transação financeira caso esteja cobrado
         if (finalStatusCobranca === 'cobrado') {
           const paymentLabels: Record<string, string> = {
-            pix: 'PIX',
+            pix: 'PIX (Digital)',
+            dinheiro: 'Dinheiro (Caixa Físico)',
             credit: 'Cartão de Crédito',
             debit: 'Cartão de Débito',
-            dinheiro: 'Dinheiro',
             admin: 'Faturado Administradora'
           };
           const labelMetodo = paymentLabels[paymentType] || paymentType;
@@ -1086,75 +1086,168 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
       )}
 
       {/* Tab 3: COMBUSTÍVEL */}
-      {activeTab === 'combustivel' && (
-        <main className="flex-1 p-4 max-w-7xl mx-auto w-full pb-24 space-y-4">
-          {/* KPI Summary Card matching Screenshot 3 */}
-          <div className="bg-[#0A1024] rounded-2xl p-5 text-white flex items-center justify-between shadow-md border border-slate-800">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-blue-950/60 border border-blue-800/50 flex items-center justify-center text-blue-400 shrink-0">
-                <Droplets className="w-6 h-6" />
+      {activeTab === 'combustivel' && (() => {
+        const dayFuelReservations = totalDayReservations.filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0);
+        const totalLitersDay = totalDayReservations.reduce((sum: number, r: any) => sum + (Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0), 0);
+
+        let totalDinheiroDay = 0;
+        let totalPixDay = 0;
+        let totalCartaoDay = 0;
+        let totalAdminDay = 0;
+        let totalPendenteDay = 0;
+        let totalCobradoDay = 0;
+
+        dayFuelReservations.forEach((r: any) => {
+          const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
+          const isCobrado = r.abastecimentoStatusCobranca === 'cobrado';
+          const pm = (r.abastecimentoFormaPagamento || 'pix').toLowerCase();
+          const unitPrice = pm === 'credit' ? 10 : pm === 'admin' ? 13 : 9;
+          const valor = r.abastecimentoValorTotal || (litros * unitPrice);
+
+          if (isCobrado) {
+            totalCobradoDay += valor;
+            if (pm === 'dinheiro') {
+              totalDinheiroDay += valor;
+            } else if (pm === 'pix') {
+              totalPixDay += valor;
+            } else if (pm === 'credit' || pm === 'debit') {
+              totalCartaoDay += valor;
+            } else if (pm === 'admin') {
+              totalAdminDay += valor;
+            } else {
+              totalPixDay += valor;
+            }
+          } else {
+            totalPendenteDay += valor;
+          }
+        });
+
+        return (
+          <main className="flex-1 p-4 max-w-7xl mx-auto w-full pb-24 space-y-4">
+            {/* KPI Summary Card matching Screenshot 3 */}
+            <div className="bg-[#0A1024] rounded-2xl p-5 text-white flex items-center justify-between shadow-md border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-blue-950/60 border border-blue-800/50 flex items-center justify-center text-blue-400 shrink-0">
+                  <Droplets className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">VOLUME TOTAL HOJE</span>
+                  <p className="text-xl font-black text-white">
+                    {totalLitersDay.toFixed(1)} <span className="text-blue-400">Litros</span>
+                  </p>
+                </div>
               </div>
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">VOLUME TOTAL</span>
-                <p className="text-xl font-black text-white">
-                  {totalDayReservations.reduce((sum: number, r: any) => sum + (Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0), 0)} <span className="text-blue-400">Litros</span>
+
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL COBRADO HOJE</span>
+                <p className="text-xl font-black text-emerald-400 font-mono">
+                  R$ {totalCobradoDay.toFixed(2).replace('.', ',')}
                 </p>
               </div>
             </div>
 
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">FATURAMENTO ESTIMADO</span>
-              <p className="text-xl font-black text-emerald-400 font-mono">
-                R$ {(totalDayReservations.reduce((sum: number, r: any) => sum + (Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0), 0) * 9).toFixed(2).replace('.', ',')}
-              </p>
-            </div>
-          </div>
-
-          {/* Lançamentos do Dia */}
-          <div className="space-y-2">
-            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">LANÇAMENTOS DO DIA</h3>
-
-            {totalDayReservations.filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0).length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-sm space-y-2">
-                <Droplets className="w-10 h-10 text-slate-300 mx-auto stroke-1" />
-                <p className="text-xs text-slate-500 font-medium">Nenhum abastecimento registrado hoje.</p>
+            {/* Caixa Físico vs PIX vs Pendentes Breakdown */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {/* Caixa Físico (Dinheiro em Espécie) */}
+              <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                    <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Caixa Físico (Dinheiro)</span>
+                  </span>
+                </div>
+                <p className="text-lg font-black text-emerald-950 font-mono">
+                  R$ {totalDinheiroDay.toFixed(2).replace('.', ',')}
+                </p>
+                <p className="text-[10px] text-emerald-700 font-semibold leading-tight">
+                  💵 Dinheiro em mãos no caixa
+                </p>
               </div>
-            ) : (
-              <div className="space-y-2.5">
-                {totalDayReservations
-                  .filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0)
-                  .map((reserva: any) => {
+
+              {/* PIX Recebido */}
+              <div className="bg-cyan-50/80 border border-cyan-200 rounded-2xl p-3.5 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-cyan-800 flex items-center gap-1">
+                    <QrCode className="w-3.5 h-3.5 text-cyan-600" />
+                    <span>PIX (Conta Bancária)</span>
+                  </span>
+                </div>
+                <p className="text-lg font-black text-cyan-950 font-mono">
+                  R$ {totalPixDay.toFixed(2).replace('.', ',')}
+                </p>
+                <p className="text-[10px] text-cyan-700 font-semibold leading-tight">
+                  📱 Transferências bancárias
+                </p>
+              </div>
+
+              {/* Cartões & Admin */}
+              <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-3.5 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-800 flex items-center gap-1">
+                    <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Cartão / Faturado</span>
+                  </span>
+                </div>
+                <p className="text-lg font-black text-blue-950 font-mono">
+                  R$ {(totalCartaoDay + totalAdminDay).toFixed(2).replace('.', ',')}
+                </p>
+                <p className="text-[10px] text-blue-700 font-semibold leading-tight">
+                  💳 Maquininha e Administradora
+                </p>
+              </div>
+
+              {/* Pendente de Cobrança */}
+              <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3.5 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>A Cobrar / Pendente</span>
+                  </span>
+                </div>
+                <p className="text-lg font-black text-amber-950 font-mono">
+                  R$ {totalPendenteDay.toFixed(2).replace('.', ',')}
+                </p>
+                <p className="text-[10px] text-amber-700 font-semibold leading-tight">
+                  ⏳ Aguardando confirmação
+                </p>
+              </div>
+            </div>
+
+            {/* Lançamentos do Dia */}
+            <div className="space-y-2">
+              <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">LANÇAMENTOS DO DIA</h3>
+
+              {dayFuelReservations.length === 0 ? (
+                <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-sm space-y-2">
+                  <Droplets className="w-10 h-10 text-slate-300 mx-auto stroke-1" />
+                  <p className="text-xs text-slate-500 font-medium">Nenhum abastecimento registrado hoje.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {dayFuelReservations.map((reserva: any) => {
                     const boat = getEmbarcacao(reserva.embarcacaoId);
                     const client = getCliente(reserva.clienteId);
                     const boatNumber = boat?.numero || boat?.nome?.match(/\d+/)?.[0] || '99';
                     const litros = Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) || 0;
                     
                     const isCobrado = reserva.abastecimentoStatusCobranca === 'cobrado';
-                    const pm = reserva.abastecimentoFormaPagamento || 'pix';
+                    const pm = (reserva.abastecimentoFormaPagamento || 'pix').toLowerCase();
                     const unitPrice = pm === 'credit' ? 10 : pm === 'admin' ? 13 : 9;
                     const valor = reserva.abastecimentoValorTotal || (litros * unitPrice);
-
-                    const paymentLabels: Record<string, string> = {
-                      pix: 'PIX',
-                      credit: 'Crédito',
-                      debit: 'Débito',
-                      dinheiro: 'Dinheiro',
-                      admin: 'Faturado Admin'
-                    };
 
                     return (
                       <div 
                         key={reserva.id} 
                         className={`bg-white border rounded-2xl p-3.5 shadow-xs transition-all ${
-                          isCobrado ? 'border-l-4 border-l-blue-600 border-slate-200' : 'border-l-4 border-l-slate-400 border-slate-200'
+                          isCobrado ? 'border-l-4 border-l-emerald-600 border-slate-200' : 'border-l-4 border-l-amber-400 border-slate-200'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-start gap-3">
                             <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
                               isCobrado 
-                                ? 'bg-blue-50 border border-blue-200 text-blue-600' 
-                                : 'bg-slate-100 border border-slate-200 text-slate-500'
+                                ? 'bg-emerald-50 border border-emerald-200 text-emerald-600' 
+                                : 'bg-amber-50 border border-amber-200 text-amber-600'
                             }`}>
                               {isCobrado ? <Check className="w-5 h-5 stroke-[3]" /> : <Clock className="w-4 h-4 stroke-[2.5]" />}
                             </div>
@@ -1169,8 +1262,8 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                                 </span>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                                   isCobrado
-                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
                                 }`}>
                                   {isCobrado ? 'COBRADO' : 'PENDENTE'}
                                 </span>
@@ -1181,9 +1274,36 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                               </p>
 
                               <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-500 flex-wrap">
-                                <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-lg font-bold text-slate-700">
-                                  💳 {paymentLabels[pm] || pm}
-                                </span>
+                                {pm === 'dinheiro' && (
+                                  <span className="bg-emerald-100/80 border border-emerald-300 px-2 py-0.5 rounded-lg font-black text-emerald-900 flex items-center gap-1">
+                                    <Banknote className="w-3 h-3 text-emerald-700" />
+                                    <span>💵 Dinheiro (Caixa Físico)</span>
+                                  </span>
+                                )}
+                                {pm === 'pix' && (
+                                  <span className="bg-cyan-100/80 border border-cyan-300 px-2 py-0.5 rounded-lg font-black text-cyan-900 flex items-center gap-1">
+                                    <QrCode className="w-3 h-3 text-cyan-700" />
+                                    <span>📱 PIX (Conta)</span>
+                                  </span>
+                                )}
+                                {pm === 'credit' && (
+                                  <span className="bg-blue-100/80 border border-blue-300 px-2 py-0.5 rounded-lg font-black text-blue-900 flex items-center gap-1">
+                                    <CreditCard className="w-3 h-3 text-blue-700" />
+                                    <span>💳 Cartão Crédito</span>
+                                  </span>
+                                )}
+                                {pm === 'debit' && (
+                                  <span className="bg-blue-100/80 border border-blue-300 px-2 py-0.5 rounded-lg font-black text-blue-900 flex items-center gap-1">
+                                    <CreditCard className="w-3 h-3 text-blue-700" />
+                                    <span>💳 Cartão Débito</span>
+                                  </span>
+                                )}
+                                {pm === 'admin' && (
+                                  <span className="bg-purple-100/80 border border-purple-300 px-2 py-0.5 rounded-lg font-black text-purple-900 flex items-center gap-1">
+                                    <Building2 className="w-3 h-3 text-purple-700" />
+                                    <span>🏢 Faturado Admin</span>
+                                  </span>
+                                )}
                                 
                                 {reserva.abastecimentoComprovanteUrl && (
                                   <a
@@ -1230,11 +1350,12 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                       </div>
                     );
                   })}
-              </div>
-            )}
-          </div>
-        </main>
-      )}
+                </div>
+              )}
+            </div>
+          </main>
+        );
+      })()}
 
       {/* Bottom Navigation Bar matching Screenshot 1, 2, and 3 */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 px-6 py-2.5 flex items-center justify-around shadow-lg">
@@ -2231,11 +2352,11 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                         <label className="text-xs font-bold text-slate-700 block">Forma de Pagamento *</label>
                         <div className="grid grid-cols-2 gap-2">
                           {[
-                            { id: 'pix', label: 'PIX', icon: QrCode, price: 'R$ 9,00/L' },
-                            { id: 'credit', label: 'Crédito', icon: CreditCard, price: 'R$ 10,00/L' },
-                            { id: 'debit', label: 'Débito', icon: CreditCard, price: 'R$ 9,00/L' },
-                            { id: 'dinheiro', label: 'Dinheiro', icon: Banknote, price: 'R$ 9,00/L' },
-                            { id: 'admin', label: 'Administradora', icon: Building2, price: 'R$ 13,00/L' },
+                            { id: 'dinheiro', label: 'Dinheiro (Caixa)', icon: Banknote, price: 'R$ 9,00/L', highlight: 'emerald' },
+                            { id: 'pix', label: 'PIX (Digital)', icon: QrCode, price: 'R$ 9,00/L', highlight: 'cyan' },
+                            { id: 'credit', label: 'Crédito', icon: CreditCard, price: 'R$ 10,00/L', highlight: 'blue' },
+                            { id: 'debit', label: 'Débito', icon: CreditCard, price: 'R$ 9,00/L', highlight: 'blue' },
+                            { id: 'admin', label: 'Administradora', icon: Building2, price: 'R$ 13,00/L', highlight: 'purple' },
                           ].map((item) => {
                             const IconComponent = item.icon;
                             const isSelected = paymentType === item.id;
@@ -2246,11 +2367,23 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                                 onClick={() => setPaymentType(item.id as any)}
                                 className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
                                   isSelected
-                                    ? 'bg-blue-50 border-blue-600 ring-2 ring-blue-500/20 text-blue-900 font-bold'
+                                    ? item.id === 'dinheiro'
+                                      ? 'bg-emerald-50 border-emerald-600 ring-2 ring-emerald-500/30 text-emerald-950 font-bold'
+                                      : item.id === 'pix'
+                                      ? 'bg-cyan-50 border-cyan-600 ring-2 ring-cyan-500/30 text-cyan-950 font-bold'
+                                      : 'bg-blue-50 border-blue-600 ring-2 ring-blue-500/20 text-blue-900 font-bold'
                                     : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700 font-medium'
                                 }`}
                               >
-                                <div className={`p-1.5 rounded-lg shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                                <div className={`p-1.5 rounded-lg shrink-0 ${
+                                  isSelected 
+                                    ? item.id === 'dinheiro' 
+                                      ? 'bg-emerald-600 text-white' 
+                                      : item.id === 'pix' 
+                                      ? 'bg-cyan-600 text-white' 
+                                      : 'bg-blue-600 text-white'
+                                    : 'bg-slate-200 text-slate-600'
+                                }`}>
                                   <IconComponent className="w-4 h-4" />
                                 </div>
                                 <div className="min-w-0 flex-1">
@@ -2261,6 +2394,27 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                             );
                           })}
                         </div>
+
+                        {/* Banner Contextual de Orientação */}
+                        {paymentType === 'dinheiro' && (
+                          <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-medium flex items-start gap-2 animate-in fade-in">
+                            <Banknote className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                            <div>
+                              <strong className="block text-emerald-950 font-bold">💵 Entrada no Caixa Físico da Marina</strong>
+                              Receba o dinheiro em cédulas e guarde no caixa/gaveta física do píer para o fechamento.
+                            </div>
+                          </div>
+                        )}
+
+                        {paymentType === 'pix' && (
+                          <div className="p-3 bg-cyan-50 border border-cyan-300 rounded-xl text-xs text-cyan-900 font-medium flex items-start gap-2 animate-in fade-in">
+                            <QrCode className="w-4 h-4 text-cyan-700 shrink-0 mt-0.5" />
+                            <div>
+                              <strong className="block text-cyan-950 font-bold">📱 Pagamento Digital via PIX</strong>
+                              Confirme o recebimento na conta bancária da Marina e anexe o comprovante se disponível.
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Resumo do Valor Total */}

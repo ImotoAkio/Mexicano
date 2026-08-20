@@ -3,10 +3,11 @@ import {
   LogOut, Settings, FileText, Users, Search, 
   X, CheckCircle, FileSignature, Home, Bell, 
   MoreHorizontal, Plus, Edit2, Trash2, ChevronRight,
-  Filter, Download, Upload, Menu, Printer, Anchor, Save, Check, User, Eye
+  Filter, Download, Upload, Menu, Printer, Anchor, Save, Check, User, Eye, UserPlus
 } from 'lucide-react';
 import { clientDB, boatDB } from '../db';
 import { generateContract } from './ContractGenerator';
+import ClientPage from './ClientPage';
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { numeroParaExtenso, parseMoney, formatMoney } from '../utils/numberToWords';
 import { formatBoatName } from '../utils/constants';
@@ -21,9 +22,10 @@ interface SearchableClientSelectProps {
   clients: any[];
   value: string;
   onChange: (clientId: string) => void;
+  onAddNewClient?: () => void;
 }
 
-function SearchableClientSelect({ clients, value, onChange }: SearchableClientSelectProps) {
+function SearchableClientSelect({ clients, value, onChange, onAddNewClient }: SearchableClientSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -52,7 +54,22 @@ function SearchableClientSelect({ clients, value, onChange }: SearchableClientSe
 
   return (
     <div ref={wrapperRef} className="relative w-full">
-      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Selecione o Cliente *</label>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="block text-xs font-semibold text-slate-600">Selecione o Cliente *</label>
+        {onAddNewClient && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddNewClient();
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition-all border border-emerald-200 shadow-2xs cursor-pointer active:scale-95"
+          >
+            <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
+            <span>+ Novo Cliente</span>
+          </button>
+        )}
+      </div>
       
       <div 
         onClick={() => setIsOpen(!isOpen)}
@@ -121,10 +138,39 @@ function SearchableClientSelect({ clients, value, onChange }: SearchableClientSe
             )}
           </div>
 
+          {onAddNewClient && (
+            <div className="p-2 border-b border-slate-100 bg-emerald-50/50">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onAddNewClient();
+                }}
+                className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer active:scale-98"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Cadastrar Novo Cliente</span>
+              </button>
+            </div>
+          )}
+
           <div className="max-h-60 overflow-y-auto subtle-scrollbar p-1.5 divide-y divide-slate-50">
             {filtered.length === 0 ? (
-              <div className="py-6 text-center text-xs text-slate-400">
-                Nenhum cliente encontrado com "{search}"
+              <div className="py-6 text-center space-y-2">
+                <p className="text-xs text-slate-400">Nenhum cliente encontrado com "{search}"</p>
+                {onAddNewClient && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      onAddNewClient();
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Cadastrar "{search || 'Novo Cliente'}"</span>
+                  </button>
+                )}
               </div>
             ) : (
               filtered.map(c => {
@@ -170,9 +216,10 @@ interface SearchableBoatSelectProps {
   boats: any[];
   value: string;
   onChange: (boatId: string) => void;
+  onAddNewBoat?: () => void;
 }
 
-function SearchableBoatSelect({ boats, value, onChange }: SearchableBoatSelectProps) {
+function SearchableBoatSelect({ boats, value, onChange, onAddNewBoat }: SearchableBoatSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -203,7 +250,22 @@ function SearchableBoatSelect({ boats, value, onChange }: SearchableBoatSelectPr
 
   return (
     <div ref={wrapperRef} className="relative w-full">
-      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Embarcação *</label>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="block text-xs font-semibold text-slate-600">Embarcação *</label>
+        {onAddNewBoat && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddNewBoat();
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-all border border-blue-200 shadow-2xs cursor-pointer active:scale-95"
+          >
+            <Anchor className="w-3.5 h-3.5 text-blue-600" />
+            <span>+ Nova Embarcação</span>
+          </button>
+        )}
+      </div>
       
       <div 
         onClick={() => setIsOpen(!isOpen)}
@@ -283,10 +345,39 @@ function SearchableBoatSelect({ boats, value, onChange }: SearchableBoatSelectPr
             )}
           </div>
 
+          {onAddNewBoat && (
+            <div className="p-2 border-b border-slate-100 bg-blue-50/50">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onAddNewBoat();
+                }}
+                className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer active:scale-98"
+              >
+                <Anchor className="w-4 h-4" />
+                <span>Cadastrar Nova Embarcação</span>
+              </button>
+            </div>
+          )}
+
           <div className="max-h-60 overflow-y-auto subtle-scrollbar p-1.5 divide-y divide-slate-50">
             {filtered.length === 0 ? (
-              <div className="py-6 text-center text-xs text-slate-400">
-                Nenhuma embarcação encontrada com "{search}"
+              <div className="py-6 text-center space-y-2">
+                <p className="text-xs text-slate-400">Nenhuma embarcação encontrada com "{search}"</p>
+                {onAddNewBoat && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      onAddNewBoat();
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                  >
+                    <Anchor className="w-3.5 h-3.5" />
+                    <span>Cadastrar "{search || 'Nova Embarcação'}"</span>
+                  </button>
+                )}
               </div>
             ) : (
               filtered.map(b => {
@@ -351,16 +442,6 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
   const [boats, setBoats] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   
-  // Clientes Tab State
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterEmbarcacao, setFilterEmbarcacao] = useState('');
-  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
-  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
-  const [editingClient, setEditingClient] = useState<any | null>(null);
-  const [selectedClientView, setSelectedClientView] = useState<any | null>(null);
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-
   // Embarcações Tab State
   const [boatSearchTerm, setBoatSearchTerm] = useState('');
   const [boatFilterTipo, setBoatFilterTipo] = useState('');
@@ -392,22 +473,14 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
   const [bgFile, setBgFile] = useState<File | null>(null);
   const [greetingInput, setGreetingInput] = useState('');
 
-  // Formulário de Cadastro
-  const initialForm = {
-    nome: '', cpf: '', email: '', telefone: '', cnh_cha: '',
-    cep: '', logradouro: '', numeroEnd: '', complemento: '',
-    bairro: '', cidade: '', estado: '', profissao: '', estadoCivil: '',
-    rg: '', orgaoEmissor: '', numeroHabilitacao: '', validadeHabilitacao: '',
-    orgaoEmissorHabilitacao: 'Capitania Fluvial de Juazeiro', categoriaHabilitacao: ''
-  };
-  const [formData, setFormData] = useState(initialForm);
-
   // Formulário de Contrato
   const [contractData, setContractData] = useState({
     clienteId: '',
     embarcacaoId: '',
     cota: '25%',
     type: 'ambos',
+    isCustomPaymentText: false,
+    customPaymentText: '',
     valorTotal: '55.000,00',
     valorEntrada: '12.040,00',
     valorRemanescente: '42.960,00',
@@ -419,6 +492,13 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
     formaPagamento: 'boleto/transferência bancária/depósito/espécie',
     diaVencimento: '10'
   });
+
+  const generateStandardPaymentText = () => {
+    const cotaStr = contractData.cota || '25%';
+    return `3.1. O COMPRADOR pagará pela aquisição de ${cotaStr} da propriedade da embarcação o valor de R$ ${contractData.valorTotal}:
+a) Entrada de R$ ${contractData.valorEntrada} no ato da assinatura.
+b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.valorRemanescenteExtenso}) em ${contractData.numParcelas} (${contractData.numParcelasExtenso}) parcelas de R$ ${contractData.valorParcela} (${contractData.valorParcelaExtenso}), via ${contractData.formaPagamento}, vencimento no dia ${contractData.diaVencimento} de cada mês.`;
+  };
 
   // Selected Client Form State for Contract Issuance Tab
   const [selectedClientData, setSelectedClientData] = useState<any | null>(null);
@@ -631,66 +711,6 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
     }
   };
 
-  const openNewClient = () => {
-    setFormData(initialForm);
-    setEditingClient(null);
-    setIsClientModalOpen(true);
-  };
-
-  const openEditClient = (client: any) => {
-    setFormData({ ...initialForm, ...client });
-    setEditingClient(client);
-    setIsClientModalOpen(true);
-    setOpenDropdownId(null);
-  };
-
-  const handleDeleteClient = async (id: string) => {
-    try {
-      await fetch('/api/db/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({ type: 'clients', action: 'delete', data: { id } })
-      });
-      loadData();
-      setOpenDropdownId(null);
-      setClientToDelete(null);
-    } catch (err) {
-      console.error(err);
-      alert('Erro ao excluir cliente.');
-    }
-  };
-
-  const handleSaveClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        ...(editingClient ? editingClient : { id: `client_${Date.now()}` }),
-        ...formData,
-        dataCadastro: editingClient ? editingClient.dataCadastro : new Date().toISOString()
-      };
-      
-      const saveRes = await fetch('/api/db/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({ type: 'clients', action: 'upsert', data: payload })
-      });
-      
-      if (!saveRes.ok) throw new Error("Falha no servidor ao salvar.");
-      
-      setIsClientModalOpen(false);
-      loadData();
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao salvar cliente. Verifique sua conexão.");
-    }
-  };
-
   const openNewBoat = () => {
     setBoatFormData(initialBoatForm);
     setEditingBoat(null);
@@ -721,8 +741,10 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
   const handleSaveBoatFromModal = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const isNew = !editingBoat;
+      const newId = isNew ? `boat_${Date.now()}` : editingBoat.id;
       const payload = {
-        ...(editingBoat ? editingBoat : { id: `boat_${Date.now()}` }),
+        ...(editingBoat ? editingBoat : { id: newId }),
         ...boatFormData
       };
       if (editingBoat) {
@@ -744,6 +766,11 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
 
       setIsBoatModalOpen(false);
       loadData();
+
+      if (activeTab === 'contratos' || isNew) {
+        setContractData(prev => ({ ...prev, embarcacaoId: newId }));
+        setSelectedBoatData(payload);
+      }
     } catch (err) {
       console.error(err);
       alert("Erro ao salvar embarcação.");
@@ -789,16 +816,12 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
         valorParcela: contractData.valorParcela,
         valorParcelaExtenso: contractData.valorParcelaExtenso,
         formaPagamento: contractData.formaPagamento,
-        diaVencimento: contractData.diaVencimento
+        diaVencimento: contractData.diaVencimento,
+        isCustomPaymentText: contractData.isCustomPaymentText,
+        customPaymentText: contractData.customPaymentText
       });
     }
   };
-
-  const filteredClients = clients.filter(c => {
-    const matchesSearch = c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf?.includes(searchTerm);
-    const matchesEmbarcacao = filterEmbarcacao ? c.embarcacaoId === filterEmbarcacao : true;
-    return matchesSearch && matchesEmbarcacao;
-  });
 
   const filteredBoatsList = boats.filter(b => {
     const matchesSearch = b.nome?.toLowerCase().includes(boatSearchTerm.toLowerCase()) ||
@@ -980,141 +1003,10 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
             </div>
           )}
 
-          {/* TAB: CLIENTES (CRUD) */}
+          {/* TAB: CLIENTES (Base de Clientes Oficial) */}
           {activeTab === 'clientes' && (
-            <div className="max-w-6xl mx-auto">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h1 className="text-2xl font-bold text-slate-900">Base de Clientes</h1>
-                  <p className="text-slate-500 text-sm mt-1">Gerencie cadastros e informações detalhadas.</p>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <button onClick={() => window.print()} className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center transition-colors shadow-sm">
-                    <Download className="w-4 h-4 mr-2" /> Exportar
-                  </button>
-                  <button 
-                    onClick={openNewClient}
-                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"
-                  >
-                    <Plus className="w-4 h-4 mr-2" /> Novo Cliente
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                  <div className="flex items-center space-x-4">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                      <input 
-                        type="text" 
-                        placeholder="Buscar cliente..." 
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-9 pr-4 py-1.5 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 w-64"
-                      />
-                    </div>
-                  </div>
-                  <button onClick={() => setShowFilters(!showFilters)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-md text-sm font-medium hover:bg-slate-50 flex items-center transition-colors">
-                    <Filter className="w-4 h-4 mr-2" /> Filtros
-                  </button>
-                </div>
-                {showFilters && (
-                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex gap-4 rounded-t-xl">
-                    <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-slate-500 mb-1">Por Embarcação</label>
-                      <select 
-                        value={filterEmbarcacao} 
-                        onChange={(e) => setFilterEmbarcacao(e.target.value)}
-                        className="px-3 py-1.5 border border-slate-200 rounded-md text-sm bg-white focus:ring-1 focus:ring-slate-900"
-                      >
-                        <option value="">Todas as embarcações</option>
-                        {boats.map(b => (
-                          <option key={b.id} value={b.id}>{formatBoatName(b.nome)}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <table className="w-full text-left text-sm text-slate-600">
-                    <thead className="bg-slate-50/80 text-slate-500 font-medium border-b border-slate-200">
-                      <tr>
-                        <th className="px-6 py-3 w-10">
-                          <input type="checkbox" className="rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
-                        </th>
-                        <th className="px-6 py-3">Nome do Cliente</th>
-                        <th className="px-6 py-3">CPF</th>
-                        <th className="px-6 py-3">Telefone</th>
-                        <th className="px-6 py-3">Profissão</th>
-                        <th className="px-6 py-3 text-right">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredClients.map(c => (
-                        <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4">
-                            <input type="checkbox" className="rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
-                          </td>
-                          <td className="px-6 py-4 font-medium text-slate-900 flex items-center space-x-3">
-                            <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold uppercase">
-                              {c.nome.substring(0,2)}
-                            </div>
-                            <span>{c.nome}</span>
-                          </td>
-                          <td className="px-6 py-4">{c.cpf || '-'}</td>
-                          <td className="px-6 py-4">{c.telefone || '-'}</td>
-                          <td className="px-6 py-4 text-slate-500">{c.profissao || '-'}</td>
-                          <td className="px-6 py-4 text-right relative">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenDropdownId(openDropdownId === c.id ? null : c.id);
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
-                            >
-                              <MoreHorizontal className="w-4 h-4" />
-                            </button>
-                            
-                            {/* Dropdown Menu */}
-                            {openDropdownId === c.id && (
-                              <div className="absolute right-8 top-10 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1 z-20 animate-spring-pop origin-top-right">
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); setSelectedClientView(c); setOpenDropdownId(null); }}
-                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center"
-                                >
-                                  <FileText className="w-4 h-4 mr-2 text-slate-400" /> Abrir Ficha
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); openEditClient(c); }}
-                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center"
-                                >
-                                  <Edit2 className="w-4 h-4 mr-2 text-slate-400" /> Editar Cliente
-                                </button>
-                                <div className="border-t border-slate-100 my-1"></div>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); setClientToDelete(c.id); setOpenDropdownId(null); }}
-                                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center"
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" /> Excluir
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      {filteredClients.length === 0 && (
-                        <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                            Nenhum cliente cadastrado ainda.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            <div className="w-full">
+              <ClientPage />
             </div>
           )}
 
@@ -1330,22 +1222,22 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                         Seleção Principal
                       </h3>
                       
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Cliente</label>
                           <SearchableClientSelect
                             clients={clients}
                             value={contractData.clienteId}
                             onChange={id => setContractData({...contractData, clienteId: id})}
+                            onAddNewClient={() => setActiveTab('clientes')}
                           />
                         </div>
 
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Embarcação</label>
                           <SearchableBoatSelect
                             boats={boats}
                             value={contractData.embarcacaoId}
                             onChange={id => setContractData({...contractData, embarcacaoId: id})}
+                            onAddNewBoat={openNewBoat}
                           />
                         </div>
 
@@ -1528,47 +1420,111 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                     {/* CARD 4: CONDIÇÕES FINANCEIRAS (Item 3.1) */}
                     {(contractData.type === 'aquisicao' || contractData.type === 'ambos') && (
                       <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-5 space-y-4">
-                        <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2.5 flex items-center justify-between">
-                          <span>Cláusula 3.1 - Condições Financeiras</span>
-                          <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">✨ Cálculo Automático</span>
-                        </h3>
+                        <div className="border-b border-slate-100 pb-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2">
+                            <span>Cláusula 3.1 - Condições Financeiras</span>
+                          </h3>
 
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Valor Total (R$)</label>
-                            <input type="text" value={contractData.valorTotal} onChange={e => recalculatePayment(e.target.value, contractData.valorEntrada, contractData.numParcelas)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Entrada (R$)</label>
-                            <input type="text" value={contractData.valorEntrada} onChange={e => recalculatePayment(contractData.valorTotal, e.target.value, contractData.numParcelas)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nº Parcelas</label>
-                            <input type="text" value={contractData.numParcelas} onChange={e => recalculatePayment(contractData.valorTotal, contractData.valorEntrada, e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
+                          {/* Mode Switcher Tabs */}
+                          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-semibold shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setContractData({ ...contractData, isCustomPaymentText: false })}
+                              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                                !contractData.isCustomPaymentText
+                                  ? 'bg-white text-emerald-800 shadow-xs font-bold'
+                                  : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                            >
+                              ✨ Cálculo Automático
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setContractData({
+                                  ...contractData,
+                                  isCustomPaymentText: true,
+                                  customPaymentText: contractData.customPaymentText || generateStandardPaymentText()
+                                });
+                              }}
+                              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                                contractData.isCustomPaymentText
+                                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
+                                  : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                            >
+                              ✏️ Texto Livre / Manual
+                            </button>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Saldo Remanescente (R$)</label>
-                            <input type="text" value={contractData.valorRemanescente} onChange={e => handleRemanescenteChange(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Valor Parcela (R$)</label>
-                            <input type="text" value={contractData.valorParcela} onChange={e => handleParcelaChange(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
-                          </div>
-                        </div>
+                        {/* MODE 1: STRUCTURED / AUTOMATIC */}
+                        {!contractData.isCustomPaymentText ? (
+                          <div className="space-y-3 animate-in fade-in duration-150">
+                            <div className="grid grid-cols-3 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Valor Total (R$)</label>
+                                <input type="text" value={contractData.valorTotal} onChange={e => recalculatePayment(e.target.value, contractData.valorEntrada, contractData.numParcelas)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Entrada (R$)</label>
+                                <input type="text" value={contractData.valorEntrada} onChange={e => recalculatePayment(contractData.valorTotal, e.target.value, contractData.numParcelas)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nº Parcelas</label>
+                                <input type="text" value={contractData.numParcelas} onChange={e => recalculatePayment(contractData.valorTotal, contractData.valorEntrada, e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 font-bold" />
+                              </div>
+                            </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vencimento (Dia)</label>
-                            <input type="text" value={contractData.diaVencimento} onChange={e => setContractData({...contractData, diaVencimento: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Saldo Remanescente (R$)</label>
+                                <input type="text" value={contractData.valorRemanescente} onChange={e => handleRemanescenteChange(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Valor Parcela (R$)</label>
+                                <input type="text" value={contractData.valorParcela} onChange={e => handleParcelaChange(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vencimento (Dia)</label>
+                                <input type="text" value={contractData.diaVencimento} onChange={e => setContractData({...contractData, diaVencimento: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Forma de Pagamento</label>
+                                <input type="text" value={contractData.formaPagamento} onChange={e => setContractData({...contractData, formaPagamento: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Forma de Pagamento</label>
-                            <input type="text" value={contractData.formaPagamento} onChange={e => setContractData({...contractData, formaPagamento: e.target.value})} className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700" />
+                        ) : (
+                          /* MODE 2: CUSTOM MANUAL TEXT */
+                          <div className="space-y-2 animate-in fade-in duration-150">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-[11px] font-semibold text-slate-600">
+                                Redação Manual da Cláusula 3.1 (Texto Completo)
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => setContractData({ ...contractData, customPaymentText: generateStandardPaymentText() })}
+                                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                              >
+                                Carregar do Padrão
+                              </button>
+                            </div>
+                            <textarea
+                              rows={5}
+                              value={contractData.customPaymentText}
+                              onChange={e => setContractData({ ...contractData, customPaymentText: e.target.value })}
+                              placeholder="Escreva livremente as condições e alíneas de pagamento..."
+                              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 font-serif leading-relaxed focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white resize-y"
+                            />
+                            <p className="text-[10px] text-slate-400">
+                              Ideal para permutas, balões, condições negociadas sob medida ou prazos específicos.
+                            </p>
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
 
@@ -1631,50 +1587,82 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
                         {(contractData.type === 'adm' || (contractData.type === 'ambos' && previewTab === 'adm')) ? (
                           <>
                             <p className="text-justify font-sans text-[10px]">
-                              <strong>CONTRATANTE:</strong> Nome: <span className="underline decoration-emerald-500 font-semibold">{selectedClientData?.nome || '___________________'}</span>, Estado civil: {selectedClientData?.estadoCivil || '___'}, Profissão: {selectedClientData?.profissao || '___'}, inscrito no CPF sob o nº <span className="font-mono">{selectedClientData?.cpf || '___'}</span>, portador do RG nº {selectedClientData?.rg || '___'}, Habilitação Náutica (CHA): <span className="font-mono">{selectedClientData?.numeroHabilitacao || selectedClientData?.cnh_cha || '___'}</span>, Órgão Emissor CHA: <span className="font-medium text-emerald-800 bg-emerald-50 px-1 rounded">{selectedClientData?.orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro'}</span>, residente em {selectedClientData?.logradouro || '___'}, nº {selectedClientData?.numeroEnd || '___'}, {selectedClientData?.bairro || '___'}, {selectedClientData?.cidade || '___'}/{selectedClientData?.estado || '___'}, CEP: {selectedClientData?.cep || '___'}, WhatsApp: {selectedClientData?.telefone || '___'}.
+                              <strong>CONTRATANTE:</strong> <strong>{selectedClientData?.nome || 'NÃO INFORMADO'}</strong>, inscrito sob CPF nº: <strong>{selectedClientData?.cpf || 'NÃO INFORMADO'}</strong>, RG: <strong>{selectedClientData?.rg ? `${selectedClientData.rg}${selectedClientData.orgaoEmissor ? ` ${selectedClientData.orgaoEmissor}` : ''}` : 'NÃO INFORMADA'}</strong>, Carteira Náutica nº <strong>{selectedClientData?.numeroHabilitacao || selectedClientData?.cnh_cha || 'NÃO INFORMADA'}</strong>, válida até: <strong>{selectedClientData?.validadeHabilitacao || 'NÃO INFORMADA'}</strong>, órgão emissor: <strong>{selectedClientData?.orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro'}</strong>, residente e domiciliado na <strong>{selectedClientData?.logradouro ? `${selectedClientData.logradouro.toUpperCase()}, N°${selectedClientData.numeroEnd || ''}, BAIRRO: ${(selectedClientData.bairro || '').toUpperCase()}, ${(selectedClientData.cidade || '').toUpperCase()}-${(selectedClientData.estado || '').toUpperCase()}, CEP:${selectedClientData.cep || ''}` : 'NÃO INFORMADO'}</strong>, cidade: <strong>{selectedClientData?.cidade ? `${selectedClientData.cidade.toUpperCase()}-${(selectedClientData.estado || '').toUpperCase()}` : 'PETROLINA-PE'}</strong>, endereço eletrônico: <strong>{(selectedClientData?.email || 'NÃO INFORMADO').toUpperCase()}</strong>, WhatsApp: <strong>{selectedClientData?.telefone || 'NÃO INFORMADO'}</strong>.
                             </p>
                             <p className="text-justify font-sans text-[10px]">
-                              <strong>CONTRATADA:</strong> MEXICANO LANCHAS LTDA, CNPJ nº 42.206.594/0001-31, situada na cidade de Petrolina-PE, Estrada da Tapera, Lote 190, CEP 56334-899.
+                              <strong>CONTRATADO/ADMINISTRADOR:</strong> <strong>VALE ADMINISTRADORA NAUTICA</strong>, pessoa jurídica de direito privado, <strong>CNPJ: 62.794.642/0001-67</strong> com sede situada na cidade de <strong>PETROLINA-PE</strong>, no <strong>LOTEAMENTO LOTE 190, Nº 190, ESTRADA DA TAPERA, CEP: 56.334-899</strong>, endereço eletrônico: <strong>atendimentovaleadm@gmail.com</strong>, WhatsApp: <strong>(87)9 9109-0051</strong>.
                             </p>
+                            <p className="text-justify font-sans text-[10px]">
+                              <u>CONSIDERANDO</u> que o CONTRATANTE firmou contrato para aquisição de copropriedade da embarcação <strong>{formatBoatName(selectedBoatData?.nome) || 'N/A'}</strong>, se comprometendo a pactuar contrato de administração da embarcação com empresa <strong>VALE ADMINISTRADORA NÁUTICA</strong>, obrigatoriamente até a quitação integral do valor da embarcação por todos os coproprietários;
+                            </p>
+                            <p className="text-justify font-sans text-[10px]">
+                              <u>CONSIDERANDO</u> que apesar de se tratar de embarcação de uso compartilhado, os coproprietários são pessoas independentes, sendo cada um responsável pelo cumprimento de seus direitos e obrigações individuais e coletivos;
+                            </p>
+                            <p className="text-justify font-sans text-[10px]">
+                              <u>CONSIDERANDO</u> que os Coproprietários estão de acordo com a gestão da embarcação por uma empresa especializada por se tratar de aquisição em “uso compartilhado” e a <strong>VALE ADMINISTRADORA DE BENS NÁUTICOS</strong> possui a expertise necessária para o referido serviço.
+                            </p>
+                            <p className="text-justify font-sans text-[10px]">
+                              As partes acima identificadas têm, entre si, justo e acertado o presente Contrato de Administração Para Embarcação de Uso Compartilhado, que se regerá pelas cláusulas a seguir descritas.
+                            </p>
+
+                            <div className="pt-2 border-t border-slate-100 font-sans text-[10px] space-y-1.5">
+                              <p className="font-bold text-slate-900">1. <u>DO OBJETO</u></p>
+                              <p className="text-justify">
+                                1.1. Constitui-se objeto deste contrato o serviço de gerenciamento completo da embarcação: Nº de inscrição: <strong>{selectedBoatData?.inscricao || 'N/A'}</strong>, Tipo de propulsão: <strong>{selectedBoatData?.tipo_propulsao || 'MOTOR'}</strong>, potência: <strong>{selectedBoatData?.potencia || 'N/A'}</strong>, Nº de CHASSI: <strong>{selectedBoatData?.chassi || 'N/A'}</strong>, por parte do ADMINISTRADOR em favor do CONTRATANTE, o qual possui copropriedade do referido bem, possuindo direitos e obrigações individuais e coletivos.
+                              </p>
+                              <p className="text-justify">
+                                <mark className="bg-yellow-200 px-1 py-0.5 rounded font-bold text-slate-900">1.2.</mark> <strong>O ADMINISTRADOR desempenhará as seguintes funções:</strong>
+                              </p>
+                              <div className="pl-3 space-y-0.5 text-[9.5px]">
+                                <p>a) Comunicação e suporte nas tratativas entre os coproprietários;</p>
+                                <p>b) Acompanhamento de manutenções corretivas e preventivas do bem;</p>
+                              </div>
+                            </div>
                           </>
                         ) : (
                           <>
                             <p className="text-justify font-sans text-[10px]">
-                              <strong>COMPRADOR:</strong> Nome: <span className="underline decoration-emerald-500 font-semibold">{selectedClientData?.nome || '___________________'}</span>, Estado civil: {selectedClientData?.estadoCivil || '___'}, Profissão: {selectedClientData?.profissao || '___'}, inscrito no CPF sob o nº <span className="font-mono">{selectedClientData?.cpf || '___'}</span>, portador do RG nº {selectedClientData?.rg || '___'}, Endereço: {selectedClientData?.logradouro || '___'}, nº {selectedClientData?.numeroEnd || '___'}, Bairro: {selectedClientData?.bairro || '___'}, Cidade/UF: {selectedClientData?.cidade || '___'}/{selectedClientData?.estado || '___'}, CEP: {selectedClientData?.cep || '___'}, WhatsApp: {selectedClientData?.telefone || '___'}.
+                              <strong>COMPRADOR:</strong> Nome: <strong>{selectedClientData?.nome || 'NÃO INFORMADO'}</strong>, Nacionalidade: <strong>BRASILEIRO</strong>, Estado civil: <strong>{selectedClientData?.estadoCivil || 'N/A'}</strong>, Profissão: <strong>{selectedClientData?.profissao || 'N/A'}</strong>, inscrito no CPF sob o nº <strong>{selectedClientData?.cpf || 'N/A'}</strong>, portador do RG nº <strong>{selectedClientData?.rg || 'N/A'}</strong>, Endereço: <strong>{selectedClientData?.logradouro ? `${selectedClientData.logradouro.toUpperCase()}, N°${selectedClientData.numeroEnd || ''}, BAIRRO: ${(selectedClientData.bairro || '').toUpperCase()}, ${(selectedClientData.cidade || '').toUpperCase()}-${(selectedClientData.estado || '').toUpperCase()}, CEP:${selectedClientData.cep || ''}` : 'NÃO INFORMADO'}</strong>, WhatsApp: <strong>{selectedClientData?.telefone || 'N/A'}</strong>.
                             </p>
                             <p className="text-justify font-sans text-[10px]">
-                              <strong>VENDEDOR:</strong> MEXICANO LANCHAS LTDA, CNPJ nº 42.206.594/0001-31, situada na cidade de Petrolina-PE, Estrada da Tapera, Lote 190, CEP 56334-899.
+                              <strong>VENDEDOR:</strong> <strong>MEXICANO LANCHAS LTDA</strong>, CNPJ nº <strong>42.206.594/0001-31</strong>, situada na cidade de Petrolina-PE, Estrada da Tapera, Lote 190, CEP 56334-899.
                             </p>
+                            <div className="pt-2 border-t border-slate-100 font-sans text-[10px] space-y-1.5">
+                              <p className="font-bold text-slate-900">1. <u>OBJETO</u></p>
+                              <p className="text-justify">
+                                <mark className="bg-yellow-200 px-1 py-0.5 rounded font-bold text-slate-900">1.1.</mark> Este contrato tem como objeto a aquisição de copropriedade de embarcação correspondente a <strong>{contractData.cota}</strong> do total:
+                              </p>
+                              <div className="bg-slate-50 p-2.5 rounded border border-slate-200 text-[9.5px] font-mono grid grid-cols-2 gap-1 text-slate-700">
+                                <div><strong>Embarcação:</strong> {formatBoatName(selectedBoatData?.nome) || 'N/A'}</div>
+                                <div><strong>Modelo:</strong> {selectedBoatData?.modelo || 'N/A'}</div>
+                                <div><strong>Nº Inscrição:</strong> {selectedBoatData?.inscricao || 'N/A'}</div>
+                                <div><strong>Chassi (HIN):</strong> {selectedBoatData?.chassi || 'N/A'}</div>
+                                <div><strong>Propulsão:</strong> {selectedBoatData?.tipo_propulsao || 'MOTOR'}</div>
+                                <div><strong>Potência:</strong> {selectedBoatData?.potencia || 'N/A'}</div>
+                              </div>
+                            </div>
                           </>
                         )}
-
-                        {/* CLÁUSULA 1 - OBJETO */}
-                        <div className="pt-2 border-t border-slate-100 font-sans text-[10px] space-y-1.5">
-                          <p className="font-bold text-slate-900">1. OBJETO</p>
-                          <p className="text-justify">
-                            1.1. O presente contrato tem por objeto a {(contractData.type === 'adm' || (contractData.type === 'ambos' && previewTab === 'adm')) ? 'prestação de serviços de guarda e administração da embarcação' : `aquisição de copropriedade de embarcação correspondente a ${contractData.cota} do total`}:
-                          </p>
-                          <div className="bg-slate-50 p-2.5 rounded border border-slate-200 text-[9.5px] font-mono grid grid-cols-2 gap-1 text-slate-700">
-                            <div><strong>Embarcação:</strong> {formatBoatName(selectedBoatData?.nome) || 'N/A'}</div>
-                            <div><strong>Modelo:</strong> {selectedBoatData?.modelo || 'N/A'}</div>
-                            <div><strong>Nº Inscrição:</strong> {selectedBoatData?.inscricao || 'N/A'}</div>
-                            <div><strong>Chassi (HIN):</strong> {selectedBoatData?.chassi || 'N/A'}</div>
-                            <div><strong>Propulsão:</strong> {selectedBoatData?.tipo_propulsao || 'MOTOR'}</div>
-                            <div><strong>Potência:</strong> {selectedBoatData?.potencia || 'N/A'}</div>
-                          </div>
-                        </div>
 
                         {/* CLÁUSULA FINANCEIRA (Se Aquisição) */}
                         {(contractData.type === 'aquisicao' || (contractData.type === 'ambos' && previewTab === 'aquisicao')) && (
                           <div className="pt-2 border-t border-slate-100 font-sans text-[10px] space-y-1.5">
                             <p className="font-bold text-slate-900">3. DO PREÇO E FORMA DE PAGAMENTO</p>
-                            <p className="text-justify">
-                              <strong>3.1.</strong> O COMPRADOR pagará pela aquisição de <strong>{contractData.cota}</strong> da propriedade da embarcação o valor de <strong>R$ {contractData.valorTotal}</strong>:
-                            </p>
-                            <div className="pl-3 border-l-2 border-emerald-500 space-y-1 bg-emerald-50/40 p-2 rounded text-[9.5px]">
-                              <p><strong>a)</strong> Entrada de R$ <strong>{contractData.valorEntrada}</strong> no ato da assinatura.</p>
-                              <p><strong>b)</strong> Saldo remanescente de R$ <strong>{contractData.valorRemanescente}</strong> ({contractData.valorRemanescenteExtenso}) em <strong>{contractData.numParcelas}</strong> ({contractData.numParcelasExtenso}) parcelas de R$ <strong>{contractData.valorParcela}</strong> ({contractData.valorParcelaExtenso}), via {contractData.formaPagamento}, vencimento no dia <strong>{contractData.diaVencimento}</strong> de cada mês.</p>
-                            </div>
+                            {contractData.isCustomPaymentText && contractData.customPaymentText.trim() ? (
+                              <div className="pl-3 border-l-2 border-indigo-500 space-y-1 bg-indigo-50/40 p-2 rounded text-[9.5px] whitespace-pre-wrap font-serif">
+                                {contractData.customPaymentText}
+                              </div>
+                            ) : (
+                              <>
+                                <p className="text-justify">
+                                  <strong>3.1.</strong> O COMPRADOR pagará pela aquisição de <strong>{contractData.cota}</strong> da propriedade da embarcação o valor de <strong>R$ {contractData.valorTotal}</strong>:
+                                </p>
+                                <div className="pl-3 border-l-2 border-emerald-500 space-y-1 bg-emerald-50/40 p-2 rounded text-[9.5px]">
+                                  <p><strong>a)</strong> Entrada de R$ <strong>{contractData.valorEntrada}</strong> no ato da assinatura.</p>
+                                  <p><strong>b)</strong> Saldo remanescente de R$ <strong>{contractData.valorRemanescente}</strong> ({contractData.valorRemanescenteExtenso}) em <strong>{contractData.numParcelas}</strong> ({contractData.numParcelasExtenso}) parcelas de R$ <strong>{contractData.valorParcela}</strong> ({contractData.valorParcelaExtenso}), via {contractData.formaPagamento}, vencimento no dia <strong>{contractData.diaVencimento}</strong> de cada mês.</p>
+                                </div>
+                              </>
+                            )}
                           </div>
                         )}
 
@@ -1705,234 +1693,6 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
       </main>
 
       {/* --- MODALS --- */}
-
-      {/* Modal: Cadastro / Edição de Cliente */}
-      {isClientModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsClientModalOpen(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-spring-pop">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-800">
-                {editingClient ? 'Editar Cliente' : 'Novo Cadastro de Cliente'}
-              </h3>
-              <button onClick={() => setIsClientModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto subtle-scrollbar">
-              <form id="clientForm" onSubmit={handleSaveClient} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nome Completo</label>
-                    <input required type="text" value={formData.nome} onChange={e => setFormData({...formData, nome: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">CPF</label>
-                    <input required type="text" value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email</label>
-                    <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Telefone / WhatsApp</label>
-                    <input type="text" value={formData.telefone} onChange={e => setFormData({...formData, telefone: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">CNH ou CHA (Carteira Náutica)</label>
-                    <input required type="text" value={formData.cnh_cha} onChange={e => setFormData({...formData, cnh_cha: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Profissão</label>
-                    <input type="text" value={formData.profissao} onChange={e => setFormData({...formData, profissao: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Estado Civil</label>
-                    <input type="text" value={formData.estadoCivil} onChange={e => setFormData({...formData, estadoCivil: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 pt-5 mt-5">
-                  <h4 className="text-sm font-bold text-slate-800 mb-4">Documentação & Habilitação Náutica</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">RG</label>
-                      <input type="text" value={formData.rg} onChange={e => setFormData({...formData, rg: e.target.value})} placeholder="Ex: 12.345.678-9" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Órgão Emissor do RG</label>
-                      <input type="text" value={formData.orgaoEmissor} onChange={e => setFormData({...formData, orgaoEmissor: e.target.value})} placeholder="Ex: SSP/SP" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nº Habilitação Náutica (CHA)</label>
-                      <input type="text" value={formData.numeroHabilitacao || formData.cnh_cha} onChange={e => setFormData({...formData, numeroHabilitacao: e.target.value, cnh_cha: e.target.value})} placeholder="Ex: 381M2021005" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-mono" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Categoria da Habilitação</label>
-                      <select value={formData.categoriaHabilitacao} onChange={e => setFormData({...formData, categoriaHabilitacao: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all">
-                        <option value="">Selecione...</option>
-                        <option value="Arrais-Amador">Arrais-Amador</option>
-                        <option value="Motonauta">Motonauta</option>
-                        <option value="Arrais e Motonauta">Arrais e Motonauta</option>
-                        <option value="Mestre-Amador">Mestre-Amador</option>
-                        <option value="Capitão-Amador">Capitão-Amador</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Data de Validade / Expiração da CHA</label>
-                      <input type="date" value={formData.validadeHabilitacao} onChange={e => setFormData({...formData, validadeHabilitacao: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-mono" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Órgão Emissor da Habilitação</label>
-                      <input type="text" value={formData.orgaoEmissorHabilitacao} onChange={e => setFormData({...formData, orgaoEmissorHabilitacao: e.target.value})} placeholder="Ex: Capitania Fluvial de Juazeiro" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 pt-5 mt-5">
-                  <h4 className="text-sm font-bold text-slate-800 mb-4">Endereço</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">CEP</label>
-                      <input required type="text" value={formData.cep} onChange={e => setFormData({...formData, cep: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Logradouro (Rua, Av)</label>
-                      <input required type="text" value={formData.logradouro} onChange={e => setFormData({...formData, logradouro: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Número</label>
-                      <input required type="text" value={formData.numeroEnd} onChange={e => setFormData({...formData, numeroEnd: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Complemento</label>
-                      <input type="text" value={formData.complemento} onChange={e => setFormData({...formData, complemento: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Bairro</label>
-                      <input required type="text" value={formData.bairro} onChange={e => setFormData({...formData, bairro: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">Cidade</label>
-                      <input required type="text" value={formData.cidade} onChange={e => setFormData({...formData, cidade: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5">UF (Estado)</label>
-                      <input required type="text" value={formData.estado} onChange={e => setFormData({...formData, estado: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                    </div>
-                  </div>
-                </div>
-              </form>
-            </div>
-            
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end space-x-3 rounded-b-2xl">
-              <button 
-                onClick={() => setIsClientModalOpen(false)}
-                className="px-5 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                form="clientForm"
-                className="px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center shadow-md transition-all"
-              >
-                {editingClient ? 'Salvar Alterações' : 'Salvar Novo Cliente'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Ficha Cadastral (Visualização) */}
-      {selectedClientView && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSelectedClientView(null)} />
-          <div id="print-area" className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-spring-pop">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-800 flex items-center">
-                <FileText className="w-5 h-5 mr-2 text-slate-400" /> Ficha Cadastral
-              </h3>
-              <button onClick={() => setSelectedClientView(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-8 overflow-y-auto subtle-scrollbar">
-              <div className="grid grid-cols-2 gap-y-6 gap-x-8">
-                <div className="col-span-2 border-b border-slate-100 pb-4">
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nome Completo</span>
-                  <span className="block text-lg font-semibold text-slate-800">{selectedClientView.nome}</span>
-                </div>
-                <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">CPF</span><span className="block font-medium text-slate-700 text-sm">{selectedClientView.cpf || '-'}</span></div>
-                <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">RG / Órgão Emissor</span><span className="block font-medium text-slate-700 text-sm">{selectedClientView.rg || '-'} {selectedClientView.orgaoEmissor ? `(${selectedClientView.orgaoEmissor})` : ''}</span></div>
-                <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Email</span><span className="block font-medium text-slate-700 text-sm">{selectedClientView.email || '-'}</span></div>
-                <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Telefone</span><span className="block font-medium text-slate-700 text-sm">{selectedClientView.telefone || '-'}</span></div>
-                <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Profissão</span><span className="block font-medium text-slate-700 text-sm">{selectedClientView.profissao || '-'}</span></div>
-                <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estado Civil</span><span className="block font-medium text-slate-700 text-sm">{selectedClientView.estadoCivil || '-'}</span></div>
-
-                <div className="col-span-2 pt-4 mt-2 border-t border-slate-100">
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Habilitação Náutica (CHA / Arrais / Motonauta)</span>
-                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 grid grid-cols-2 gap-3 text-xs">
-                    <div><span className="block text-slate-400 font-semibold mb-0.5">Nº da Habilitação</span><span className="font-bold text-slate-800 font-mono">{selectedClientView.numeroHabilitacao || selectedClientView.cnh_cha || 'Não informada'}</span></div>
-                    <div><span className="block text-slate-400 font-semibold mb-0.5">Categoria</span><span className="font-bold text-slate-800">{selectedClientView.categoriaHabilitacao || 'Não informada'}</span></div>
-                    <div><span className="block text-slate-400 font-semibold mb-0.5">Data de Expiração / Validade</span><span className="font-bold text-slate-800 font-mono">{selectedClientView.validadeHabilitacao || 'Não informada'}</span></div>
-                    <div><span className="block text-slate-400 font-semibold mb-0.5">Órgão Emissor</span><span className="font-bold text-slate-800">{selectedClientView.orgaoEmissorHabilitacao || 'Capitania Fluvial de Juazeiro'}</span></div>
-                  </div>
-                </div>
-                
-                <div className="col-span-2 pt-4 mt-2 border-t border-slate-100">
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Endereço de Faturamento</span>
-                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                    <p className="text-sm text-slate-700 leading-relaxed">
-                      {selectedClientView.logradouro}, {selectedClientView.numeroEnd} {selectedClientView.complemento && ` - ${selectedClientView.complemento}`}<br />
-                      Bairro: {selectedClientView.bairro}<br />
-                      CEP: {selectedClientView.cep}<br />
-                      {selectedClientView.cidade} / {selectedClientView.estado}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end space-x-3">
-              <button 
-                onClick={() => {
-                  const printSection = document.getElementById('print-section');
-                  if (printSection) printSection.id = 'print-section-hidden';
-                  setTimeout(() => {
-                    window.print();
-                    if (printSection) printSection.id = 'print-section';
-                  }, 100);
-                }}
-                className="px-5 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-100 transition-colors flex items-center"
-              >
-                <Printer className="w-4 h-4 mr-2" /> Imprimir
-              </button>
-              <button 
-                onClick={() => {
-                  openEditClient(selectedClientView);
-                  setSelectedClientView(null);
-                }}
-                className="px-5 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                Editar
-              </button>
-              <button 
-                onClick={() => {
-                  setContractData(prev => ({ ...prev, clienteId: selectedClientView.id }));
-                  setSelectedClientView(null);
-                  setActiveTab('contratos');
-                }}
-                className="px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center shadow-md transition-all"
-              >
-                <FileSignature className="w-4 h-4 mr-2" /> Emitir Contrato
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal: Ficha da Embarcação (Visualização) */}
       {selectedBoatModalView && (
@@ -2165,65 +1925,6 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
         </div>
       )}
     
-      {/* Modal de Exclusão */}
-      {clientToDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setClientToDelete(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-spring-pop text-center">
-            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
-              <Trash2 className="w-8 h-8" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-800 mb-2">Confirmar Exclusão</h3>
-            <p className="text-sm text-slate-500 mb-6">
-              Tem certeza que deseja excluir permanentemente este cliente? Esta ação não poderá ser desfeita.
-            </p>
-            <div className="flex w-full space-x-3">
-              <button onClick={() => setClientToDelete(null)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition-colors">
-                Cancelar
-              </button>
-              <button onClick={() => handleDeleteClient(clientToDelete)} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors">
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Print Section (Hidden on screen) */}
-      <div id="print-section" className="hidden p-8 bg-white text-black font-sans">
-        <div className="text-center mb-8 border-b border-slate-300 pb-4">
-          <h2 className="text-2xl font-bold">Relatório de Clientes</h2>
-          <p className="text-sm text-slate-500">
-            {filterEmbarcacao 
-              ? `Filtrado por Embarcação: ${formatBoatName(boats.find(b => b.id === filterEmbarcacao)?.nome)}` 
-              : 'Todos os Clientes'}
-          </p>
-        </div>
-        <table className="w-full text-left text-sm border-collapse">
-          <thead>
-            <tr className="border-b-2 border-slate-800">
-              <th className="py-2 px-4 font-bold">Nome</th>
-              <th className="py-2 px-4 font-bold">CPF</th>
-              <th className="py-2 px-4 font-bold">Telefone</th>
-              <th className="py-2 px-4 font-bold">Profissão</th>
-              <th className="py-2 px-4 font-bold">Embarcação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredClients.map((c, i) => (
-              <tr key={c.id} className={i % 2 === 0 ? 'bg-slate-50' : ''}>
-                <td className="py-2 px-4 border-b border-slate-200">{c.nome}</td>
-                <td className="py-2 px-4 border-b border-slate-200">{c.cpf || '-'}</td>
-                <td className="py-2 px-4 border-b border-slate-200">{c.telefone || '-'}</td>
-                <td className="py-2 px-4 border-b border-slate-200">{c.profissao || '-'}</td>
-                <td className="py-2 px-4 border-b border-slate-200">
-                  {formatBoatName(boats.find(b => b.id === c.embarcacaoId)?.nome) || '-'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-  </div>
+    </div>
   );
 }

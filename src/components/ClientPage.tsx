@@ -169,6 +169,7 @@ export default function ClientPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [cpf, setCpf] = useState('');
+  const [dataNascimento, setDataNascimento] = useState('');
   const [rg, setRg] = useState('');
   const [orgaoEmissor, setOrgaoEmissor] = useState('');
   const [numeroHabilitacao, setNumeroHabilitacao] = useState('');
@@ -364,6 +365,7 @@ export default function ClientPage() {
     setEmail('');
     setPhone('');
     setCpf('');
+    setDataNascimento('');
     setRg('');
     setOrgaoEmissor('');
     setNumeroHabilitacao('');
@@ -399,6 +401,7 @@ export default function ClientPage() {
     setEmail(client.email || '');
     setPhone(client.telefone || '');
     setCpf(client.cpf || '');
+    setDataNascimento(client.dataNascimento || '');
     setRg(client.rg || '');
     setOrgaoEmissor(client.orgaoEmissor || '');
     setNumeroHabilitacao(client.numeroHabilitacao || client.cnh_cha || '');
@@ -499,6 +502,7 @@ export default function ClientPage() {
           email,
           telefone: phone,
           cpf,
+          dataNascimento,
           rg,
           orgaoEmissor,
           numeroHabilitacao,
@@ -529,6 +533,7 @@ export default function ClientPage() {
           email,
           telefone: phone,
           cpf,
+          dataNascimento,
           rg,
           orgaoEmissor,
           numeroHabilitacao,
@@ -1321,17 +1326,31 @@ export default function ClientPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">CPF</label>
-                    <input
-                      id="input-client-cpf"
-                      type="text"
-                      tabIndex={4}
-                      placeholder="Ex: 000.000.000-00"
-                      value={cpf}
-                      onChange={(e) => setCpf(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">CPF</label>
+                      <input
+                        id="input-client-cpf"
+                        type="text"
+                        tabIndex={4}
+                        placeholder="Ex: 000.000.000-00"
+                        value={cpf}
+                        onChange={(e) => setCpf(e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Data de Nascimento</label>
+                      <input
+                        id="input-client-data-nascimento"
+                        type="date"
+                        tabIndex={5}
+                        value={dataNascimento}
+                        onChange={(e) => setDataNascimento(e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono text-slate-700"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1475,7 +1494,7 @@ export default function ClientPage() {
                         Campos Avançados (Doc., Endereço & Fin.)
                       </span>
                       <div className="flex items-center gap-1.5">
-                        {(rg || numeroHabilitacao || cep || logradouro || cidade || observacoesFinanceiras || plano === 'completo') && (
+                        {(rg || numeroHabilitacao || cep || logradouro || bairro || cidade || observacoesFinanceiras || plano === 'completo') && (
                           <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Ativo</span>
                         )}
                         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isAdvancedOpen ? 'rotate-180' : ''}`} />
@@ -1597,8 +1616,8 @@ export default function ClientPage() {
                             <div className="col-span-1 flex items-end">
                               <button
                                 type="button"
-                                disabled={isFetchingCep || cep.replace(/D/g, '').length !== 8}
-                                onClick={() => fetchCep(cep.replace(/D/g, ''))}
+                                disabled={isFetchingCep || cep.replace(/\D/g, '').length !== 8}
+                                onClick={() => fetchCep(cep.replace(/\D/g, ''))}
                                 className="w-full py-1.5 text-xs font-bold text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 disabled:opacity-50 disabled:bg-slate-50 disabled:text-slate-400 rounded-lg border border-indigo-100 transition-all h-[34px] cursor-pointer"
                               >
                                 Buscar
@@ -1646,13 +1665,26 @@ export default function ClientPage() {
                             </div>
                           </div>
 
+                          <div>
+                            <label className="block text-[11px] font-medium text-slate-700 mb-1">Bairro</label>
+                            <input
+                              id="input-client-bairro"
+                              type="text"
+                              tabIndex={24}
+                              placeholder="Ex: Centro / Jardins"
+                              value={bairro}
+                              onChange={(e) => setBairro(e.target.value)}
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
+                            />
+                          </div>
+
                           <div className="grid grid-cols-3 gap-2.5">
                             <div className="col-span-2">
                               <label className="block text-[11px] font-medium text-slate-700 mb-1">Cidade</label>
                               <input
                                 id="input-client-cidade"
                                 type="text"
-                                tabIndex={24}
+                                tabIndex={25}
                                 placeholder="Ex: São Paulo"
                                 value={cidade}
                                 onChange={(e) => setCidade(e.target.value)}
@@ -1664,7 +1696,7 @@ export default function ClientPage() {
                               <input
                                 id="input-client-estado"
                                 type="text"
-                                tabIndex={25}
+                                tabIndex={26}
                                 placeholder="Ex: SP"
                                 value={estado}
                                 onChange={(e) => setEstado(e.target.value)}
@@ -1684,7 +1716,7 @@ export default function ClientPage() {
                           <div>
                             <label className="block text-[11px] font-semibold text-slate-700 mb-1">Observações Financeiras</label>
                             <textarea
-                              tabIndex={26}
+                              tabIndex={27}
                               placeholder="Taxa de janeiro pendente, faróis para pagar..."
                               value={observacoesFinanceiras}
                               onChange={(e) => setObservacoesFinanceiras(e.target.value)}
@@ -1696,7 +1728,7 @@ export default function ClientPage() {
                           <div>
                             <label className="block text-[11px] font-semibold text-slate-700 mb-1">Plano de Agendamento</label>
                             <select
-                              tabIndex={27}
+                              tabIndex={28}
                               value={plano}
                               onChange={(e) => setPlano(e.target.value as 'normal' | 'completo')}
                               className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-medium"

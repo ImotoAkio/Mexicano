@@ -218,8 +218,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
       if (paymentFilter !== 'all') {
         const pMethod = (t.metodoPagamento || '').toLowerCase();
         const desc = (t.descricao || '').toLowerCase();
-        if (paymentFilter === 'pix' && !(pMethod === 'pix' || pMethod === 'dinheiro' || desc.includes('pix') || desc.includes('dinheiro'))) return false;
-        if (paymentFilter === 'credit' && !(pMethod === 'credit' || desc.includes('cartão') || desc.includes('credito') || desc.includes('credit'))) return false;
+        if (paymentFilter === 'dinheiro' && !(pMethod === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa'))) return false;
+        if (paymentFilter === 'pix' && !((pMethod === 'pix' || desc.includes('pix')) && pMethod !== 'dinheiro' && !desc.includes('dinheiro') && !desc.includes('caixa'))) return false;
+        if (paymentFilter === 'credit' && !(pMethod === 'credit' || desc.includes('cartão de crédito') || desc.includes('credito') || desc.includes('credit'))) return false;
         if (paymentFilter === 'debit' && !(pMethod === 'debit' || desc.includes('débito') || desc.includes('debito'))) return false;
         if (paymentFilter === 'admin' && !(pMethod === 'admin' || desc.includes('admin') || desc.includes('faturado'))) return false;
       }
@@ -756,10 +757,11 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
                   >
                     <option value="all">Todas as Formas</option>
-                    <option value="pix">PIX / Dinheiro</option>
-                    <option value="credit">Cartão de Crédito</option>
-                    <option value="debit">Cartão de Débito</option>
-                    <option value="admin">Administradora (Faturado)</option>
+                    <option value="dinheiro">💵 Dinheiro (Caixa Físico)</option>
+                    <option value="pix">📱 PIX (Conta Digital)</option>
+                    <option value="credit">💳 Cartão de Crédito</option>
+                    <option value="debit">💳 Cartão de Débito</option>
+                    <option value="admin">🏢 Administradora (Faturado)</option>
                   </select>
                 </div>
 

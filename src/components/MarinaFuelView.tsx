@@ -46,14 +46,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   const [selectedBoatId, setSelectedBoatId] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [liters, setLiters] = useState('');
-  const [paymentType, setPaymentType] = useState<'pix' | 'credit' | 'admin'>('pix');
+  const [paymentType, setPaymentType] = useState<'pix' | 'dinheiro' | 'credit' | 'debit' | 'admin'>('pix');
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
   const [isUploadingComprovante, setIsUploadingComprovante] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Charge Item Modal state
   const [chargeTargetItem, setChargeTargetItem] = useState<any | null>(null);
-  const [chargePaymentType, setChargePaymentType] = useState<'pix' | 'credit' | 'admin'>('pix');
+  const [chargePaymentType, setChargePaymentType] = useState<'pix' | 'dinheiro' | 'credit' | 'debit' | 'admin'>('pix');
   const [chargeComprovanteUrl, setChargeComprovanteUrl] = useState<string | null>(null);
   const [isUploadingChargeComprovante, setIsUploadingChargeComprovante] = useState(false);
 
@@ -62,7 +62,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   const [editBoatId, setEditBoatId] = useState('');
   const [editClientId, setEditClientId] = useState('');
   const [editLiters, setEditLiters] = useState('');
-  const [editPaymentType, setEditPaymentType] = useState<'pix' | 'credit' | 'admin'>('pix');
+  const [editPaymentType, setEditPaymentType] = useState<'pix' | 'dinheiro' | 'credit' | 'debit' | 'admin'>('pix');
   const [editStatus, setEditStatus] = useState<'pago' | 'pendente'>('pago');
   const [editDate, setEditDate] = useState('');
 
@@ -212,7 +212,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         } else if (descLower.includes('crédito') || descLower.includes('credito') || descLower.includes('credit')) {
           pm = 'credit';
           if (!st || st === 'pendente') st = 'pago';
-        } else if (descLower.includes('pix') || descLower.includes('dinheiro') || descLower.includes('débito') || descLower.includes('debito')) {
+        } else if (descLower.includes('débito') || descLower.includes('debito')) {
+          pm = 'debit';
+          if (!st || st === 'pendente') st = 'pago';
+        } else if (descLower.includes('dinheiro') || descLower.includes('caixa')) {
+          pm = 'dinheiro';
+          if (!st || st === 'pendente') st = 'pago';
+        } else if (descLower.includes('pix')) {
           pm = 'pix';
           if (!st || st === 'pendente') st = 'pago';
         }
@@ -236,13 +242,15 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     .map((r: any) => {
       const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
       const isCobrado = r.abastecimentoStatusCobranca === 'cobrado';
-      const valorTotal = r.abastecimentoValorTotal || (litros * 9);
+      const pm = (r.abastecimentoFormaPagamento || 'pix').toLowerCase();
+      const unitPrice = pm === 'credit' ? 10 : pm === 'admin' ? 13 : 9;
+      const valorTotal = r.abastecimentoValorTotal || (litros * unitPrice);
       return {
         id: `res_fuel_${r.id}`,
         reservaId: r.id,
         tipo: 'receita',
         categoria: 'receita_combustivel',
-        descricao: `Abastecimento Marina (Píer): ${litros}L`,
+        descricao: `Abastecimento Marina (${pm === 'dinheiro' ? 'Dinheiro (Caixa)' : pm === 'credit' ? 'Crédito' : pm === 'debit' ? 'Débito' : pm === 'admin' ? 'Faturado Admin' : 'PIX'}): ${litros}L`,
         valor: valorTotal,
         status: isCobrado ? 'pago' : 'pendente',
         metodoPagamento: r.abastecimentoFormaPagamento || 'Pendente',
@@ -281,10 +289,20 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
     // Payment method filter
     if (paymentFilter !== 'all') {
-      const pm = (t.metodoPagamento || '').toLowerCase();
-      if (paymentFilter === 'pix' && !pm.includes('pix') && !pm.includes('dinheiro')) return false;
-      if (paymentFilter === 'credit' && !pm.includes('credit') && !pm.includes('cartao') && !pm.includes('cartão')) return false;
-      if (paymentFilter === 'admin' && !pm.includes('admin') && !pm.includes('faturado')) return false;
+      const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
+      const desc = (t.descricao || '').toLowerCase();
+      if (paymentFilter === 'dinheiro') {
+        if (pm !== 'dinheiro' && !desc.includes('dinheiro') && !desc.includes('caixa')) return false;
+      } else if (paymentFilter === 'pix') {
+        if (pm === 'dinheiro' || desc.includes('dinheiro')) return false;
+        if (pm !== 'pix' && !desc.includes('pix') && pm !== 'pendente') return false;
+      } else if (paymentFilter === 'credit') {
+        if (pm !== 'credit' && !desc.includes('crédito') && !desc.includes('credito') && !desc.includes('credit')) return false;
+      } else if (paymentFilter === 'debit') {
+        if (pm !== 'debit' && !desc.includes('débito') && !desc.includes('debito')) return false;
+      } else if (paymentFilter === 'admin') {
+        if (pm !== 'admin' && !desc.includes('admin') && !desc.includes('faturado') && !desc.includes('administradora')) return false;
+      }
     }
 
     // Status filter match
@@ -329,18 +347,37 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   let totalLiters = 0;
   let totalValue = 0;
   let totalPendingValue = 0;
+  let totalDinheiro = 0;
+  let totalPix = 0;
+  let totalCartao = 0;
+  let totalAdmin = 0;
 
   fuelTransactions.forEach(t => {
     const isCobradoItem = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
+    const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
+    const desc = (t.descricao || '').toLowerCase();
+    const valor = Number(t.valor || 0);
+
     if (isCobradoItem) {
-      totalValue += Number(t.valor || 0);
+      totalValue += valor;
+      if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
+        totalDinheiro += valor;
+      } else if (pm === 'admin' || desc.includes('faturado') || desc.includes('administradora')) {
+        totalAdmin += valor;
+      } else if (pm === 'credit' || pm === 'debit' || desc.includes('crédito') || desc.includes('débito') || desc.includes('cartão')) {
+        totalCartao += valor;
+      } else {
+        totalPix += valor;
+      }
     } else {
-      totalPendingValue += Number(t.valor || 0);
+      totalPendingValue += valor;
     }
     
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
     if (match) {
       totalLiters += parseFloat(match[1].replace(',', '.'));
+    } else if (t.litrosAbastecidos || t.reservationRef?.abastecimentoLitros) {
+      totalLiters += Number(t.litrosAbastecidos || t.reservationRef?.abastecimentoLitros || 0);
     }
   });
 
@@ -392,8 +429,20 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     
     const litrosNum = parseFloat(liters.replace(',', '.'));
     let precoPorLitro = 9.0;
-    if (paymentType === 'credit') precoPorLitro = 10.0;
-    if (paymentType === 'admin') precoPorLitro = 13.0;
+    let paymentLabel = 'PIX (Digital)';
+    if (paymentType === 'dinheiro') {
+      precoPorLitro = 9.0;
+      paymentLabel = 'Dinheiro (Caixa Físico)';
+    } else if (paymentType === 'credit') {
+      precoPorLitro = 10.0;
+      paymentLabel = 'Cartão de Crédito';
+    } else if (paymentType === 'debit') {
+      precoPorLitro = 9.0;
+      paymentLabel = 'Cartão de Débito';
+    } else if (paymentType === 'admin') {
+      precoPorLitro = 13.0;
+      paymentLabel = 'Enviar p/ Administradora';
+    }
     const valorTotal = litrosNum * precoPorLitro;
 
     const boat = getEmbarcacao(selectedBoatId);
@@ -403,7 +452,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       id: `trans_${Date.now()}`,
       tipo: 'receita',
       categoria: 'receita_combustivel',
-      descricao: `Abastecimento Marina (${paymentType === 'admin' ? 'Enviar p/ Administradora' : paymentType === 'credit' ? 'Cartão Crédito' : 'Pix/Dinheiro'}): ${litrosNum}L`,
+      descricao: `Abastecimento Marina (${paymentLabel}): ${litrosNum}L`,
       valor: valorTotal,
       status: paymentType === 'admin' ? 'pendente' : 'pago',
       metodoPagamento: paymentType,
@@ -531,12 +580,20 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
 
     let pricePerLiter = 9.0;
-    let paymentLabel = 'Pix / Dinheiro / Débito';
+    let paymentLabel = 'PIX (Digital)';
     let txStatus = 'pago';
 
-    if (chargePaymentType === 'credit') {
+    if (chargePaymentType === 'dinheiro') {
+      pricePerLiter = 9.0;
+      paymentLabel = 'Dinheiro (Caixa Físico)';
+      txStatus = 'pago';
+    } else if (chargePaymentType === 'credit') {
       pricePerLiter = 10.0;
       paymentLabel = 'Cartão de Crédito';
+      txStatus = 'pago';
+    } else if (chargePaymentType === 'debit') {
+      pricePerLiter = 9.0;
+      paymentLabel = 'Cartão de Débito';
       txStatus = 'pago';
     } else if (chargePaymentType === 'admin') {
       pricePerLiter = 13.0;
@@ -783,7 +840,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
     setEditLiters(String(litersVal || ''));
     
-    setEditPaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+    const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
+    if (pm === 'dinheiro') setEditPaymentType('dinheiro');
+    else if (pm === 'credit') setEditPaymentType('credit');
+    else if (pm === 'debit') setEditPaymentType('debit');
+    else if (pm === 'admin') setEditPaymentType('admin');
+    else setEditPaymentType('pix');
+
     setEditStatus(t.status === 'pago' ? 'pago' : 'pendente');
     setEditDate(t.data || getTodayStr());
   };
@@ -798,10 +861,16 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     setIsSubmitting(true);
     const litrosNum = parseFloat(editLiters.replace(',', '.'));
     let pricePerLiter = 9.0;
-    let paymentLabel = 'Pix / Dinheiro';
-    if (editPaymentType === 'credit') {
+    let paymentLabel = 'PIX (Digital)';
+    if (editPaymentType === 'dinheiro') {
+      pricePerLiter = 9.0;
+      paymentLabel = 'Dinheiro (Caixa Físico)';
+    } else if (editPaymentType === 'credit') {
       pricePerLiter = 10.0;
       paymentLabel = 'Cartão de Crédito';
+    } else if (editPaymentType === 'debit') {
+      pricePerLiter = 9.0;
+      paymentLabel = 'Cartão de Débito';
     } else if (editPaymentType === 'admin') {
       pricePerLiter = 13.0;
       paymentLabel = 'Faturado / Administradora';
@@ -1444,6 +1513,85 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
         </div>
 
+        {/* Caixa Físico vs PIX vs Cartões vs Administradora Breakdown */}
+        <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-md border border-slate-800 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+                <Banknote className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-white tracking-tight">Conferência & Fechamento de Caixa da Marina</h3>
+                <p className="text-[11px] text-slate-400">Separação de dinheiro físico em espécie vs transações bancárias / faturadas</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Geral Recebido</span>
+              <span className="text-lg font-black text-emerald-400 font-mono">
+                {totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+            {/* 1. Dinheiro em Espécie (Caixa da Marina) */}
+            <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-3 space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                <Banknote className="w-3.5 h-3.5" />
+                <span>Caixa Físico (Dinheiro)</span>
+              </span>
+              <p className="text-lg sm:text-xl font-black text-emerald-300 font-mono">
+                {totalDinheiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </p>
+              <p className="text-[10px] text-emerald-200/70 font-medium">
+                💵 Cédulas na gaveta do caixa
+              </p>
+            </div>
+
+            {/* 2. PIX (Conta Bancária) */}
+            <div className="bg-cyan-950/40 border border-cyan-500/30 rounded-xl p-3 space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+                <QrCode className="w-3.5 h-3.5" />
+                <span>PIX (Conta Bancária)</span>
+              </span>
+              <p className="text-lg sm:text-xl font-black text-cyan-300 font-mono">
+                {totalPix.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </p>
+              <p className="text-[10px] text-cyan-200/70 font-medium">
+                📱 Transferência / QR Code
+              </p>
+            </div>
+
+            {/* 3. Cartões (Crédito & Débito) */}
+            <div className="bg-blue-950/40 border border-blue-500/30 rounded-xl p-3 space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-400 flex items-center gap-1">
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>Cartões (Maquininha)</span>
+              </span>
+              <p className="text-lg sm:text-xl font-black text-blue-300 font-mono">
+                {totalCartao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </p>
+              <p className="text-[10px] text-blue-200/70 font-medium">
+                💳 Maquininha no píer
+              </p>
+            </div>
+
+            {/* 4. Administradora (Faturado Pós-pago) */}
+            <div className="bg-purple-950/40 border border-purple-500/30 rounded-xl p-3 space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Administradora (Faturado)</span>
+              </span>
+              <p className="text-lg sm:text-xl font-black text-purple-300 font-mono">
+                {totalAdmin.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </p>
+              <p className="text-[10px] text-purple-200/70 font-medium">
+                🏢 Faturamento pós-pago
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Search, Filter & Tabs Bar */}
         <div className="space-y-4 pt-2">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
@@ -1601,9 +1749,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
                   >
                     <option value="all">Todas as Formas</option>
-                    <option value="pix">Pix / Dinheiro</option>
-                    <option value="credit">Cartão de Crédito</option>
-                    <option value="admin">Enviar para a Administradora</option>
+                    <option value="dinheiro">💵 Dinheiro (Caixa Físico)</option>
+                    <option value="pix">📱 PIX (Conta Digital)</option>
+                    <option value="credit">💳 Cartão de Crédito</option>
+                    <option value="debit">💳 Cartão de Débito</option>
+                    <option value="admin">🏢 Administradora (Faturado)</option>
                   </select>
                 </div>
 
@@ -1786,16 +1936,66 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
                       {/* Bottom Actions Row */}
                       <div className="flex items-center justify-between gap-2 pt-1">
-                        <span className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold truncate max-w-[50%]">
-                          Forma: <strong className="text-slate-700">{isFaturado ? 'Enviar p/ Administradora' : t.metodoPagamento === 'credit' ? 'Cartão Crédito' : 'Pix/Dinheiro'}</strong>
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                          {(() => {
+                            const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
+                            const desc = (t.descricao || '').toLowerCase();
+                            if (isFaturado || pm === 'admin' || desc.includes('admin') || desc.includes('faturado')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200">
+                                  <Building2 className="w-3 h-3 text-purple-600" />
+                                  <span>Faturado Admin</span>
+                                </span>
+                              );
+                            }
+                            if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-300">
+                                  <Banknote className="w-3 h-3 text-emerald-600" />
+                                  <span>Dinheiro (Caixa)</span>
+                                </span>
+                              );
+                            }
+                            if (pm === 'pix' || desc.includes('pix')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-cyan-50 text-cyan-700 border border-cyan-300">
+                                  <QrCode className="w-3 h-3 text-cyan-600" />
+                                  <span>PIX (Digital)</span>
+                                </span>
+                              );
+                            }
+                            if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  <CreditCard className="w-3 h-3 text-blue-600" />
+                                  <span>Cartão Crédito</span>
+                                </span>
+                              );
+                            }
+                            if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  <CreditCard className="w-3 h-3 text-blue-600" />
+                                  <span>Cartão Débito</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span>Pendente</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
 
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             onClick={() => {
                               if (!isItemCobrado) {
                                 setChargeTargetItem(t);
-                                setChargePaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+                                const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
+                                setChargePaymentType(pm === 'dinheiro' ? 'dinheiro' : pm === 'credit' ? 'credit' : pm === 'debit' ? 'debit' : pm === 'admin' ? 'admin' : 'pix');
                                 setChargeComprovanteUrl(t.comprovanteUrl || null);
                               }
                             }}
@@ -1898,10 +2098,57 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                         </td>
 
                         <td className="p-3.5">
-                          <span className="font-semibold text-slate-700 block uppercase text-[10px] tracking-wide">
-                            {isFaturado ? 'Enviar p/ Administradora' : t.metodoPagamento === 'credit' || t.reservationRef?.abastecimentoFormaPagamento === 'credit' ? 'Cartão Crédito' : t.metodoPagamento === 'pix' || t.reservationRef?.abastecimentoFormaPagamento === 'pix' ? 'Pix / Dinheiro' : 'Pendente'}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block">{t.data}</span>
+                          {(() => {
+                            const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
+                            const desc = (t.descricao || '').toLowerCase();
+                            if (isFaturado || pm === 'admin' || desc.includes('admin') || desc.includes('faturado')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200">
+                                  <Building2 className="w-3 h-3 text-purple-600" />
+                                  <span>Faturado Admin</span>
+                                </span>
+                              );
+                            }
+                            if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-300">
+                                  <Banknote className="w-3 h-3 text-emerald-600" />
+                                  <span>Dinheiro (Caixa)</span>
+                                </span>
+                              );
+                            }
+                            if (pm === 'pix' || desc.includes('pix')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-cyan-50 text-cyan-700 border border-cyan-300">
+                                  <QrCode className="w-3 h-3 text-cyan-600" />
+                                  <span>PIX (Digital)</span>
+                                </span>
+                              );
+                            }
+                            if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  <CreditCard className="w-3 h-3 text-blue-600" />
+                                  <span>Cartão Crédito</span>
+                                </span>
+                              );
+                            }
+                            if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  <CreditCard className="w-3 h-3 text-blue-600" />
+                                  <span>Cartão Débito</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span>Pendente</span>
+                              </span>
+                            );
+                          })()}
+                          <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">{t.data}</span>
                         </td>
 
                         <td className="p-3.5 text-center">
@@ -2096,30 +2343,79 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 text-xs block">Forma de Pagamento</label>
+                <label className="font-bold text-slate-700 text-xs block">Forma de Pagamento *</label>
                 <div className="grid grid-cols-1 gap-2">
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'pix' ? 'border-[#2563EB] bg-[#2563EB]/5 ring-1 ring-[#2563EB]' : 'border-slate-200 bg-white'}`}>
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'dinheiro' ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="payment" value="dinheiro" checked={paymentType === 'dinheiro'} onChange={() => setPaymentType('dinheiro')} className="sr-only" />
+                    <div className="flex-1">
+                      <span className="font-bold text-sm text-emerald-950 flex items-center gap-1.5">
+                        <Banknote className="w-4 h-4 text-emerald-600" />
+                        <span>Dinheiro (Caixa Físico)</span>
+                      </span>
+                      <span className="block text-[11px] text-emerald-700 font-medium mt-0.5">R$ 9,00/L (Entrada física de cédulas no caixa da marina)</span>
+                    </div>
+                  </label>
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'pix' ? 'border-cyan-600 bg-cyan-50 ring-1 ring-cyan-600' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="payment" value="pix" checked={paymentType === 'pix'} onChange={() => setPaymentType('pix')} className="sr-only" />
                     <div className="flex-1">
-                      <span className="block font-bold text-sm text-slate-900">Pix / Dinheiro</span>
-                      <span className="block text-[11px] text-slate-500 font-medium">R$ 9,00/L (Recebido na hora)</span>
+                      <span className="font-bold text-sm text-cyan-950 flex items-center gap-1.5">
+                        <QrCode className="w-4 h-4 text-cyan-600" />
+                        <span>PIX (Conta Bancária)</span>
+                      </span>
+                      <span className="block text-[11px] text-cyan-700 font-medium mt-0.5">R$ 9,00/L (Transferência bancária / QR Code)</span>
                     </div>
                   </label>
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'credit' ? 'border-[#2563EB] bg-[#2563EB]/5 ring-1 ring-[#2563EB]' : 'border-slate-200 bg-white'}`}>
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'credit' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
                     <div className="flex-1">
-                      <span className="block font-bold text-sm text-slate-900">Cartão de Crédito</span>
-                      <span className="block text-[11px] text-slate-500 font-medium">R$ 10,00/L (Recebido na hora)</span>
+                      <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                        <CreditCard className="w-4 h-4 text-blue-600" />
+                        <span>Cartão de Crédito</span>
+                      </span>
+                      <span className="block text-[11px] text-slate-500 font-medium mt-0.5">R$ 10,00/L (Recebido na maquininha)</span>
                     </div>
                   </label>
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'admin' ? 'border-amber-500 bg-amber-50 ring-1 ring-amber-500' : 'border-slate-200 bg-white'}`}>
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'debit' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="payment" value="debit" checked={paymentType === 'debit'} onChange={() => setPaymentType('debit')} className="sr-only" />
+                    <div className="flex-1">
+                      <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                        <CreditCard className="w-4 h-4 text-blue-600" />
+                        <span>Cartão de Débito</span>
+                      </span>
+                      <span className="block text-[11px] text-slate-500 font-medium mt-0.5">R$ 9,00/L (Recebido na maquininha)</span>
+                    </div>
+                  </label>
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'admin' ? 'border-purple-600 bg-purple-50 ring-1 ring-purple-600' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
                     <div className="flex-1">
-                      <span className="block font-bold text-sm text-slate-900">Enviar para a Administradora</span>
-                      <span className="block text-[11px] text-slate-500 font-medium">R$ 13,00/L (Cobrança Mensal Pendente)</span>
+                      <span className="font-bold text-sm text-purple-950 flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-purple-600" />
+                        <span>Enviar para a Administradora</span>
+                      </span>
+                      <span className="block text-[11px] text-purple-700 font-medium mt-0.5">R$ 13,00/L (Cobrança Mensal Pendente)</span>
                     </div>
                   </label>
                 </div>
+
+                {/* Banner de Orientação */}
+                {paymentType === 'dinheiro' && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-medium flex items-start gap-2 animate-in fade-in">
+                    <Banknote className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block text-emerald-950 font-bold">💵 Entrada no Caixa Físico da Marina</strong>
+                      O valor deve ser recebido em cédulas e recolhido na gaveta física para a conferência diária do caixa.
+                    </div>
+                  </div>
+                )}
+                {paymentType === 'pix' && (
+                  <div className="p-3 bg-cyan-50 border border-cyan-300 rounded-xl text-xs text-cyan-900 font-medium flex items-start gap-2 animate-in fade-in">
+                    <QrCode className="w-4 h-4 text-cyan-700 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block text-cyan-950 font-bold">📱 Pagamento Digital PIX</strong>
+                      Transação direta na conta bancária da Marina. Anexe o comprovante abaixo caso desejado.
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -2206,25 +2502,50 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 <div className="space-y-2">
                   <label className="font-bold text-slate-700 text-xs block">Selecione a Modalidade de Cobrança *</label>
                   
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'pix' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="chargePayment" value="pix" checked={chargePaymentType === 'pix'} onChange={() => setChargePaymentType('pix')} className="sr-only" />
+                  {/* Dinheiro */}
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'dinheiro' ? 'border-emerald-600 bg-emerald-50/60 ring-1 ring-emerald-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="chargePayment" value="dinheiro" checked={chargePaymentType === 'dinheiro'} onChange={() => setChargePaymentType('dinheiro')} className="sr-only" />
                     <div className="flex-1 flex justify-between items-center">
                       <div>
-                        <span className="block font-extrabold text-sm text-slate-900">Pix / Dinheiro / Débito</span>
-                        <span className="block text-[11px] text-slate-500 font-medium">R$ 9,00 / Litro (Pago)</span>
+                        <span className="font-extrabold text-sm text-emerald-950 flex items-center gap-1.5">
+                          <Banknote className="w-4 h-4 text-emerald-600" />
+                          <span>Dinheiro (Caixa Físico)</span>
+                        </span>
+                        <span className="block text-[11px] text-emerald-700 font-medium">R$ 9,00 / Litro (Entrada no caixa do píer)</span>
                       </div>
-                      <span className="font-mono font-black text-sm text-blue-900">
+                      <span className="font-mono font-black text-sm text-emerald-900">
                         {(litrosNum * 9).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </span>
                     </div>
                   </label>
 
+                  {/* PIX */}
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'pix' ? 'border-cyan-600 bg-cyan-50/60 ring-1 ring-cyan-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="chargePayment" value="pix" checked={chargePaymentType === 'pix'} onChange={() => setChargePaymentType('pix')} className="sr-only" />
+                    <div className="flex-1 flex justify-between items-center">
+                      <div>
+                        <span className="font-extrabold text-sm text-cyan-950 flex items-center gap-1.5">
+                          <QrCode className="w-4 h-4 text-cyan-600" />
+                          <span>PIX (Conta Bancária)</span>
+                        </span>
+                        <span className="block text-[11px] text-cyan-700 font-medium">R$ 9,00 / Litro (Transferência digital)</span>
+                      </div>
+                      <span className="font-mono font-black text-sm text-cyan-900">
+                        {(litrosNum * 9).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </div>
+                  </label>
+
+                  {/* Cartão de Crédito */}
                   <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'credit' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="chargePayment" value="credit" checked={chargePaymentType === 'credit'} onChange={() => setChargePaymentType('credit')} className="sr-only" />
                     <div className="flex-1 flex justify-between items-center">
                       <div>
-                        <span className="block font-extrabold text-sm text-slate-900">Cartão de Crédito</span>
-                        <span className="block text-[11px] text-slate-500 font-medium">R$ 10,00 / Litro</span>
+                        <span className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+                          <CreditCard className="w-4 h-4 text-blue-600" />
+                          <span>Cartão de Crédito</span>
+                        </span>
+                        <span className="block text-[11px] text-slate-500 font-medium">R$ 10,00 / Litro (Maquininha)</span>
                       </div>
                       <span className="font-mono font-black text-sm text-blue-900">
                         {(litrosNum * 10).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -2232,16 +2553,35 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     </div>
                   </label>
 
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'admin' ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600' : 'border-slate-200 bg-white'}`}>
+                  {/* Cartão de Débito */}
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'debit' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="chargePayment" value="debit" checked={chargePaymentType === 'debit'} onChange={() => setChargePaymentType('debit')} className="sr-only" />
+                    <div className="flex-1 flex justify-between items-center">
+                      <div>
+                        <span className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+                          <CreditCard className="w-4 h-4 text-blue-600" />
+                          <span>Cartão de Débito</span>
+                        </span>
+                        <span className="block text-[11px] text-slate-500 font-medium">R$ 9,00 / Litro (Maquininha)</span>
+                      </div>
+                      <span className="font-mono font-black text-sm text-blue-900">
+                        {(litrosNum * 9).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </div>
+                  </label>
+
+                  {/* Administradora */}
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'admin' ? 'border-purple-600 bg-purple-50/50 ring-1 ring-purple-600' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="chargePayment" value="admin" checked={chargePaymentType === 'admin'} onChange={() => setChargePaymentType('admin')} className="sr-only" />
                     <div className="flex-1 flex justify-between items-center">
                       <div>
-                        <span className="block font-extrabold text-sm text-slate-900 flex items-center gap-1">
-                          <Building2 className="w-4 h-4 text-indigo-600" /> Enviar para a Administradora
+                        <span className="font-extrabold text-sm text-purple-950 flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4 text-purple-600" />
+                          <span>Enviar para a Administradora</span>
                         </span>
-                        <span className="block text-[11px] text-indigo-700 font-bold">Faturado Pós-pago (R$ 13,00 / Litro)</span>
+                        <span className="block text-[11px] text-purple-700 font-bold">Faturado Pós-pago (R$ 13,00 / Litro)</span>
                       </div>
-                      <span className="font-mono font-black text-sm text-indigo-900">
+                      <span className="font-mono font-black text-sm text-purple-900">
                         {(litrosNum * 13).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </span>
                     </div>
@@ -2405,9 +2745,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                       onChange={(e) => setEditPaymentType(e.target.value as any)}
                       className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-xs focus:ring-amber-500 cursor-pointer"
                     >
-                      <option value="pix">Pix / Dinheiro (R$9/L)</option>
-                      <option value="credit">Cartão Crédito (R$10/L)</option>
-                      <option value="admin">Enviar p/ Administradora (R$13/L)</option>
+                      <option value="dinheiro">💵 Dinheiro (Caixa Físico - R$9/L)</option>
+                      <option value="pix">📱 PIX (Conta Bancária - R$9/L)</option>
+                      <option value="credit">💳 Cartão Crédito (R$10/L)</option>
+                      <option value="debit">💳 Cartão Débito (R$9/L)</option>
+                      <option value="admin">🏢 Administradora (R$13/L)</option>
                     </select>
                   </div>
                 </div>

@@ -185,6 +185,7 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN bairro VARCHAR(100);`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN dataNascimento VARCHAR(50);`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN statusFinanceiro VARCHAR(50) DEFAULT 'em_dia';`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN observacoesFinanceiras TEXT;`); } catch (e) {}

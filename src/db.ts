@@ -89,11 +89,11 @@ export const clientDB = {
   getById: (id: string): Cliente | undefined => {
     return memoryClients.find(c => c.id === id);
   },
-  create: (cliente: Omit<Cliente, 'id' | 'dataCadastro'>): Cliente => {
+  create: (cliente: (Omit<Cliente, 'id' | 'dataCadastro'> & { id?: string; dataCadastro?: string }) | Cliente): Cliente => {
     const newClient: Cliente = {
       ...cliente,
-      id: `cli_${Date.now()}`,
-      dataCadastro: new Date().toISOString()
+      id: (cliente as any).id || `cli_${Date.now()}`,
+      dataCadastro: (cliente as any).dataCadastro || new Date().toISOString()
     };
     memoryClients.push(newClient);
 
@@ -220,10 +220,10 @@ export const boatDB = {
   getById: (id: string): Embarcacao | undefined => {
     return boatDB.getAll().find(b => b.id === id);
   },
-  create: (boat: Omit<Embarcacao, 'id'>): Embarcacao => {
+  create: (boat: (Omit<Embarcacao, 'id'> & { id?: string }) | Embarcacao): Embarcacao => {
     const newBoat: Embarcacao = {
       ...boat,
-      id: `boat_${Date.now()}`
+      id: (boat as any).id || `boat_${Date.now()}`
     };
     memoryBoats.push(newBoat);
     saveToRemoteDB('boats', 'create', newBoat);
