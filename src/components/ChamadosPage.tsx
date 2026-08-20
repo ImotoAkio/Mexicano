@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import Select from 'react-select';
 import { Chamado, Embarcacao, Cliente } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 import { chamadoDB, boatDB, clientDB, maintenanceDB } from '../db';
 import MaintenanceModal from './pecas/MaintenanceModal';
 import UserAvatarMenu from './header/UserAvatarMenu';
@@ -109,11 +110,10 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
     };
   }, [chamados]);
 
-  // Boat select options
   const boatOptions = useMemo(() => {
     return embarcacoes.map(b => ({
       value: b.id,
-      label: `M${b.numero} - ${b.nome} (${b.modelo || b.tipo})`,
+      label: `${getBoatCode(b)} (${b.modelo || (b.tipo === 'jet' ? 'Jet Ski' : 'Lancha')})`,
       boat: b
     }));
   }, [embarcacoes]);
@@ -432,10 +432,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                     </div>
                     <div>
                       <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                        <span>{boat?.nome || 'Embarcação'}</span>
-                        <span className="text-[10px] font-mono text-slate-500 bg-white px-1.5 rounded border">
-                          M{boat?.numero || '00'}
-                        </span>
+                        <span>{getBoatCode(boat)}</span>
                       </div>
                       <span className="text-[10px] text-slate-400 font-medium">
                         {boat?.modelo || boat?.tipo}
@@ -709,7 +706,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                     return (
                       <span className="font-extrabold text-slate-900 flex items-center gap-1.5">
                         <Ship className="w-3.5 h-3.5 text-[#186b77]" />
-                        {boat?.nome} (M{boat?.numero})
+                        {getBoatCode(boat)}
                       </span>
                     );
                   })()}

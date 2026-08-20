@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid, ChevronDown } from 'lucide-react';
 import Select from 'react-select';
 
@@ -721,13 +722,13 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                           )}
                           <div>
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-slate-900 text-xs">{boat.nome}</span>
+                              <span className="font-bold text-slate-900 text-xs">{getBoatCode(boat)}</span>
                               <span className="text-[10px] text-slate-400 font-medium">
                                 ({boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
                               </span>
                             </div>
                             <span className="text-[10px] text-slate-400 block font-mono">
-                              {boat.fabricante ? `${boat.fabricante} (${boat.ano || 'N/I'})` : `Ano: ${boat.ano || 'N/I'}`}
+                              Doc: {boat.nome} {boat.fabricante ? `• ${boat.fabricante}` : ''}
                             </span>
                           </div>
                         </div>
@@ -844,7 +845,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                       )}
                       <div>
                         <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                          <h4 className="font-semibold text-slate-900 text-lg leading-tight">{boat.nome}</h4>
+                          <h4 className="font-semibold text-slate-900 text-lg leading-tight">{getBoatCode(boat)}</h4>
                           <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${
                             boat.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
                           }`}>

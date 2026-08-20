@@ -4,7 +4,8 @@ import {
   CheckCircle2, XCircle, HelpCircle, Ship, User, CalendarDays, Eye, ChevronDown, X
 } from 'lucide-react';
 import { reservationDB, boatDB, clientDB } from '../db';
-import type { Reserva, Embarcacao, Cliente } from '../types';
+import { Embarcacao, Cliente, Reserva } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 
 type ViewMode = 'calendar' | 'list';
 
@@ -35,9 +36,11 @@ export default function FinanceSchedulesPage() {
     setClients(clientDB.getAll());
   }, []);
 
-  // Utility helpers
   const getClientName = (id: string) => clients.find(c => c.id === id)?.nome || 'Cliente não encontrado';
-  const getBoatName = (id: string) => boats.find(b => b.id === id)?.nome || 'Embarcação não encontrada';
+  const getBoatName = (id: string) => {
+    const b = boats.find(b => b.id === id);
+    return b ? getBoatCode(b) : 'Embarcação não encontrada';
+  };
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth(); // 0-indexed
@@ -261,7 +264,7 @@ export default function FinanceSchedulesPage() {
           >
             <option value="todos">Todas Embarcações</option>
             {boats.map(boat => (
-              <option key={boat.id} value={boat.id}>{boat.nome} ({boat.tipo === 'jet' ? 'Jet' : 'Lancha'})</option>
+              <option key={boat.id} value={boat.id}>{getBoatCode(boat)} ({boat.tipo === 'jet' ? 'Jet' : 'Lancha'})</option>
             ))}
           </select>
           <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -407,7 +410,7 @@ export default function FinanceSchedulesPage() {
                         <div className="space-y-2 mt-3">
                           <div className="flex items-center gap-2 text-xs text-slate-700">
                             <Ship className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="font-bold text-slate-800">{boat?.nome || 'N/A'}</span>
+                            <span className="font-bold text-slate-800">{getBoatCode(boat)}</span>
                             <span className="text-slate-400">({boat?.tipo === 'jet' ? 'Jet' : 'Lancha'})</span>
                           </div>
                           

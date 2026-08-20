@@ -14,6 +14,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { Manutencao, Embarcacao, Mecanico } from '../../types';
+import { getBoatCode } from '../../utils/boatUtils';
 import { generateOrcamentoOSPDF } from '../../utils/pdfGenerator';
 import { maintenanceDB } from '../../db';
 
@@ -125,7 +126,7 @@ export default function MaintenanceListView({
                     {/* Embarcação */}
                     <td className="py-3.5 px-3">
                       <strong className="text-slate-900 font-extrabold block">
-                        {boat?.nome || 'Embarcação'} (M{boat?.numero || '00'})
+                        {getBoatCode(boat)}
                       </strong>
                       <span className="text-[10px] text-slate-400 font-medium">{boat?.modelo || boat?.tipo}</span>
                     </td>
@@ -230,7 +231,7 @@ export default function MaintenanceListView({
 
               <div>
                 <h4 className="font-extrabold text-slate-900 text-sm">{m.tituloChamado || 'Manutenção'}</h4>
-                <span className="text-xs text-slate-500 font-medium block mt-0.5">{boat?.nome} (M{boat?.numero})</span>
+                <span className="text-xs text-slate-500 font-medium block mt-0.5">{getBoatCode(boat)}</span>
               </div>
 
               <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">

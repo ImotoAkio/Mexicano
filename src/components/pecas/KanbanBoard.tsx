@@ -15,7 +15,8 @@ import {
   DollarSign,
   ClipboardList
 } from 'lucide-react';
-import { Manutencao, Embarcacao, Mecanico } from '../../types';
+import { Manutencao, Embarcacao, Chamado, Mecanico } from '../../types';
+import { getBoatCode } from '../../utils/boatUtils';
 import { maintenanceDB, chamadoDB } from '../../db';
 
 interface KanbanBoardProps {
@@ -220,7 +221,7 @@ export default function KanbanBoard({
                       <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mt-1.5">
                         <Ship className="w-3.5 h-3.5 text-[#186b77] shrink-0" />
                         <span className="truncate">
-                          {boat ? `${boat.nome} ${boat.numero ? `(M${boat.numero})` : ''}` : 'Embarcação'}
+                          {boat ? getBoatCode(boat) : 'Embarcação'}
                         </span>
                       </div>
 

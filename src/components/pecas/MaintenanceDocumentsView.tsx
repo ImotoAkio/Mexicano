@@ -14,6 +14,7 @@ import {
   Building2
 } from 'lucide-react';
 import { Manutencao, Embarcacao, Cliente } from '../../types';
+import { getBoatCode } from '../../utils/boatUtils';
 import { generateOrcamentoOSPDF } from '../../utils/pdfGenerator';
 import { clientDB } from '../../db';
 
@@ -79,7 +80,7 @@ export default function MaintenanceDocumentsView({
       return;
     }
 
-    let texto = `*ORÇAMENTO DE MANUTENÇÃO - ${boat?.nome || 'Embarcação'}*\n\n`;
+    let texto = `*ORÇAMENTO DE MANUTENÇÃO - ${getBoatCode(boat)}*\n\n`;
     texto += `*Serviço:* ${m.tituloChamado || 'Manutenção'}\n`;
     texto += `*Status:* ${m.orcamentoAprovado ? 'Aprovado' : 'Aguardando Aprovação'}\n\n`;
     
@@ -221,7 +222,7 @@ export default function MaintenanceDocumentsView({
               <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 font-bold text-[10px] uppercase">Embarcação</span>
-                  <strong className="text-slate-800 font-bold">{boat?.nome} (M{boat?.numero})</strong>
+                  <strong className="text-slate-800 font-bold">{getBoatCode(boat)}</strong>
                 </div>
 
                 <div className="flex items-center justify-between">

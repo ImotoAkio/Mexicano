@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Reserva } from '../../types';
+import { Reserva, Embarcacao, Cliente } from '../../types';
+import { getBoatCode } from '../../utils/boatUtils';
 import { boatDB, clientDB, reservationDB } from '../../db';
 import { updateGoogleCalendarEvent } from '../../googleCalendar';
 import { generateAvisoSaidaPDF } from '../../utils/pdfGenerator';
@@ -94,7 +95,7 @@ export default function StatusModal({
         lines.push(`Pessoas a bordo: ${pessoasABordo}`);
       }
 
-      if (boat) lines.push(`Embarcação: ${boat.nome}`);
+      if (boat) lines.push(`Embarcação: ${getBoatCode(boat)}`);
       if (client) lines.push(`Proprietário: ${client.nome}`);
       if (client?.telefone) lines.push(`Contato: ${client.telefone}`);
       lines.push(`Período: ${reserva.periodo === 'dia_inteiro' ? 'Dia Inteiro' : reserva.periodo === 'manha' ? 'Manhã' : 'Tarde'}`);

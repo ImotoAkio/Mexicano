@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { getBoatCode } from '../utils/boatUtils';
 import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
@@ -1430,7 +1431,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                           <div key={reserva.id} className={`bg-white p-3.5 rounded-xl border shadow-xs hover:shadow-md transition-all space-y-2 ${isConfirmado ? 'border-emerald-200 hover:border-emerald-300' : 'border-amber-100'}`}>
                             <div className="flex items-start justify-between gap-1">
                               <div>
-                                <span className="font-extrabold text-sm text-slate-900 block leading-tight">{barco?.nome || reserva.barcoNome || 'Embarcação'}</span>
+                                <span className="font-extrabold text-sm text-slate-900 block leading-tight">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
                                 <div className="mt-1 flex items-center gap-1.5">
                                   <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
                                     isConfirmado 
@@ -1499,7 +1500,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         return (
                           <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-xs hover:shadow-md transition-all space-y-2">
                             <div className="flex items-start justify-between">
-                              <span className="font-extrabold text-sm text-slate-900">{barco?.nome || reserva.barcoNome || 'Embarcação'}</span>
+                              <span className="font-extrabold text-sm text-slate-900">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
                               <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md">
                                 {reserva.horaDescida}
                               </span>
@@ -1550,7 +1551,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         return (
                           <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs hover:shadow-md transition-all space-y-2">
                             <div className="flex items-start justify-between">
-                              <span className="font-extrabold text-sm text-slate-900">{barco?.nome || reserva.barcoNome || 'Embarcação'}</span>
+                              <span className="font-extrabold text-sm text-slate-900">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
                               <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-md ${reserva.horaSaida ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-400'}`}>
                                 {reserva.horaSaida || '--:--'}
                               </span>
@@ -1597,7 +1598,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         return (
                           <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-xs hover:shadow-md transition-all space-y-2">
                             <div className="flex items-start justify-between">
-                              <span className="font-extrabold text-sm text-slate-900">{barco?.nome || reserva.barcoNome || 'Embarcação'}</span>
+                              <span className="font-extrabold text-sm text-slate-900">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
                               <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md">
                                 {reserva.horaChegada || 'Chegou'}
                               </span>

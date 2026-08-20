@@ -56,6 +56,7 @@ export interface RegistroAcessorios {
   mesa?: boolean;
   bancosCadeiras?: boolean;
   churrasqueira?: boolean;
+  extintores?: boolean;
   observacoes?: string;
   statusConferencia?: 'conforme' | 'com_pendencia';
   registradoPor?: string;
@@ -104,6 +105,7 @@ export interface Embarcacao {
     mesa?: boolean;
     bancosCadeiras?: boolean;
     churrasqueira?: boolean;
+    extintores?: boolean;
     observacoes?: string;
     ultimaConferencia?: string;
     historico?: RegistroAcessorios[];
@@ -275,6 +277,7 @@ export interface Manutencao {
     mesa?: boolean;
     bancosCadeiras?: boolean;
     churrasqueira?: boolean;
+    extintores?: boolean;
   };
   pecas?: Array<{
     nome: string;

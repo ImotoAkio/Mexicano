@@ -332,6 +332,7 @@ export const boatDB = {
       mesa?: boolean;
       bancosCadeiras?: boolean;
       churrasqueira?: boolean;
+      extintores?: boolean;
       observacoes?: string;
     },
     horasMotor?: number,
@@ -347,7 +348,8 @@ export const boatDB = {
       acessoriosData.tenda !== false && 
       acessoriosData.mesa !== false && 
       acessoriosData.bancosCadeiras !== false && 
-      acessoriosData.churrasqueira !== false;
+      acessoriosData.churrasqueira !== false &&
+      acessoriosData.extintores !== false;
 
     const novoRegistro: RegistroAcessorios = {
       id: `reg_acc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -358,6 +360,7 @@ export const boatDB = {
       mesa: !!acessoriosData.mesa,
       bancosCadeiras: !!acessoriosData.bancosCadeiras,
       churrasqueira: !!acessoriosData.churrasqueira,
+      extintores: !!acessoriosData.extintores,
       observacoes: acessoriosData.observacoes || '',
       statusConferencia: isFullyEquipped ? 'conforme' : 'com_pendencia',
       registradoPor,
@@ -375,6 +378,7 @@ export const boatDB = {
         mesa: !!acessoriosData.mesa,
         bancosCadeiras: !!acessoriosData.bancosCadeiras,
         churrasqueira: !!acessoriosData.churrasqueira,
+        extintores: !!acessoriosData.extintores,
         observacoes: acessoriosData.observacoes || '',
         ultimaConferencia: timestamp,
         historico: novoHistoricoAcc

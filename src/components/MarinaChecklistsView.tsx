@@ -6,6 +6,7 @@ import {
   Plus, Loader2, Save, MoreVertical, SlidersHorizontal, LayoutGrid, List, ArrowUpCircle, ArrowDownCircle
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 import { ZoomableImage } from './ZoomableImage';
 import { logAction } from '../db';
 
@@ -537,7 +538,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                               </div>
                             )}
                             <div>
-                              <span className="font-bold text-slate-900 block text-sm">{boat?.nome || 'Embarcação'}</span>
+                              <span className="font-bold text-slate-900 block text-sm">{getBoatCode(boat)}</span>
                               <span className="text-[11px] text-slate-400 font-medium block">Vaga: {boat?.vaga || 'N/A'} • {boat?.modelo || 'Lancha'}</span>
                             </div>
                           </div>
@@ -627,7 +628,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                   Relatório de Vistoria Fotográfica
                 </span>
                 <h3 className="text-lg font-black text-slate-900">
-                  {getEmbarcacao(inspectionReserva.embarcacaoId)?.nome || 'Embarcação'}
+                  {getBoatCode(getEmbarcacao(inspectionReserva.embarcacaoId))}
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
                   Cliente: {getCliente(inspectionReserva.clienteId)?.nome || 'Cliente'} • Data: {inspectionReserva.data}
@@ -793,7 +794,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                 >
                   <option value="">Selecione a lancha ou jet...</option>
                   {(data?.boats || []).map(b => (
-                    <option key={b.id} value={b.id}>{b.nome} ({b.vaga || 'Sem Vaga'})</option>
+                    <option key={b.id} value={b.id}>{getBoatCode(b)} ({b.vaga || 'Sem Vaga'})</option>
                   ))}
                 </select>
               </div>

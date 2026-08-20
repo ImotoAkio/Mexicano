@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { reservationDB, boatDB, clientDB } from '../db';
 import { fetchGoogleCalendarEventsRange, CalendarEvent, mergeLocalAndGoogleEvents } from '../googleCalendar';
 import { Embarcacao, Cliente } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 // @ts-ignore
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { 
@@ -601,7 +602,7 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
               }}
               className="w-full h-9 bg-white border border-slate-200 text-sm font-semibold rounded-lg px-2.5 flex items-center justify-between focus:outline-none focus:border-indigo-500 cursor-pointer text-left shadow-xs"
             >
-              <span className="truncate">{activeBoat?.nome || 'Selecione a Embarcação'}</span>
+              <span className="truncate">{activeBoat ? getBoatCode(activeBoat) : 'Selecione a Embarcação'}</span>
               <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 ml-1.5" />
             </button>
             
@@ -632,7 +633,7 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
                         }}
                         className={`w-full text-left px-3 py-2 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer flex items-center justify-between ${b.id === selectedBoatId ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-50' : 'text-slate-700'}`}
                       >
-                        <span className="truncate pr-2">{b.nome}</span>
+                        <span className="truncate pr-2">{getBoatCode(b)}</span>
                         {b.id === selectedBoatId && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
                       </button>
                     ))

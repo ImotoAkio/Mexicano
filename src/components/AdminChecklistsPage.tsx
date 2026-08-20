@@ -8,6 +8,7 @@ import {
   ChevronLeft, ChevronRight, Sliders
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 import { ZoomableImage } from './ZoomableImage';
 import UserAvatarMenu from './header/UserAvatarMenu';
 import SystemSettingsModal from './header/SystemSettingsModal';
@@ -74,7 +75,7 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
   const getClientName = (id: string) => data.clients?.find(c => c.id === id)?.nome || 'Desconhecido';
   const getBoatDetails = (id: string) => {
     const b = data.boats?.find(b => b.id === id);
-    return b ? `${b.nome} (${b.numero})` : 'Desconhecido';
+    return b ? getBoatCode(b) : 'Desconhecido';
   };
 
   const parseFotos = (fotosStr: any): string[] => {
@@ -315,7 +316,7 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
             <Select
               options={data.boats?.map(b => ({
                 value: b.id,
-                label: `${b.nome} ${b.numero ? `(${b.numero})` : ''}`
+                label: `${getBoatCode(b)} (${b.modelo || (b.tipo === 'jet' ? 'Jet Ski' : 'Lancha')})`
               })) || []}
               placeholder="Pesquisar barco..."
               isClearable
@@ -324,8 +325,7 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
                 selectedTimelineBoatId 
                   ? {
                       value: selectedTimelineBoatId,
-                      label: data.boats?.find(b => b.id === selectedTimelineBoatId)?.nome + 
-                             (data.boats?.find(b => b.id === selectedTimelineBoatId)?.numero ? ` (${data.boats?.find(b => b.id === selectedTimelineBoatId)?.numero})` : '')
+                      label: getBoatCode(data.boats?.find(b => b.id === selectedTimelineBoatId))
                     } 
                   : null
               }

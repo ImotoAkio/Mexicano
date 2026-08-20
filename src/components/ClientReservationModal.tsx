@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Calendar, Anchor, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
 import { createGoogleCalendarEvent, CalendarSyncResult } from '../googleCalendar';
+import { getBoatCode } from '../utils/boatUtils';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 
 interface ClientReservationModalProps {
@@ -232,7 +233,7 @@ export default function ClientReservationModal({
               </div>
               <h2 className="text-2xl font-light text-white tracking-wide">Sua reserva foi realizada!</h2>
               <p className="text-sm text-white/60 max-w-sm mx-auto leading-relaxed">
-                A embarcação <strong className="text-white font-medium">{b?.nome}</strong> foi agendada para o dia <strong className="text-[#B69D74]">{formatDateBR(selectedDate)}</strong>.
+                A embarcação <strong className="text-white font-medium">{getBoatCode(b)}</strong> foi agendada para o dia <strong className="text-[#B69D74]">{formatDateBR(selectedDate)}</strong>.
               </p>
             </div>
 
@@ -319,7 +320,7 @@ export default function ClientReservationModal({
               {boats.length === 1 ? (
                 <div className="w-full px-4 py-3 bg-white/5 border border-white/5 rounded-xl text-white font-medium flex items-center">
                   <Anchor className="w-4 h-4 text-[#B69D74] mr-3" />
-                  {boats[0].nome}
+                  {getBoatCode(boats[0])}
                 </div>
               ) : (
                 <select
@@ -330,7 +331,7 @@ export default function ClientReservationModal({
                 >
                   <option value="" disabled>-- Selecione sua Embarcação --</option>
                   {boats.map(b => (
-                    <option key={b.id} value={b.id}>{b.nome}</option>
+                    <option key={b.id} value={b.id}>{getBoatCode(b)}</option>
                   ))}
                 </select>
               )}

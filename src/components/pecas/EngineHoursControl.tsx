@@ -26,12 +26,17 @@ import {
   Check,
   Pencil,
   Zap,
-  Save
+  Save,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  SlidersHorizontal
 } from 'lucide-react';
-import { Embarcacao, Manutencao } from '../../types';
+import { Embarcacao, Manutencao, ConfiguracaoHorimetro } from '../../types';
 import { boatDB } from '../../db';
 import UserAvatarMenu from '../header/UserAvatarMenu';
-import { getHorimetroSettings, calcularStatusRevisao, ConfiguracaoHorimetro, saveHorimetroSettings } from '../../utils/horimetroUtils';
+import { getHorimetroSettings, calcularStatusRevisao, saveHorimetroSettings } from '../../utils/horimetroUtils';
+import { getBoatCode } from '../../utils/boatUtils';
 import HistoricoHorasModal from './HistoricoHorasModal';
 
 interface EngineHoursControlProps {
@@ -41,11 +46,17 @@ interface EngineHoursControlProps {
 }
 
 export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh }: EngineHoursControlProps) {
-  // Search and Filter States
+  // Search, Filter and Sorting States
   const [searchTerm, setSearchTerm] = useState('');
   const [tipoFilter, setTipoFilter] = useState<'todos' | 'lancha' | 'jet'>('todos');
   const [statusFilter, setStatusFilter] = useState<'todos' | 'vencido' | 'proximo' | 'ok'>('todos');
+  const [sortBy, setSortBy] = useState<'horas' | 'nome' | 'numero'>('horas');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedBoatIds, setSelectedBoatIds] = useState<string[]>([]);
+  
+  // Filter Panel Expandable State
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const filterPanelRef = useRef<HTMLDivElement | null>(null);
   
   // Modals & Menu States
   const [selectedBoatForHistory, setSelectedBoatForHistory] = useState<Embarcacao | null>(null);
@@ -81,7 +92,7 @@ export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh
   const boatOptions = useMemo(() => {
     return embarcacoes.map(b => ({
       value: b.id,
-      label: `M${b.numero} - ${b.nome} (${b.modelo || (b.tipo === 'jet' ? 'Jet Ski' : 'Lancha')}) • Atual: ${b.horasMotor || 0}h`,
+      label: `${getBoatCode(b)} (${b.modelo || (b.tipo === 'jet' ? 'Jet Ski' : 'Lancha')}) • Atual: ${b.horasMotor || 0}h`,
       boat: b
     }));
   }, [embarcacoes]);
@@ -97,6 +108,9 @@ export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh
       if (kebabRef.current && !kebabRef.current.contains(e.target as Node)) {
         setActiveKebabId(null);
       }
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setShowFilterPanel(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
 
@@ -107,24 +121,45 @@ export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh
     };
   }, []);
 
-  // Filter boats
-  const filteredBoats = embarcacoes.filter(boat => {
-    const matchesType = tipoFilter === 'todos' || boat.tipo === tipoFilter;
-    const matchesSearch = 
-      boat.nome.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      (boat.numero && boat.numero.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (boat.fabricante && boat.fabricante.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (boat.modelo && boat.modelo.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    if (!matchesType || !matchesSearch) return false;
+  // Filter & Sort boats
+  const filteredBoats = useMemo(() => {
+    return embarcacoes
+      .filter(boat => {
+        const matchesType = tipoFilter === 'todos' || boat.tipo === tipoFilter;
+        const matchesSearch = 
+          boat.nome.toLowerCase().includes(searchTerm.toLowerCase()) || 
+          (boat.numero && boat.numero.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (boat.fabricante && boat.fabricante.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (boat.modelo && boat.modelo.toLowerCase().includes(searchTerm.toLowerCase()));
+        
+        if (!matchesType || !matchesSearch) return false;
 
-    if (statusFilter !== 'todos') {
-      const info = calcularStatusRevisao(boat, manutencoes, settings);
-      if (info.status !== statusFilter) return false;
-    }
+        if (statusFilter !== 'todos') {
+          const info = calcularStatusRevisao(boat, manutencoes, settings);
+          if (info.status !== statusFilter) return false;
+        }
 
-    return true;
-  }).sort((a, b) => (b.horasMotor || 0) - (a.horasMotor || 0));
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'horas') {
+          const ha = a.horasMotor || 0;
+          const hb = b.horasMotor || 0;
+          return sortOrder === 'desc' ? hb - ha : ha - hb;
+        }
+        if (sortBy === 'nome') {
+          const na = (a.nome || '').toLowerCase();
+          const nb = (b.nome || '').toLowerCase();
+          return sortOrder === 'asc' ? na.localeCompare(nb) : nb.localeCompare(na);
+        }
+        if (sortBy === 'numero') {
+          const numA = parseInt(a.numero || '0', 10) || 0;
+          const numB = parseInt(b.numero || '0', 10) || 0;
+          return sortOrder === 'asc' ? numA - numB : numB - numA;
+        }
+        return 0;
+      });
+  }, [embarcacoes, tipoFilter, searchTerm, statusFilter, manutencoes, settings, sortBy, sortOrder]);
 
   // Pagination logic
   const totalItems = filteredBoats.length;
@@ -475,46 +510,260 @@ export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh
               </button>
             </div>
 
-            {/* Ghost Status Filter */}
-            <div className="flex items-center gap-1">
+            {/* Expandable Filter & Sorting Popover */}
+            <div className="relative" ref={filterPanelRef}>
               <button
-                onClick={() => {
-                  const nextStatus = statusFilter === 'todos' ? 'vencido' : statusFilter === 'vencido' ? 'proximo' : statusFilter === 'proximo' ? 'ok' : 'todos';
-                  setStatusFilter(nextStatus);
-                  setCurrentPage(1);
-                }}
-                className={`px-3 py-1.5 border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  statusFilter !== 'todos' 
-                    ? 'bg-teal-50 border-teal-200 text-[#186b77]' 
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                onClick={() => setShowFilterPanel(prev => !prev)}
+                className={`px-3.5 py-1.5 border rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-2xs ${
+                  showFilterPanel || (statusFilter !== 'todos' || sortBy !== 'horas' || sortOrder !== 'desc')
+                    ? 'bg-teal-50 border-teal-300 text-[#186b77] ring-2 ring-teal-500/20 font-bold' 
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <Filter className="w-3.5 h-3.5 text-[#186b77]" />
                 <span>
-                  {statusFilter === 'todos' && 'Filtro Status'}
-                  {statusFilter === 'ok' && 'Dentro da Revisão'}
-                  {statusFilter === 'proximo' && 'Próxima da Revisão'}
-                  {statusFilter === 'vencido' && 'Precisa ir p/ Revisão'}
+                  {statusFilter === 'todos' ? 'Filtros & Ordenação' : 
+                   statusFilter === 'ok' ? 'Filtro: Dentro da Revisão' :
+                   statusFilter === 'proximo' ? 'Filtro: Próxima da Revisão' : 'Filtro: Precisa ir p/ Revisão'}
                 </span>
-                {statusFilter !== 'todos' && (
+                {(statusFilter !== 'todos' || tipoFilter !== 'todos' || sortBy !== 'horas' || sortOrder !== 'desc') && (
                   <span className="w-2 h-2 rounded-full bg-[#186b77]" />
                 )}
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showFilterPanel ? 'rotate-180' : ''}`} />
               </button>
 
-              {(searchTerm || tipoFilter !== 'todos' || statusFilter !== 'todos') && (
-                <button
-                  onClick={() => {
-                    setSearchTerm('');
-                    setTipoFilter('todos');
-                    setStatusFilter('todos');
-                    setCurrentPage(1);
-                  }}
-                  className="text-xs font-semibold text-[#186b77] hover:underline px-2 py-1 cursor-pointer"
-                >
-                  Limpar filtros
-                </button>
+              {/* Expandable Dropdown Popover */}
+              {showFilterPanel && (
+                <div className="absolute left-0 mt-2 w-80 sm:w-96 rounded-2xl bg-white border border-slate-200 shadow-xl ring-1 ring-black/5 z-40 p-4 space-y-4 font-sans animate-in fade-in slide-in-from-top-2 duration-150">
+                  
+                  {/* Painel Header */}
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <div className="flex items-center gap-2 text-slate-900 font-extrabold text-xs uppercase tracking-wider">
+                      <Sliders className="w-4 h-4 text-[#186b77]" />
+                      <span>Filtros e Ordenação</span>
+                    </div>
+                    {(statusFilter !== 'todos' || tipoFilter !== 'todos' || searchTerm !== '' || sortBy !== 'horas' || sortOrder !== 'desc') && (
+                      <button
+                        onClick={() => {
+                          setStatusFilter('todos');
+                          setTipoFilter('todos');
+                          setSearchTerm('');
+                          setSortBy('horas');
+                          setSortOrder('desc');
+                          setCurrentPage(1);
+                        }}
+                        className="text-[11px] font-semibold text-teal-700 hover:text-teal-900 hover:underline cursor-pointer"
+                      >
+                        Limpar filtros
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Seção 1: ORDENAÇÃO */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Exibir Por (Ordenação)
+                    </label>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => { setSortBy('horas'); setSortOrder('desc'); setCurrentPage(1); }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all cursor-pointer ${
+                          sortBy === 'horas' && sortOrder === 'desc'
+                            ? 'bg-teal-50/80 border-teal-300 text-[#186b77]'
+                            : 'bg-slate-50/60 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Clock className="w-3.5 h-3.5 text-teal-600" />
+                          <span>Quantidade de Horas (Maior → Menor)</span>
+                        </span>
+                        {sortBy === 'horas' && sortOrder === 'desc' && <Check className="w-4 h-4 text-[#186b77]" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setSortBy('horas'); setSortOrder('asc'); setCurrentPage(1); }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all cursor-pointer ${
+                          sortBy === 'horas' && sortOrder === 'asc'
+                            ? 'bg-teal-50/80 border-teal-300 text-[#186b77]'
+                            : 'bg-slate-50/60 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Clock className="w-3.5 h-3.5 text-teal-600" />
+                          <span>Quantidade de Horas (Menor → Maior)</span>
+                        </span>
+                        {sortBy === 'horas' && sortOrder === 'asc' && <Check className="w-4 h-4 text-[#186b77]" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setSortBy('nome'); setSortOrder('asc'); setCurrentPage(1); }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all cursor-pointer ${
+                          sortBy === 'nome' && sortOrder === 'asc'
+                            ? 'bg-teal-50/80 border-teal-300 text-[#186b77]'
+                            : 'bg-slate-50/60 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-800">A-Z</span>
+                          <span>Ordem Alfabética (Nome A → Z)</span>
+                        </span>
+                        {sortBy === 'nome' && sortOrder === 'asc' && <Check className="w-4 h-4 text-[#186b77]" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setSortBy('nome'); setSortOrder('desc'); setCurrentPage(1); }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all cursor-pointer ${
+                          sortBy === 'nome' && sortOrder === 'desc'
+                            ? 'bg-teal-50/80 border-teal-300 text-[#186b77]'
+                            : 'bg-slate-50/60 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-800">Z-A</span>
+                          <span>Ordem Alfabética (Nome Z → A)</span>
+                        </span>
+                        {sortBy === 'nome' && sortOrder === 'desc' && <Check className="w-4 h-4 text-[#186b77]" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setSortBy('numero'); setSortOrder('asc'); setCurrentPage(1); }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all cursor-pointer ${
+                          sortBy === 'numero' && sortOrder === 'asc'
+                            ? 'bg-teal-50/80 border-teal-300 text-[#186b77]'
+                            : 'bg-slate-50/60 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-800">M01</span>
+                          <span>Código de Identificação (M01 → M99)</span>
+                        </span>
+                        {sortBy === 'numero' && sortOrder === 'asc' && <Check className="w-4 h-4 text-[#186b77]" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Seção 2: FILTRO STATUS */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Status da Revisão
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('todos'); setCurrentPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                          statusFilter === 'todos' ? 'bg-slate-800 text-white border-slate-800' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        Todos os Status
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('ok'); setCurrentPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          statusFilter === 'ok' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                        }`}
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>Dentro da Revisão</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('proximo'); setCurrentPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          statusFilter === 'proximo' ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold' : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
+                        }`}
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Próxima</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setStatusFilter('vencido'); setCurrentPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          statusFilter === 'vencido' ? 'bg-red-600 text-white border-red-600' : 'bg-red-50 border-red-200 text-red-800 hover:bg-red-100'
+                        }`}
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>Vencido</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Seção 3: TIPO DE EMBARCAÇÃO */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Tipo de Embarcação
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => { setTipoFilter('todos'); setCurrentPage(1); }}
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                          tipoFilter === 'todos' ? 'bg-[#186b77] text-white border-[#186b77]' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        Todas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setTipoFilter('lancha'); setCurrentPage(1); }}
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                          tipoFilter === 'lancha' ? 'bg-[#186b77] text-white border-[#186b77]' : 'bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100'
+                        }`}
+                      >
+                        Lanchas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setTipoFilter('jet'); setCurrentPage(1); }}
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                          tipoFilter === 'jet' ? 'bg-[#186b77] text-white border-[#186b77]' : 'bg-cyan-50 border-cyan-200 text-cyan-800 hover:bg-cyan-100'
+                        }`}
+                      >
+                        Jets Ski
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Rodapé com botão Fechar */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-slate-500">
+                      {filteredBoats.length} embarcação(ões) encontrada(s)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowFilterPanel(false)}
+                      className="px-4 py-1.5 bg-[#186b77] text-white font-bold text-xs rounded-xl hover:bg-[#12555f] transition-colors cursor-pointer"
+                    >
+                      Aplicar
+                    </button>
+                  </div>
+
+                </div>
               )}
             </div>
+
+            {(searchTerm || tipoFilter !== 'todos' || statusFilter !== 'todos' || sortBy !== 'horas' || sortOrder !== 'desc') && (
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setTipoFilter('todos');
+                  setStatusFilter('todos');
+                  setSortBy('horas');
+                  setSortOrder('desc');
+                  setCurrentPage(1);
+                }}
+                className="text-xs font-semibold text-[#186b77] hover:underline px-2 py-1 cursor-pointer"
+              >
+                Limpar filtros
+              </button>
+            )}
 
           </div>
 
@@ -594,9 +843,9 @@ export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh
                     </div>
                     <div>
                       <div className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
-                        <span>{boat.nome}</span>
-                        <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                          M{boat.numero}
+                        <span>{getBoatCode(boat)}</span>
+                        <span className="text-[10px] font-medium text-slate-400">
+                          ({boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
                         </span>
                       </div>
                       <div className="text-xs text-slate-500 font-medium mt-0.5">
@@ -776,9 +1025,51 @@ export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh
                   />
                 </th>
                 <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Embarcação</th>
+                <th 
+                  onClick={() => {
+                    if (sortBy === 'nome') {
+                      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortBy('nome');
+                      setSortOrder('asc');
+                    }
+                    setCurrentPage(1);
+                  }}
+                  className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-900 transition-colors select-none group"
+                  title="Ordenar por Nome (Ordem Alfabética)"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Embarcação</span>
+                    {sortBy === 'nome' ? (
+                      sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-[#186b77]" /> : <ArrowDown className="w-3.5 h-3.5 text-[#186b77]" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                    )}
+                  </div>
+                </th>
                 <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Modelo / Tipo</th>
-                <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Horas Atuais</th>
+                <th 
+                  onClick={() => {
+                    if (sortBy === 'horas') {
+                      setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+                    } else {
+                      setSortBy('horas');
+                      setSortOrder('desc');
+                    }
+                    setCurrentPage(1);
+                  }}
+                  className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-900 transition-colors select-none group"
+                  title="Ordenar por Quantidade de Horas"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Horas Atuais</span>
+                    {sortBy === 'horas' ? (
+                      sortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-[#186b77]" /> : <ArrowUp className="w-3.5 h-3.5 text-[#186b77]" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                    )}
+                  </div>
+                </th>
                 <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Próx. Revisão (Est.)</th>
                 <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Última Atualização</th>
                 <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider text-right">Ações</th>
@@ -841,10 +1132,7 @@ export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh
                         </div>
                         <div>
                           <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                            <span>{boat.nome}</span>
-                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                              M{boat.numero}
-                            </span>
+                            <span>{getBoatCode(boat)}</span>
                           </div>
                           <div className="text-[11px] text-slate-500">
                             {boat.fabricante} {boat.ano ? `• ${boat.ano}` : ''}
@@ -1390,7 +1678,7 @@ export default function EngineHoursControl({ embarcacoes, manutencoes, onRefresh
                     {Object.entries(settings.intervalosPorModeloJet || {}).map(([mod, h]) => (
                       <div key={mod} className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
                         <span className="font-bold text-slate-800">{mod}</span>
-                        <span className="font-mono font-bold text-cyan-700">{h}h</span>
+                        <span className="font-mono font-bold text-cyan-700">{String(h)}h</span>
                       </div>
                     ))}
                   </div>

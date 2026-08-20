@@ -100,7 +100,7 @@ export default function UserAvatarMenu({
       localStorage.removeItem('admin_name');
       localStorage.removeItem('admin_role');
       localStorage.removeItem('user');
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('auth-expired'));
     }
   };
 

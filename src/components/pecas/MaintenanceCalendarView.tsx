@@ -11,6 +11,7 @@ import {
   Plus
 } from 'lucide-react';
 import { Manutencao, Embarcacao } from '../../types';
+import { getBoatCode } from '../../utils/boatUtils';
 
 interface MaintenanceCalendarViewProps {
   manutencoes: Manutencao[];
@@ -178,9 +179,9 @@ export default function MaintenanceCalendarView({
                           ev.status === 'chamado_aberto' ? 'bg-pink-50 text-pink-900 border-pink-200' :
                           'bg-blue-50 text-blue-900 border-blue-200'
                         }`}
-                        title={`${osCode} - ${boat?.nome || 'Barco'}: ${ev.tituloChamado}`}
+                        title={`${osCode} - ${getBoatCode(boat)}: ${ev.tituloChamado}`}
                       >
-                        <div className="truncate font-black">{osCode} • {boat?.nome || 'Barco'}</div>
+                        <div className="truncate font-black">{osCode} • {getBoatCode(boat)}</div>
                         <div className="text-[9px] font-semibold text-slate-500 truncate">{ev.tituloChamado}</div>
                       </div>
                     );

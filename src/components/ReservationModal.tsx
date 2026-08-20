@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { clientDB, boatDB, reservationDB } from '../db';
 import { createGoogleCalendarEvent, CalendarSyncResult } from '../googleCalendar';
 import { Embarcacao, Cliente } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 import { X, Calendar, User, Clock, Check, FileText, CheckCircle2, Copy, Search, Wrench, AlertTriangle } from 'lucide-react';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 
@@ -164,7 +165,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
 
     // Compose formatted calendar event summary using ONLY first & second names in UPPERCASE
     const shortName = getFirstTwoNames(client.nome).toUpperCase();
-    const computedTitle = `${boat.nome} - ${shortName}`;
+    const computedTitle = `${getBoatCode(boat)} - ${shortName}`;
 
     setIsSubmitting(true);
     try {
@@ -382,7 +383,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
                       : 'bg-rose-50 border-rose-200 text-rose-800'
                   }`}>
                     <div>
-                      <p className="font-semibold text-xs text-slate-800">Agenda da Embarcação {b ? `(${b.nome})` : ''}</p>
+                      <p className="font-semibold text-xs text-slate-800">Agenda da Embarcação {b ? `(${getBoatCode(b)})` : ''}</p>
                       <p className="text-[10px] opacity-80 font-mono mt-0.5">ID: {syncResult.boatCalendarId || 'MXX'}</p>
                     </div>
                     <span className="font-bold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded-md border bg-white/80 shrink-0">
@@ -532,7 +533,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
               <option value="">-- Selecione a Embarcação --</option>
               {boats.map(b => (
                 <option key={b.id} value={b.id}>
-                  {b.nome} ({b.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
+                  {getBoatCode(b)} ({b.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
                 </option>
               ))}
             </select>
@@ -547,7 +548,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
               <span className="truncate flex items-center space-x-2">
                 {selectedBoatId ? (
                   <>
-                    <span>{boats.find(b => b.id === selectedBoatId)?.nome} ({boats.find(b => b.id === selectedBoatId)?.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})</span>
+                    <span>{getBoatCode(boats.find(b => b.id === selectedBoatId))} ({boats.find(b => b.id === selectedBoatId)?.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})</span>
                     {boats.find(b => b.id === selectedBoatId)?.emManutencao && (
                       <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-rose-100 text-rose-800 flex items-center shadow-xs ml-2">
                         <Wrench className="w-2.5 h-2.5 mr-0.5" />
@@ -650,7 +651,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
                                 }`}
                               >
                                 <div className="flex items-center space-x-2">
-                                  <span className="font-semibold text-xs">{b.nome} ({b.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})</span>
+                                  <span className="font-semibold text-xs">{getBoatCode(b)} ({b.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})</span>
                                   {b.emManutencao && (
                                     <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-rose-100 text-rose-800 flex items-center shadow-xs">
                                       <Wrench className="w-2.5 h-2.5 mr-0.5" />
@@ -864,7 +865,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
                   <div>
                     <h4 className="text-xs font-bold text-amber-900 font-sans">🔊 Controle de Som Obrigatório</h4>
                     <p className="text-[11px] text-amber-700 leading-normal font-sans">
-                      A embarcação <span className="font-bold">{selectedBoat.nome}</span> exige a remoção do equipamento de som quando não estiver em uso para fins de conservação e segurança.
+                      A embarcação <span className="font-bold">{getBoatCode(selectedBoat)}</span> exige a remoção do equipamento de som quando não estiver em uso para fins de conservação e segurança.
                     </p>
                   </div>
                 </div>

@@ -351,7 +351,13 @@ export default function App() {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_name');
     localStorage.removeItem('admin_role');
+    localStorage.removeItem(STORAGE_KEYS.ADMIN_ACTIVE_TAB);
     setIsAuthenticated(false);
+    setAdminRole(null);
+    setAdminName('');
+    setIsAdminDbLoaded(false);
+    setDbData({});
+    setActiveTab('schedules');
   };
 
   useEffect(() => {
@@ -427,7 +433,31 @@ export default function App() {
 
   // ═══════════ PAINEL ADMINISTRATIVO (/admin) ═══════════
   if (!isAuthenticated) {
-    return <LoginPage onLogin={() => setIsAuthenticated(true)} />;
+    return (
+      <LoginPage 
+        onLogin={(role, name) => {
+          if (role) {
+            setAdminRole(role);
+            localStorage.setItem('admin_role', role);
+            const roleStr = role.toLowerCase().trim();
+            if (roleStr === 'financeiro' || roleStr.includes('financ')) {
+              setActiveTab('finance-lancamentos');
+            } else if (roleStr === 'pecas_servicos' || roleStr.includes('pecas') || roleStr.includes('servico')) {
+              setActiveTab('manutencoes');
+            } else if (roleStr === 'comercial' || roleStr.includes('comerc')) {
+              setActiveTab('contratos');
+            } else {
+              setActiveTab('dashboard');
+            }
+          }
+          if (name) {
+            setAdminName(name);
+            localStorage.setItem('admin_name', name);
+          }
+          setIsAuthenticated(true);
+        }} 
+      />
+    );
   }
 
   if (isRoleLoading) {

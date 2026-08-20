@@ -111,6 +111,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
       }
 
       try {
+        localStorage.setItem('client_token', data.token);
         localStorage.setItem('client_last_cpf', identifier);
       } catch (err) {}
       onLoginSuccess(data.token);
@@ -161,6 +162,9 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
       const loginData = await loginResponse.json();
 
       if (loginResponse.ok && loginData.token) {
+        try {
+          localStorage.setItem('client_token', loginData.token);
+        } catch (err) {}
         onLoginSuccess(loginData.token);
       } else {
         // Fallback if auto-login fails

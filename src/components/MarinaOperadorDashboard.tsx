@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getBoatCode } from '../utils/boatUtils';
 import { 
   LogOut, 
   Ship, 
@@ -894,7 +895,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                       <div>
                         <div className="flex items-center gap-1.5">
                           <h3 className="font-extrabold text-slate-900 text-base leading-tight uppercase">
-                            {boat?.nome || reserva.barcoNome || 'Embarcação'}
+                            {boat ? getBoatCode(boat) : (reserva.barcoNome || 'Embarcação')}
                           </h3>
                           {boatNumber && (
                             <span className="bg-slate-900 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">
@@ -1050,7 +1051,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                       <div>
                         <div className="flex items-center gap-1.5">
                           <h3 className="font-extrabold text-slate-900 text-sm leading-tight uppercase">
-                            {boat?.nome || reserva.barcoNome || 'M99'}
+                            {boat ? getBoatCode(boat) : (reserva.barcoNome || 'M99')}
                           </h3>
                           <span className="bg-slate-900 text-white font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
                             #{boatNumber}
@@ -1504,7 +1505,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                           <Ship className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-slate-400'}`} />
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-extrabold text-xs uppercase">{b.nome}</span>
+                              <span className="font-extrabold text-xs uppercase">{getBoatCode(b)}</span>
                               {b.numero && (
                                 <span className="bg-slate-900 text-white font-mono text-[9px] px-1.5 py-0.2 rounded font-bold">
                                   #{b.numero}

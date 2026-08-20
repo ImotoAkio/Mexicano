@@ -1,4 +1,6 @@
 import { Embarcacao, Manutencao, ConfiguracaoHorimetro } from '../types';
+export type { ConfiguracaoHorimetro };
+export type { ConfiguracaoHorimetro };
 
 export const DEFAULT_HORIMETRO_SETTINGS: ConfiguracaoHorimetro = {
   intervaloPadraoLancha: 50,

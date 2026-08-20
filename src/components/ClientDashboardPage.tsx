@@ -8,6 +8,7 @@ import ClientReservationModal from './ClientReservationModal';
 import ClientCheckinModal from './ClientCheckinModal';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
+import { getBoatCode } from '../utils/boatUtils';
 
 interface ClientDashboardPageProps {
   client: any;
@@ -429,7 +430,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                           <Check className="w-4 h-4 text-emerald-400" />
                         </div>
                         <div>
-                          <h2 className="text-sm font-semibold text-white tracking-wide">Passeio confirmado! {boatInfo ? `- ${boatInfo.nome}` : ''}</h2>
+                          <h2 className="text-sm font-semibold text-white tracking-wide">Passeio confirmado! {boatInfo ? `- ${getBoatCode(boatInfo)}` : ''}</h2>
                           <p className="text-[10px] text-white/50 mt-0.5">Toque para ver detalhes</p>
                         </div>
                       </div>
@@ -501,7 +502,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                         <div className="w-8 h-8 rounded-full bg-[#B69D74]/20 flex items-center justify-center">
                           <Anchor className="w-4 h-4 text-[#B69D74] animate-pulse" />
                         </div>
-                        <h2 className="text-sm font-semibold text-white tracking-wide">Seu passeio é hoje! {boatInfo ? `- ${boatInfo.nome}` : ''}</h2>
+                        <h2 className="text-sm font-semibold text-white tracking-wide">Seu passeio é hoje! {boatInfo ? `- ${getBoatCode(boatInfo)}` : ''}</h2>
                       </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
@@ -602,7 +603,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">Sua Embarcação</p>
-                          <h2 className="text-lg font-medium text-white tracking-wide mt-1">{boat.nome}</h2>
+                          <h2 className="text-lg font-medium text-white tracking-wide mt-1">{getBoatCode(boat)}</h2>
                         </div>
                         <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center border border-white/5">
                           <Ship className="w-5 h-5 text-[#B69D74]" />
@@ -682,7 +683,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               </div>
               <div className="flex-1">
                 <p className="text-sm font-medium text-white">Dia Inteiro</p>
-                <p className="text-xs text-white/40 mt-0.5">{b?.nome}</p>
+                <p className="text-xs text-white/40 mt-0.5">{getBoatCode(b)}</p>
               </div>
               <span className="text-[9px] px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400 uppercase font-bold tracking-wider">
                 Confirmada
@@ -803,7 +804,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     </div>
                     <div className="text-left">
                       <p className={`text-xs font-semibold truncate max-w-[90px] ${isSelected ? 'text-white' : 'text-white/70'}`}>
-                        {b.nome}
+                        {getBoatCode(b)}
                       </p>
                       <p className="text-[9px] uppercase tracking-wider text-white/40">
                         {b.numero ? `M${b.numero}` : (isJet ? 'Jetski' : 'Lancha')}
@@ -829,7 +830,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 {activeBoat.tipo === 'jet' ? <Droplets className="w-5 h-5" /> : <Ship className="w-5 h-5" />}
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-white tracking-wide">{activeBoat.nome}</h3>
+                <h3 className="text-sm font-semibold text-white tracking-wide">{getBoatCode(activeBoat)}</h3>
                 <p className="text-[10px] text-white/40 uppercase tracking-wider">
                   Exibindo disponibilidade desta embarcação
                 </p>
@@ -988,7 +989,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     <div className="flex items-center gap-2 mt-1">
                       <Anchor className="w-3 h-3 text-[#B69D74]" />
                       <p className="text-xs text-white/50 truncate">
-                        {boat?.nome}
+                        {getBoatCode(boat)}
                       </p>
                     </div>
                   </div>

@@ -8,6 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { Cliente, Embarcacao } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 
 interface AdminFuelPageProps {
   data: {
@@ -310,7 +311,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
     const calculatedValue = litrosNum > 0 ? (litrosNum * pricePerLiter) : t.valor;
 
     const boat = data?.boats?.find(b => b.id === t.embarcacaoId);
-    const boatName = boat?.nome || 'Embarcação';
+    const boatName = getBoatCode(boat);
 
     const transacaoAtualizada = {
       id: t.isFromReservation ? `trx_fuel_${t.reservaId || Date.now()}` : t.id,
@@ -381,7 +382,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
     const pricePerLiter = 13.0;
     const totalValue = litrosNum * pricePerLiter;
     const boat = data?.boats?.find(b => b.id === t.embarcacaoId);
-    const boatName = boat?.nome || 'Embarcação';
+    const boatName = getBoatCode(boat);
     const dateStr = t.data || t.dataVencimento || endDate;
 
     if (!window.confirm(`Confirmar envio de ${litrosNum}L (${boatName}) para a Administradora a R$ 13,00/L?\nValor Total: R$ ${totalValue.toFixed(2)}`)) {
@@ -553,7 +554,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
   const exportToCSV = () => {
     const headers = ['Data', 'Embarcacao', 'Cliente', 'Litros', 'Valor_Total', 'Forma_Pagamento', 'Status_Cobranca', 'Operador'];
     const rows = fuelTransactions.map(t => {
-      const boat = data?.boats?.find(b => b.id === t.embarcacaoId)?.nome || 'N/A';
+      const boat = getBoatCode(data?.boats?.find(b => b.id === t.embarcacaoId));
       const client = data?.clients?.find(c => c.id === t.clienteId)?.nome || 'N/A';
       const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
       const litersVal = match ? match[1] : (t.litrosAbastecidos || '0');
@@ -707,9 +708,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
                   >
                     <option value="all">Todas as Embarcações</option>
-                    {[...(data?.boats || [])].sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).map(b => (
+                    {[...(data?.boats || [])].sort((a, b) => getBoatCode(a).localeCompare(getBoatCode(b))).map(b => (
                       <option key={b.id} value={b.id}>
-                        {b.nome} {b.numero ? `#${b.numero}` : ''}
+                        {getBoatCode(b)}
                       </option>
                     ))}
                   </select>
@@ -993,7 +994,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                         <td className="px-4 py-3.5">
                           <div className="flex flex-col">
                             <span className="font-bold text-slate-900 text-xs">
-                              {boat?.nome || 'Embarcação N/A'} {boat?.numero ? `#${boat.numero}` : ''}
+                              {getBoatCode(boat)}
                             </span>
                             <span className="text-[11px] text-slate-500 font-medium truncate max-w-[180px]">
                               {client?.nome || 'Cliente N/A'}
@@ -1432,7 +1433,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                       
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">Embarcação</span>
-                        <span className="font-bold text-slate-900">{boat?.nome || 'N/A'} {boat?.numero ? `#${boat.numero}` : ''}</span>
+                        <span className="font-bold text-slate-900">{getBoatCode(boat)}</span>
                       </div>
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">Cliente</span>

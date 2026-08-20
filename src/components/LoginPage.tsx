@@ -7,7 +7,7 @@ import bgImage from '../assets/images/boat_jet_bg.webp';
 import Logo from './Logo';
 
 interface LoginPageProps {
-  onLogin: (status: boolean) => void;
+  onLogin: (role?: string, name?: string) => void;
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
@@ -39,7 +39,9 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
       // Store JWT token securely
       localStorage.setItem('admin_token', data.token);
-      onLogin(true);
+      if (data.role) localStorage.setItem('admin_role', data.role);
+      if (data.nome || data.username) localStorage.setItem('admin_name', data.nome || data.username);
+      onLogin(data.role, data.nome || data.username);
     } catch (err: any) {
       setError(err.message || 'Erro de conexão com o servidor.');
       setIsLoading(false);

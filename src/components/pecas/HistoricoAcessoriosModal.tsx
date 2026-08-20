@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Package, Calendar, Clock, Plus, Trash2, History, CheckCircle, AlertTriangle, CheckSquare, Square } from 'lucide-react';
 import { Embarcacao, RegistroAcessorios } from '../../types';
 import { boatDB } from '../../db';
+import { getBoatCode } from '../../utils/boatUtils';
 
 interface HistoricoAcessoriosModalProps {
   boat: Embarcacao;
@@ -23,6 +24,7 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
     mesa: boat.acessorios?.mesa ?? true,
     bancosCadeiras: boat.acessorios?.bancosCadeiras ?? true,
     churrasqueira: boat.acessorios?.churrasqueira ?? true,
+    extintores: boat.acessorios?.extintores ?? true,
     observacoes: ''
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -46,6 +48,7 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
           mesa: acessoriosState.mesa,
           bancosCadeiras: acessoriosState.bancosCadeiras,
           churrasqueira: acessoriosState.churrasqueira,
+          extintores: acessoriosState.extintores,
           observacoes: acessoriosState.observacoes || 'Conferência manual registrada'
         },
         novasHoras !== '' ? Number(novasHoras) : undefined,
@@ -77,6 +80,7 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
         mesa: ultimoReg ? ultimoReg.mesa : boat.acessorios?.mesa,
         bancosCadeiras: ultimoReg ? ultimoReg.bancosCadeiras : boat.acessorios?.bancosCadeiras,
         churrasqueira: ultimoReg ? ultimoReg.churrasqueira : boat.acessorios?.churrasqueira,
+        extintores: ultimoReg ? ultimoReg.extintores : boat.acessorios?.extintores,
         observacoes: ultimoReg ? ultimoReg.observacoes : boat.acessorios?.observacoes,
         ultimaConferencia: ultimaConf,
         historico: novoHistorico
@@ -118,10 +122,7 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold">{boat.nome}</h3>
-                <span className="px-2 py-0.5 bg-teal-500/20 text-teal-300 text-xs font-semibold rounded-full border border-teal-400/30">
-                  M{boat.numero}
-                </span>
+                <h3 className="text-lg font-bold">{getBoatCode(boat)}</h3>
                 <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded-full border border-blue-400/30">
                   Lancha
                 </span>
@@ -177,7 +178,7 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
             </h4>
 
             {/* Checklist de Itens */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3.5 rounded-xl border border-teal-200/60">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-white p-3.5 rounded-xl border border-teal-200/60">
               <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 select-none">
                 <input
                   type="checkbox"
@@ -216,6 +217,16 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
                   className="w-4 h-4 rounded text-[#186b77] focus:ring-[#186b77]"
                 />
                 <span>Churrasqueira</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 select-none">
+                <input
+                  type="checkbox"
+                  checked={acessoriosState.extintores}
+                  onChange={(e) => setAcessoriosState(prev => ({ ...prev, extintores: e.target.checked }))}
+                  className="w-4 h-4 rounded text-[#186b77] focus:ring-[#186b77]"
+                />
+                <span>Extintores</span>
               </label>
             </div>
 
@@ -301,7 +312,7 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
           ) : (
             <div className="space-y-3">
               {historico.map((item, index) => {
-                const isOK = item.tenda !== false && item.mesa !== false && item.bancosCadeiras !== false && item.churrasqueira !== false;
+                const isOK = item.tenda !== false && item.mesa !== false && item.bancosCadeiras !== false && item.churrasqueira !== false && item.extintores !== false;
 
                 return (
                   <div
@@ -353,8 +364,8 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
                       </div>
                     </div>
 
-                    {/* Status individual dos 4 itens */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 text-xs">
+                    {/* Status individual dos 5 itens */}
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1 border-t border-slate-100 text-xs">
                       <div className={`flex items-center gap-1.5 font-medium ${item.tenda !== false ? 'text-emerald-700' : 'text-red-600 font-bold'}`}>
                         {item.tenda !== false ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4 text-red-500" />}
                         <span>Tenda</span>
@@ -373,6 +384,11 @@ export default function HistoricoAcessoriosModal({ boat, isOpen, onClose, onRefr
                       <div className={`flex items-center gap-1.5 font-medium ${item.churrasqueira !== false ? 'text-emerald-700' : 'text-red-600 font-bold'}`}>
                         {item.churrasqueira !== false ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4 text-red-500" />}
                         <span>Churrasqueira</span>
+                      </div>
+
+                      <div className={`flex items-center gap-1.5 font-medium ${item.extintores !== false ? 'text-emerald-700' : 'text-red-600 font-bold'}`}>
+                        {item.extintores !== false ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4 text-red-500" />}
+                        <span>Extintores</span>
                       </div>
                     </div>
 

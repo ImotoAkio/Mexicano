@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2 } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 import { logAction } from '../db';
 
 interface MarinaFuelViewProps {
@@ -458,7 +459,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     const pricePerLiter = 13.0;
     const totalValue = litrosNum * pricePerLiter;
     const boat = getEmbarcacao(t.embarcacaoId);
-    const boatName = boat?.nome || 'Embarcação';
+    const boatName = getBoatCode(boat);
 
     if (!confirm(`Confirmar envio de ${litrosNum}L (${boatName}) para a Administradora a R$ 13,00/L?\nValor Total: R$ ${totalValue.toFixed(2)}`)) {
       return;
@@ -545,7 +546,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
     const totalValue = litrosNum * pricePerLiter;
     const boat = getEmbarcacao(t.embarcacaoId);
-    const boatName = boat?.nome || 'Embarcação';
+    const boatName = getBoatCode(boat);
 
     const transacao = {
       id: t.isFromReservation ? `trx_fuel_${Date.now()}` : t.id,
@@ -658,7 +659,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
   const handleDeleteFuel = async (t: any) => {
     const boat = getEmbarcacao(t.embarcacaoId);
-    const boatName = boat?.nome || 'Embarcação';
+    const boatName = getBoatCode(boat);
 
     if (!window.confirm(`Tem certeza que deseja excluir o lançamento de abastecimento de ${boatName}?`)) {
       return;
@@ -808,7 +809,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
     const valorTotal = litrosNum * pricePerLiter;
     const boat = getEmbarcacao(editBoatId);
-    const boatName = boat?.nome || 'Embarcação';
+    const boatName = getBoatCode(boat);
 
     const updatedTrans = {
       id: editingItem.isFromReservation ? `trx_fuel_${Date.now()}` : editingItem.id,
@@ -1562,7 +1563,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     <option value="all">Todas as Embarcações</option>
                     {(data?.boats || []).map((boat) => (
                       <option key={boat.id} value={boat.id}>
-                        {boat.nome} {boat.vaga ? `(${boat.vaga})` : ''}
+                        {getBoatCode(boat)} ({boat.vaga || 'Sem Vaga'})
                       </option>
                     ))}
                   </select>
@@ -1748,7 +1749,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                             <Droplets className="w-4 h-4" />
                           </div>
                           <div className="min-w-0">
-                            <span className="font-bold text-slate-900 text-sm truncate block leading-tight">{boat?.nome || 'Venda Avulsa'}</span>
+                            <span className="font-bold text-slate-900 text-sm truncate block leading-tight">{boat ? getBoatCode(boat) : 'Venda Avulsa'}</span>
                             <span className="text-[10px] text-slate-400 font-mono block">#{t.id.substring(t.id.length - 8)}</span>
                           </div>
                         </div>
@@ -1875,7 +1876,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                               <Droplets className="w-4 h-4" />
                             </div>
                             <div>
-                              <span className="font-bold text-slate-900 block text-sm">{boat?.nome || 'Venda Avulsa'}</span>
+                              <span className="font-bold text-slate-900 block text-sm">{boat ? getBoatCode(boat) : 'Venda Avulsa'}</span>
                               <span className="text-[11px] text-slate-400 font-mono block">#{t.id.substring(t.id.length - 8)}</span>
                             </div>
                           </div>
@@ -2337,7 +2338,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   >
                     <option value="">Selecione a embarcação...</option>
                     {(data?.boats || []).map(b => (
-                      <option key={b.id} value={b.id}>{b.nome} ({b.vaga || 'Sem Vaga'})</option>
+                      <option key={b.id} value={b.id}>{getBoatCode(b)} ({b.vaga || 'Sem Vaga'})</option>
                     ))}
                   </select>
                 </div>

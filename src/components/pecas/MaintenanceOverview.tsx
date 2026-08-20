@@ -13,6 +13,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { Manutencao, Embarcacao, Mecanico } from '../../types';
+import { getBoatCode } from '../../utils/boatUtils';
 
 interface MaintenanceOverviewProps {
   manutencoes: Manutencao[];
@@ -275,7 +276,7 @@ export default function MaintenanceOverview({
                   </td>
                   <td className="py-3 px-3">
                     <strong className="text-slate-900 font-extrabold block">
-                      {boat?.nome || 'Embarcação'} (M{boat?.numero || '00'})
+                      {getBoatCode(boat)}
                     </strong>
                     <span className="text-[10px] text-slate-400 font-medium">{boat?.modelo || boat?.tipo}</span>
                   </td>

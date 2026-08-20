@@ -18,7 +18,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import Select from 'react-select';
-import { Manutencao, Embarcacao, Mecanico, Chamado, TipoManutencao } from '../../types';
+import { Embarcacao, Manutencao, Chamado, Mecanico, TipoManutencao, PecaItem } from '../../types';
+import { getBoatCode } from '../../utils/boatUtils';
 import { maintenanceDB, chamadoDB, mecanicoDB, tipoManutencaoDB } from '../../db';
 import { generateOrcamentoOSPDF } from '../../utils/pdfGenerator';
 
@@ -140,7 +141,7 @@ export default function MaintenanceModal({
   const boatOptions = useMemo(() => {
     return embarcacoes.map(b => ({
       value: b.id,
-      label: `M${b.numero} - ${b.nome} (${b.modelo || b.tipo})`,
+      label: `${getBoatCode(b)} (${b.modelo || (b.tipo === 'jet' ? 'Jet Ski' : 'Lancha')})`,
       boat: b
     }));
   }, [embarcacoes]);
@@ -150,7 +151,7 @@ export default function MaintenanceModal({
       const boat = embarcacoes.find(b => b.id === c.embarcacaoId);
       return {
         value: c.id,
-        label: `[${c.codigoChamado}] ${c.titulo} - ${boat ? boat.nome : ''}`,
+        label: `[${c.codigoChamado}] ${c.titulo} - ${boat ? getBoatCode(boat) : ''}`,
         chamado: c
       };
     });
@@ -280,7 +281,7 @@ export default function MaintenanceModal({
 
   const gerarTextoWhatsApp = () => {
     const boat = embarcacoes.find(b => b.id === formData.embarcacaoId);
-    let texto = `*ORÇAMENTO DE MANUTENÇÃO - ${boat?.nome || 'Embarcação'}*\n\n`;
+    let texto = `*ORÇAMENTO DE MANUTENÇÃO - ${getBoatCode(boat)}*\n\n`;
     texto += `*Tipo de Serviço:* ${formData.tipoManutencaoNome || formData.tituloChamado || 'Manutenção'}\n`;
     texto += `*Status:* ${formData.orcamentoAprovado ? 'Aprovado pelo Cliente' : 'Aguardando Aprovação'}\n\n`;
     

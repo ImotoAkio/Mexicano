@@ -23,7 +23,8 @@ import {
   saveGoogleServiceAccount,
   fetchGoogleCalendarEventsRange
 } from '../googleCalendar';
-import { Reserva, Cliente } from '../types';
+import { Reserva, Embarcacao, Cliente } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
 import ReservationModal from './ReservationModal';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
@@ -737,7 +738,7 @@ export default function SchedulesPage() {
         const lines = [
           'Reservado via Reservas Náuticas',
           `Status: ${res.status === 'cancelado' ? 'Cancelado' : res.status === 'confirmado' ? 'Confirmado' : 'Agendado'}`,
-          `Embarcação: ${boat ? boat.nome : 'N/A'}`,
+          `Embarcação: ${boat ? getBoatCode(boat) : 'N/A'}`,
           `Proprietário: ${ownerName}`,
           `Período: ${res.periodo === 'dia_inteiro' ? 'Dia Inteiro' : res.periodo === 'manha' ? 'Manhã' : 'Tarde'}`,
           `Obs: ${res.observações || 'Nenhuma'}`
@@ -1119,7 +1120,7 @@ export default function SchedulesPage() {
                     <div className="flex flex-col min-w-0 pr-2">
                       <span className="font-bold text-slate-900 truncate flex items-center gap-1.5">
                         <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-mono rounded border border-indigo-100 font-bold">
-                          {boat ? boat.nome : 'M--'}
+                          {boat ? getBoatCode(boat) : 'M--'}
                         </span>
                         <span className="text-slate-400 text-[11px] font-normal">
                           ({boat ? (boat.tipo === 'jet' ? 'Jet' : 'Lancha') : 'Embarcação'})

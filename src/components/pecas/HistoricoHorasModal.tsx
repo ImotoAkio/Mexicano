@@ -3,6 +3,8 @@ import { X, Clock, Calendar, Plus, Trash2, History, Ship, AlertCircle } from 'lu
 import { Embarcacao, RegistroHoras } from '../../types';
 import { boatDB } from '../../db';
 
+import { getBoatCode } from '../../utils/boatUtils';
+
 interface HistoricoHorasModalProps {
   boat: Embarcacao;
   isOpen: boolean;
@@ -103,10 +105,7 @@ export default function HistoricoHorasModal({ boat, isOpen, onClose, onRefresh }
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold">{boat.nome}</h3>
-                <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded-full border border-blue-400/30">
-                  M{boat.numero}
-                </span>
+                <h3 className="text-lg font-bold">{getBoatCode(boat)}</h3>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 {boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'} • {boat.modelo} ({boat.fabricante})

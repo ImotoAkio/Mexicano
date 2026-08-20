@@ -21,8 +21,9 @@ import {
   X,
   Edit3
 } from 'lucide-react';
-import { Embarcacao, Manutencao } from '../../types';
+import { Embarcacao, Manutencao, RegistroAcessorios } from '../../types';
 import { boatDB } from '../../db';
+import { getBoatCode } from '../../utils/boatUtils';
 import HistoricoAcessoriosModal from './HistoricoAcessoriosModal';
 
 interface AccessoriesControlProps {
@@ -41,6 +42,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
     mesa?: boolean;
     bancosCadeiras?: boolean;
     churrasqueira?: boolean;
+    extintores?: boolean;
     observacoes?: string;
   }>({});
   const [horasMotorInput, setHorasMotorInput] = useState<number | ''>('');
@@ -51,6 +53,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
     mesa: boolean;
     bancosCadeiras: boolean;
     churrasqueira: boolean;
+    extintores: boolean;
     observacoes: string;
     horasMotor: number | '';
   }>>({});
@@ -68,7 +71,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
   const metrics = lanchas.reduce((acc, boat) => {
     const days = getDaysSinceLastConf(boat.acessorios?.ultimaConferencia);
     const accObj = boat.acessorios || {};
-    const isOK = accObj.tenda !== false && accObj.mesa !== false && accObj.bancosCadeiras !== false && accObj.churrasqueira !== false;
+    const isOK = accObj.tenda !== false && accObj.mesa !== false && accObj.bancosCadeiras !== false && accObj.churrasqueira !== false && accObj.extintores !== false;
     if (!isOK) acc.comFaltas++;
     if (days <= 7) acc.emDia++;
     else acc.pendentes++;
@@ -83,7 +86,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
     if (!matchesSearch) return false;
     const days = getDaysSinceLastConf(boat.acessorios?.ultimaConferencia);
     const accObj = boat.acessorios || {};
-    const isOK = accObj.tenda !== false && accObj.mesa !== false && accObj.bancosCadeiras !== false && accObj.churrasqueira !== false;
+    const isOK = accObj.tenda !== false && accObj.mesa !== false && accObj.bancosCadeiras !== false && accObj.churrasqueira !== false && accObj.extintores !== false;
     if (statusFilter === 'em_dia' && days > 7) return false;
     if (statusFilter === 'pendente' && days <= 7) return false;
     if (statusFilter === 'com_falta' && isOK) return false;
@@ -98,6 +101,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
       mesa: acc.mesa ?? true,
       bancosCadeiras: acc.bancosCadeiras ?? true,
       churrasqueira: acc.churrasqueira ?? true,
+      extintores: acc.extintores ?? true,
       observacoes: acc.observacoes || ''
     });
     setHorasMotorInput(boat.horasMotor || 0);
@@ -120,6 +124,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
           mesa: acessoriosState.mesa,
           bancosCadeiras: acessoriosState.bancosCadeiras,
           churrasqueira: acessoriosState.churrasqueira,
+          extintores: acessoriosState.extintores,
           observacoes: acessoriosState.observacoes
         },
         horasMotorInput !== '' ? Number(horasMotorInput) : boat.horasMotor
@@ -152,6 +157,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
           mesa: acc.mesa ?? true,
           bancosCadeiras: acc.bancosCadeiras ?? true,
           churrasqueira: acc.churrasqueira ?? true,
+          extintores: acc.extintores ?? true,
           observacoes: acc.observacoes || '',
           horasMotor: b.horasMotor || 0
         };
@@ -178,6 +184,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
               mesa: item.mesa,
               bancosCadeiras: item.bancosCadeiras,
               churrasqueira: item.churrasqueira,
+              extintores: item.extintores,
               observacoes: item.observacoes
             },
             item.horasMotor !== '' ? Number(item.horasMotor) : undefined,
@@ -234,7 +241,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
     const batchVal = batchData[boat.id];
     const acc = isBatchMode ? batchVal : isEditing ? acessoriosState : (boat.acessorios || {});
     const days = getDaysSinceLastConf(boat.acessorios?.ultimaConferencia);
-    const isOK = acc?.tenda !== false && acc?.mesa !== false && acc?.bancosCadeiras !== false && acc?.churrasqueira !== false;
+    const isOK = acc?.tenda !== false && acc?.mesa !== false && acc?.bancosCadeiras !== false && acc?.churrasqueira !== false && acc?.extintores !== false;
 
     return (
       <div
@@ -283,9 +290,9 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
           <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${isExpanded || isEditing ? 'rotate-180' : ''}`} />
         </button>
 
-        {/* Collapsed quick-view: 4 tiny checkmarks */}
+        {/* Collapsed quick-view: 5 tiny checkmarks */}
         {!isExpanded && !isEditing && (
-          <div className="flex items-center gap-3 px-4 pb-3 -mt-1">
+          <div className="flex items-center gap-2 sm:gap-3 px-4 pb-3 -mt-1 flex-wrap">
             <div className={`flex items-center gap-1 text-[10px] font-semibold ${acc?.tenda !== false ? 'text-emerald-600' : 'text-red-500'}`}>
               {acc?.tenda !== false ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
               <span>Ten</span>
@@ -301,6 +308,10 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
             <div className={`flex items-center gap-1 text-[10px] font-semibold ${acc?.churrasqueira !== false ? 'text-emerald-600' : 'text-red-500'}`}>
               {acc?.churrasqueira !== false ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
               <span>Chu</span>
+            </div>
+            <div className={`flex items-center gap-1 text-[10px] font-semibold ${acc?.extintores !== false ? 'text-emerald-600' : 'text-red-500'}`}>
+              {acc?.extintores !== false ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+              <span>Ext</span>
             </div>
             <span className="ml-auto text-[10px] text-slate-400">{formatDate(boat.acessorios?.ultimaConferencia)}</span>
           </div>
@@ -340,12 +351,12 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
               )}
             </div>
 
-            {/* Checklist 2×2 */}
+            {/* Checklist 3×2 */}
             <div>
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                Checklist de Acessórios
+                Checklist de Acessórios & Equipamentos
               </label>
-              <div className="grid grid-cols-2 gap-1 bg-slate-50 p-2 rounded-xl border border-slate-200/60">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 bg-slate-50 p-2 rounded-xl border border-slate-200/60">
                 {renderCheckbox('Tenda', acc?.tenda, () => {
                   if (isBatchMode) setBatchData(p => ({ ...p, [boat.id]: { ...p[boat.id], tenda: !p[boat.id].tenda } }));
                   else if (isEditing) toggleAcessorio('tenda');
@@ -364,6 +375,11 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
                 {renderCheckbox('Churrasq.', acc?.churrasqueira, () => {
                   if (isBatchMode) setBatchData(p => ({ ...p, [boat.id]: { ...p[boat.id], churrasqueira: !p[boat.id].churrasqueira } }));
                   else if (isEditing) toggleAcessorio('churrasqueira');
+                }, !isEditing && !isBatchMode)}
+
+                {renderCheckbox('Extintores', acc?.extintores, () => {
+                  if (isBatchMode) setBatchData(p => ({ ...p, [boat.id]: { ...p[boat.id], extintores: !p[boat.id].extintores } }));
+                  else if (isEditing) toggleAcessorio('extintores');
                 }, !isEditing && !isBatchMode)}
               </div>
             </div>
@@ -471,7 +487,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
           <div>
             <span className="font-bold text-xs sm:text-sm block text-blue-950">Conferência Semanal de Acessórios</span>
             <p className="text-slate-600 mt-0.5 text-[11px] leading-relaxed hidden sm:block">
-              Conferência realizada semanalmente junto com a leitura do horímetro. Apenas lanchas requerem verificação de acessórios (tenda, mesa, bancos, churrasqueira).
+              Conferência realizada semanalmente junto com a leitura do horímetro. Apenas lanchas requerem verificação de acessórios (tenda, mesa, bancos, churrasqueira, extintores).
             </p>
             <p className="text-slate-500 mt-0.5 text-[11px] sm:hidden">Exclusivo lanchas • Horímetro + Acessórios</p>
           </div>
@@ -632,6 +648,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
                   <th className="px-4 py-3.5 text-xs font-semibold text-slate-600 text-center">Mesa</th>
                   <th className="px-4 py-3.5 text-xs font-semibold text-slate-600 text-center">Bancos</th>
                   <th className="px-4 py-3.5 text-xs font-semibold text-slate-600 text-center">Churrasq.</th>
+                  <th className="px-4 py-3.5 text-xs font-semibold text-slate-600 text-center">Extintores</th>
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-600">Última Conf.</th>
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-600">Obs.</th>
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-600 text-right">Ações</th>
@@ -644,11 +661,11 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
                   const acc = isBatchMode ? batchVal : isEditing ? acessoriosState : (boat.acessorios || {});
                   const days = getDaysSinceLastConf(boat.acessorios?.ultimaConferencia);
 
-                  const toggleBatchField = (field: 'tenda' | 'mesa' | 'bancosCadeiras' | 'churrasqueira') => {
+                  const toggleBatchField = (field: 'tenda' | 'mesa' | 'bancosCadeiras' | 'churrasqueira' | 'extintores') => {
                     setBatchData(prev => ({ ...prev, [boat.id]: { ...prev[boat.id], [field]: !prev[boat.id][field] } }));
                   };
 
-                  const renderTdCheck = (field: 'tenda' | 'mesa' | 'bancosCadeiras' | 'churrasqueira') => (
+                  const renderTdCheck = (field: 'tenda' | 'mesa' | 'bancosCadeiras' | 'churrasqueira' | 'extintores') => (
                     <td className="px-4 py-4 text-center">
                       <button
                         disabled={!isEditing && !isBatchMode}
@@ -674,8 +691,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
                           </div>
                           <div>
                             <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                              <span>{boat.nome}</span>
-                              <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 rounded border border-slate-200">M{boat.numero}</span>
+                              <span>{getBoatCode(boat)}</span>
                             </div>
                             <div className="text-[11px] text-slate-500">{boat.modelo || 'N/A'} {boat.fabricante ? `• ${boat.fabricante}` : ''}</div>
                           </div>
@@ -701,6 +717,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
                       {renderTdCheck('mesa')}
                       {renderTdCheck('bancosCadeiras')}
                       {renderTdCheck('churrasqueira')}
+                      {renderTdCheck('extintores')}
                       <td className="px-5 py-4">
                         <div className="flex flex-col gap-1">
                           <span className="font-semibold text-slate-800">{formatDate(boat.acessorios?.ultimaConferencia)}</span>
@@ -755,7 +772,7 @@ export default function AccessoriesControl({ embarcacoes, onRefresh }: Accessori
                 })}
                 {filteredLanchas.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
                       <Ship className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                       <p className="font-semibold text-slate-700">Nenhuma lancha encontrada.</p>
                       <p className="text-xs text-slate-400 mt-1">Verifique o termo buscado ou ajuste os filtros.</p>
