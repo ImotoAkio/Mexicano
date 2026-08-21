@@ -3,6 +3,7 @@ import { reservationDB, boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente, Reserva, TransacaoFinanceira } from '../types';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { toPng } from 'html-to-image';
+// @ts-ignore
 import logoUrl from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { ShieldAlert, Smartphone, UserCheck, UserX, QrCode, LogOut, CheckCircle, MessageSquare, Calendar as CalendarIcon, Check, AlertTriangle, 
   RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet, Paperclip, FileText, Users, Plus, Trash2, Play, Pause, X, CheckSquare, Square, File, Image as ImageIcon, Sparkles, Filter
@@ -96,6 +97,60 @@ const calculateTransactionInterest = (t: TransacaoFinanceira) => {
 export default function WhatsAppPage() {
   const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'config'>('confirmations');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) return;
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+
+    const keys = [
+      'whatsapp_conf_template1',
+      'whatsapp_conf_template2',
+      'whatsapp_custom_templates',
+      'whatsapp_bloqueio_template_vespera',
+      'whatsapp_bloqueio_template_dia',
+      'whatsapp_bloqueio_counter',
+      'whatsapp_cal_template'
+    ].join(',');
+
+    fetch(`/api/config?chaves=${keys}`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (data.configs) {
+          if (data.configs.whatsapp_conf_template1) {
+            setConfTemplate1(data.configs.whatsapp_conf_template1);
+            localStorage.setItem('whatsapp_conf_template1', data.configs.whatsapp_conf_template1);
+          }
+          if (data.configs.whatsapp_conf_template2) {
+            setConfTemplate2(data.configs.whatsapp_conf_template2);
+            localStorage.setItem('whatsapp_conf_template2', data.configs.whatsapp_conf_template2);
+          }
+          if (data.configs.whatsapp_custom_templates) {
+            try {
+              const parsed = JSON.parse(data.configs.whatsapp_custom_templates);
+              setCustomTemplates(parsed);
+              localStorage.setItem('whatsapp_custom_templates', data.configs.whatsapp_custom_templates);
+            } catch (e) {}
+          }
+          if (data.configs.whatsapp_bloqueio_template_vespera) {
+            setBloqueioTemplateVespera(data.configs.whatsapp_bloqueio_template_vespera);
+            localStorage.setItem('whatsapp_bloqueio_template_vespera', data.configs.whatsapp_bloqueio_template_vespera);
+          }
+          if (data.configs.whatsapp_bloqueio_template_dia) {
+            setBloqueioTemplateDia(data.configs.whatsapp_bloqueio_template_dia);
+            localStorage.setItem('whatsapp_bloqueio_template_dia', data.configs.whatsapp_bloqueio_template_dia);
+          }
+          if (data.configs.whatsapp_bloqueio_counter) {
+            localStorage.setItem('whatsapp_bloqueio_counter', data.configs.whatsapp_bloqueio_counter);
+          }
+          if (data.configs.whatsapp_cal_template) {
+            setCalMessageTemplate(data.configs.whatsapp_cal_template);
+            localStorage.setItem('whatsapp_cal_template', data.configs.whatsapp_cal_template);
+          }
+        }
+      })
+      .catch(console.warn);
+  }, []);
+
 
   const [confTemplate1, setConfTemplate1] = useState(() => {
     return localStorage.getItem('whatsapp_conf_template1') || "Olá, *{cliente}*! 😃\nPosso confirmar sua saída *{quando}* com a embarcação *{barco}*?";
@@ -224,6 +279,10 @@ export default function WhatsAppPage() {
     const updated = customTemplates.filter(t => t.id !== id);
     setCustomTemplates(updated);
     localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_custom_templates: JSON.stringify(updated) }) }).catch(console.warn);
     showToast('Modelo removido.');
   };
 
@@ -655,7 +714,12 @@ export default function WhatsAppPage() {
     const variations = mode === 'vespera' ? BLOQUEIO_VARIATIONS_VESPERA : BLOQUEIO_VARIATIONS_DIA;
     const currentCount = parseInt(localStorage.getItem('whatsapp_bloqueio_counter') || '0', 10);
     const selectedText = variations[currentCount % variations.length];
-    localStorage.setItem('whatsapp_bloqueio_counter', String(currentCount + 1));
+    const nextCount = String(currentCount + 1);
+    localStorage.setItem('whatsapp_bloqueio_counter', nextCount);
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_counter: nextCount }) }).catch(console.warn);
     return selectedText;
   };
 

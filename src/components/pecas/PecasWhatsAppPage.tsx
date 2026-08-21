@@ -48,7 +48,56 @@ export default function PecasWhatsAppPage() {
   const [maintSendingStatus, setMaintSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
   const [maintSendResults, setMaintSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
 
+  const saveConfigToBackend = (key: string, value: string) => {
+    const token = localStorage.getItem('admin_token');
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ configs: { [key]: value } })
+    }).catch(console.error);
+  };
+
   useEffect(() => {
+    const fetchConfigs = async () => {
+      try {
+        const token = localStorage.getItem('admin_token');
+        const res = await fetch('/api/config?chaves=whatsapp_maint_template_inicio,whatsapp_maint_template_aprovacao,whatsapp_maint_template_conclusao,whatsapp_hours_template,whatsapp_custom_templates_pecas', {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const configs = data.configs || {};
+          
+          if (configs.whatsapp_maint_template_inicio) {
+            setMaintTemplateInicio(configs.whatsapp_maint_template_inicio);
+            localStorage.setItem('whatsapp_maint_template_inicio', configs.whatsapp_maint_template_inicio);
+          }
+          if (configs.whatsapp_maint_template_aprovacao) {
+            setMaintTemplateAprovacao(configs.whatsapp_maint_template_aprovacao);
+            localStorage.setItem('whatsapp_maint_template_aprovacao', configs.whatsapp_maint_template_aprovacao);
+          }
+          if (configs.whatsapp_maint_template_conclusao) {
+            setMaintTemplateConclusao(configs.whatsapp_maint_template_conclusao);
+            localStorage.setItem('whatsapp_maint_template_conclusao', configs.whatsapp_maint_template_conclusao);
+          }
+          if (configs.whatsapp_hours_template) {
+            setHoursMessageTemplate(configs.whatsapp_hours_template);
+            localStorage.setItem('whatsapp_hours_template', configs.whatsapp_hours_template);
+          }
+          if (configs.whatsapp_custom_templates_pecas) {
+            try {
+              const parsed = JSON.parse(configs.whatsapp_custom_templates_pecas);
+              setCustomTemplates(parsed);
+              localStorage.setItem('whatsapp_custom_templates_pecas', configs.whatsapp_custom_templates_pecas);
+            } catch (e) {}
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch configs', err);
+      }
+    };
+    fetchConfigs();
+
     const list = maintenanceDB.getAll();
     setMaintenances(list);
   }, []);
@@ -57,12 +106,15 @@ export default function PecasWhatsAppPage() {
     if (type === 'inicio') {
       setMaintTemplateInicio(val);
       localStorage.setItem('whatsapp_maint_template_inicio', val);
+      saveConfigToBackend('whatsapp_maint_template_inicio', val);
     } else if (type === 'aprovacao') {
       setMaintTemplateAprovacao(val);
       localStorage.setItem('whatsapp_maint_template_aprovacao', val);
+      saveConfigToBackend('whatsapp_maint_template_aprovacao', val);
     } else {
       setMaintTemplateConclusao(val);
       localStorage.setItem('whatsapp_maint_template_conclusao', val);
+      saveConfigToBackend('whatsapp_maint_template_conclusao', val);
     }
   };
 
@@ -80,8 +132,8 @@ export default function PecasWhatsAppPage() {
     if (!matchesSearch) return false;
 
     if (maintStatusFilter !== 'todos') {
-      if (maintStatusFilter === 'pendente' && m.status !== 'pendente') return false;
-      if (maintStatusFilter === 'aguardando_peca' && m.status !== 'aguardando_peca') return false;
+      if (maintStatusFilter === 'pendente' && (m.status as string) !== 'pendente' && m.status !== 'chamado_aberto' && m.status !== 'orcamento_pendente') return false;
+      if (maintStatusFilter === 'aguardando_peca' && (m.status as string) !== 'aguardando_peca' && m.status !== 'aguardando_pecas') return false;
       if (maintStatusFilter === 'em_andamento' && m.status !== 'em_andamento') return false;
       if (maintStatusFilter === 'concluido' && m.status !== 'concluido') return false;
     }
@@ -206,11 +258,13 @@ export default function PecasWhatsAppPage() {
   const handleSaveHoursTemplate = (val: string) => {
     setHoursMessageTemplate(val);
     localStorage.setItem('whatsapp_hours_template', val);
+    saveConfigToBackend('whatsapp_hours_template', val);
   };
 
   const handleResetHoursTemplate = () => {
     setHoursMessageTemplate(defaultHoursTemplate);
     localStorage.setItem('whatsapp_hours_template', defaultHoursTemplate);
+    saveConfigToBackend('whatsapp_hours_template', defaultHoursTemplate);
     showToast('Mensagem padrão restaurada!');
   };
 
@@ -358,6 +412,7 @@ export default function PecasWhatsAppPage() {
 
   const [customTargetType, setCustomTargetType] = useState<'clients' | 'groups' | 'custom_number'>('clients');
   const [customSearch, setCustomSearch] = useState('');
+  const [customClientFilterBoatId, setCustomClientFilterBoatId] = useState<string>('all');
   
   const [customSelectedClientIds, setCustomSelectedClientIds] = useState<string[]>([]);
   const [customSelectedGroupIds, setCustomSelectedGroupIds] = useState<string[]>([]);
@@ -400,7 +455,9 @@ export default function PecasWhatsAppPage() {
     const newT = { id: Date.now().toString(), title: newTemplateTitle.trim(), text: customText };
     const updated = [...customTemplates, newT];
     setCustomTemplates(updated);
-    localStorage.setItem('whatsapp_custom_templates_pecas', JSON.stringify(updated));
+    const updatedStr = JSON.stringify(updated);
+    localStorage.setItem('whatsapp_custom_templates_pecas', updatedStr);
+    saveConfigToBackend('whatsapp_custom_templates_pecas', updatedStr);
     setNewTemplateTitle('');
     setShowSaveTemplateModal(false);
     showToast('Modelo salvo com sucesso!');
@@ -409,7 +466,9 @@ export default function PecasWhatsAppPage() {
   const handleDeleteCustomTemplate = (id: string) => {
     const updated = customTemplates.filter(t => t.id !== id);
     setCustomTemplates(updated);
-    localStorage.setItem('whatsapp_custom_templates_pecas', JSON.stringify(updated));
+    const updatedStr = JSON.stringify(updated);
+    localStorage.setItem('whatsapp_custom_templates_pecas', updatedStr);
+    saveConfigToBackend('whatsapp_custom_templates_pecas', updatedStr);
     showToast('Modelo removido.');
   };
 
@@ -440,6 +499,10 @@ export default function PecasWhatsAppPage() {
 
   const filteredCustomClients = clients.filter(c => {
     if (!c.telefone) return false;
+    if (customClientFilterBoatId && customClientFilterBoatId !== 'all') {
+      const linked = c.embarcacoes?.map(e => e.embarcacaoId) || [c.embarcacaoId];
+      if (!linked.includes(customClientFilterBoatId)) return false;
+    }
     if (customSearch) {
       const s = customSearch.toLowerCase();
       const matchName = c.nome.toLowerCase().includes(s);
@@ -1114,10 +1177,10 @@ export default function PecasWhatsAppPage() {
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                             maint.status === 'concluido' ? 'bg-emerald-100 text-emerald-800' :
                             maint.status === 'em_andamento' ? 'bg-blue-100 text-blue-800' :
-                            maint.status === 'aguardando_peca' ? 'bg-amber-100 text-amber-800' :
+                            (maint.status as string) === 'aguardando_pecas' || (maint.status as string) === 'aguardando_peca' ? 'bg-amber-100 text-amber-800' :
                             'bg-slate-200 text-slate-700'
                           }`}>
-                            {maint.status ? maint.status.replace('_', ' ') : 'Pendente'}
+                            {maint.status ? String(maint.status).replace('_', ' ') : 'Pendente'}
                           </span>
                         </div>
 
@@ -1358,7 +1421,7 @@ export default function PecasWhatsAppPage() {
                             statusRev.status === 'proximo' ? 'bg-amber-100 text-amber-800' :
                             'bg-emerald-100 text-emerald-800'
                           }`}>
-                            {statusRev.mensagem}
+                            {statusRev.status === 'vencido' ? 'Vencida' : statusRev.status === 'proximo' ? 'Próxima' : 'Em dia'}
                           </span>
                         </div>
 

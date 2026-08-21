@@ -153,7 +153,7 @@ export default function FinanceWhatsAppPage() {
       fetch('/api/config', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` }, 
-        body: JSON.stringify({ finance_whatsapp_instance: inst }) 
+        body: JSON.stringify({ configs: { finance_whatsapp_instance: inst } }) 
       }).catch(console.warn);
     }
     showToast(`Instância ${inst} vinculada!`);
@@ -317,18 +317,43 @@ export default function FinanceWhatsAppPage() {
   useEffect(() => { 
     setClients(clientDB.getAll()); 
     
-    // Sync financial instance from server config if missing
-    fetch('/api/config')
+    const adminToken = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = {};
+    if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+    
+    fetch('/api/config?chaves=finance_whatsapp_instance,finance_whatsapp_custom_lists,finance_whatsapp_custom_templates', { headers })
       .then(res => res.json())
       .then(data => {
-        const serverInstance = data.finance_whatsapp_instance;
-        if (serverInstance && serverInstance.trim()) {
+        const configs = data.configs || {};
+        
+        const serverInstance = configs.finance_whatsapp_instance;
+        if (serverInstance !== undefined && serverInstance !== null) {
           localStorage.setItem('finance_whatsapp_instance', serverInstance);
-          setInstanceName(serverInstance);
+          setInstanceName(serverInstance || null);
+        }
+        
+        const serverLists = configs.finance_whatsapp_custom_lists;
+        if (serverLists) {
+          let parsedLists = serverLists;
+          if (typeof serverLists === 'string') {
+            try { parsedLists = JSON.parse(serverLists); } catch (e) { parsedLists = []; }
+          }
+          localStorage.setItem('finance_whatsapp_custom_lists', JSON.stringify(parsedLists));
+          setCustomLists(parsedLists);
+        }
+        
+        const serverTemplates = configs.finance_whatsapp_custom_templates;
+        if (serverTemplates) {
+          let parsedTpls = serverTemplates;
+          if (typeof serverTemplates === 'string') {
+            try { parsedTpls = JSON.parse(serverTemplates); } catch (e) { parsedTpls = []; }
+          }
+          localStorage.setItem('finance_whatsapp_custom_templates', JSON.stringify(parsedTpls));
+          setCustomTemplates(parsedTpls);
         }
       })
       .catch(() => {
-        // Do nothing on failure, let it default to null/not_created
+        // Do nothing on failure, let it default to localStorage
       });
   }, []);
 
@@ -351,7 +376,7 @@ export default function FinanceWhatsAppPage() {
       const adminToken = localStorage.getItem('admin_token');
       const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
       if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
-      fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ finance_whatsapp_instance: newInstance }) }).catch(console.warn);
+      fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_instance: newInstance } }) }).catch(console.warn);
       showToast('Instância criada! Escaneie o QR Code.');
     } catch (err: any) {
       showToast(err.message || 'Erro ao criar instância', 'error');
@@ -375,7 +400,7 @@ export default function FinanceWhatsAppPage() {
     const adminToken = localStorage.getItem('admin_token');
     const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
-    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ finance_whatsapp_instance: '' }) }).catch(console.warn);
+    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_instance: '' } }) }).catch(console.warn);
     setWaStatus('not_created');
     setWaQrCode(null);
     showToast('WhatsApp desconectado!');
@@ -458,7 +483,7 @@ export default function FinanceWhatsAppPage() {
     const adminToken = localStorage.getItem('admin_token');
     const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
-    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ finance_whatsapp_custom_lists: updated }) }).catch(console.warn);
+    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_custom_lists: updated } }) }).catch(console.warn);
     
     setNewListName('');
     setShowSaveListModal(false);
@@ -480,7 +505,7 @@ export default function FinanceWhatsAppPage() {
     const adminToken = localStorage.getItem('admin_token');
     const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
-    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ finance_whatsapp_custom_lists: updated }) }).catch(console.warn);
+    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_custom_lists: updated } }) }).catch(console.warn);
     showToast('Lista excluída.');
   };
 
@@ -523,7 +548,7 @@ export default function FinanceWhatsAppPage() {
     const adminToken = localStorage.getItem('admin_token');
     const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
-    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ finance_whatsapp_custom_templates: updated }) }).catch(console.warn);
+    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_custom_templates: updated } }) }).catch(console.warn);
     setActiveTemplateId(newTpl.id);
     setNewTemplateName('');
     setShowSaveTemplateModal(false);
@@ -539,7 +564,7 @@ export default function FinanceWhatsAppPage() {
     const adminToken2 = localStorage.getItem('admin_token');
     const hdr2: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken2) hdr2['Authorization'] = `Bearer ${adminToken2}`;
-    fetch('/api/config', { method: 'POST', headers: hdr2, body: JSON.stringify({ finance_whatsapp_custom_templates: updated }) }).catch(console.warn);
+    fetch('/api/config', { method: 'POST', headers: hdr2, body: JSON.stringify({ configs: { finance_whatsapp_custom_templates: updated } }) }).catch(console.warn);
     if (activeTemplateId === id) {
       setActiveTemplateId(null);
       setMessageText('');

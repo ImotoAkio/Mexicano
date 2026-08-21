@@ -13,3 +13,4 @@ scratch/
 uploads/
 
 .agents/
+tsc_output.txt

@@ -85,7 +85,7 @@ export default function ScheduleCard({
   const isGuardado = res.statusMarina === 'guardada' || res.statusOperacional === 'guardado' || !!res.horaSubida;
   const isChegada = res.statusMarina === 'chegada' || res.statusOperacional === 'retornou' || (!!res.horaChegada && !isGuardado);
   const isNavegando = res.statusMarina === 'saida' || res.statusOperacional === 'navegando' || (!!res.horaSaida && !isChegada && !isGuardado);
-  const isNaAgua = res.statusMarina === 'pronta' || res.statusMarina === 'descida' || res.statusMarina === 'pier' || res.statusOperacional === 'pronto_na_agua' || (!!res.horaDescida && !isNavegando && !isChegada && !isGuardado);
+  const isNaAgua = (res.statusMarina as string) === 'pronta' || res.statusMarina === 'descida' || res.statusMarina === 'pier' || res.statusOperacional === 'pronto_na_agua' || (!!res.horaDescida && !isNavegando && !isChegada && !isGuardado);
 
   if (isCanceled) {
     currentStatus = 'Cancelado';
@@ -107,7 +107,7 @@ export default function ScheduleCard({
     currentStatus = 'Na Água';
     statusClasses = 'bg-cyan-50 text-cyan-700 border-cyan-200 shadow-2xs font-extrabold';
     dotClasses = 'bg-cyan-500';
-  } else if (isConfirmed || res.statusMarina === 'confirmada') {
+  } else if (isConfirmed || (res.statusMarina as string) === 'confirmada') {
     currentStatus = 'Confirmado';
     statusClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs font-extrabold';
     dotClasses = 'bg-emerald-500';

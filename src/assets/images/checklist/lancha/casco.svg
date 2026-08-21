@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="deepVHullGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0369a1"/>
+      <stop offset="48%" stop-color="#0284c7"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="52%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+    <linearGradient id="bottomGelcoat" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="70%" stop-color="#f1f5f9"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="waterLineNavy" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0c4a6e"/>
+      <stop offset="50%" stop-color="#0369a1"/>
+      <stop offset="100%" stop-color="#0c4a6e"/>
+    </linearGradient>
+    <filter id="hullShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-opacity="0.25" flood-color="#0f172a"/>
+    </filter>
+  </defs>
+
+  <!-- Ground / Cradle / Trailer Roller Support Lines -->
+  <ellipse cx="300" cy="405" rx="270" ry="25" fill="#e2e8f0" opacity="0.6"/>
+  
+  <g filter="url(#hullShadow)">
+    <!-- Top Rub Rail and Upper Topsides -->
+    <path d="M 50 140 Q 300 110 550 140 L 530 180 Q 300 150 70 180 Z" fill="url(#bottomGelcoat)" stroke="#94a3b8" stroke-width="2"/>
+    <path d="M 45 140 Q 300 110 555 140" fill="none" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 45 140 Q 300 110 555 140" fill="none" stroke="#e2e8f0" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Antifouling / Waterline Boot Stripe -->
+    <path d="M 65 175 Q 300 145 535 175 L 515 205 Q 300 175 85 205 Z" fill="url(#waterLineNavy)"/>
+    <path d="M 65 175 Q 300 145 535 175" fill="none" stroke="#38bdf8" stroke-width="3"/>
+
+    <!-- Deep-V Bottom Hull -->
+    <path d="M 85 205 L 515 205 L 300 390 Z" fill="url(#deepVHullGrad)" stroke="#0c4a6e" stroke-width="2"/>
+
+    <!-- Center Keel Line -->
+    <line x1="300" y1="130" x2="300" y2="390" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <!-- Keel Guard -->
+    <line x1="300" y1="230" x2="300" y2="390" stroke="#94a3b8" stroke-width="6" stroke-linecap="round"/>
+    <line x1="300" y1="230" x2="300" y2="390" stroke="#e2e8f0" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Left Planing Strakes -->
+    <path d="M 125 240 L 300 345" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 125 240 L 300 345" stroke="#0284c7" stroke-width="2" stroke-linecap="round"/>
+    
+    <path d="M 170 280 L 300 365" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 170 280 L 300 365" stroke="#0284c7" stroke-width="1.5" stroke-linecap="round"/>
+
+    <!-- Right Planing Strakes -->
+    <path d="M 475 240 L 300 345" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 475 240 L 300 345" stroke="#0284c7" stroke-width="2" stroke-linecap="round"/>
+    
+    <path d="M 430 280 L 300 365" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 430 280 L 300 365" stroke="#0284c7" stroke-width="1.5" stroke-linecap="round"/>
+
+    <!-- Bow Tow Eye -->
+    <circle cx="300" cy="205" r="8" fill="#e2e8f0" stroke="#0f172a" stroke-width="3"/>
+
+    <!-- Transom Drain Plug -->
+    <rect x="294" y="375" width="12" height="12" rx="3" fill="#eab308" stroke="#713f12" stroke-width="2"/>
+
+    <!-- Sonar Transducer -->
+    <rect x="240" y="310" width="18" height="10" rx="2" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="342" y="310" width="18" height="10" rx="2" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/>
+
+    <!-- Water Intake Grids -->
+    <line x1="220" y1="280" x2="235" y2="280" stroke="#0f172a" stroke-width="2"/>
+    <line x1="220" y1="285" x2="235" y2="285" stroke="#0f172a" stroke-width="2"/>
+    <line x1="365" y1="280" x2="380" y2="280" stroke="#0f172a" stroke-width="2"/>
+    <line x1="365" y1="285" x2="380" y2="285" stroke="#0f172a" stroke-width="2"/>
+  </g>
+
+  <!-- Inspection Target Indicators -->
+  <g transform="translate(0, 0)">
+    <circle cx="300" cy="380" r="14" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="3 2"/>
+    <text x="320" y="384" fill="#ef4444" font-size="10" font-family="sans-serif" font-weight="bold">Quilha e Gelcoat</text>
+  </g>
+</svg>

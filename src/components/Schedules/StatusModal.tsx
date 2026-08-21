@@ -48,7 +48,7 @@ export default function StatusModal({
       setDestino(reserva.destino || 'Iate Club - Rodeadouro');
       setHoraSaida(reserva.previsaoSaida || '11:30');
       setHoraChegada(reserva.previsaoChegada || '17:28');
-      setPessoasABordo(reserva.pessoasABordo || '02');
+      setPessoasABordo(String(reserva.pessoasABordo || '02'));
       
       setNumObs(reserva.observações || '');
       setSomRetirado(!!reserva.somRetirado);

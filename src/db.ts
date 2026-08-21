@@ -5,34 +5,7 @@ let memoryClients: Cliente[] = [];
 let memoryBoats: Embarcacao[] = [];
 let memoryReservations: Reserva[] = [];
 let memoryManutencoes: Manutencao[] = [];
-let memoryChamados: Chamado[] = [
-  {
-    id: 'chm_mock_1',
-    codigoChamado: 'CHM-2026-001',
-    embarcacaoId: 'boat_3',
-    solicitanteTipo: 'gerente',
-    solicitanteNome: 'Carlos Gerência',
-    titulo: 'Vazamento de óleo no motor de popa',
-    descricaoAvaria: 'Verificada presença de óleo na rampa de descida após último teste no mar. Necessário vistoria técnica.',
-    urgencia: 'alta',
-    status: 'pendente',
-    dataAbertura: '2026-08-17',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'chm_mock_2',
-    codigoChamado: 'CHM-2026-002',
-    embarcacaoId: 'boat_1',
-    solicitanteTipo: 'cliente',
-    solicitanteNome: 'Marcelo Oliveira (Proprietário)',
-    titulo: 'Ruído incomum no sistema elétrico e bomba de porão',
-    descricaoAvaria: 'Bomba de porão acionando com frequência e luz de alerta piscando no painel.',
-    urgencia: 'media',
-    status: 'em_analise',
-    dataAbertura: '2026-08-18',
-    createdAt: new Date().toISOString()
-  }
-];
+let memoryChamados: Chamado[] = [];
 let memoryMecanicos: Mecanico[] = [];
 let memoryFuncionarios: Funcionario[] = [];
 let memoryFolgas: Folga[] = [];
@@ -91,6 +64,7 @@ export const clientDB = {
   },
   create: (cliente: (Omit<Cliente, 'id' | 'dataCadastro'> & { id?: string; dataCadastro?: string }) | Cliente): Cliente => {
     const newClient: Cliente = {
+      status: 'ativo',
       ...cliente,
       id: (cliente as any).id || `cli_${Date.now()}`,
       dataCadastro: (cliente as any).dataCadastro || new Date().toISOString()
@@ -128,7 +102,7 @@ export const clientDB = {
   },
   update: (id: string, updatedFields: Partial<Omit<Cliente, 'id' | 'dataCadastro'>>): Cliente => {
     const idx = memoryClients.findIndex(c => c.id === id);
-    if (idx === -1) throw new Error('Cliente nǜo encontrado.');
+    if (idx === -1) throw new Error('Cliente não encontrado.');
     
     const oldClient = memoryClients[idx];
     const oldBoatsList = oldClient.embarcacoes && oldClient.embarcacoes.length > 0
@@ -171,40 +145,20 @@ export const clientDB = {
 
     return updatedClient;
   },
+  activate: (id: string): Cliente => {
+    return clientDB.update(id, { status: 'ativo' });
+  },
+  deactivate: (id: string): Cliente => {
+    return clientDB.update(id, { status: 'inativo' });
+  },
+  toggleStatus: (id: string): Cliente => {
+    const c = clientDB.getById(id);
+    const newStatus = c?.status === 'inativo' ? 'ativo' : 'inativo';
+    return clientDB.update(id, { status: newStatus });
+  },
+  // Soft-delete to preserve 100% of historical reservations and financial records
   delete: (id: string): void => {
-    const clientToDelete = memoryClients.find(c => c.id === id);
-    memoryClients = memoryClients.filter(c => c.id !== id);
-
-    const updatedBoatIds: string[] = [];
-    if (clientToDelete) {
-      // Remove ownership from ALL boats
-      memoryBoats.forEach(b => {
-        if (b.donos.includes(id)) {
-          b.donos = b.donos.filter(d => d !== id);
-          updatedBoatIds.push(b.id);
-        }
-      });
-    }
-
-    // Delete associated reservations
-    const reservationsToDelete = memoryReservations.filter(r => r.clienteId === id);
-    memoryReservations = memoryReservations.filter(r => r.clienteId !== id);
-
-    // Remote sync deletion & relations update
-    saveToRemoteDB('clients', 'delete', { id });
-    if (clientToDelete && updatedBoatIds.length > 0) {
-      memoryBoats.forEach(b => {
-        if (updatedBoatIds.includes(b.id)) {
-          saveToRemoteDB('boats', 'update', b);
-        }
-      });
-    }
-
-    if (reservationsToDelete.length > 0) {
-      reservationsToDelete.forEach(r => {
-        saveToRemoteDB('reservations', 'delete', { id: r.id });
-      });
-    }
+    clientDB.deactivate(id);
   }
 };
 
@@ -492,7 +446,7 @@ export const reservationDB = {
   }
 };
 
-// Chamado DB Operations
+// Chamado DB Operations — synced with backend MySQL
 export const chamadoDB = {
   getAll: (): Chamado[] => {
     return memoryChamados.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -504,17 +458,47 @@ export const chamadoDB = {
     return memoryChamados.filter(c => c.embarcacaoId === embarcacaoId);
   },
   create: (chamado: Omit<Chamado, 'id' | 'codigoChamado' | 'createdAt'>): Chamado => {
-    const nextNum = memoryChamados.length + 1;
-    const numPadded = String(nextNum).padStart(3, '0');
+    // Generate a temporary code locally (will be overwritten by server-generated code if available)
+    const tempNum = memoryChamados.length + 1;
+    const year = new Date().getFullYear();
     const newChamado: Chamado = {
       ...chamado,
       id: `chm_${Date.now()}`,
-      codigoChamado: `CHM-2026-${numPadded}`,
+      codigoChamado: `CHM-${year}-${String(tempNum).padStart(3, '0')}`,
       status: chamado.status || 'pendente',
       dataAbertura: chamado.dataAbertura || new Date().toISOString().split('T')[0],
       createdAt: new Date().toISOString()
     };
     memoryChamados.push(newChamado);
+
+    // Async: fetch correct sequential code from backend, then save
+    (async () => {
+      try {
+        const token = getAdminToken();
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        // Get the correct sequential code from the server
+        const codeRes = await fetch('/api/chamados/next-code', { headers });
+        if (codeRes.ok) {
+          const { code } = await codeRes.json();
+          newChamado.codigoChamado = code;
+          // Update in-memory too
+          const idx = memoryChamados.findIndex(c => c.id === newChamado.id);
+          if (idx !== -1) memoryChamados[idx].codigoChamado = code;
+        }
+
+        // Persist to database
+        await fetch('/api/chamados/save', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ action: 'upsert', data: newChamado })
+        });
+      } catch (err) {
+        console.warn('[Chamados] Failed to sync create to server:', err);
+      }
+    })();
+
     return newChamado;
   },
   update: (id: string, updatedFields: Partial<Chamado>): Chamado => {
@@ -522,10 +506,31 @@ export const chamadoDB = {
     if (idx === -1) throw new Error('Chamado não encontrado.');
     const updated = { ...memoryChamados[idx], ...updatedFields };
     memoryChamados[idx] = updated;
+
+    // Async: persist to backend
+    const token = getAdminToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/chamados/save', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action: 'upsert', data: updated })
+    }).catch(err => console.warn('[Chamados] Failed to sync update to server:', err));
+
     return updated;
   },
   delete: (id: string): void => {
     memoryChamados = memoryChamados.filter(c => c.id !== id);
+
+    // Async: persist to backend
+    const token = getAdminToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch('/api/chamados/save', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action: 'delete', data: { id } })
+    }).catch(err => console.warn('[Chamados] Failed to sync delete to server:', err));
   }
 };
 
@@ -544,7 +549,7 @@ let memoryTiposManutencao: TipoManutencao[] = [
 
 export const tipoManutencaoDB = {
   getAll: (): TipoManutencao[] => {
-    return memoryTiposManutencao.sort((a, b) => a.nome.localeCompare(b.nome));
+    return [...memoryTiposManutencao].sort((a, b) => a.nome.localeCompare(b.nome));
   },
   create: (tipo: Omit<TipoManutencao, 'id' | 'createdAt'>): TipoManutencao => {
     const newTipo: TipoManutencao = {
@@ -552,8 +557,36 @@ export const tipoManutencaoDB = {
       id: `tip_${Date.now()}`,
       createdAt: new Date().toISOString()
     };
-    memoryTiposManutencao.push(newTipo);
+    memoryTiposManutencao = [...memoryTiposManutencao, newTipo];
+    const token = getAdminToken();
+    fetch('/api/tipos-manutencao/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'upsert', data: newTipo })
+    }).catch(console.error);
     return newTipo;
+  },
+  update: (id: string, updatedFields: Partial<TipoManutencao>): TipoManutencao => {
+    const idx = memoryTiposManutencao.findIndex(t => t.id === id);
+    if (idx === -1) throw new Error('Tipo de manutenção não encontrado.');
+    const updated = { ...memoryTiposManutencao[idx], ...updatedFields };
+    memoryTiposManutencao = memoryTiposManutencao.map(t => t.id === id ? updated : t);
+    const token = getAdminToken();
+    fetch('/api/tipos-manutencao/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'upsert', data: updated })
+    }).catch(console.error);
+    return updated;
+  },
+  delete: (id: string): void => {
+    memoryTiposManutencao = memoryTiposManutencao.filter(t => t.id !== id);
+    const token = getAdminToken();
+    fetch('/api/tipos-manutencao/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      body: JSON.stringify({ action: 'delete', data: { id } })
+    }).catch(console.error);
   }
 };
 
@@ -860,12 +893,16 @@ export async function loadFromRemote() {
     memoryReservations = remoteData.reservations || [];
     memoryManutencoes = remoteData.manutencoes || [];
     memoryMecanicos = remoteData.mecanicos || [];
+    if (remoteData.tiposManutencao && remoteData.tiposManutencao.length > 0) {
+      memoryTiposManutencao = remoteData.tiposManutencao;
+    }
     memoryFuncionarios = remoteData.funcionarios || [];
     memoryFolgas = remoteData.folgas || [];
     memoryEpis = remoteData.epis || [];
     memoryCatalogoEpis = remoteData.catalogoEPIs || [];
     memoryHistoricoEpis = remoteData.historicoEpis || [];
     memoryRegistrosAtividades = remoteData.registrosAtividades || [];
+    memoryChamados = remoteData.chamados || [];
 
     return { 
       connected: true,

@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 400" width="100%" height="100%">
+  <defs>
+    <linearGradient id="lanchaSideHull" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+    <linearGradient id="sideBlueGraphics" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="60%" stop-color="#0369a1"/>
+      <stop offset="100%" stop-color="#0c4a6e"/>
+    </linearGradient>
+    <linearGradient id="sideGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
+    </linearGradient>
+    <filter id="boatShadowSide" x="-5%" y="-5%" width="115%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-opacity="0.2" flood-color="#0f172a"/>
+    </filter>
+  </defs>
+
+  <!-- Water Surface -->
+  <ellipse cx="325" cy="335" rx="300" ry="30" fill="#e0f2fe" opacity="0.6"/>
+  <ellipse cx="325" cy="340" rx="260" ry="15" fill="#bae6fd" opacity="0.5"/>
+
+  <g filter="url(#boatShadowSide)">
+    <!-- T-Top / Hardtop & Radar -->
+    <path d="M 230 75 L 390 60 L 420 85 L 250 100 Z" fill="#0f172a"/>
+    <path d="M 245 78 L 385 66 L 405 84 L 260 94 Z" fill="#ffffff"/>
+    <!-- Hardtop Structure Pillars -->
+    <line x1="270" y1="95" x2="285" y2="190" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round"/>
+    <line x1="375" y1="80" x2="355" y2="190" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round"/>
+    <!-- Radar Dome & Antenna -->
+    <rect x="330" y="45" width="25" height="15" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+    <line x1="380" y1="60" x2="395" y2="25" stroke="#94a3b8" stroke-width="2"/>
+
+    <!-- Windshield Side Profile -->
+    <path d="M 285 190 L 320 120 L 410 135 L 390 190 Z" fill="url(#sideGlassGrad)" stroke="#0f172a" stroke-width="2.5"/>
+    <path d="M 285 190 L 320 120" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Captain Chair & Cockpit Interior Silhouette -->
+    <path d="M 330 190 L 335 155 Q 345 155 350 165 L 345 190 Z" fill="#334155"/>
+    <circle cx="310" cy="165" r="9" fill="none" stroke="#e2e8f0" stroke-width="2.5"/>
+
+    <!-- Bow Rail (Guarda-mancebo de Proa em Inox) -->
+    <path d="M 580 200 L 430 185 L 320 190" fill="none" stroke="#94a3b8" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="530" y1="202" x2="530" y2="218" stroke="#64748b" stroke-width="2.5"/>
+    <line x1="450" y1="188" x2="450" y2="212" stroke="#64748b" stroke-width="2.5"/>
+    <line x1="380" y1="187" x2="380" y2="212" stroke="#64748b" stroke-width="2.5"/>
+
+    <!-- Main Hull (Casco Lateral de Bombordo - Proa à Direita, Popa à Esquerda) -->
+    <path d="M 120 230 L 140 310 Q 320 340 590 220 L 600 205 Q 450 195 120 230 Z" fill="url(#lanchaSideHull)" stroke="#cbd5e1" stroke-width="2"/>
+
+    <!-- Dynamic Sport Graphic Stripe (Faixa Náutica Azul Esportiva) -->
+    <path d="M 130 250 L 138 295 Q 300 320 540 235 L 565 220 Q 350 225 130 250 Z" fill="url(#sideBlueGraphics)"/>
+
+    <!-- Hull Windows / Cabin Portlights (Vigias e Janelas Panorâmicas do Casco) -->
+    <path d="M 380 240 L 470 225 Q 480 225 480 232 L 470 245 Q 460 250 450 250 L 375 250 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+    <circle cx="340" cy="250" r="5" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+    <circle cx="315" cy="253" r="5" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+
+    <!-- Rub Rail (Friso Lateral de Proteção em Toda a Extensão) -->
+    <path d="M 115 230 Q 380 205 600 205" fill="none" stroke="#0f172a" stroke-width="5" stroke-linecap="round"/>
+    <path d="M 115 230 Q 380 205 600 205" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Bow Anchor & Roller (Âncora e Lançador na Proa) -->
+    <polygon points="590,205 615,200 600,215" fill="#64748b" stroke="#334155" stroke-width="1.5"/>
+
+    <!-- Stern Platform (Plataforma de Popa com Teca e Escada) -->
+    <rect x="75" y="245" width="45" height="15" rx="2" fill="#d97706" stroke="#78350f" stroke-width="1.5"/>
+    <!-- Ladder tucked under platform -->
+    <line x1="80" y1="260" x2="80" y2="280" stroke="#94a3b8" stroke-width="2.5"/>
+    <line x1="90" y1="260" x2="90" y2="280" stroke="#94a3b8" stroke-width="2.5"/>
+
+    <!-- Outboard Engine (Motor de Popa na Extremidade Esquerda) -->
+    <path d="M 50 235 L 85 235 L 90 280 L 75 320 L 60 320 L 45 280 Z" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+    <path d="M 52 240 L 80 240 L 85 265 L 50 265 Z" fill="#0284c7"/>
+    <!-- Propeller & Skeg -->
+    <polygon points="68,310 72,310 70,335 65,335" fill="#1e293b"/>
+    <circle cx="70" cy="325" r="5" fill="#94a3b8"/>
+
+    <!-- Mooring Cleats on Gunwale (Cunhos de Amarração em Inox) -->
+    <rect x="540" y="202" width="16" height="4" rx="1" fill="#e2e8f0" stroke="#475569" stroke-width="1"/>
+    <rect x="340" y="198" width="16" height="4" rx="1" fill="#e2e8f0" stroke="#475569" stroke-width="1"/>
+    <rect x="140" y="222" width="16" height="4" rx="1" fill="#e2e8f0" stroke="#475569" stroke-width="1"/>
+  </g>
+
+  <!-- Water Spray & Wave at Bow and Stern -->
+  <path d="M 120 330 Q 300 350 560 330" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M 550 325 Q 600 310 620 325" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+</svg>

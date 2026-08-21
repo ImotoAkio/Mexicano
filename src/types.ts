@@ -21,6 +21,7 @@ export interface Cliente {
   cidade?: string;
   estado?: string;
   statusFinanceiro?: 'em_dia' | 'inadimplente' | 'pendente';
+  status?: 'ativo' | 'inativo';
   temLancamentos?: boolean;
   temValoresEmAberto?: boolean;
   observacoesFinanceiras?: string;
@@ -195,7 +196,7 @@ export interface TransacaoFinanceira {
   valor: number;
   dataVencimento: string; // YYYY-MM-DD
   dataPagamento?: string; // YYYY-MM-DD (nullable)
-  status: 'lancado' | 'vencido' | 'pago' | 'cancelado';
+  status: 'lancado' | 'vencido' | 'pago' | 'cancelado' | 'aguardando_aprovacao';
   descricao: string;
   clienteId?: string; // Optional linkage to client
   embarcacaoId?: string; // Optional linkage to boat
@@ -238,40 +239,53 @@ export interface Chamado {
   titulo: string;
   descricaoAvaria: string;
   urgencia: 'baixa' | 'media' | 'alta' | 'critica';
-  status: 'pendente' | 'em_analise' | 'os_gerada' | 'rejeitado' | 'concluido';
+  status: 'pendente' | 'em_analise' | 'os_gerada' | 'rejeitado' | 'concluido' | 'descartado';
   osId?: string;
   dataAbertura: string;
   observacoesAnalise?: string;
   createdAt: string;
 }
 
+export interface PecaItem {
+  nome: string;
+  quantidade: number;
+  valorUnitario: number;
+}
+
 export interface Manutencao {
+  id: string;
   codigoOS?: string;
   chamadoId?: string;
-  dataEntradaOficina?: string;
-  concluidoEm?: string;
-  titulo?: string;
-  clienteId?: string;
-  urgencia?: 'baixa' | 'media' | 'alta' | 'critica';
-  id: string;
   embarcacaoId: string;
+  clienteId?: string;
+  titulo?: string;
   tituloChamado?: string;
+  tipo?: TipoManutencao;
   tipoManutencaoId?: string;
-  tipoManutencaoNome?: string; // Short description for Kanban
-  dataSaida: string; // YYYY-MM-DD
-  dataChamado?: string; // YYYY-MM-DD
-  prazoEntrega?: string; // YYYY-MM-DD
+  tipoManutencaoNome?: string;
+  categoria?: 'preventiva' | 'corretiva' | 'revisao_periodica' | 'emergencial';
+  mecanicoResponsavelId?: string;
+  mecanicoNome?: string;
   mecanico?: string | null;
-  orcamento?: number | null;
+  dataEntradaOficina?: string;
+  dataSaida?: string;
+  dataChamado?: string;
+  prazoEntrega?: string;
+  previsaoTermino?: string;
+  dataTermino?: string;
+  concluidoEm?: string;
+  urgencia?: 'baixa' | 'media' | 'alta' | 'critica';
+  custoTotal?: number;
   custo?: number | null;
+  orcamento?: number | null;
   valorRepassado?: number | null;
   orcamentoAprovado?: boolean;
   status: 'chamado_aberto' | 'orcamento_pendente' | 'na_oficina' | 'em_andamento' | 'aguardando_pecas' | 'concluido' | 'cancelado';
   localizacao?: 'marina' | 'oficina_externa';
   descricaoServico?: string;
-  gerarFinanceiro?: boolean; // apenas para frontend
-  horasMotorAtual?: number; // Engine hours when maintenance started
-  proximaRevisaoHoras?: number; // Engine hours due for next revision
+  gerarFinanceiro?: boolean;
+  horasMotorAtual?: number;
+  proximaRevisaoHoras?: number;
   acessorios?: {
     tenda?: boolean;
     mesa?: boolean;
@@ -279,11 +293,7 @@ export interface Manutencao {
     churrasqueira?: boolean;
     extintores?: boolean;
   };
-  pecas?: Array<{
-    nome: string;
-    quantidade: number;
-    valorUnitario: number;
-  }>;
+  pecas?: PecaItem[];
   whatsappStatus?: 'nao_enviado' | 'orcamento_enviado' | 'aprovado' | 'concluido';
   createdAt: string;
 }

@@ -256,7 +256,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
       embarcacaoId: selectedBoatId,
       clienteId: selectedClientId || getEmbarcacao(selectedBoatId)?.donos?.[0] || '',
       status: 'confirmado',
-      statusMarina: checklistMode === 'subida' ? 'guardada' : checklistMode === 'chegada' ? 'chegada' : 'pronta',
+      statusMarina: checklistMode === 'subida' ? 'guardada' : checklistMode === 'chegada' ? 'chegada' : 'descida',
       createdAt: new Date().toISOString()
     };
 

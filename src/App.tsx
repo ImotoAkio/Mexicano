@@ -121,7 +121,7 @@ const AdminFuelWrapper = () => {
   return <AdminFuelPage data={data} setData={setData} reloadData={loadData} />;
 };
 
-type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios';
+type TabType = 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
@@ -271,7 +271,7 @@ export default function App() {
       group: 'Manutenção & Peças',
       items: [
         { id: 'manutencoes' as TabType, label: 'Painel de Manutenções', icon: Wrench },
-        { id: 'chamados' as TabType, label: 'Controle de Manutenções', icon: ClipboardList },
+        { id: 'chamados' as TabType, label: 'Chamados', icon: ClipboardList },
         { id: 'pecas-horimetros' as TabType, label: 'Controle de Horímetros', icon: Clock },
         { id: 'pecas-acessorios' as TabType, label: 'Checklist de Acessórios', icon: Package },
         { id: 'pecas-atividades' as TabType, label: 'Quadro de Atividades', icon: ClipboardList },
@@ -323,7 +323,7 @@ export default function App() {
       if (isFinanceiro) {
         return ['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id);
       } else if (isPecasServicos) {
-        return ['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules'].includes(item.id);
+        return ['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(item.id);
       } else if (isComercial) {
         return ['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(item.id);
       }
@@ -334,7 +334,7 @@ export default function App() {
   useEffect(() => {
     if (isFinanceiro && !['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
       setActiveTab('finance-lancamentos');
-    } else if (isPecasServicos && !['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules'].includes(activeTab)) {
+    } else if (isPecasServicos && !['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(activeTab)) {
       setActiveTab('manutencoes');
     } else if (isComercial && !['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(activeTab)) {
       setActiveTab('contratos');
@@ -386,9 +386,10 @@ export default function App() {
 
   // ═══════════ SHARED CHECKLIST PAGE (/checklist/share/:id) ═══════════
   if (isSharedChecklistRoute) {
+    const sharedChecklistId = currentPath.split('/checklist/share/')[1] || '';
     return (
       <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
-        <SharedChecklistPage />
+        <SharedChecklistPage checklistId={sharedChecklistId} />
       </Suspense>
     );
   }
@@ -398,9 +399,9 @@ export default function App() {
     if (!clientToken) {
       return (
         <ClientLoginPage 
-          onLoginSuccess={(token, data) => {
+          onLoginSuccess={(token) => {
             setClientToken(token);
-            setClientData(data);
+            // fetchClientData runs automatically in useEffect when clientToken changes
           }} 
         />
       );
@@ -412,16 +413,23 @@ export default function App() {
           <span className="text-xs text-slate-400 font-medium animate-pulse">Carregando dados da sua embarcação...</span>
         </div>
       }>
-        <ClientDashboardPage 
-          clientData={clientData}
-          onLogout={() => {
-            localStorage.removeItem('client_token');
-            localStorage.removeItem('client_data_cache');
-            setClientToken(null);
-            setClientData(null);
-          }}
-          onRefresh={() => fetchClientData(false)}
-        />
+        {clientData ? (
+          <ClientDashboardPage 
+            client={clientData.client}
+            boats={clientData.boats || []}
+            reservations={clientData.reservations || []}
+            transacoes={clientData.transacoes || []}
+            onLogout={() => {
+              localStorage.removeItem('client_token');
+              localStorage.removeItem('client_data_cache');
+              setClientToken(null);
+              setClientData(null);
+            }}
+            onRefresh={() => fetchClientData(false)}
+          />
+        ) : (
+          <div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div></div>
+        )}
       </Suspense>
     );
   }

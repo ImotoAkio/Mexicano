@@ -21,6 +21,27 @@ export default function Logo({ className = "h-9 w-auto text-[#B69D74]", editable
       setCustomLogo(localStorage.getItem('custom_sidebar_logo'));
     };
 
+    // Load logo from backend if not in localStorage
+    if (!customLogo) {
+      (async () => {
+        try {
+          const token = localStorage.getItem('admin_token');
+          const headers: Record<string, string> = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          const res = await fetch('/api/config?chaves=custom_sidebar_logo', { headers });
+          if (res.ok) {
+            const { configs } = await res.json();
+            if (configs.custom_sidebar_logo) {
+              localStorage.setItem('custom_sidebar_logo', configs.custom_sidebar_logo);
+              setCustomLogo(configs.custom_sidebar_logo);
+            }
+          }
+        } catch (err) {
+          // Silently fallback to localStorage
+        }
+      })();
+    }
+
     window.addEventListener('sidebar_logo_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
     return () => {

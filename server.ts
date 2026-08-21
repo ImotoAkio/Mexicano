@@ -30,8 +30,11 @@ import {
   getAllFeedbacks, upsertFeedback, deleteFeedback,
   upsertManutencao, deleteManutencao,
   getAllMecanicos, upsertMecanico, deleteMecanico,
+  getAllTiposManutencao, upsertTipoManutencao, deleteTipoManutencao,
   upsertFuncionario, deleteFuncionario,
-  upsertFolga, deleteFolga
+  upsertFolga, deleteFolga,
+  getFuelInventoryFromDb, saveFuelInventoryInDb, getFuelHistoryFromDb, saveFuelHistoryInDb, resetFuelDataInDb,
+  getAllChamados, upsertChamado, deleteChamado, getNextChamadoCode
 } from "./server-db";
 import { getOrRegisterAsaasCustomer, createAsaasCharge, getPixQrCode, createAsaasBulkCharge } from "./server-asaas";
 
@@ -446,6 +449,11 @@ app.post("/api/auth/client/check", authLimiter, async (req, res) => {
       return res.status(401).json({ error: true, message: "Cadastro não encontrado. Este é um sistema fechado apenas para clientes do Grupo Marina Club." });
     }
 
+    if (client.status === 'inativo') {
+      writeAuditLog(identifier, "client", "LOGIN_BLOCKED_INACTIVE", req.ip, `Cliente inativo: ${client.nome}`);
+      return res.status(403).json({ error: true, message: "Este cadastro encontra-se desativado. Entre em contato com a administração da marina." });
+    }
+
     // Check if client has registered a password
     const clientAuth = await getClientAuth(client.id);
 
@@ -472,6 +480,11 @@ app.post("/api/auth/client", authLimiter, async (req, res) => {
     if (!client) {
       writeAuditLog(cpf, "client", "LOGIN_FAILED", req.ip, "CPF não cadastrado");
       return res.status(401).json({ error: true, message: "CPF não cadastrado no sistema." });
+    }
+
+    if (client.status === 'inativo') {
+      writeAuditLog(client.nome, "client", "LOGIN_BLOCKED_INACTIVE", req.ip, `Cliente inativo: ${client.id}`);
+      return res.status(403).json({ error: true, message: "Este cadastro encontra-se desativado. Entre em contato com a administração da marina." });
     }
 
     // Check if client has registered a password
@@ -550,6 +563,10 @@ app.post("/api/auth/client/register", authLimiter, async (req, res) => {
       return res.status(401).json({ error: true, message: "CPF não cadastrado no sistema." });
     }
 
+    if (client.status === 'inativo') {
+      return res.status(403).json({ error: true, message: "Este cadastro encontra-se desativado. Entre em contato com a administração da marina." });
+    }
+
     // Check if already has a password
     const existingAuth = await getClientAuth(client.id);
     if (existingAuth) {
@@ -599,6 +616,53 @@ app.get("/api/auth/validate", async (req, res) => {
     res.json({ valid: true, role: decoded.role, username: decoded.username, nome: funcionarioNome || decoded.username, id: decoded.id });
   } catch {
     res.status(401).json({ valid: false });
+  }
+});
+
+// Route: Change password for logged in admin user
+app.post("/api/auth/change-password", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: true, message: "Não autorizado." });
+  }
+
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: true, message: "Senha atual e nova senha são obrigatórias." });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: true, message: "A nova senha deve ter no mínimo 6 caracteres." });
+  }
+
+  try {
+    const token = authHeader.substring(7);
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const username = decoded.username;
+
+    if (!username) {
+      return res.status(400).json({ error: true, message: "Sessão inválida para alteração de senha." });
+    }
+
+    const admin = await getAdminByUsername(username);
+    if (!admin) {
+      return res.status(404).json({ error: true, message: "Usuário não encontrado." });
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, admin.passwordHash);
+    if (!isValid) {
+      writeAuditLog(username, "admin", "CHANGE_PASSWORD_FAILED", req.ip, "Senha atual incorreta");
+      return res.status(401).json({ error: true, message: "Senha atual incorreta." });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await updateAdmin(admin.id, admin.username, newHash, admin.role, admin.funcionarioId);
+
+    writeAuditLog(username, "admin", "CHANGE_PASSWORD_SUCCESS", req.ip);
+    res.json({ success: true, message: "Senha alterada com sucesso." });
+  } catch (err: any) {
+    console.error("Change password error:", err);
+    res.status(500).json({ error: true, message: "Erro interno ao alterar a senha." });
   }
 });
 
@@ -983,6 +1047,70 @@ app.post("/api/mecanicos/save", requireAdminAuth, sensitiveLimiter, async (req, 
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Failed to save mecanico" });
+  }
+});
+
+// Route: Operacional - Tipos de Manutenção / Serviço
+app.get("/api/tipos-manutencao", requireAdminAuth, async (req, res) => {
+  try {
+    const tipos = await getAllTiposManutencao();
+    res.json(tipos);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch tipos de manutencao" });
+  }
+});
+
+app.post("/api/tipos-manutencao/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteTipoManutencao(data.id);
+    } else if (action === 'upsert') {
+      await upsertTipoManutencao(data);
+    }
+    if (io) {
+      io.emit('db_update', { entity: 'tiposManutencao', action, data });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save tipo de manutencao" });
+  }
+});
+
+// Route: Operacional - Chamados
+app.get("/api/chamados", requireAdminAuth, async (req, res) => {
+  try {
+    const chamados = await getAllChamados();
+    res.json(chamados);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch chamados" });
+  }
+});
+
+app.get("/api/chamados/next-code", requireAdminAuth, async (req, res) => {
+  try {
+    const code = await getNextChamadoCode();
+    res.json({ code });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to generate chamado code" });
+  }
+});
+
+app.post("/api/chamados/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteChamado(data.id);
+    } else if (action === 'upsert') {
+      await upsertChamado(data);
+    }
+    // Broadcast real-time update to all connected clients
+    if (io) {
+      io.emit('marina_update', { type: action === 'delete' ? 'delete' : 'upsert', entity: 'chamados', data });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save chamado" });
   }
 });
 
@@ -1712,6 +1840,55 @@ app.post("/api/config", requireAdminAuth, sensitiveLimiter, async (req, res) => 
     res.status(500).json({ error: true, message: error.message || "Could not save central configurations to database." });
   }
 });
+
+// ---------------- Fuel Inventory & History Endpoints ----------------
+app.get("/api/fuel/inventory", async (req, res) => {
+  try {
+    const inv = await getFuelInventoryFromDb();
+    res.json(inv || {});
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/fuel/inventory", async (req, res) => {
+  try {
+    const inv = req.body;
+    await saveFuelInventoryInDb(inv);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/fuel/history", async (req, res) => {
+  try {
+    const history = await getFuelHistoryFromDb();
+    res.json(history || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/fuel/history", async (req, res) => {
+  try {
+    const history = req.body;
+    await saveFuelHistoryInDb(history);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/fuel/reset", async (req, res) => {
+  try {
+    await resetFuelDataInDb();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ---------------- Google Calendar Proxy ----------------
 // Permite que chamadas à API do Google feitas no frontend utilizem a credencial

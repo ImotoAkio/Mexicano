@@ -55,6 +55,37 @@ export default function SettingsPage({ operadorNome = 'Operador', showToast }: S
     return localStorage.getItem('marina_sound_alerts') !== 'false';
   });
 
+  // Load settings from backend on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = localStorage.getItem('admin_token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch('/api/config?chaves=custom_sidebar_logo,marina_default_view_mode,marina_sound_alerts', { headers });
+        if (res.ok) {
+          const { configs } = await res.json();
+          if (configs.custom_sidebar_logo) {
+            setCustomLogo(configs.custom_sidebar_logo);
+            localStorage.setItem('custom_sidebar_logo', configs.custom_sidebar_logo);
+            window.dispatchEvent(new Event('sidebar_logo_updated'));
+          }
+          if (configs.marina_default_view_mode) {
+            setDefaultViewMode(configs.marina_default_view_mode as 'kanban' | 'lista');
+            localStorage.setItem('marina_default_view_mode', configs.marina_default_view_mode);
+          }
+          if (configs.marina_sound_alerts !== undefined && configs.marina_sound_alerts !== null) {
+            const val = configs.marina_sound_alerts !== 'false';
+            setSoundAlerts(val);
+            localStorage.setItem('marina_sound_alerts', String(val));
+          }
+        }
+      } catch (err) {
+        console.warn('[Settings] Failed to load from backend, using localStorage fallback:', err);
+      }
+    })();
+  }, []);
+
   // Horímetro & Revisão Settings State
   const [horimetroSettings, setHorimetroSettings] = useState<ConfiguracaoHorimetro>(() => getHorimetroSettings());
   const [novoModeloJet, setNovoModeloJet] = useState('');
@@ -183,6 +214,13 @@ export default function SettingsPage({ operadorNome = 'Operador', showToast }: S
         localStorage.setItem('custom_sidebar_logo', base64);
         setCustomLogo(base64);
         window.dispatchEvent(new Event('sidebar_logo_updated'));
+        // Persist to backend
+        const token = localStorage.getItem('admin_token');
+        fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ configs: { custom_sidebar_logo: base64 } })
+        }).catch(err => console.warn('[Settings] Failed to save logo to backend:', err));
         if (showToast) showToast('Logo da sidebar atualizada!', 'success');
       }
     };
@@ -194,6 +232,13 @@ export default function SettingsPage({ operadorNome = 'Operador', showToast }: S
       localStorage.removeItem('custom_sidebar_logo');
       setCustomLogo(null);
       window.dispatchEvent(new Event('sidebar_logo_updated'));
+      // Remove from backend too
+      const token = localStorage.getItem('admin_token');
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ configs: { custom_sidebar_logo: '' } })
+      }).catch(err => console.warn('[Settings] Failed to reset logo in backend:', err));
       if (showToast) showToast('Logo padrão restaurada com sucesso!', 'info');
     }
   };
@@ -201,6 +246,13 @@ export default function SettingsPage({ operadorNome = 'Operador', showToast }: S
   const handleSavePreferences = () => {
     localStorage.setItem('marina_default_view_mode', defaultViewMode);
     localStorage.setItem('marina_sound_alerts', String(soundAlerts));
+    // Persist to backend
+    const token = localStorage.getItem('admin_token');
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ configs: { marina_default_view_mode: defaultViewMode, marina_sound_alerts: String(soundAlerts) } })
+    }).catch(err => console.warn('[Settings] Failed to save preferences to backend:', err));
     if (showToast) showToast('Preferências salvas com sucesso!', 'success');
   };
 

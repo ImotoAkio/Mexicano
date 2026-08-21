@@ -8,7 +8,17 @@ import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
 import BoatPage from './BoatPage';
+import ClientPage from './ClientPage';
+import FinanceSchedulesPage from './FinanceSchedulesPage';
+import ControleFolgasPage from './ControleFolgasPage';
+import SettingsPage from './SettingsPage';
 import { getFuelInventory, consumeFuelForEmbarcacao } from '../utils/fuelInventory';
+import refFrente from '../assets/images/checklist/frente.svg';
+import refTras from '../assets/images/checklist/tras.svg';
+import refEsquerda from '../assets/images/checklist/esquerda.svg';
+import refDireita from '../assets/images/checklist/direita.svg';
+import refPainel from '../assets/images/checklist/painel.svg';
+import refCasco from '../assets/images/checklist/casco.svg';
 
 interface MarinaDashboardProps {
   onLogout?: () => void;
@@ -16,12 +26,12 @@ interface MarinaDashboardProps {
 }
 
 const CHECKLIST_ANGLES = [
-  { id: 'proa', label: 'Proa (Frente)', icon: Navigation },
-  { id: 'popa', label: 'Popa (Motor/Traseira)', icon: Anchor },
-  { id: 'bombordo', label: 'Lateral Esquerda', icon: Camera },
-  { id: 'estibordo', label: 'Lateral Direita', icon: Camera },
-  { id: 'painel', label: 'Interior / Painel', icon: Ship },
-  { id: 'casco', label: 'Casco (Ângulo Inferior)', icon: Layers }
+  { id: 'proa', label: 'Proa (Frente)', icon: Navigation, refImage: refFrente },
+  { id: 'popa', label: 'Popa (Motor/Traseira)', icon: Anchor, refImage: refTras },
+  { id: 'bombordo', label: 'Lateral Esquerda', icon: Camera, refImage: refEsquerda },
+  { id: 'estibordo', label: 'Lateral Direita', icon: Camera, refImage: refDireita },
+  { id: 'painel', label: 'Interior / Painel', icon: Ship, refImage: refPainel },
+  { id: 'casco', label: 'Casco (Ângulo Inferior)', icon: Layers, refImage: refCasco }
 ];
 
 const getFormattedDate = (date: Date) => {
@@ -77,7 +87,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
   const [filterType, setFilterType] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'horario' | 'alfabetica'>('horario');
+  const [sortBy, setSortBy] = useState<'horario' | 'alfabetica' | 'hora_saida'>('horario');
   const [selectedReserva, setSelectedReserva] = useState<any>(null);
   const [checklistMode, setChecklistMode] = useState<'descida' | 'subida'>('descida');
   const [checklistFotos, setChecklistFotos] = useState<Record<string, string[]>>({});
@@ -1927,7 +1937,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             }`}>
               <Bell className="w-4 h-4" />
             </div>
-            <span className="text-sm font-semibold flex-1">{toast.message}</span>
+            <span className="text-sm font-semibold flex-1">{toast.msg}</span>
             <button onClick={() => setToast(null)} className="shrink-0 text-white/50 hover:text-white/80 text-lg font-bold leading-none cursor-pointer">×</button>
           </div>
         </div>

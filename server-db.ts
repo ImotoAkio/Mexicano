@@ -181,7 +181,8 @@ export async function initializeDatabase() {
         statusFinanceiro VARCHAR(50) DEFAULT 'em_dia',
         observacoesFinanceiras TEXT,
         plano VARCHAR(20) DEFAULT 'normal',
-        asaasCustomerId VARCHAR(100)
+        asaasCustomerId VARCHAR(100),
+        status VARCHAR(20) DEFAULT 'ativo'
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -198,6 +199,7 @@ export async function initializeDatabase() {
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN validadeHabilitacao VARCHAR(50);`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN orgaoEmissorHabilitacao VARCHAR(100);`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN categoriaHabilitacao VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN status VARCHAR(20) DEFAULT 'ativo';`); } catch (e) {}
 
     try {
       await connection.query(`ALTER TABLE Clientes ADD COLUMN plano VARCHAR(20) DEFAULT 'normal';`);
@@ -545,6 +547,42 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // 12.1 TiposManutencao Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS TiposManutencao (
+        id VARCHAR(50) PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        descricao TEXT,
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    try {
+      const [existingTipos] = await connection.query("SELECT COUNT(*) as cnt FROM TiposManutencao");
+      if ((existingTipos as any[])[0]?.cnt === 0) {
+        const defaultTipos = [
+          ['tip_1', 'Troca de Óleo e Filtros', 'Substituição de óleo do motor, filtro de óleo, filtro de combustível e rotor', new Date().toISOString()],
+          ['tip_2', 'Revisão Preventiva Periódica', 'Checagem completa de 50h, 100h ou anual com troca de fluidos', new Date().toISOString()],
+          ['tip_3', 'Reparo de Motor / Rabeta', 'Serviço mecânico em bloco, cabeçote, hélice ou rabeta', new Date().toISOString()],
+          ['tip_4', 'Sistema Elétrico & Baterias', 'Inspeção de chicote, alternador, baterias e fiação', new Date().toISOString()],
+          ['tip_5', 'Bomba de Porão & Automático', 'Troca ou reparo da bomba de esgotamento e sensor', new Date().toISOString()],
+          ['tip_6', 'Tapeçaria & Estofamento', 'Reparo de bancos, capas e acabamento de couro náutico', new Date().toISOString()],
+          ['tip_7', 'Pintura, Fibra & Gel Coat', 'Reparos de casco, polimento, retoque de tinta e gel coat', new Date().toISOString()],
+          ['tip_8', 'Instalação de Eletrônicos & Som', 'Instalação de GPS, sonar, som náutico e acessórios', new Date().toISOString()],
+          ['tip_9', 'Manutenção de Jet Ski', 'Revisão de turbina, cinta, vela e motor de jet ski', new Date().toISOString()],
+          ['tip_10', 'Outros Serviços Náuticos', 'Serviços gerais sob demanda', new Date().toISOString()]
+        ];
+        for (const t of defaultTipos) {
+          await connection.query(
+            "INSERT IGNORE INTO TiposManutencao (id, nome, descricao, createdAt) VALUES (?, ?, ?, ?)",
+            t
+          );
+        }
+      }
+    } catch (errTipos) {
+      console.warn("Could not seed default TiposManutencao:", errTipos);
+    }
+
     // 13. ChatMessages Table (Internal Portal)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS ChatMessages (
@@ -806,6 +844,27 @@ export async function initializeDatabase() {
       console.warn("Failed to migrate financial statuses:", migErr);
     }
 
+    // ── Chamados table ──
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS Chamados (
+        id VARCHAR(50) PRIMARY KEY,
+        codigoChamado VARCHAR(50) NOT NULL,
+        embarcacaoId VARCHAR(50) NOT NULL,
+        solicitanteTipo VARCHAR(50) NOT NULL,
+        solicitanteNome VARCHAR(255) NOT NULL,
+        clienteId VARCHAR(50),
+        titulo VARCHAR(255) NOT NULL,
+        descricaoAvaria TEXT NOT NULL,
+        urgencia VARCHAR(20) NOT NULL DEFAULT 'media',
+        status VARCHAR(50) NOT NULL DEFAULT 'pendente',
+        osId VARCHAR(50),
+        dataAbertura VARCHAR(20) NOT NULL,
+        observacoesAnalise TEXT,
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ Chamados table ready.");
+
     connection.release();
     isInitialized = true;
     console.log("VPS Database tables validated/initialized successfully.");
@@ -857,6 +916,8 @@ export async function pullDatabase(forceFresh = false) {
   const [controlesSom] = await currentPool.query("SELECT * FROM ControlesSom ORDER BY createdAt DESC");
   const [manutencoes] = await currentPool.query("SELECT * FROM Manutencoes ORDER BY createdAt DESC");
   const [mecanicos] = await currentPool.query("SELECT * FROM Mecanicos ORDER BY createdAt DESC");
+  const [tiposManutencao] = await currentPool.query("SELECT * FROM TiposManutencao ORDER BY nome ASC");
+  const [chamados] = await currentPool.query("SELECT * FROM Chamados ORDER BY createdAt DESC");
   
   // Auto-update overdue transactions before fetching
   const todayStr = new Date().toISOString().split('T')[0];
@@ -910,6 +971,7 @@ export async function pullDatabase(forceFresh = false) {
     const fin = finMap.get(c.id) || { totalCnt: 0, openCnt: 0, overdueCnt: 0 };
     return {
       ...c,
+      status: c.status || 'ativo',
       empresas: clienteEmpresasMap.get(c.id) || ['VALE'],
       embarcacoes: list,
       temLancamentos: fin.totalCnt > 0,
@@ -991,6 +1053,7 @@ export async function pullDatabase(forceFresh = false) {
       pecas: m.pecas ? JSON.parse(m.pecas) : undefined
     })),
     mecanicos: mecanicos as any[],
+    tiposManutencao: tiposManutencao as any[],
     transacoes: transacoes as any[],
     funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : [], primeiroEmprego: f.primeiroEmprego === 1})),
     folgas: folgas as any[],
@@ -1000,7 +1063,8 @@ export async function pullDatabase(forceFresh = false) {
       ...e,
       historicoTrocas: e.historicoTrocas ? (typeof e.historicoTrocas === 'string' ? JSON.parse(e.historicoTrocas) : e.historicoTrocas) : []
     })),
-    historicoEpis: historicoEPIMensal as any[]
+    historicoEpis: historicoEPIMensal as any[],
+    chamados: chamados as any[]
   };
 
   dbCache = {
@@ -1025,8 +1089,8 @@ export async function upsertClient(client: any) {
   const query = `
     INSERT INTO Clientes (
       id, nome, embarcacaoId, cota, telefone, email, cpf, dataNascimento, dataCadastro, 
-      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId, cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId, cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       nome = VALUES(nome),
       embarcacaoId = VALUES(embarcacaoId),
@@ -1055,7 +1119,8 @@ export async function upsertClient(client: any) {
       numeroHabilitacao = VALUES(numeroHabilitacao),
       validadeHabilitacao = VALUES(validadeHabilitacao),
       orgaoEmissorHabilitacao = VALUES(orgaoEmissorHabilitacao),
-      categoriaHabilitacao = VALUES(categoriaHabilitacao)
+      categoriaHabilitacao = VALUES(categoriaHabilitacao),
+      status = VALUES(status)
   `;
 
   await currentPool.query(query, [
@@ -1088,7 +1153,8 @@ export async function upsertClient(client: any) {
     client.numeroHabilitacao || null,
     client.validadeHabilitacao || null,
     client.orgaoEmissorHabilitacao || null,
-    client.categoriaHabilitacao || null
+    client.categoriaHabilitacao || null,
+    client.status || 'ativo'
   ]);
 
   if (client.empresas && Array.isArray(client.empresas)) {
@@ -1100,13 +1166,12 @@ export async function upsertClient(client: any) {
   }
 }
 
-// Delete a single client record
+// Soft-deactivate a single client record (prevent data loss)
 export async function deleteClient(id: string) {
   invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
-  await currentPool.query("DELETE FROM ClienteEmpresas WHERE clienteId = ?", [id]);
-  await currentPool.query("DELETE FROM Clientes WHERE id = ?", [id]);
+  await currentPool.query("UPDATE Clientes SET status = 'inativo' WHERE id = ?", [id]);
 }
 
 export async function deleteControleSom(id: string) {
@@ -1957,6 +2022,33 @@ export async function deleteMecanico(id: string) {
   await currentPool.query("DELETE FROM Mecanicos WHERE id = ?", [id]);
 }
 
+// ---------------- Tipos de Manutenção / Serviço ----------------
+
+export async function getAllTiposManutencao() {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  const [rows] = await currentPool.query("SELECT * FROM TiposManutencao ORDER BY nome ASC");
+  return rows;
+}
+
+export async function upsertTipoManutencao(t: any) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query(
+    `INSERT INTO TiposManutencao (id, nome, descricao, createdAt)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       nome=VALUES(nome), descricao=VALUES(descricao)`,
+    [t.id, t.nome, t.descricao || null, t.createdAt || new Date().toISOString()]
+  );
+}
+
+export async function deleteTipoManutencao(id: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM TiposManutencao WHERE id = ?", [id]);
+}
+
 export async function deleteManutencao(id: string) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
@@ -2126,5 +2218,115 @@ export async function upsertUserPreferences(userId: number, preferences: any) {
   ]);
 }
 
+// ---------------- Fuel Inventory & History Database Operations ----------------
+
+export async function getFuelInventoryFromDb(): Promise<any | null> {
+  const jsonStr = await getConfigValue("marina_fuel_inventory");
+  if (jsonStr) {
+    try {
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      console.error("Error parsing fuel inventory from DB:", e);
+    }
+  }
+  return null;
+}
+
+export async function saveFuelInventoryInDb(inv: any): Promise<void> {
+  await setConfigValue("marina_fuel_inventory", JSON.stringify(inv));
+}
+
+export async function getFuelHistoryFromDb(): Promise<any[]> {
+  const jsonStr = await getConfigValue("marina_fuel_history");
+  if (jsonStr) {
+    try {
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      console.error("Error parsing fuel history from DB:", e);
+    }
+  }
+  return [];
+}
+
+export async function saveFuelHistoryInDb(history: any[]): Promise<void> {
+  await setConfigValue("marina_fuel_history", JSON.stringify(history));
+}
+
+export async function resetFuelDataInDb(): Promise<void> {
+  await setConfigValue("marina_fuel_inventory", JSON.stringify({
+    tanquePrincipalLitros: 0,
+    tanqueCapacidadeMaxima: 10000,
+    alertaMinimoTanque: 2000,
+    galoesPierQuantidade: 0,
+    galoesCapacidadeLitros: 20,
+    galaoParcialLitros: 0,
+    ultimaAtualizacao: new Date().toLocaleDateString('pt-BR')
+  }));
+  await setConfigValue("marina_fuel_history", JSON.stringify([]));
+}
+
+
+// ──────────── Chamados ────────────
+
+export async function getAllChamados(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  const [rows] = await currentPool.query("SELECT * FROM Chamados ORDER BY createdAt DESC");
+  return rows as any[];
+}
+
+export async function upsertChamado(c: any): Promise<void> {
+  invalidateDbCache();
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  await currentPool.query(
+    `INSERT INTO Chamados (id, codigoChamado, embarcacaoId, solicitanteTipo, solicitanteNome, clienteId, titulo, descricaoAvaria, urgencia, status, osId, dataAbertura, observacoesAnalise, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       codigoChamado=VALUES(codigoChamado), embarcacaoId=VALUES(embarcacaoId),
+       solicitanteTipo=VALUES(solicitanteTipo), solicitanteNome=VALUES(solicitanteNome),
+       clienteId=VALUES(clienteId), titulo=VALUES(titulo), descricaoAvaria=VALUES(descricaoAvaria),
+       urgencia=VALUES(urgencia), status=VALUES(status), osId=VALUES(osId),
+       dataAbertura=VALUES(dataAbertura), observacoesAnalise=VALUES(observacoesAnalise)`,
+    [
+      c.id, c.codigoChamado, c.embarcacaoId, c.solicitanteTipo, c.solicitanteNome,
+      c.clienteId || null, c.titulo, c.descricaoAvaria, c.urgencia || 'media',
+      c.status || 'pendente', c.osId || null, c.dataAbertura, c.observacoesAnalise || null,
+      c.createdAt
+    ]
+  );
+}
+
+export async function deleteChamado(id: string): Promise<void> {
+  invalidateDbCache();
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM Chamados WHERE id = ?", [id]);
+}
+
+export async function getNextChamadoCode(): Promise<string> {
+  const currentPool = getDbPool();
+  if (!currentPool) {
+    // Fallback: timestamp-based code
+    return `CHM-${new Date().getFullYear()}-${String(Date.now() % 1000).padStart(3, '0')}`;
+  }
+
+  const year = new Date().getFullYear();
+  const prefix = `CHM-${year}-`;
+  const [rows] = await currentPool.query(
+    "SELECT codigoChamado FROM Chamados WHERE codigoChamado LIKE ? ORDER BY codigoChamado DESC LIMIT 1",
+    [`${prefix}%`]
+  );
+
+  const existing = rows as any[];
+  if (existing.length === 0) {
+    return `${prefix}001`;
+  }
+
+  const lastCode = existing[0].codigoChamado; // e.g. "CHM-2026-005"
+  const lastNum = parseInt(lastCode.replace(prefix, ''), 10) || 0;
+  return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
+}
 
 

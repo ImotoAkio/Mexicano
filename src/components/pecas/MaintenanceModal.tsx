@@ -83,14 +83,14 @@ export default function MaintenanceModal({
 
   // Load lists
   const refreshAuxData = () => {
-    setMecanicosList(mecanicoDB.getAll());
-    setTiposList(tipoManutencaoDB.getAll());
-    setChamadosList(chamadoDB.getAll());
+    setMecanicosList([...mecanicoDB.getAll()]);
+    setTiposList([...tipoManutencaoDB.getAll()]);
+    setChamadosList([...chamadoDB.getAll()]);
   };
 
   useEffect(() => {
     refreshAuxData();
-  }, []);
+  }, [isOpen]);
 
   useEffect(() => {
     if (editingItem) {
@@ -210,7 +210,7 @@ export default function MaintenanceModal({
       nome: newTipoForm.nome.trim(),
       descricao: newTipoForm.descricao.trim()
     });
-    refreshAuxData();
+    setTiposList([...tipoManutencaoDB.getAll()]);
     setFormData(prev => ({
       ...prev,
       tipoManutencaoId: created.id,
@@ -230,7 +230,7 @@ export default function MaintenanceModal({
       telefone: newMecanicoForm.telefone.trim(),
       cnpj: newMecanicoForm.cnpj.trim()
     });
-    refreshAuxData();
+    setMecanicosList([...mecanicoDB.getAll()]);
     setFormData(prev => ({
       ...prev,
       mecanico: created.id,
@@ -466,7 +466,7 @@ export default function MaintenanceModal({
 
                   <Select
                     options={tipoOptions}
-                    value={tipoOptions.find(o => o.value === formData.tipoManutencaoId || o.label === formData.tituloChamado) || null}
+                    value={tipoOptions.find(o => o.value === formData.tipoManutencaoId || (formData.tipoManutencaoNome && o.label.toLowerCase() === formData.tipoManutencaoNome.toLowerCase()) || (formData.tituloChamado && o.label.toLowerCase() === formData.tituloChamado.toLowerCase())) || null}
                     onChange={(option) => {
                       if (option?.value) {
                         setFormData(prev => ({ 

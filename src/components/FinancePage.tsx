@@ -8,6 +8,7 @@ import {
 import { TransacaoFinanceira, Cliente, Embarcacao, Reserva } from '../types';
 import { jsPDF } from 'jspdf';
 import { toPng, toBlob } from 'html-to-image';
+// @ts-ignore
 import logoUrl from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import FinanceDashboard from './finance/FinanceDashboard';
 import FinanceKanban from './finance/FinanceKanban';
@@ -83,7 +84,7 @@ export default function FinancePage({ initialTab = 'lancamentos' }: { initialTab
   const [selectedClienteId, setSelectedClienteId] = useState<string>('');
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [boatFilterId, setBoatFilterId] = useState('');
-  const [manualStatusFinanceiro, setManualStatusFinanceiro] = useState<'em_dia' | 'inadimplente'>('em_dia');
+  const [manualStatusFinanceiro, setManualStatusFinanceiro] = useState<'em_dia' | 'inadimplente' | 'pendente'>('em_dia');
   const [manualObservacoesFinanceiras, setManualObservacoesFinanceiras] = useState('');
   const [isUpdatingClientStatus, setIsUpdatingClientStatus] = useState(false);
   const [isCopyingImage, setIsCopyingImage] = useState(false);

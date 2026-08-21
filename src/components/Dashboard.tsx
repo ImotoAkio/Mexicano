@@ -220,7 +220,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
         
         const gcalEvents = await fetchGoogleCalendarEventsRange(startStrMinus2, 16);
         if (gcalEvents && gcalEvents.length > 0) {
-          await mergeLocalAndGoogleEvents(gcalEvents, boats, clients);
+          await mergeLocalAndGoogleEvents(gcalEvents, reservationDB.getAll(), boats, clients);
         }
       }
 
@@ -1101,7 +1101,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
             setIsResModalOpen(false);
             loadDashboardData();
           }} 
-          selectedDate={selectedDate} 
+          onSuccess={(msg) => showToast(msg, 'success')}
         />
       )}
     </div>

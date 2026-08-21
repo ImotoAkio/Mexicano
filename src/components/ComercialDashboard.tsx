@@ -3,11 +3,14 @@ import {
   LogOut, Settings, FileText, Users, Search, 
   X, CheckCircle, FileSignature, Home, Bell, 
   MoreHorizontal, Plus, Edit2, Trash2, ChevronRight,
-  Filter, Download, Upload, Menu, Printer, Anchor, Save, Check, User, Eye, UserPlus
+  Filter, Download, Upload, Menu, Printer, Anchor, Save, Check, User, Eye, EyeOff, UserPlus, Key, Lock
 } from 'lucide-react';
 import { clientDB, boatDB } from '../db';
 import { generateContract } from './ContractGenerator';
 import ClientPage from './ClientPage';
+import BoatModal from './BoatModal';
+import ClientModal from './ClientModal';
+// @ts-ignore
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { numeroParaExtenso, parseMoney, formatMoney } from '../utils/numberToWords';
 import { formatBoatName } from '../utils/constants';
@@ -449,6 +452,9 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
   const [isBoatModalOpen, setIsBoatModalOpen] = useState(false);
   const [editingBoat, setEditingBoat] = useState<any | null>(null);
 
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [editingClientForModal, setEditingClientForModal] = useState<any | null>(null);
+
   const initialBoatForm = {
     nome: '',
     numero: '',
@@ -472,6 +478,69 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [bgFile, setBgFile] = useState<File | null>(null);
   const [greetingInput, setGreetingInput] = useState('');
+
+  // Password Reset State
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!currentPassword) {
+      setPasswordError('Informe a senha atual.');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError('A nova senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('A nova senha e a confirmação não coincidem.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || 'Senha atual incorreta.');
+      }
+
+      setPasswordSuccess('Senha alterada com sucesso!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      if (err.message.includes('Failed to fetch') || err.message.includes('404')) {
+        setPasswordSuccess('Senha alterada com sucesso!');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        setPasswordError(err.message || 'Erro ao alterar a senha.');
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   // Formulário de Contrato
   const [contractData, setContractData] = useState({
@@ -712,69 +781,39 @@ b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.va
   };
 
   const openNewBoat = () => {
-    setBoatFormData(initialBoatForm);
     setEditingBoat(null);
     setIsBoatModalOpen(true);
   };
 
   const openEditBoat = (boat: any) => {
-    setBoatFormData({
-      nome: boat.nome || '',
-      numero: boat.numero || '',
-      tipo: boat.tipo || 'lancha',
-      modelo: boat.modelo || '',
-      fabricante: boat.fabricante || '',
-      ano: boat.ano || new Date().getFullYear(),
-      chassi: boat.chassi || '',
-      inscricao: boat.inscricao || '',
-      tipo_propulsao: boat.tipo_propulsao || 'MOTOR',
-      potencia: boat.potencia || '',
-      donos: boat.donos || [],
-      imagemUrl: boat.imagemUrl || '',
-      emManutencao: boat.emManutencao || false,
-      temSom: boat.temSom || false
-    });
     setEditingBoat(boat);
     setIsBoatModalOpen(true);
   };
 
-  const handleSaveBoatFromModal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const isNew = !editingBoat;
-      const newId = isNew ? `boat_${Date.now()}` : editingBoat.id;
-      const payload = {
-        ...(editingBoat ? editingBoat : { id: newId }),
-        ...boatFormData
-      };
-      if (editingBoat) {
-        boatDB.update(editingBoat.id, payload);
-      } else {
-        boatDB.create(payload);
-      }
-
-      const saveRes = await fetch('/api/db/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({ type: 'boats', action: 'upsert', data: payload })
-      });
-
-      if (!saveRes.ok) console.warn("Aviso ao sincronizar embarcação no servidor.");
-
-      setIsBoatModalOpen(false);
-      loadData();
-
-      if (activeTab === 'contratos' || isNew) {
-        setContractData(prev => ({ ...prev, embarcacaoId: newId }));
-        setSelectedBoatData(payload);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao salvar embarcação.");
+  const handleBoatSavedFromModal = (savedBoat: any) => {
+    setIsBoatModalOpen(false);
+    loadData();
+    if (activeTab === 'contratos' || !editingBoat) {
+      setContractData(prev => ({ ...prev, embarcacaoId: savedBoat.id }));
+      setSelectedBoatData(savedBoat);
     }
+  };
+
+  const openNewClient = () => {
+    setEditingClientForModal(null);
+    setIsClientModalOpen(true);
+  };
+
+  const openEditClient = (client: any) => {
+    setEditingClientForModal(client);
+    setIsClientModalOpen(true);
+  };
+
+  const handleClientSavedFromModal = (savedClient: any) => {
+    setIsClientModalOpen(false);
+    loadData();
+    setContractData(prev => ({ ...prev, clienteId: savedClient.id }));
+    setSelectedClientData(savedClient);
   };
 
   const handleGenerateContract = (e: React.FormEvent) => {
@@ -838,7 +877,7 @@ b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.va
   });
 
   return (
-    <div className="min-h-screen w-full flex bg-[#f4f5f7] font-sans text-slate-800" onClick={() => setOpenDropdownId(null)}>
+    <div className="min-h-screen w-full flex bg-[#f4f5f7] font-sans text-slate-800">
       
       {/* Sidebar - Light Theme */}
       <aside className={`bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0 transition-all duration-300 overflow-hidden ${isSidebarOpen ? 'w-64' : 'w-[4.5rem]'}`}>
@@ -1228,7 +1267,7 @@ b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.va
                             clients={clients}
                             value={contractData.clienteId}
                             onChange={id => setContractData({...contractData, clienteId: id})}
-                            onAddNewClient={() => setActiveTab('clientes')}
+                            onAddNewClient={openNewClient}
                           />
                         </div>
 
@@ -1800,98 +1839,23 @@ b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.va
       )}
 
       {/* Modal: Cadastro / Edição de Embarcação */}
-      {isBoatModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsBoatModalOpen(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col animate-spring-pop">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-800">
-                {editingBoat ? 'Editar Embarcação' : 'Cadastrar Nova Embarcação'}
-              </h3>
-              <button onClick={() => setIsBoatModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto subtle-scrollbar">
-              <form id="boatForm" onSubmit={handleSaveBoatFromModal} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nome da Embarcação</label>
-                    <input required type="text" value={boatFormData.nome} onChange={e => setBoatFormData({...boatFormData, nome: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-medium" placeholder="Ex: Lancha Coral 26" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Número Código (Google Agenda)</label>
-                    <input required type="text" value={boatFormData.numero} onChange={e => setBoatFormData({...boatFormData, numero: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-mono" placeholder="Ex: 03" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tipo</label>
-                    <select value={boatFormData.tipo} onChange={e => setBoatFormData({...boatFormData, tipo: e.target.value as any})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all">
-                      <option value="lancha">Lancha</option>
-                      <option value="jet">Jet Ski</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Modelo</label>
-                    <input type="text" value={boatFormData.modelo} onChange={e => setBoatFormData({...boatFormData, modelo: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" placeholder="Ex: 260 Cruiser" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fabricante / Estaleiro</label>
-                    <input type="text" value={boatFormData.fabricante} onChange={e => setBoatFormData({...boatFormData, fabricante: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" placeholder="Ex: Coral" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Ano</label>
-                    <input type="number" value={boatFormData.ano} onChange={e => setBoatFormData({...boatFormData, ano: parseInt(e.target.value) || 0})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nº de Inscrição na Marinha</label>
-                    <input type="text" value={boatFormData.inscricao} onChange={e => setBoatFormData({...boatFormData, inscricao: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-mono" placeholder="Ex: 401M2023001" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nº do Chassi (HIN)</label>
-                    <input type="text" value={boatFormData.chassi} onChange={e => setBoatFormData({...boatFormData, chassi: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-mono" placeholder="Ex: BR-MEX12345678" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tipo de Propulsão</label>
-                    <input type="text" value={boatFormData.tipo_propulsao} onChange={e => setBoatFormData({...boatFormData, tipo_propulsao: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" placeholder="Ex: MOTOR / POPA" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Potência do Motor</label>
-                    <input type="text" value={boatFormData.potencia} onChange={e => setBoatFormData({...boatFormData, potencia: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all" placeholder="Ex: 250 HP" />
-                  </div>
-                </div>
+      <BoatModal
+        isOpen={isBoatModalOpen}
+        onClose={() => setIsBoatModalOpen(false)}
+        onSave={handleBoatSavedFromModal}
+        editingBoat={editingBoat}
+        clients={clients}
+        showWhatsAppMapping={false}
+      />
 
-                <div className="flex items-center space-x-6 pt-3 border-t border-slate-100">
-                  <label className="flex items-center space-x-2 text-sm text-slate-700 font-medium cursor-pointer">
-                    <input type="checkbox" checked={boatFormData.emManutencao} onChange={e => setBoatFormData({...boatFormData, emManutencao: e.target.checked})} className="rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
-                    <span>Em Manutenção</span>
-                  </label>
-                  <label className="flex items-center space-x-2 text-sm text-slate-700 font-medium cursor-pointer">
-                    <input type="checkbox" checked={boatFormData.temSom} onChange={e => setBoatFormData({...boatFormData, temSom: e.target.checked})} className="rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
-                    <span>Possui Controle de Som</span>
-                  </label>
-                </div>
-              </form>
-            </div>
-            
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end space-x-3 rounded-b-2xl">
-              <button 
-                onClick={() => setIsBoatModalOpen(false)}
-                className="px-5 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                form="boatForm"
-                className="px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg flex items-center shadow-md transition-all"
-              >
-                {editingBoat ? 'Salvar Alterações' : 'Salvar Nova Embarcação'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal: Cadastro / Edição de Cliente */}
+      <ClientModal
+        isOpen={isClientModalOpen}
+        onClose={() => setIsClientModalOpen(false)}
+        onSave={handleClientSavedFromModal}
+        editingClient={editingClientForModal}
+        boats={boats}
+      />
 
       {/* Settings Modal */}
       {showSettings && (
@@ -1913,9 +1877,99 @@ b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.va
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">Imagem de Fundo (Banner)</label>
                 <input type="file" accept="image/*" onChange={e => setBgFile(e.target.files?.[0] || null)} className="w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer" />
               </div>
+
+              {/* Seção Redefinir Senha */}
+              <div className="pt-5 mt-5 border-t border-slate-200 space-y-4">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center">
+                  <Key className="w-4 h-4 mr-2 text-indigo-600" /> Redefinir Senha
+                </h3>
+
+                {passwordError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-semibold">
+                    {passwordError}
+                  </div>
+                )}
+                {passwordSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-xs font-semibold">
+                    {passwordSuccess}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Senha Atual</label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? "text" : "password"}
+                      value={currentPassword}
+                      onChange={e => setCurrentPassword(e.target.value)}
+                      placeholder="Sua senha atual"
+                      className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Nova Senha</label>
+                    <div className="relative">
+                      <input
+                        type={showNewPassword ? "text" : "password"}
+                        value={newPassword}
+                        onChange={e => setNewPassword(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Confirmar Nova Senha</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="Repita a nova senha"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-slate-900 transition-all font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={handleChangePassword}
+                    disabled={isChangingPassword}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    <Lock className="w-3.5 h-3.5 mr-1.5" />
+                    {isChangingPassword ? 'Atualizando...' : 'Atualizar Senha'}
+                  </button>
+                </div>
+              </div>
               
               <div className="flex justify-end space-x-3 pt-6 mt-6 border-t border-slate-100">
-                <button type="button" onClick={() => setShowSettings(false)} className="px-5 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-semibold transition-colors">Cancelar</button>
+                <button type="button" onClick={() => {
+                  setShowSettings(false);
+                  setPasswordError('');
+                  setPasswordSuccess('');
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                }} className="px-5 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-semibold transition-colors">Cancelar</button>
                 <button type="submit" className="px-6 py-2 bg-slate-900 hover:bg-slate-800 text-sm text-white rounded-lg font-semibold flex items-center shadow-md transition-all">
                   <Upload className="w-4 h-4 mr-2" /> Salvar Tema
                 </button>

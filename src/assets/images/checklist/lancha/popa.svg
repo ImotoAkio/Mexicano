@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="lanchaSternHull" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#f1f5f9"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="teakDeck" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#b45309"/>
+      <stop offset="50%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+    <linearGradient id="motorOutboard" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="propellerChrome" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e2e8f0"/>
+      <stop offset="50%" stop-color="#94a3b8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <filter id="boatShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-opacity="0.2" flood-color="#0f172a"/>
+    </filter>
+  </defs>
+
+  <!-- Water Surface -->
+  <ellipse cx="300" cy="385" rx="260" ry="35" fill="#e0f2fe" opacity="0.6"/>
+  <ellipse cx="300" cy="390" rx="220" ry="20" fill="#bae6fd" opacity="0.5"/>
+
+  <g filter="url(#boatShadow)">
+    <!-- T-Top / Hardtop Arch from Rear -->
+    <path d="M 190 70 Q 300 50 410 70 L 400 95 Q 300 80 200 95 Z" fill="#0f172a"/>
+    <path d="M 205 75 Q 300 62 395 75 L 390 88 Q 300 78 210 88 Z" fill="#ffffff"/>
+    <line x1="210" y1="90" x2="220" y2="185" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+    <line x1="390" y1="90" x2="380" y2="185" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+    <line x1="225" y1="90" x2="245" y2="185" stroke="#64748b" stroke-width="3" stroke-linecap="round"/>
+    <line x1="375" y1="90" x2="355" y2="185" stroke="#64748b" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Ski Tow Ring & Flag Pole -->
+    <circle cx="300" cy="50" r="6" fill="none" stroke="#94a3b8" stroke-width="2.5"/>
+    <line x1="340" y1="70" x2="345" y2="30" stroke="#94a3b8" stroke-width="2.5"/>
+    <polygon points="345,30 370,40 345,50" fill="#22c55e"/>
+
+    <!-- Cockpit Aft Seating (Sofá de Popa) -->
+    <path d="M 200 185 Q 300 175 400 185 L 390 220 Q 300 210 210 220 Z" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
+    <path d="M 220 185 L 220 215" stroke="#94a3b8" stroke-width="1.5"/>
+    <path d="M 380 185 L 380 215" stroke="#94a3b8" stroke-width="1.5"/>
+    <!-- Center walkthrough -->
+    <rect x="285" y="195" width="30" height="25" fill="#d97706" rx="2"/>
+
+    <!-- Transom / Espelho de Popa -->
+    <path d="M 110 230 L 490 230 L 450 310 Q 300 330 150 310 Z" fill="url(#lanchaSternHull)" stroke="#cbd5e1" stroke-width="2"/>
+
+    <!-- Rub Rail (Friso de Popa) -->
+    <path d="M 105 230 L 495 230" stroke="#0f172a" stroke-width="7" stroke-linecap="round"/>
+    <path d="M 105 230 L 495 230" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Espaço Gourmet / Churrasqueira & Pia na Popa -->
+    <rect x="255" y="235" width="90" height="20" rx="3" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
+    <rect x="265" y="240" width="30" height="10" rx="2" fill="#0f172a"/>
+    <circle cx="320" cy="245" r="5" fill="#94a3b8"/>
+
+    <!-- Extended Swim Platform (Plataforma de Popa com Teca) -->
+    <path d="M 130 265 L 470 265 L 455 315 L 145 315 Z" fill="url(#teakDeck)" stroke="#78350f" stroke-width="2"/>
+    <!-- Teak Lines (Frisos da Teca Sintética) -->
+    <line x1="165" y1="265" x2="175" y2="315" stroke="#78350f" stroke-width="1.5"/>
+    <line x1="200" y1="265" x2="205" y2="315" stroke="#78350f" stroke-width="1.5"/>
+    <line x1="235" y1="265" x2="238" y2="315" stroke="#78350f" stroke-width="1.5"/>
+    <line x1="270" y1="265" x2="270" y2="315" stroke="#78350f" stroke-width="1.5"/>
+    <line x1="330" y1="265" x2="330" y2="315" stroke="#78350f" stroke-width="1.5"/>
+    <line x1="365" y1="265" x2="362" y2="315" stroke="#78350f" stroke-width="1.5"/>
+    <line x1="400" y1="265" x2="395" y2="315" stroke="#78350f" stroke-width="1.5"/>
+    <line x1="435" y1="265" x2="425" y2="315" stroke="#78350f" stroke-width="1.5"/>
+
+    <!-- Swim Ladder (Escada de Reembarque em Inox - Retrátil na Borda) -->
+    <rect x="420" y="270" width="28" height="40" rx="2" fill="none" stroke="#94a3b8" stroke-width="3"/>
+    <line x1="420" y1="282" x2="448" y2="282" stroke="#94a3b8" stroke-width="2.5"/>
+    <line x1="420" y1="295" x2="448" y2="295" stroke="#94a3b8" stroke-width="2.5"/>
+    <line x1="420" y1="308" x2="448" y2="308" stroke="#94a3b8" stroke-width="2.5"/>
+
+    <!-- Stern Cleats (Cunhos de Amarração em Inox) -->
+    <rect x="145" y="250" width="22" height="6" rx="2" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+    <rect x="435" y="250" width="22" height="6" rx="2" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+
+    <!-- Twin Outboard Motors (Motores de Popa de Alta Potência) -->
+    <!-- Motor 1 (Esquerda) -->
+    <g transform="translate(-50, 0)">
+      <path d="M 305 270 L 335 270 L 340 335 L 325 385 L 315 385 L 300 335 Z" fill="url(#motorOutboard)" stroke="#334155" stroke-width="2"/>
+      <path d="M 308 275 L 332 275 L 335 315 L 305 315 Z" fill="#0284c7" opacity="0.9"/>
+      <!-- Cavitation Plate -->
+      <polygon points="295,365 345,365 340,370 300,370" fill="#64748b"/>
+      <!-- Skeg & Propeller -->
+      <polygon points="318,370 322,370 320,405 315,405" fill="#334155"/>
+      <circle cx="320" cy="385" r="7" fill="url(#propellerChrome)"/>
+      <ellipse cx="320" cy="385" rx="16" ry="5" fill="none" stroke="#94a3b8" stroke-width="3" transform="rotate(30 320 385)"/>
+    </g>
+
+    <!-- Motor 2 (Direita) -->
+    <g transform="translate(50, 0)">
+      <path d="M 265 270 L 295 270 L 300 335 L 285 385 L 275 385 L 260 335 Z" fill="url(#motorOutboard)" stroke="#334155" stroke-width="2"/>
+      <path d="M 268 275 L 292 275 L 295 315 L 265 315 Z" fill="#0284c7" opacity="0.9"/>
+      <!-- Cavitation Plate -->
+      <polygon points="255,365 305,365 300,370 260,370" fill="#64748b"/>
+      <!-- Skeg & Propeller -->
+      <polygon points="278,370 282,370 280,405 275,405" fill="#334155"/>
+      <circle cx="280" cy="385" r="7" fill="url(#propellerChrome)"/>
+      <ellipse cx="280" cy="385" rx="16" ry="5" fill="none" stroke="#94a3b8" stroke-width="3" transform="rotate(-30 280 385)"/>
+    </g>
+
+    <!-- Trim Tabs (Flaps Hidráulicos nas Extremidades) -->
+    <rect x="175" y="325" width="30" height="6" fill="#475569" stroke="#94a3b8" stroke-width="1"/>
+    <rect x="395" y="325" width="30" height="6" fill="#475569" stroke="#94a3b8" stroke-width="1"/>
+
+    <!-- Underwater LED Lights (Luzes Subaquáticas) -->
+    <circle cx="205" cy="340" r="5" fill="#38bdf8" stroke="#0284c7" stroke-width="1.5"/>
+    <circle cx="395" cy="340" r="5" fill="#38bdf8" stroke="#0284c7" stroke-width="1.5"/>
+  </g>
+
+  <!-- Water Wake / Froth around Stern -->
+  <path d="M 160 390 Q 300 415 440 390" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 200 405 Q 300 425 400 405" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
+</svg>

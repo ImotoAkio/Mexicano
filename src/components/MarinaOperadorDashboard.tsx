@@ -37,26 +37,160 @@ import {
   Eye,
   Plus,
   PlusCircle,
-  Trash2
+  Trash2,
+  Info
 } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
 import { consumeFuelForEmbarcacao, getFuelInventory } from '../utils/fuelInventory';
 
+// Jet Ski Reference Images
+import refJetFrente from '../assets/images/checklist/jet/frente.svg';
+import refJetTras from '../assets/images/checklist/jet/tras.svg';
+import refJetEsquerda from '../assets/images/checklist/jet/esquerda.svg';
+import refJetDireita from '../assets/images/checklist/jet/direita.svg';
+import refJetPainel from '../assets/images/checklist/jet/painel.svg';
+import refJetCasco from '../assets/images/checklist/jet/casco.svg';
+
 interface MarinaOperadorDashboardProps {
   onLogout: () => void;
   operadorNome?: string;
 }
 
-const CHECKLIST_ANGLES = [
-  { id: 'proa', label: 'Proa (Frente)', icon: Navigation },
-  { id: 'popa', label: 'Popa (Motor/Traseira)', icon: Anchor },
-  { id: 'bombordo', label: 'Lateral Esquerda', icon: Camera },
-  { id: 'estibordo', label: 'Lateral Direita', icon: Camera },
-  { id: 'painel', label: 'Interior / Painel', icon: Ship },
-  { id: 'casco', label: 'Casco (Ângulo Inferior)', icon: Layers }
+interface ChecklistAngle {
+  id: string;
+  label: string;
+  shortLabel: string;
+  icon: any;
+  refImage?: string;
+  tip: string;
+  instruction: string;
+  focus: string;
+}
+
+const CHECKLIST_ANGLES_JET: ChecklistAngle[] = [
+  { 
+    id: 'proa', 
+    label: 'Proa (Frente do Jet)', 
+    shortLabel: 'Proa',
+    icon: Navigation, 
+    refImage: refJetFrente,
+    tip: 'Frente do Jet Ski',
+    instruction: 'Posicione-se em frente ao Jet Ski enquadrando o bico frontal, espelhos e guidão.',
+    focus: 'Bico frontal, espelhos retrovisores, capô e guidão'
+  },
+  { 
+    id: 'popa', 
+    label: 'Popa (Traseira / Turbina)', 
+    shortLabel: 'Popa',
+    icon: Anchor, 
+    refImage: refJetTras,
+    tip: 'Traseira / Turbina',
+    instruction: 'Posicione-se atrás do Jet enquadrando o hidrojato/turbina, cinta e degrau de reembarque.',
+    focus: 'Turbina, bocal direcionador, degrau de reembarque e casco traseiro'
+  },
+  { 
+    id: 'bombordo', 
+    label: 'Lateral Esquerda (Bombordo)', 
+    shortLabel: 'L. Esquerda',
+    icon: Camera, 
+    refImage: refJetEsquerda,
+    tip: 'Costado Esquerdo',
+    instruction: 'Enquadre toda a lateral esquerda do Jet Ski da proa até a popa.',
+    focus: 'Costado de bombordo, friso emborrachado e adesivos laterais'
+  },
+  { 
+    id: 'estibordo', 
+    label: 'Lateral Direita (Boreste)', 
+    shortLabel: 'L. Direita',
+    icon: Camera, 
+    refImage: refJetDireita,
+    tip: 'Costado Direito',
+    instruction: 'Enquadre toda a lateral direita do Jet Ski da proa até a popa.',
+    focus: 'Costado de boreste, friso emborrachado e acabamentos'
+  },
+  { 
+    id: 'painel', 
+    label: 'Painel & Guidão do Jet', 
+    shortLabel: 'Painel',
+    icon: Ship, 
+    refImage: refJetPainel,
+    tip: 'Display e Guidão',
+    instruction: 'Enquadre o painel digital, manoplas, gatilhos de acelerador/reverso (IBR) e assento.',
+    focus: 'Painel digital, manoplas, gatilho do acelerador/IBR e estofado do banco'
+  },
+  { 
+    id: 'casco', 
+    label: 'Casco (Fundo do Jet)', 
+    shortLabel: 'Casco',
+    icon: Layers, 
+    refImage: refJetCasco,
+    tip: 'Fundo / Grelha',
+    instruction: 'Tire uma foto do fundo do casco e da grelha de captação de água da turbina.',
+    focus: 'Grelha de admissão, placa de fundo, quilha e gelcoat inferior'
+  }
 ];
+
+const CHECKLIST_ANGLES_LANCHA: ChecklistAngle[] = [
+  { 
+    id: 'proa', 
+    label: 'Proa (Frente da Lancha)', 
+    shortLabel: 'Proa',
+    icon: Navigation, 
+    tip: 'Frente da Lancha',
+    instruction: 'Posicione-se em frente à lancha enquadrando o bico, púlpito de proa, âncora e guarda-mancebo.',
+    focus: 'Bico, guarda-mancebo em inox, âncora/guincho elétrico e solário de proa'
+  },
+  { 
+    id: 'popa', 
+    label: 'Popa (Motores / Plataforma)', 
+    shortLabel: 'Popa',
+    icon: Anchor, 
+    tip: 'Popa & Motores',
+    instruction: 'Posicione-se atrás da lancha enquadrando os motores, plataforma de teca, escada e espaço gourmet.',
+    focus: 'Motores de popa / rabeta, plataforma de teca, escada retrátil e espaço gourmet'
+  },
+  { 
+    id: 'bombordo', 
+    label: 'Lateral Esquerda (Bombordo)', 
+    shortLabel: 'L. Esquerda',
+    icon: Camera, 
+    tip: 'Costado de Bombordo',
+    instruction: 'Enquadre todo o costado esquerdo da lancha da proa até a popa.',
+    focus: 'Costado de bombordo, friso de proteção, vigias/janelas e defensas'
+  },
+  { 
+    id: 'estibordo', 
+    label: 'Lateral Direita (Boreste)', 
+    shortLabel: 'L. Direita',
+    icon: Camera, 
+    tip: 'Costado de Boreste',
+    instruction: 'Enquadre todo o costado direito da lancha da proa até a popa.',
+    focus: 'Costado de boreste, frisos, linha d’água e costado'
+  },
+  { 
+    id: 'painel', 
+    label: 'Cockpit & Posto de Comando', 
+    shortLabel: 'Painel',
+    icon: Ship, 
+    tip: 'Painel & Comando',
+    instruction: 'Enquadre o posto de comando, volante náutico, telas/relógios, manetes e bancos.',
+    focus: 'Volante esportivo, GPS/relógios, manete de aceleração, comandos e estofados'
+  },
+  { 
+    id: 'casco', 
+    label: 'Casco (Fundo em V da Lancha)', 
+    shortLabel: 'Casco',
+    icon: Layers, 
+    tip: 'Quilha e Fundo',
+    instruction: 'Tire uma foto do fundo do casco em V, quilha e linha d’água para verificar integridade.',
+    focus: 'Quilha central, redans/hidrofólios, gelcoat do fundo e linha d’água'
+  }
+];
+
+// Fallback compatibility alias
+const CHECKLIST_ANGLES = CHECKLIST_ANGLES_LANCHA;
 
 const getFormattedDate = (date: Date) => {
   const yyyy = date.getFullYear();
@@ -1090,41 +1224,9 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
         const dayFuelReservations = totalDayReservations.filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0);
         const totalLitersDay = totalDayReservations.reduce((sum: number, r: any) => sum + (Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0), 0);
 
-        let totalDinheiroDay = 0;
-        let totalPixDay = 0;
-        let totalCartaoDay = 0;
-        let totalAdminDay = 0;
-        let totalPendenteDay = 0;
-        let totalCobradoDay = 0;
-
-        dayFuelReservations.forEach((r: any) => {
-          const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
-          const isCobrado = r.abastecimentoStatusCobranca === 'cobrado';
-          const pm = (r.abastecimentoFormaPagamento || 'pix').toLowerCase();
-          const unitPrice = pm === 'credit' ? 10 : pm === 'admin' ? 13 : 9;
-          const valor = r.abastecimentoValorTotal || (litros * unitPrice);
-
-          if (isCobrado) {
-            totalCobradoDay += valor;
-            if (pm === 'dinheiro') {
-              totalDinheiroDay += valor;
-            } else if (pm === 'pix') {
-              totalPixDay += valor;
-            } else if (pm === 'credit' || pm === 'debit') {
-              totalCartaoDay += valor;
-            } else if (pm === 'admin') {
-              totalAdminDay += valor;
-            } else {
-              totalPixDay += valor;
-            }
-          } else {
-            totalPendenteDay += valor;
-          }
-        });
-
         return (
           <main className="flex-1 p-4 max-w-7xl mx-auto w-full pb-24 space-y-4">
-            {/* KPI Summary Card matching Screenshot 3 */}
+            {/* KPI Summary Card - Volume de Combustível em Litros */}
             <div className="bg-[#0A1024] rounded-2xl p-5 text-white flex items-center justify-between shadow-md border border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-blue-950/60 border border-blue-800/50 flex items-center justify-center text-blue-400 shrink-0">
@@ -1132,83 +1234,16 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">VOLUME TOTAL HOJE</span>
-                  <p className="text-xl font-black text-white">
+                  <p className="text-2xl font-black text-white">
                     {totalLitersDay.toFixed(1)} <span className="text-blue-400">Litros</span>
                   </p>
                 </div>
               </div>
 
               <div className="text-right">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL COBRADO HOJE</span>
-                <p className="text-xl font-black text-emerald-400 font-mono">
-                  R$ {totalCobradoDay.toFixed(2).replace('.', ',')}
-                </p>
-              </div>
-            </div>
-
-            {/* Caixa Físico vs PIX vs Pendentes Breakdown */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {/* Caixa Físico (Dinheiro em Espécie) */}
-              <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 shadow-2xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                    <Banknote className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Caixa Físico (Dinheiro)</span>
-                  </span>
-                </div>
-                <p className="text-lg font-black text-emerald-950 font-mono">
-                  R$ {totalDinheiroDay.toFixed(2).replace('.', ',')}
-                </p>
-                <p className="text-[10px] text-emerald-700 font-semibold leading-tight">
-                  💵 Dinheiro em mãos no caixa
-                </p>
-              </div>
-
-              {/* PIX Recebido */}
-              <div className="bg-cyan-50/80 border border-cyan-200 rounded-2xl p-3.5 shadow-2xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-cyan-800 flex items-center gap-1">
-                    <QrCode className="w-3.5 h-3.5 text-cyan-600" />
-                    <span>PIX (Conta Bancária)</span>
-                  </span>
-                </div>
-                <p className="text-lg font-black text-cyan-950 font-mono">
-                  R$ {totalPixDay.toFixed(2).replace('.', ',')}
-                </p>
-                <p className="text-[10px] text-cyan-700 font-semibold leading-tight">
-                  📱 Transferências bancárias
-                </p>
-              </div>
-
-              {/* Cartões & Admin */}
-              <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-3.5 shadow-2xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-800 flex items-center gap-1">
-                    <CreditCard className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Cartão / Faturado</span>
-                  </span>
-                </div>
-                <p className="text-lg font-black text-blue-950 font-mono">
-                  R$ {(totalCartaoDay + totalAdminDay).toFixed(2).replace('.', ',')}
-                </p>
-                <p className="text-[10px] text-blue-700 font-semibold leading-tight">
-                  💳 Maquininha e Administradora
-                </p>
-              </div>
-
-              {/* Pendente de Cobrança */}
-              <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3.5 shadow-2xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-amber-600" />
-                    <span>A Cobrar / Pendente</span>
-                  </span>
-                </div>
-                <p className="text-lg font-black text-amber-950 font-mono">
-                  R$ {totalPendenteDay.toFixed(2).replace('.', ',')}
-                </p>
-                <p className="text-[10px] text-amber-700 font-semibold leading-tight">
-                  ⏳ Aguardando confirmação
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">EMBARCAÇÕES ABASTECIDAS</span>
+                <p className="text-xl font-black text-white font-mono">
+                  {dayFuelReservations.length} <span className="text-xs font-semibold text-slate-400">{dayFuelReservations.length === 1 ? 'registro' : 'registros'}</span>
                 </p>
               </div>
             </div>
@@ -1327,23 +1362,20 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                           </div>
 
                           <div className="text-right shrink-0">
-                            <span className="text-sm font-black text-blue-600 font-mono block">
+                            <span className="text-base font-black text-blue-600 font-mono block">
                               {litros} L
-                            </span>
-                            <span className="text-[11px] font-bold text-slate-700 font-mono block">
-                              R$ {valor.toFixed(2).replace('.', ',')}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleOpenFuelModal(reserva)}
-                              className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer shadow-2xs flex items-center gap-1 ${
+                              className={`mt-1.5 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer shadow-2xs flex items-center gap-1 ${
                                 isCobrado 
                                   ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' 
                                   : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
                               }`}
                             >
                               <Droplets className="w-3 h-3" />
-                              <span>{isCobrado ? 'Editar' : 'Cobrar'}</span>
+                              <span>{isCobrado ? 'Editar' : 'Registrar'}</span>
                             </button>
                           </div>
                         </div>
@@ -1732,6 +1764,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
           ? (activeChecklistBoat.tipo === 'jet' || (activeChecklistBoat.nome || '').toLowerCase().includes('jet'))
           : (selectedReserva ? (selectedReserva.embarcacaoTipo === 'jet' || (selectedReserva.barcoNome || '').toLowerCase().includes('jet')) : false);
 
+        const currentAngles = activeIsJet ? CHECKLIST_ANGLES_JET : CHECKLIST_ANGLES_LANCHA;
         const totalSteps = activeIsJet ? 7 : 8;
         const maxStepIndex = totalSteps - 1;
         const isReviewStep = currentStep === maxStepIndex;
@@ -1828,7 +1861,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                 
                 {/* STEPS 0..5: Sequential Photo Capture Steps */}
                 {currentStep < 6 && (() => {
-                  const angle = CHECKLIST_ANGLES[currentStep];
+                  const angle = currentAngles[currentStep];
                   const Icon = angle.icon;
                   const fotos = checklistFotos[angle.id] || [];
                   const hasPhoto = fotos.length > 0;
@@ -1837,31 +1870,70 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                   return (
                     <div className="space-y-4">
                       {/* Step Title Header */}
-                      <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center gap-3">
-                        <div className="p-3 bg-blue-100 text-blue-700 rounded-xl shrink-0">
-                          <Icon className="w-6 h-6" />
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="p-3 bg-blue-100 text-blue-700 rounded-xl shrink-0">
+                            <Icon className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-600 block">
+                              Passo {currentStep + 1} de 6 • Foto de Ângulo
+                            </span>
+                            <h4 className="font-extrabold text-slate-900 text-sm">Tire a foto: {angle.label}</h4>
+                            <p className="text-xs text-slate-500 font-medium">{angle.instruction}</p>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-600 block">
-                            Passo {currentStep + 1} de 6 • Foto de Ângulo
-                          </span>
-                          <h4 className="font-extrabold text-slate-900 text-sm">Tire a foto: {angle.label}</h4>
-                          <p className="text-xs text-slate-500 font-medium">Foque no estado de conservação no píer.</p>
-                        </div>
+                        <span className="hidden sm:inline-block bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
+                          {angle.tip}
+                        </span>
                       </div>
+
+                      {/* Reference Guide Card (Exibido apenas quando houver imagem de referência do ângulo, ex: Jet Ski) */}
+                      {Boolean(angle.refImage) && (
+                        <div className="bg-white border-2 border-blue-100 rounded-2xl overflow-hidden shadow-sm">
+                          <div className="bg-gradient-to-r from-blue-50 via-slate-50 to-blue-50 px-4 py-2.5 border-b border-blue-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                              <Camera className="w-4 h-4 text-blue-600" />
+                              <span>Foto de Referência • Como deve ficar</span>
+                            </div>
+                            <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-blue-600 text-white shadow-2xs">
+                              Modelo do Ângulo
+                            </span>
+                          </div>
+                          
+                          <div className="p-4 sm:p-6 flex flex-col items-center justify-center bg-gradient-to-b from-slate-50/60 via-white to-slate-50/60 min-h-[220px] sm:min-h-[260px]">
+                            <img 
+                              src={angle.refImage} 
+                              alt={`Referência ${angle.label}`}
+                              className="h-48 sm:h-64 max-h-[280px] w-full max-w-[460px] object-contain drop-shadow-md transition-all duration-200 hover:scale-105"
+                            />
+                          </div>
+                          
+                          <div className="bg-blue-50/60 px-4 py-2.5 border-t border-blue-100 text-xs text-slate-700 flex items-center gap-2 font-medium">
+                            <Info className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span><strong>Foco no enquadramento:</strong> {angle.focus}</span>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Photo Capture or Preview */}
                       {hasPhoto ? (
                         <div className="space-y-3">
-                          <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900 aspect-video flex items-center justify-center">
-                            <img 
-                              src={fotos[fotos.length - 1]} 
-                              className="w-full h-full object-cover" 
-                              alt={angle.label} 
-                            />
-                            <div className="absolute top-3 left-3 bg-emerald-500 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-md flex items-center gap-1">
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Foto Capturada & OK</span>
+                          <div className="space-y-1.5">
+                            <span className="text-xs font-bold text-slate-700 block flex items-center gap-1">
+                              <Check className="w-4 h-4 text-emerald-600" />
+                              <span>Sua Foto Capturada:</span>
+                            </span>
+                            <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900 aspect-video flex items-center justify-center">
+                              <img 
+                                src={fotos[fotos.length - 1]} 
+                                className="w-full h-full object-cover" 
+                                alt={angle.label} 
+                              />
+                              <div className="absolute top-3 left-3 bg-emerald-500 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-md flex items-center gap-1">
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Foto Capturada & OK</span>
+                              </div>
                             </div>
                           </div>
 
@@ -1905,7 +1977,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                             className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
                             disabled={isUploading}
                           />
-                          <div className="border-2 border-dashed border-blue-400 hover:border-blue-600 bg-blue-50/50 hover:bg-blue-50 rounded-2xl p-8 flex flex-col items-center justify-center text-center gap-3 transition-all cursor-pointer min-h-[220px]">
+                          <div className="border-2 border-dashed border-blue-400 hover:border-blue-600 bg-blue-50/50 hover:bg-blue-50 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center text-center gap-3 transition-all cursor-pointer min-h-[170px]">
                             {isUploading ? (
                               <div className="flex flex-col items-center gap-2">
                                 <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
@@ -2069,7 +2141,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                       </div>
                       
                       <div className="grid grid-cols-3 gap-2">
-                        {CHECKLIST_ANGLES.map((angle) => {
+                        {currentAngles.map((angle) => {
                           const fotos = checklistFotos[angle.id] || [];
                           const hasPhoto = fotos.length > 0;
                           return (
@@ -2082,7 +2154,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
                                 </div>
                               )}
                               <div className="min-w-0 flex-1">
-                                <span className="text-[10px] font-bold text-slate-900 truncate block">{angle.label.split(' ')[0]}</span>
+                                <span className="text-[10px] font-bold text-slate-900 truncate block">{angle.shortLabel || angle.label.split(' ')[0]}</span>
                                 <span className={`text-[9px] font-semibold block ${hasPhoto ? 'text-emerald-700' : 'text-slate-400'}`}>
                                   {hasPhoto ? `✓ OK (${fotos.length})` : 'Sem foto'}
                                 </span>

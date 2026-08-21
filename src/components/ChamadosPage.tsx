@@ -194,10 +194,10 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
             <nav className="text-xs font-semibold text-slate-500 mb-1 flex items-center gap-1.5">
               <span>Frotas</span>
               <span>/</span>
-              <span className="text-[#186b77] font-bold">Controle de Manutenções</span>
+              <span className="text-[#186b77] font-bold">Chamados</span>
             </nav>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Controle de Manutenções
+              Chamados
             </h1>
           </div>
 

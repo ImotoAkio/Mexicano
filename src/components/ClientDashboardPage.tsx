@@ -121,7 +121,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [lastAddedResId, setLastAddedResId] = useState<string | null>(null);
 
   // Merge external and optimistic reservations
-  const [cancelledIds, setCancelledIds] = useState<number[]>([]);
+  const [cancelledIds, setCancelledIds] = useState<(string | number)[]>([]);
 
   const mergedMap = new Map();
   reservations.forEach(r => mergedMap.set(r.id, r));

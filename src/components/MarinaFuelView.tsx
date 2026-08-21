@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2 } from 'lucide-react';
+import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2, Banknote, QrCode } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
 import { logAction } from '../db';
+import SearchableSelect from './shared/SearchableSelect';
 
 interface MarinaFuelViewProps {
   data: {
@@ -1514,20 +1515,20 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         </div>
 
         {/* Caixa Físico vs PIX vs Cartões vs Administradora Breakdown */}
-        <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-md border border-slate-800 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+              <div className="p-2 bg-emerald-50 border border-emerald-200/60 rounded-xl text-emerald-600">
                 <Banknote className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-extrabold text-sm text-white tracking-tight">Conferência & Fechamento de Caixa da Marina</h3>
-                <p className="text-[11px] text-slate-400">Separação de dinheiro físico em espécie vs transações bancárias / faturadas</p>
+                <h3 className="font-bold text-sm text-slate-800 tracking-tight">Conferência & Fechamento de Caixa da Marina</h3>
+                <p className="text-[11px] text-slate-500">Separação de dinheiro físico em espécie vs transações bancárias / faturadas</p>
               </div>
             </div>
             <div className="text-right">
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Geral Recebido</span>
-              <span className="text-lg font-black text-emerald-400 font-mono">
+              <span className="text-lg font-black text-emerald-600 font-mono">
                 {totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </span>
             </div>
@@ -1535,57 +1536,57 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             {/* 1. Dinheiro em Espécie (Caixa da Marina) */}
-            <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-3 space-y-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
-                <Banknote className="w-3.5 h-3.5" />
+            <div className="bg-emerald-50/50 border border-emerald-200/60 rounded-xl p-3 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1">
+                <Banknote className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Caixa Físico (Dinheiro)</span>
               </span>
-              <p className="text-lg sm:text-xl font-black text-emerald-300 font-mono">
+              <p className="text-lg sm:text-xl font-black text-emerald-900 font-mono">
                 {totalDinheiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
-              <p className="text-[10px] text-emerald-200/70 font-medium">
+              <p className="text-[10px] text-emerald-600/80 font-medium">
                 💵 Cédulas na gaveta do caixa
               </p>
             </div>
 
             {/* 2. PIX (Conta Bancária) */}
-            <div className="bg-cyan-950/40 border border-cyan-500/30 rounded-xl p-3 space-y-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1">
-                <QrCode className="w-3.5 h-3.5" />
+            <div className="bg-cyan-50/50 border border-cyan-200/60 rounded-xl p-3 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 flex items-center gap-1">
+                <QrCode className="w-3.5 h-3.5 text-cyan-600" />
                 <span>PIX (Conta Bancária)</span>
               </span>
-              <p className="text-lg sm:text-xl font-black text-cyan-300 font-mono">
+              <p className="text-lg sm:text-xl font-black text-cyan-900 font-mono">
                 {totalPix.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
-              <p className="text-[10px] text-cyan-200/70 font-medium">
+              <p className="text-[10px] text-cyan-600/80 font-medium">
                 📱 Transferência / QR Code
               </p>
             </div>
 
             {/* 3. Cartões (Crédito & Débito) */}
-            <div className="bg-blue-950/40 border border-blue-500/30 rounded-xl p-3 space-y-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-blue-400 flex items-center gap-1">
-                <CreditCard className="w-3.5 h-3.5" />
+            <div className="bg-blue-50/50 border border-blue-200/60 rounded-xl p-3 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 flex items-center gap-1">
+                <CreditCard className="w-3.5 h-3.5 text-blue-600" />
                 <span>Cartões (Maquininha)</span>
               </span>
-              <p className="text-lg sm:text-xl font-black text-blue-300 font-mono">
+              <p className="text-lg sm:text-xl font-black text-blue-900 font-mono">
                 {totalCartao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
-              <p className="text-[10px] text-blue-200/70 font-medium">
+              <p className="text-[10px] text-blue-600/80 font-medium">
                 💳 Maquininha no píer
               </p>
             </div>
 
             {/* 4. Administradora (Faturado Pós-pago) */}
-            <div className="bg-purple-950/40 border border-purple-500/30 rounded-xl p-3 space-y-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5" />
+            <div className="bg-purple-50/50 border border-purple-200/60 rounded-xl p-3 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-purple-600" />
                 <span>Administradora (Faturado)</span>
               </span>
-              <p className="text-lg sm:text-xl font-black text-purple-300 font-mono">
+              <p className="text-lg sm:text-xl font-black text-purple-900 font-mono">
                 {totalAdmin.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
-              <p className="text-[10px] text-purple-200/70 font-medium">
+              <p className="text-[10px] text-purple-600/80 font-medium">
                 🏢 Faturamento pós-pago
               </p>
             </div>
@@ -1703,18 +1704,20 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     <Ship className="w-3.5 h-3.5 text-slate-400" />
                     <span>Embarcação</span>
                   </label>
-                  <select
+                  <SearchableSelect
+                    options={[
+                      { value: 'all', label: 'Todas as Embarcações' },
+                      ...(data?.boats || []).map((boat) => ({
+                        value: boat.id,
+                        label: getBoatCode(boat),
+                        sublabel: boat.vaga ? `Vaga: ${boat.vaga}` : 'Sem Vaga',
+                      })),
+                    ]}
                     value={boatFilter}
-                    onChange={(e) => setBoatFilter(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
-                  >
-                    <option value="all">Todas as Embarcações</option>
-                    {(data?.boats || []).map((boat) => (
-                      <option key={boat.id} value={boat.id}>
-                        {getBoatCode(boat)} ({boat.vaga || 'Sem Vaga'})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setBoatFilter(val)}
+                    placeholder="Selecione a embarcação..."
+                    searchPlaceholder="Pesquisar embarcação..."
+                  />
                 </div>
 
                 {/* 3. Cliente Filter */}
@@ -1723,18 +1726,20 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     <UserIcon className="w-3.5 h-3.5 text-slate-400" />
                     <span>Cliente</span>
                   </label>
-                  <select
+                  <SearchableSelect
+                    options={[
+                      { value: 'all', label: 'Todos os Clientes' },
+                      ...(data?.clients || []).map((client) => ({
+                        value: client.id,
+                        label: client.nome,
+                        sublabel: client.telefone || undefined,
+                      })),
+                    ]}
                     value={clientFilter}
-                    onChange={(e) => setClientFilter(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
-                  >
-                    <option value="all">Todos os Clientes</option>
-                    {(data?.clients || []).map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.nome}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setClientFilter(val)}
+                    placeholder="Selecione o cliente..."
+                    searchPlaceholder="Pesquisar cliente..."
+                  />
                 </div>
 
                 {/* 4. Forma de Pagamento Filter */}
@@ -2280,10 +2285,17 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             <form onSubmit={handleSaveFuelTransaction} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 subtle-scrollbar">
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
-                <select
+                <SearchableSelect
+                  options={[
+                    { value: '', label: 'Selecione o barco...' },
+                    ...(data?.boats || []).map((b) => ({
+                      value: b.id,
+                      label: b.nome,
+                      sublabel: b.vaga ? `Vaga: ${b.vaga}` : 'Sem Vaga',
+                    })),
+                  ]}
                   value={selectedBoatId}
-                  onChange={(e) => {
-                    const boatId = e.target.value;
+                  onChange={(boatId) => {
                     setSelectedBoatId(boatId);
                     const b = getEmbarcacao(boatId);
                     if (b?.donos?.[0]) {
@@ -2292,41 +2304,36 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                       setSelectedClientId('');
                     }
                   }}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-sm focus:ring-[#2563EB]"
-                >
-                  <option value="">Selecione o barco...</option>
-                  {(data?.boats || []).map(b => (
-                    <option key={b.id} value={b.id}>{b.nome} ({b.vaga || 'Sem Vaga'})</option>
-                  ))}
-                </select>
+                  placeholder="Selecione o barco..."
+                  searchPlaceholder="Pesquisar barco..."
+                />
               </div>
 
               {/* Seleção do Cotista / Cliente */}
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 text-xs">Cotista / Cliente *</label>
-                <select
-                  value={selectedClientId}
-                  onChange={(e) => setSelectedClientId(e.target.value)}
+                <SearchableSelect
                   disabled={!selectedBoatId}
-                  required
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-sm focus:ring-[#2563EB] disabled:opacity-50"
-                >
-                  <option value="">
-                    {!selectedBoatId ? 'Selecione a embarcação primeiro...' : 'Selecione o cotista...'}
-                  </option>
-                  {((data?.clients || []).filter(c => {
-                    const selectedBoat = getEmbarcacao(selectedBoatId);
-                    if (!selectedBoat) return true;
-                    if (selectedBoat.donos && Array.isArray(selectedBoat.donos) && selectedBoat.donos.length > 0) {
-                      return selectedBoat.donos.includes(c.id);
-                    }
-                    return true;
-                  })).map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome} {c.cota ? `(Cota ${c.cota})` : c.cpf ? `(${c.cpf})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '', label: !selectedBoatId ? 'Selecione a embarcação primeiro...' : 'Selecione o cotista...' },
+                    ...((data?.clients || []).filter((c) => {
+                      const selectedBoat = getEmbarcacao(selectedBoatId);
+                      if (!selectedBoat) return true;
+                      if (selectedBoat.donos && Array.isArray(selectedBoat.donos) && selectedBoat.donos.length > 0) {
+                        return selectedBoat.donos.includes(c.id);
+                      }
+                      return true;
+                    })).map((c) => ({
+                      value: c.id,
+                      label: c.nome,
+                      sublabel: c.cota ? `Cota ${c.cota}` : c.cpf ? `CPF: ${c.cpf}` : undefined,
+                    })),
+                  ]}
+                  value={selectedClientId}
+                  onChange={(val) => setSelectedClientId(val)}
+                  placeholder={!selectedBoatId ? 'Selecione a embarcação primeiro...' : 'Selecione o cotista...'}
+                  searchPlaceholder="Pesquisar cotista/cliente..."
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -2667,35 +2674,43 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 {/* Embarcação */}
                 <div className="space-y-1.5">
                   <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
-                  <select
+                  <SearchableSelect
+                    options={[
+                      { value: '', label: 'Selecione a embarcação...' },
+                      ...(data?.boats || []).map((b) => ({
+                        value: b.id,
+                        label: getBoatCode(b),
+                        sublabel: b.vaga ? `Vaga: ${b.vaga}` : 'Sem Vaga',
+                      })),
+                    ]}
                     value={editBoatId}
-                    onChange={(e) => {
-                      setEditBoatId(e.target.value);
-                      const b = getEmbarcacao(e.target.value);
+                    onChange={(val) => {
+                      setEditBoatId(val);
+                      const b = getEmbarcacao(val);
                       if (b?.donos?.[0]) setEditClientId(b.donos[0]);
                     }}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-xs focus:ring-amber-500 cursor-pointer"
-                  >
-                    <option value="">Selecione a embarcação...</option>
-                    {(data?.boats || []).map(b => (
-                      <option key={b.id} value={b.id}>{getBoatCode(b)} ({b.vaga || 'Sem Vaga'})</option>
-                    ))}
-                  </select>
+                    placeholder="Selecione a embarcação..."
+                    searchPlaceholder="Pesquisar embarcação..."
+                  />
                 </div>
 
                 {/* Cliente */}
                 <div className="space-y-1.5">
                   <label className="font-bold text-slate-700 text-xs">Cliente / Proprietário</label>
-                  <select
+                  <SearchableSelect
+                    options={[
+                      { value: '', label: 'Selecione o cliente...' },
+                      ...(data?.clients || []).map((c) => ({
+                        value: c.id,
+                        label: c.nome,
+                        sublabel: c.telefone || undefined,
+                      })),
+                    ]}
                     value={editClientId}
-                    onChange={(e) => setEditClientId(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-semibold text-xs focus:ring-amber-500 cursor-pointer"
-                  >
-                    <option value="">Selecione o cliente...</option>
-                    {(data?.clients || []).map(c => (
-                      <option key={c.id} value={c.id}>{c.nome}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setEditClientId(val)}
+                    placeholder="Selecione o cliente..."
+                    searchPlaceholder="Pesquisar cliente..."
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

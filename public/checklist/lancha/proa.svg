@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="lanchaHullFront" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#f1f5f9"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="lanchaBlueStripe" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="50%" stop-color="#0369a1"/>
+      <stop offset="100%" stop-color="#0c4a6e"/>
+    </linearGradient>
+    <linearGradient id="lanchaGlass" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#0284c7" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="waterLineFront" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="50%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+    <filter id="boatShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-opacity="0.2" flood-color="#0f172a"/>
+    </filter>
+  </defs>
+
+  <!-- Water Surface Glow -->
+  <ellipse cx="300" cy="385" rx="250" ry="35" fill="#e0f2fe" opacity="0.6"/>
+  <ellipse cx="300" cy="390" rx="210" ry="20" fill="#bae6fd" opacity="0.5"/>
+
+  <g filter="url(#boatShadow)">
+    <!-- T-Top / Hardtop Roof -->
+    <path d="M 200 75 Q 300 55 400 75 L 390 100 Q 300 85 210 100 Z" fill="#0f172a"/>
+    <path d="M 215 78 Q 300 65 385 78 L 380 92 Q 300 80 220 92 Z" fill="#ffffff"/>
+    
+    <!-- Hardtop Supports (Stainless Steel) -->
+    <line x1="225" y1="95" x2="245" y2="195" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+    <line x1="375" y1="95" x2="355" y2="195" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+    <line x1="240" y1="95" x2="265" y2="195" stroke="#64748b" stroke-width="3" stroke-linecap="round"/>
+    <line x1="360" y1="95" x2="335" y2="195" stroke="#64748b" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Radar / Navigation Lights / Antennas -->
+    <rect x="290" y="45" width="20" height="12" rx="4" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+    <circle cx="300" cy="40" r="4" fill="#ef4444"/>
+    <line x1="260" y1="65" x2="255" y2="35" stroke="#94a3b8" stroke-width="2.5"/>
+    <line x1="340" y1="65" x2="345" y2="35" stroke="#94a3b8" stroke-width="2.5"/>
+
+    <!-- Main Windshield Glass -->
+    <path d="M 210 195 Q 300 170 390 195 L 375 145 Q 300 125 225 145 Z" fill="url(#lanchaGlass)" stroke="#0f172a" stroke-width="3"/>
+    <!-- Windshield Frame & Center Divider -->
+    <path d="M 300 135 L 300 185" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 225 145 Q 300 125 375 145" stroke="#cbd5e1" stroke-width="3" fill="none"/>
+
+    <!-- Cockpit Interior Preview -->
+    <path d="M 245 195 Q 300 185 355 195 L 350 215 Q 300 205 250 215 Z" fill="#334155"/>
+    <!-- Steering wheel silhouette -->
+    <circle cx="275" cy="180" r="10" fill="none" stroke="#e2e8f0" stroke-width="3"/>
+
+    <!-- Main Deck / Foredeck (Proa / Solário) -->
+    <path d="M 120 280 Q 300 210 480 280 L 460 215 Q 300 160 140 215 Z" fill="url(#lanchaHullFront)" stroke="#cbd5e1" stroke-width="2"/>
+
+    <!-- Solário Cushions / Sunbed on Bow -->
+    <path d="M 240 230 Q 300 205 360 230 L 350 255 Q 300 235 250 255 Z" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
+    <line x1="300" y1="215" x2="300" y2="245" stroke="#94a3b8" stroke-width="1.5"/>
+
+    <!-- Bow Rails (Guarda-mancebo em Inox) -->
+    <path d="M 130 260 Q 300 180 470 260" fill="none" stroke="#94a3b8" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 130 260 L 135 275" stroke="#64748b" stroke-width="3"/>
+    <path d="M 210 225 L 212 245" stroke="#64748b" stroke-width="3"/>
+    <path d="M 300 195 L 300 220" stroke="#64748b" stroke-width="3.5"/>
+    <path d="M 390 225 L 388 245" stroke="#64748b" stroke-width="3"/>
+    <path d="M 470 260 L 465 275" stroke="#64748b" stroke-width="3"/>
+
+    <!-- Anchor Pulpit & Electric Winch (Púlpito de Proa e Guincho) -->
+    <path d="M 285 240 L 300 200 L 315 240 Z" fill="#64748b" stroke="#334155" stroke-width="2"/>
+    <polygon points="296,195 304,195 302,215 298,215" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+    <!-- Anchor Roller & Anchor Shank -->
+    <path d="M 300 195 L 300 250" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Front V-Hull (Casco Frontal em V Profundo) -->
+    <path d="M 120 280 Q 300 370 300 395 Q 300 370 480 280 Q 420 340 300 395 Q 180 340 120 280 Z" fill="#0284c7"/>
+    <path d="M 120 280 Q 300 330 480 280 L 450 335 Q 300 390 150 335 Z" fill="url(#lanchaBlueStripe)" stroke="#0c4a6e" stroke-width="2"/>
+
+    <!-- Keel Line (Linha Central da Quilha Frontal) -->
+    <line x1="300" y1="240" x2="300" y2="395" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Bow Spray Rails / Chines -->
+    <path d="M 140 295 Q 300 355 460 295" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.9"/>
+    <path d="M 175 320 Q 300 370 425 320" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+
+    <!-- Rub Rail (Friso de Proteção em Inox) -->
+    <path d="M 115 280 Q 300 240 485 280" fill="none" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 115 280 Q 300 240 485 280" fill="none" stroke="#e2e8f0" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Bow Eyes / Tow Ring -->
+    <circle cx="300" cy="330" r="5" fill="#e2e8f0" stroke="#0f172a" stroke-width="2"/>
+
+    <!-- Navigation Bow Lights (Luzes de Navegação Verde e Vermelha) -->
+    <circle cx="280" cy="235" r="4" fill="#ef4444" stroke="#991b1b" stroke-width="1"/>
+    <circle cx="320" cy="235" r="4" fill="#22c55e" stroke="#166534" stroke-width="1"/>
+  </g>
+
+  <!-- Water Ripple Lines -->
+  <path d="M 180 395 Q 300 415 420 395" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 230 410 Q 300 425 370 410" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round"/>
+</svg>

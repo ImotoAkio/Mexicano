@@ -75,8 +75,9 @@ export default function ClientProfileModal({ client, boats, onClose }: ClientPro
       : [{ embarcacaoId: client.embarcacaoId, cota: client.cota }];
 
     const statusFin = client.statusFinanceiro === 'inadimplente' ? 'INADIMPLENTE' : 'EM DIA';
+    const statusCad = (client.status || 'ativo').toUpperCase();
     const planoStr = (client.plano || 'normal').toUpperCase();
-    doc.text(`Plano: ${planoStr}  |  Situação Financeira: ${statusFin}  |  Veículos Vinculados: ${linkedBoatsList.length}`, 18, y + 12);
+    doc.text(`Plano: ${planoStr}  |  Situação: ${statusFin}  |  Cadastro: ${statusCad}  |  Veículos: ${linkedBoatsList.length}`, 18, y + 12);
 
     y += 22;
 
@@ -224,16 +225,22 @@ export default function ClientProfileModal({ client, boats, onClose }: ClientPro
 
     const finData = [
       [
+        { content: 'Status do Cadastro:', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
+        { content: statusCad === 'INATIVO' ? 'INATIVO (DESATIVADO)' : 'ATIVO (LIBERADO)' },
         { content: 'Status Financeiro:', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
-        { content: statusFin },
-        { content: 'Plano de Assinatura:', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
-        { content: planoStr }
+        { content: statusFin }
       ],
       [
+        { content: 'Plano de Assinatura:', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
+        { content: planoStr },
         { content: 'ID Integração Asaas:', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
-        { content: client.asaasCustomerId || 'Não vinculado' },
+        { content: client.asaasCustomerId || 'Não vinculado' }
+      ],
+      [
         { content: 'Obs. Financeiras:', styles: { fontStyle: 'bold', fillColor: [248, 250, 252] } },
-        { content: client.observacoesFinanceiras || 'Nenhuma observação registrada' }
+        { content: client.observacoesFinanceiras || 'Nenhuma observação registrada' },
+        { content: '', styles: { fillColor: [248, 250, 252] } },
+        { content: '' }
       ]
     ];
 
@@ -313,6 +320,13 @@ export default function ClientProfileModal({ client, boats, onClose }: ClientPro
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-xl font-bold text-slate-900 truncate">{client.nome}</h3>
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                  client.status === 'inativo'
+                    ? 'bg-slate-100 text-slate-600 border-slate-200'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                }`}>
+                  {client.status === 'inativo' ? 'Inativo' : 'Ativo'}
+                </span>
                 <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                   client.statusFinanceiro === 'inadimplente' 
                     ? 'bg-rose-50 text-rose-700 border-rose-200' 

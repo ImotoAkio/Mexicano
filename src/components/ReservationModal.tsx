@@ -126,6 +126,11 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
       return;
     }
 
+    if (client.status === 'inativo') {
+      setErrorMsg('Não é possível criar reservas para um cliente com cadastro inativo. Reative o cadastro do cliente na tela de Clientes antes de prosseguir.');
+      return;
+    }
+
     // Determine target dates
     const datesToBook = (
       bookingType === 'range' ? getDatesInRange(startDate, endDate) : 
@@ -684,11 +689,14 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
               <option value="">
                 {!selectedBoatId ? 'Selecione primeiro uma embarcação...' : '-- Escolha um dos Coproprietários --'}
               </option>
-              {availableOwners.map(owner => (
-                <option key={owner.id} value={owner.id}>
-                  {getFirstTwoNames(owner.nome).toUpperCase()} (Cota {owner.cota || 'N/A'}) {owner.statusFinanceiro === 'inadimplente' ? ' (INADIMPLENTE)' : ''}
-                </option>
-              ))}
+              {availableOwners.map(owner => {
+                const isInactive = owner.status === 'inativo';
+                return (
+                  <option key={owner.id} value={owner.id} disabled={isInactive}>
+                    {getFirstTwoNames(owner.nome).toUpperCase()} (Cota {owner.cota || 'N/A'}){isInactive ? ' [CADASTRO INATIVO]' : ''}{owner.statusFinanceiro === 'inadimplente' ? ' (INADIMPLENTE)' : ''}
+                  </option>
+                );
+              })}
             </select>
             {selectedBoatId && boats.find(b => b.id === selectedBoatId)?.emManutencao && (
               <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 p-2 rounded-lg text-amber-800 text-xs">
@@ -696,6 +704,15 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
                 <div>
                   <span className="font-bold uppercase tracking-wider block text-[10px]">Aviso de Manutenção</span>
                   <span className="leading-tight">A embarcação selecionada encontra-se em manutenção.</span>
+                </div>
+              </div>
+            )}
+            {selectedClientId && availableOwners.find(o => o.id === selectedClientId)?.status === 'inativo' && (
+              <div className="mt-2 flex items-start gap-2 bg-slate-100 border border-slate-300 p-2 rounded-lg text-slate-800 text-xs">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-slate-600" />
+                <div>
+                  <span className="font-bold uppercase tracking-wider block text-[10px] text-slate-700">Cadastro Inativo</span>
+                  <span className="leading-tight text-slate-600">Este cliente está com o cadastro inativo e não pode realizar novas reservas. Reative-o na tela de Clientes.</span>
                 </div>
               </div>
             )}
