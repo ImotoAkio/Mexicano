@@ -98,6 +98,7 @@ export interface Embarcacao {
   horasUltimaManutencao?: number;
   proximaRevisaoHoras?: number;
   proprietarioId?: string;
+  clienteId?: string;
   cotistas?: any[];
   horimetroActual?: number;
   historicoHoras?: RegistroHoras[];
@@ -233,7 +234,7 @@ export interface Chamado {
   id: string;
   codigoChamado: string;
   embarcacaoId: string;
-  solicitanteTipo: 'gerente' | 'administrador' | 'cliente' | 'pecas_servicos';
+  solicitanteTipo: 'gerente' | 'operador' | 'administrador' | 'cliente' | 'pecas_servicos';
   solicitanteNome: string;
   clienteId?: string;
   titulo: string;

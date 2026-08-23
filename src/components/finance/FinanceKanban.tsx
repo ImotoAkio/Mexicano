@@ -20,21 +20,36 @@ export default function FinanceKanban({ setor = 'financeiro' }: { setor?: 'finan
     if (isManualRefresh) setIsRefreshing(true);
     try {
       const token = localStorage.getItem('admin_token');
+      if (!token || token === 'null' || token === 'undefined') {
+        setAtividades([]);
+        return;
+      }
       const res = await fetch(`/api/financeiro/atividades?setor=${setor}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
       });
       if (res.ok) {
-        const text = await res.text();
-        let data = [];
-        try {
-          data = text ? JSON.parse(text) : [];
-        } catch (e) {
-          console.warn('Resposta não é um JSON válido em /api/financeiro/atividades');
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          setAtividades(Array.isArray(data) ? data : []);
+        } else {
+          const text = await res.text();
+          try {
+            const data = text ? JSON.parse(text) : [];
+            setAtividades(Array.isArray(data) ? data : []);
+          } catch {
+            setAtividades([]);
+          }
         }
-        setAtividades(Array.isArray(data) ? data : []);
+      } else {
+        setAtividades([]);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Erro ao carregar atividades:', err);
+      setAtividades([]);
     } finally {
       setLoading(false);
       setIsRefreshing(false);

@@ -28,8 +28,8 @@ import {
   getAllTransacoes, upsertTransacao, deleteTransacao, syncClientFinancialStatus, deleteAllTransacoes, deleteTransacoesByClientIds,
   getAllAtividades, upsertAtividade, deleteAtividade,
   getAllFeedbacks, upsertFeedback, deleteFeedback,
-  upsertManutencao, deleteManutencao,
-  getAllMecanicos, upsertMecanico, deleteMecanico,
+  upsertManutencao, deleteManutencao, getNextCodigoOS,
+  upsertMecanico, deleteMecanico,
   getAllTiposManutencao, upsertTipoManutencao, deleteTipoManutencao,
   upsertFuncionario, deleteFuncionario,
   upsertFolga, deleteFolga,
@@ -946,6 +946,15 @@ app.post("/api/folgas/save", requireAdminAuth, sensitiveLimiter, async (req, res
 });
 
 // Route: Operacional/Financeiro - Manutencoes
+app.get("/api/manutencoes/next-code", requireAdminAuth, async (req, res) => {
+  try {
+    const code = await getNextCodigoOS();
+    res.json({ success: true, code });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to generate OS code" });
+  }
+});
+
 app.post("/api/manutencoes/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   const { action, data } = req.body;
   try {
@@ -986,7 +995,7 @@ app.post("/api/manutencoes/save", requireAdminAuth, sensitiveLimiter, async (req
               tipo: 'receita',
               categoria: 'Serviços/Manutenção',
               valor: baseValor,
-              dataVencimento: data.dataSaida,
+              dataVencimento: data.dataSaida || data.prazoEntrega || data.dataChamado || new Date().toISOString().split('T')[0],
               status: 'pendente',
               descricao: data.descricaoServico || `Manutenção Embarcação`,
               embarcacaoId: data.embarcacaoId,
@@ -1378,8 +1387,10 @@ app.get("/api/financeiro/atividades", requireAdminAuth, async (req, res) => {
   try {
     const setor = req.query.setor as string | undefined;
     const atividades = await getAllAtividades(setor);
-    res.json(atividades);
+    res.setHeader("Content-Type", "application/json");
+    res.json(Array.isArray(atividades) ? atividades : []);
   } catch (err: any) {
+    console.error("Error fetching atividades:", err);
     res.status(500).json({ error: true, message: err.message || "Failed to fetch atividades" });
   }
 });
@@ -1845,7 +1856,15 @@ app.post("/api/config", requireAdminAuth, sensitiveLimiter, async (req, res) => 
 app.get("/api/fuel/inventory", async (req, res) => {
   try {
     const inv = await getFuelInventoryFromDb();
-    res.json(inv || {});
+    res.json(inv || {
+      tanquePrincipalLitros: 0,
+      tanqueCapacidadeMaxima: 1000,
+      alertaMinimoTanque: 200,
+      galoesPierQuantidade: 0,
+      galoesCapacidadeLitros: 20,
+      galaoParcialLitros: 0,
+      ultimaAtualizacao: new Date().toLocaleDateString('pt-BR')
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -2273,7 +2292,16 @@ app.get("/api/whatsapp/groups", requireAnyAuth, async (req, res) => {
     }
 
     const data = await response.json();
-    res.json({ success: true, groups: data });
+    const rawGroups = Array.isArray(data) ? data : (data?.data || []);
+    const uniqueGroupsMap = new Map();
+    for (const g of rawGroups) {
+      const gid = g?.id || g?.jid;
+      if (gid && !uniqueGroupsMap.has(gid)) {
+        uniqueGroupsMap.set(gid, { ...g, id: gid, subject: g.subject || g.name || gid });
+      }
+    }
+    const deduplicatedGroups = Array.from(uniqueGroupsMap.values());
+    res.json({ success: true, groups: deduplicatedGroups });
   } catch (err: any) {
     console.error("Error fetching WhatsApp groups:", err);
     res.status(500).json({ error: true, message: err.message || "Failed to fetch WhatsApp groups" });
@@ -2307,10 +2335,97 @@ app.get("/api/whatsapp/contacts", requireAnyAuth, async (req, res) => {
     }
 
     const data = await response.json();
-    res.json({ success: true, contacts: data });
+    const rawContacts = Array.isArray(data) ? data : (data?.data || []);
+    const uniqueContactsMap = new Map();
+    for (const c of rawContacts) {
+      const cid = c?.id || c?.remoteJid || c?.jid;
+      if (cid && !uniqueContactsMap.has(cid)) {
+        uniqueContactsMap.set(cid, { ...c, id: cid, remoteJid: c.remoteJid || cid });
+      }
+    }
+    const deduplicatedContacts = Array.from(uniqueContactsMap.values());
+    res.json({ success: true, contacts: deduplicatedContacts });
   } catch (err: any) {
     console.error("Error fetching WhatsApp contacts:", err);
     res.status(500).json({ error: true, message: err.message || "Failed to fetch WhatsApp contacts" });
+  }
+});
+
+// Route: Evolution Direct Send Message (Text or Media, individual or group)
+app.post("/api/evolution/send-message", requireAnyAuth, whatsappLimiter, async (req, res) => {
+  try {
+    const { number, text, media, mimetype, fileName, caption } = req.body;
+    const messageText = text || caption || "";
+
+    if (!number || (!messageText && !media)) {
+      return res.status(400).json({ error: true, message: "Missing number or message content" });
+    }
+
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+
+    if (!apiUrl || !apiKey) {
+      return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
+    }
+
+    let targetRecipient = String(number).trim();
+    if (!targetRecipient.includes('@g.us')) {
+      let cleaned = targetRecipient.replace(/\D/g, "");
+      if (cleaned.length >= 10 && cleaned.length <= 11 && !cleaned.startsWith("55")) {
+        cleaned = `55${cleaned}`;
+      }
+      targetRecipient = cleaned;
+    }
+
+    if (media && mimetype) {
+      let mediatype = "document";
+      if (mimetype.startsWith("image/")) mediatype = "image";
+      else if (mimetype.startsWith("video/")) mediatype = "video";
+
+      const base64Data = media.replace(/^data:.*?;base64,/, "");
+
+      const payload = {
+        number: targetRecipient,
+        mediatype,
+        mimetype,
+        caption: messageText,
+        media: base64Data,
+        fileName: fileName || "documento"
+      };
+
+      const response = await evolutionFetch(`${apiUrl}/message/sendMedia/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": apiKey },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(502).json({ error: true, message: `Evolution API Media error: ${errorText}` });
+      }
+    } else {
+      const payload = {
+        number: targetRecipient,
+        text: messageText
+      };
+
+      const response = await evolutionFetch(`${apiUrl}/message/sendText/${instance}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": apiKey },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(502).json({ error: true, message: `Evolution API Text error: ${errorText}` });
+      }
+    }
+
+    res.json({ success: true, message: "Message sent successfully" });
+  } catch (err: any) {
+    console.error("Error sending Evolution message:", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to send message" });
   }
 });
 

@@ -27,8 +27,8 @@ export interface FuelHistoryEntry {
 
 export const EMPTY_INVENTORY: FuelInventory = {
   tanquePrincipalLitros: 0,
-  tanqueCapacidadeMaxima: 10000,
-  alertaMinimoTanque: 2000,
+  tanqueCapacidadeMaxima: 1000,
+  alertaMinimoTanque: 200,
   
   galoesPierQuantidade: 0,
   galoesCapacidadeLitros: 20,
@@ -41,12 +41,23 @@ export function getFuelInventory(): FuelInventory {
   const saved = localStorage.getItem('marina_fuel_inventory');
   if (saved) {
     try {
-      return { ...EMPTY_INVENTORY, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          tanquePrincipalLitros: Number(parsed.tanquePrincipalLitros ?? EMPTY_INVENTORY.tanquePrincipalLitros),
+          tanqueCapacidadeMaxima: Number(parsed.tanqueCapacidadeMaxima || EMPTY_INVENTORY.tanqueCapacidadeMaxima),
+          alertaMinimoTanque: Number(parsed.alertaMinimoTanque || EMPTY_INVENTORY.alertaMinimoTanque),
+          galoesPierQuantidade: Number(parsed.galoesPierQuantidade ?? EMPTY_INVENTORY.galoesPierQuantidade),
+          galoesCapacidadeLitros: Number(parsed.galoesCapacidadeLitros || 20),
+          galaoParcialLitros: Number(parsed.galaoParcialLitros ?? 0),
+          ultimaAtualizacao: parsed.ultimaAtualizacao || new Date().toLocaleDateString('pt-BR')
+        };
+      }
     } catch (e) {
       console.error('Erro ao ler estoque de combustivel:', e);
     }
   }
-  return EMPTY_INVENTORY;
+  return { ...EMPTY_INVENTORY };
 }
 
 export function saveFuelInventory(inv: FuelInventory): void {
@@ -168,6 +179,11 @@ export function consumeFuelForEmbarcacao(litros: number, barcoNome: string, oper
 /**
  * Total fuel in Litros = Main Tank + (Galoes * 20) + Parcial
  */
-export function getEstoqueTotalLitros(inv: FuelInventory): number {
-  return inv.tanquePrincipalLitros + (inv.galoesPierQuantidade * inv.galoesCapacidadeLitros) + inv.galaoParcialLitros;
+export function getEstoqueTotalLitros(inv?: FuelInventory | null): number {
+  if (!inv) return 0;
+  const t = Number(inv.tanquePrincipalLitros || 0);
+  const g = Number(inv.galoesPierQuantidade || 0);
+  const cap = Number(inv.galoesCapacidadeLitros || 20);
+  const p = Number(inv.galaoParcialLitros || 0);
+  return t + (g * cap) + p;
 }

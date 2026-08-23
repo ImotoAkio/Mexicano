@@ -20,9 +20,9 @@ import {
   Trash2
 } from 'lucide-react';
 import Select from 'react-select';
-import { Chamado, Embarcacao, Cliente } from '../types';
+import { Chamado, Embarcacao, Cliente, Manutencao, Mecanico } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
-import { chamadoDB, boatDB, clientDB, maintenanceDB } from '../db';
+import { chamadoDB, boatDB, clientDB, maintenanceDB, mecanicoDB } from '../db';
 import MaintenanceModal from './pecas/MaintenanceModal';
 import UserAvatarMenu from './header/UserAvatarMenu';
 import SystemSettingsModal from './header/SystemSettingsModal';
@@ -35,6 +35,8 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [embarcacoes, setEmbarcacoes] = useState<Embarcacao[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
+  const [mecanicos, setMecanicos] = useState<Mecanico[]>([]);
   
   // Filter States
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,6 +47,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedChamadoForAnalysis, setSelectedChamadoForAnalysis] = useState<Chamado | null>(null);
+  const [analiseNotes, setAnaliseNotes] = useState<string>('');
   
   // OS Generation Modal State
   const [showOSModal, setShowOSModal] = useState(false);
@@ -64,6 +67,8 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
     setChamados(chamadoDB.getAll());
     setEmbarcacoes(boatDB.getAll());
     setClientes(clientDB.getAll());
+    setManutencoes(maintenanceDB.getAll());
+    setMecanicos(mecanicoDB.getAll());
   };
 
   useEffect(() => {
@@ -127,6 +132,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
 
     const defaultSolicitante = newChamadoForm.solicitanteNome || 
       (newChamadoForm.solicitanteTipo === 'gerente' ? 'Gerência da Marina' : 
+       newChamadoForm.solicitanteTipo === 'operador' ? 'Operador da Marina' : 
        newChamadoForm.solicitanteTipo === 'administrador' ? 'Administração' : 
        newChamadoForm.solicitanteTipo === 'pecas_servicos' ? 'Peças & Serviços' : 'Cliente Proprietário');
 
@@ -153,17 +159,30 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
     loadData();
   };
 
+  const handleOpenLinkedOS = (chamado: Chamado) => {
+    const os = manutencoes.find(m => m.id === chamado.osId || m.chamadoId === chamado.id);
+    if (os) {
+      setPrefilledOSData(os);
+      setSelectedChamadoForAnalysis(null);
+      setShowOSModal(true);
+    } else {
+      alert("Ordem de Serviço vinculada não encontrada nos registros locais.");
+    }
+  };
+
   const handleConvertChamadoToOS = (chamado: Chamado) => {
-    // Pre-fill OS Modal Data linked to this Chamado
     const boat = embarcacoes.find(b => b.id === chamado.embarcacaoId);
     
-    // Update Chamado status to em_analise
-    chamadoDB.update(chamado.id, { status: 'em_analise' });
+    // Update Chamado status to em_analise with notes
+    chamadoDB.update(chamado.id, { 
+      status: 'em_analise',
+      observacoesAnalise: analiseNotes || chamado.observacoesAnalise
+    });
     
     setPrefilledOSData({
       embarcacaoId: chamado.embarcacaoId,
       tituloChamado: `[${chamado.codigoChamado}] ${chamado.titulo}`,
-      descricaoServico: `Chamado de Origem: ${chamado.codigoChamado}\nSolicitante: ${chamado.solicitanteNome}\n\nDescrição da Avaria:\n${chamado.descricaoAvaria}`,
+      descricaoServico: `Chamado de Origem: ${chamado.codigoChamado}\nSolicitante: ${chamado.solicitanteNome}\n\nDescrição da Avaria:\n${chamado.descricaoAvaria}${analiseNotes ? `\n\nObservações da Análise:\n${analiseNotes}` : ''}`,
       chamadoId: chamado.id,
       status: 'chamado_aberto',
       dataChamado: new Date().toISOString().split('T')[0],
@@ -180,6 +199,22 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
       setSelectedChamadoForAnalysis(null);
       loadData();
     }
+  };
+
+  const handleConcluirChamadoDireto = (chamado: Chamado) => {
+    if (window.confirm(`Deseja concluir o chamado ${chamado.codigoChamado} diretamente sem gerar OS (resolução pontual)?`)) {
+      chamadoDB.update(chamado.id, { status: 'concluido', observacoesAnalise: analiseNotes || chamado.observacoesAnalise });
+      setSelectedChamadoForAnalysis(null);
+      loadData();
+    }
+  };
+
+  const handleSaveAnalysisNotes = () => {
+    if (!selectedChamadoForAnalysis) return;
+    chamadoDB.update(selectedChamadoForAnalysis.id, { observacoesAnalise: analiseNotes });
+    setSelectedChamadoForAnalysis(prev => prev ? ({ ...prev, observacoesAnalise: analiseNotes }) : null);
+    loadData();
+    alert("Observações da análise salvas!");
   };
 
   return (
@@ -486,10 +521,13 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                   </div>
 
                   <button
-                    onClick={() => setSelectedChamadoForAnalysis(chamado)}
+                    onClick={() => {
+                      setSelectedChamadoForAnalysis(chamado);
+                      setAnaliseNotes(chamado.observacoesAnalise || '');
+                    }}
                     className="px-3 py-1.5 bg-[#186b77] hover:bg-[#12555f] text-white font-extrabold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
                   >
-                    <span>Analisar / Gerar OS</span>
+                    <span>{chamado.status === 'os_gerada' ? 'Ver OS / Detalhes' : 'Analisar / Gerar OS'}</span>
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -578,6 +616,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none"
                   >
                     <option value="gerente">Gerente da Marina</option>
+                    <option value="operador">Operador da Marina</option>
                     <option value="administrador">Administrador</option>
                     <option value="cliente">Cliente / Proprietário</option>
                     <option value="pecas_servicos">Peças & Serviços</option>
@@ -668,123 +707,203 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
       )}
 
       {/* Modal 2: Analisar Chamado & Converter em OS */}
-      {selectedChamadoForAnalysis && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/80 w-full max-w-lg overflow-hidden font-sans">
-            
-            <div className="px-6 py-4 bg-slate-50 text-slate-900 flex items-center justify-between border-b border-slate-200/80">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-teal-50 text-[#186b77] border border-teal-200/70 flex items-center justify-center">
-                  <Wrench className="w-5 h-5" />
+      {selectedChamadoForAnalysis && (() => {
+        const linkedOS = manutencoes.find(m => m.id === selectedChamadoForAnalysis.osId || m.chamadoId === selectedChamadoForAnalysis.id);
+        const boat = embarcacoes.find(b => b.id === selectedChamadoForAnalysis.embarcacaoId);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/80 w-full max-w-lg overflow-hidden font-sans">
+              
+              <div className="px-6 py-4 bg-slate-50 text-slate-900 flex items-center justify-between border-b border-slate-200/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-teal-50 text-[#186b77] border border-teal-200/70 flex items-center justify-center">
+                    <Wrench className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-base text-slate-900">Análise do Chamado</h3>
+                      <span className="font-mono text-xs font-bold bg-teal-100 text-[#186b77] px-2 py-0.5 rounded border border-teal-200">
+                        {selectedChamadoForAnalysis.codigoChamado}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">Triagem técnica por Peças & Serviços</p>
+                  </div>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-extrabold text-base text-slate-900">Análise do Chamado</h3>
-                    <span className="font-mono text-xs font-bold bg-teal-100 text-[#186b77] px-2 py-0.5 rounded border border-teal-200">
-                      {selectedChamadoForAnalysis.codigoChamado}
+                <button 
+                  onClick={() => setSelectedChamadoForAnalysis(null)}
+                  className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-200/60 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
+                
+                {/* Detailed Summary Box */}
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Embarcação</span>
+                    <span className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                      <Ship className="w-3.5 h-3.5 text-[#186b77]" />
+                      {getBoatCode(boat)}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">Triagem técnica por Peças & Serviços</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setSelectedChamadoForAnalysis(null)}
-                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-200/60 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="p-6 space-y-4 text-xs">
-              
-              {/* Detailed Summary Box */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Embarcação</span>
-                  {(() => {
-                    const boat = embarcacoes.find(b => b.id === selectedChamadoForAnalysis.embarcacaoId);
-                    return (
-                      <span className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                        <Ship className="w-3.5 h-3.5 text-[#186b77]" />
-                        {getBoatCode(boat)}
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Solicitante</span>
+                    <span className="font-semibold text-slate-800">{selectedChamadoForAnalysis.solicitanteNome}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Urgência</span>
+                    <span className="font-extrabold uppercase text-amber-700 bg-amber-100 px-2 py-0.5 rounded text-[10px]">
+                      {selectedChamadoForAnalysis.urgencia}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Status do Chamado</span>
+                    <span className="font-bold uppercase text-[#186b77] bg-teal-50 px-2 py-0.5 rounded text-[10px]">
+                      {selectedChamadoForAnalysis.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Title & Damage Description */}
+                <div className="space-y-1 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Título da Avaria</span>
+                  <p className="font-extrabold text-slate-900 text-xs">{selectedChamadoForAnalysis.titulo}</p>
+                </div>
+
+                <div className="space-y-1 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Descrição Detalhada</span>
+                  <p className="text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">{selectedChamadoForAnalysis.descricaoAvaria}</p>
+                </div>
+
+                {/* Card OS Vinculada (se existir) */}
+                {linkedOS ? (
+                  <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-emerald-800 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                        <Wrench className="w-3.5 h-3.5 text-emerald-600" />
+                        Ordem de Serviço Vinculada
                       </span>
-                    );
-                  })()}
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Solicitante</span>
-                  <span className="font-semibold text-slate-800">{selectedChamadoForAnalysis.solicitanteNome}</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Urgência</span>
-                  <span className="font-extrabold uppercase text-amber-700 bg-amber-100 px-2 py-0.5 rounded text-[10px]">
-                    {selectedChamadoForAnalysis.urgencia}
-                  </span>
-                </div>
-              </div>
-
-              {/* Title & Damage Description */}
-              <div className="space-y-1 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Título da Avaria</span>
-                <p className="font-extrabold text-slate-900 text-xs">{selectedChamadoForAnalysis.titulo}</p>
-              </div>
-
-              <div className="space-y-1 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Descrição Detalhada</span>
-                <p className="text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">{selectedChamadoForAnalysis.descricaoAvaria}</p>
-              </div>
-
-              {/* Status Action Notice */}
-              <div className="p-3 bg-teal-50 border border-teal-200/80 rounded-xl text-teal-800 flex items-start gap-2.5">
-                <Sparkles className="w-4 h-4 text-[#186b77] shrink-0 mt-0.5" />
-                <div className="text-[11px]">
-                  <strong className="block font-bold">Próximo Passo do Fluxo:</strong>
-                  Ao clicar no botão abaixo, uma nova **Ordem de Serviço (OS)** será gerada. A embarcação será encaminhada para manutenção e sairá automaticamente do status de disponível.
-                </div>
-              </div>
-
-              {/* Actions Footer */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedChamadoForAnalysis(null)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
-                  >
-                    Fechar
-                  </button>
-
-                  {selectedChamadoForAnalysis.status !== 'descartado' && (
+                      <span className="font-mono text-xs font-black bg-emerald-600 text-white px-2.5 py-0.5 rounded-lg shadow-xs">
+                        {linkedOS.codigoOS || ('OS-' + linkedOS.id.substring(0, 6).toUpperCase())}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1 text-slate-700">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold block">Status da OS</span>
+                        <span className="font-bold text-slate-900 capitalize">{linkedOS.status.replace('_', ' ')}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold block">Orçamento</span>
+                        <span className="font-bold text-slate-900">
+                          {(linkedOS.orcamento || linkedOS.custoTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => handleDescartarChamado(selectedChamadoForAnalysis)}
-                      className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-extrabold rounded-xl text-xs border border-red-200 transition-colors cursor-pointer flex items-center gap-1.5"
-                      title="Descartar este chamado"
+                      onClick={() => handleOpenLinkedOS(selectedChamadoForAnalysis)}
+                      className="w-full mt-2 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                      <span>Descartar Chamado</span>
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Abrir Ordem de Serviço (OS)</span>
                     </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Technical Analysis Notes Input */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Observações da Análise Técnica</span>
+                        {selectedChamadoForAnalysis.status !== 'descartado' && selectedChamadoForAnalysis.status !== 'concluido' && (
+                          <button
+                            type="button"
+                            onClick={handleSaveAnalysisNotes}
+                            className="text-[11px] font-bold text-[#186b77] hover:underline cursor-pointer"
+                          >
+                            Salvar Anotações
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        rows={2}
+                        placeholder="Observações do técnico sobre a avaria ou instruções para a oficina..."
+                        value={analiseNotes}
+                        onChange={(e) => setAnaliseNotes(e.target.value)}
+                        disabled={selectedChamadoForAnalysis.status === 'descartado' || selectedChamadoForAnalysis.status === 'concluido'}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#186b77]"
+                      />
+                    </div>
+
+                    {/* Status Action Notice */}
+                    <div className="p-3 bg-teal-50 border border-teal-200/80 rounded-xl text-teal-800 flex items-start gap-2.5">
+                      <Sparkles className="w-4 h-4 text-[#186b77] shrink-0 mt-0.5" />
+                      <div className="text-[11px]">
+                        <strong className="block font-bold">Próximo Passo do Fluxo:</strong>
+                        Ao clicar em **Gerar Ordem de Serviço (OS)**, a OS será criada e a embarcação será marcada em manutenção.
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Actions Footer */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChamadoForAnalysis(null)}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Fechar
+                    </button>
+
+                    {selectedChamadoForAnalysis.status !== 'descartado' && selectedChamadoForAnalysis.status !== 'concluido' && (
+                      <button
+                        type="button"
+                        onClick={() => handleDescartarChamado(selectedChamadoForAnalysis)}
+                        className="px-3 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-extrabold rounded-xl text-xs border border-red-200 transition-colors cursor-pointer flex items-center gap-1.5"
+                        title="Descartar este chamado"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        <span>Descartar</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {!linkedOS && selectedChamadoForAnalysis.status !== 'descartado' && selectedChamadoForAnalysis.status !== 'concluido' && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleConcluirChamadoDireto(selectedChamadoForAnalysis)}
+                        className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold rounded-xl text-xs border border-emerald-200 transition-colors cursor-pointer"
+                        title="Concluir sem necessidade de OS"
+                      >
+                        Concluir s/ OS
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleConvertChamadoToOS(selectedChamadoForAnalysis)}
+                        className="px-4 py-2.5 bg-[#186b77] hover:bg-[#12555f] text-white font-extrabold rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Wrench className="w-4 h-4" />
+                        <span>Gerar OS</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {selectedChamadoForAnalysis.status !== 'descartado' && (
-                  <button
-                    onClick={() => handleConvertChamadoToOS(selectedChamadoForAnalysis)}
-                    className="px-5 py-2.5 bg-[#186b77] hover:bg-[#12555f] text-white font-extrabold rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center gap-2"
-                  >
-                    <Wrench className="w-4 h-4" />
-                    <span>Gerar Ordem de Serviço (OS)</span>
-                  </button>
-                )}
               </div>
 
             </div>
-
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Maintenance Modal for OS Creation from Chamado */}
       {showOSModal && (
@@ -797,7 +916,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
           }}
           editingItem={prefilledOSData}
           embarcacoes={embarcacoes}
-          mecanicos={[]}
+          mecanicos={mecanicos}
           onRefresh={loadData}
         />
       )}

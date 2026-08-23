@@ -75,7 +75,7 @@ export default function MaintenancePage() {
     }
 
     try {
-      if (editingItem) {
+      if (editingItem && editingItem.id && maintenanceDB.getAll().some(m => m.id === editingItem.id)) {
         maintenanceDB.update(editingItem.id, formData);
       } else {
         maintenanceDB.create(formData as Omit<Manutencao, 'id' | 'createdAt'>);

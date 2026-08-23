@@ -81,6 +81,10 @@ export default function MaintenanceModal({
     gerarFinanceiro: true
   });
 
+  const isEditing = useMemo(() => {
+    return Boolean(editingItem && editingItem.id && maintenanceDB.getAll().some(m => m.id === editingItem.id));
+  }, [editingItem, isOpen]);
+
   // Load lists
   const refreshAuxData = () => {
     setMecanicosList([...mecanicoDB.getAll()]);
@@ -267,10 +271,13 @@ export default function MaintenanceModal({
     }
 
     try {
-      if (editingItem) {
+      if (isEditing && editingItem?.id) {
         await maintenanceDB.update(editingItem.id, formData);
       } else {
-        await maintenanceDB.create(formData as any);
+        const created = await maintenanceDB.create(formData as any);
+        if (formData.chamadoId) {
+          chamadoDB.update(formData.chamadoId, { status: 'os_gerada', osId: created.id });
+        }
       }
       onRefresh();
       onClose();
@@ -311,9 +318,13 @@ export default function MaintenanceModal({
 
     const texto = gerarTextoWhatsApp();
     try {
+      const token = localStorage.getItem('admin_token');
       const response = await fetch('/api/evolution/send-message', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           number: boat.whatsappGroupId,
           text: decodeURIComponent(texto)
@@ -322,13 +333,14 @@ export default function MaintenanceModal({
 
       if (response.ok) {
         setFormData(prev => ({ ...prev, whatsappStatus: 'orcamento_enviado' }));
-        if (editingItem) {
+        if (isEditing && editingItem?.id) {
           await maintenanceDB.update(editingItem.id, { whatsappStatus: 'orcamento_enviado' });
         }
         alert("Orçamento enviado no grupo de WhatsApp com sucesso!");
         onRefresh();
       } else {
-        alert("Falha ao enviar mensagem.");
+        const errJson = await response.json().catch(() => ({}));
+        alert(errJson.message || "Falha ao enviar mensagem.");
       }
     } catch (e) {
       console.error(e);
@@ -351,7 +363,7 @@ export default function MaintenanceModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-extrabold text-slate-900">
-                  {editingItem ? 'Editar Ordem de Serviço (OS)' : 'Nova Ordem de Serviço (OS)'}
+                  {isEditing ? 'Editar Ordem de Serviço (OS)' : 'Nova Ordem de Serviço (OS)'}
                 </h2>
                 {formData.codigoOS && (
                   <span className="font-mono text-xs font-black bg-[#186b77] text-white px-2 py-0.5 rounded-md">
@@ -360,7 +372,7 @@ export default function MaintenanceModal({
                 )}
               </div>
               <p className="text-xs text-slate-500 font-medium">
-                {editingItem ? 'Gerencie a manutenção, orçamento e baixa técnica da OS.' : 'Registre e encaminhe uma nova manutenção.'}
+                {isEditing ? 'Gerencie a manutenção, orçamento e baixa técnica da OS.' : 'Registre e encaminhe uma nova manutenção.'}
               </p>
             </div>
           </div>
@@ -741,7 +753,7 @@ export default function MaintenanceModal({
         <div className="px-6 py-4 border-t border-slate-100 bg-white shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
           
           <div className="flex items-center gap-2">
-            {editingItem && (
+            {(isEditing || Boolean(formData.embarcacaoId)) && (
               <>
                 <button
                   type="button"
@@ -781,7 +793,7 @@ export default function MaintenanceModal({
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#186b77] hover:bg-[#12555f] text-white px-8 py-2.5 rounded-xl text-xs font-black shadow-sm transition-all active:scale-95 cursor-pointer"
             >
               <Check className="w-4 h-4" />
-              <span>Salvar Ordem de Serviço</span>
+              <span>{isEditing ? 'Salvar Ordem de Serviço' : 'Criar Ordem de Serviço'}</span>
             </button>
           </div>
 

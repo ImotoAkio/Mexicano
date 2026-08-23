@@ -127,11 +127,15 @@ export default function BoatModal({
   const handleFetchGroups = async () => {
     setIsFetchingGroups(true);
     try {
-      const res = await fetch('/api/whatsapp/groups');
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch('/api/whatsapp/groups', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       const data = await res.json();
       if (data.success && Array.isArray(data.groups)) {
-        setAvailableGroups(data.groups);
-        showToast(`Foram carregados ${data.groups.length} grupos do WhatsApp!`);
+        const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
+        setAvailableGroups(unique);
+        showToast(`Foram carregados ${unique.length} grupos do WhatsApp!`);
       } else {
         showToast(data.message || 'Falha ao buscar grupos', 'error');
       }
@@ -579,8 +583,8 @@ export default function BoatModal({
                             className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
                           >
                             <option value="">-- Selecione o Grupo do Barco --</option>
-                            {availableGroups.map((g: any) => (
-                              <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
+                            {availableGroups.map((g: any, idx: number) => (
+                              <option key={g.id ? `grp-${g.id}-${idx}` : `grp-${idx}`} value={g.id}>{g.subject || g.name || g.id}</option>
                             ))}
                           </select>
                         ) : (

@@ -602,9 +602,15 @@ export const maintenanceDB = {
     return memoryManutencoes.filter(m => m.embarcacaoId === embarcacaoId);
   },
   create: (manutencao: Omit<Manutencao, 'id' | 'createdAt'>): Manutencao => {
+    const year = new Date().getFullYear();
+    const existingCount = memoryManutencoes.filter(m => m.codigoOS && m.codigoOS.startsWith(`OS-${year}`)).length;
+    const generatedCodigoOS = `OS-${year}-${String(existingCount + 1).padStart(3, '0')}`;
+
     const newManutencao: Manutencao = {
       ...manutencao,
       id: `man_${Date.now()}`,
+      codigoOS: manutencao.codigoOS || generatedCodigoOS,
+      dataSaida: manutencao.dataSaida || manutencao.dataChamado || new Date().toISOString().split('T')[0],
       createdAt: new Date().toISOString()
     };
     memoryManutencoes.push(newManutencao);
@@ -619,14 +625,17 @@ export const maintenanceDB = {
     
     // save to new API
     const token = getAdminToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     fetch('/api/manutencoes/save', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      headers,
       body: JSON.stringify({ action: 'upsert', data: newManutencao })
     }).catch(console.error);
     return newManutencao;
   },
   update: (id: string, updatedFields: Partial<Omit<Manutencao, 'id' | 'createdAt'>>): Manutencao => {
+    if (!id) throw new Error('ID de manutenção não informado.');
     const idx = memoryManutencoes.findIndex(m => m.id === id);
     if (idx === -1) throw new Error('Manutenção não encontrada.');
     const updated = { ...memoryManutencoes[idx], ...updatedFields };
@@ -641,9 +650,11 @@ export const maintenanceDB = {
     }
 
     const token = getAdminToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     fetch('/api/manutencoes/save', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      headers,
       body: JSON.stringify({ action: 'upsert', data: updated })
     }).catch(console.error);
     return updated;
@@ -661,10 +672,13 @@ export const maintenanceDB = {
       }
     }
     
+    // save to new API
     const token = getAdminToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     fetch('/api/manutencoes/save', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
+      headers,
       body: JSON.stringify({ action: 'delete', data: { id } })
     }).catch(console.error);
   }

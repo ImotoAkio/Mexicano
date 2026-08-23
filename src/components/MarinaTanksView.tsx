@@ -3,7 +3,7 @@ import {
   Droplets, Loader2, Save, AlertTriangle, 
   CheckCircle2, Truck, ArrowUpRight, ArrowDownRight,
   X, Search, Download, RefreshCw, Package, ShieldCheck,
-  ChevronRight, FileText, Printer, BarChart2
+  ChevronRight, FileText, Printer, BarChart2, Trash2
 } from 'lucide-react';
 import {
   FuelInventory,
@@ -11,6 +11,7 @@ import {
   getFuelInventory,
   saveFuelInventory,
   getFuelHistory,
+  saveFuelHistory,
   addFuelHistoryEntry,
   getEstoqueTotalLitros
 } from '../utils/fuelInventory';
@@ -33,9 +34,18 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
     fetch('/api/fuel/inventory')
       .then(res => res.json())
       .then(data => {
-        if (data) {
-          saveFuelInventory(data);
-          setInventory(data);
+        if (data && typeof data === 'object') {
+          const merged: FuelInventory = {
+            tanquePrincipalLitros: Number(data.tanquePrincipalLitros ?? 0),
+            tanqueCapacidadeMaxima: Number(data.tanqueCapacidadeMaxima || 1000),
+            alertaMinimoTanque: Number(data.alertaMinimoTanque || 200),
+            galoesPierQuantidade: Number(data.galoesPierQuantidade ?? 0),
+            galoesCapacidadeLitros: Number(data.galoesCapacidadeLitros || 20),
+            galaoParcialLitros: Number(data.galaoParcialLitros ?? 0),
+            ultimaAtualizacao: data.ultimaAtualizacao || new Date().toLocaleDateString('pt-BR')
+          };
+          saveFuelInventory(merged);
+          setInventory(merged);
         }
       })
       .catch(() => {});
@@ -43,13 +53,12 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
     fetch('/api/fuel/history')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setHistory(data);
+          localStorage.setItem('marina_fuel_history', JSON.stringify(data));
         }
       })
       .catch(() => {});
-
-    refreshData();
   }, []);
 
   // Modals state
@@ -80,10 +89,17 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
   // Gerador de Relatório Ultra Eco-Ink (Fundo Branco Limpo / Economia de Tinta / Alta Nitidez)
   const handlePrintReport = () => {
     const totalEstoque = getEstoqueTotalLitros(inventory);
-    const pctTanque = Math.min(100, Math.round((inventory.tanquePrincipalLitros / inventory.tanqueCapacidadeMaxima) * 100));
-    const isTanqueLow = inventory.tanquePrincipalLitros <= inventory.alertaMinimoTanque;
-    const litrosGaloesPier = inventory.galoesPierQuantidade * 20 + inventory.galaoParcialLitros;
-    const pctTanqueShare = totalEstoque > 0 ? Math.round((inventory.tanquePrincipalLitros / totalEstoque) * 100) : 0;
+    const tanqueL = Number(inventory?.tanquePrincipalLitros ?? 0);
+    const tanqueCap = Number(inventory?.tanqueCapacidadeMaxima || 1000);
+    const tanqueMin = Number(inventory?.alertaMinimoTanque || 200);
+    const galoesQtd = Number(inventory?.galoesPierQuantidade ?? 0);
+    const galoesCap = Number(inventory?.galoesCapacidadeLitros || 20);
+    const parcialL = Number(inventory?.galaoParcialLitros ?? 0);
+    const litrosGaloesPier = galoesQtd * galoesCap + parcialL;
+
+    const pctTanque = Math.min(100, Math.round((tanqueL / tanqueCap) * 100));
+    const isTanqueLow = tanqueL <= tanqueMin;
+    const pctTanqueShare = totalEstoque > 0 ? Math.round((tanqueL / totalEstoque) * 100) : 0;
     const pctPierShare = totalEstoque > 0 ? 100 - pctTanqueShare : 0;
     const dataEmissao = new Date().toLocaleDateString('pt-BR');
     const horaEmissao = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -401,12 +417,12 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
           </div>
           <div class="kpi-card">
             <div class="kpi-label">Tanque Principal (Bulk)</div>
-            <div class="kpi-value">${inventory.tanquePrincipalLitros.toLocaleString('pt-BR')} L</div>
-            <div class="kpi-subtext">Capacidade: 10.000 L (${pctTanque}%)</div>
+            <div class="kpi-value">${tanqueL.toLocaleString('pt-BR')} L</div>
+            <div class="kpi-subtext">Capacidade: 1.000 L (${pctTanque}%)</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-label">Galões no Píer (20L)</div>
-            <div class="kpi-value">${inventory.galoesPierQuantidade} galões</div>
+            <div class="kpi-value">${galoesQtd} galões</div>
             <div class="kpi-subtext">Volume em Litros: ${litrosGaloesPier} L</div>
           </div>
         </div>
@@ -420,13 +436,13 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
             </div>
             <div class="progress-track">
               <div class="${isTanqueLow ? 'progress-fill-red' : 'progress-fill-blue'}" style="width: ${Math.max(10, pctTanque)}%;">
-                ${inventory.tanquePrincipalLitros.toLocaleString('pt-BR')} L
+                ${tanqueL.toLocaleString('pt-BR')} L
               </div>
             </div>
             <div class="chart-footer">
               <span>0 L</span>
-              <span>Alerta Mínimo: 2.000 L</span>
-              <span>Capacidade: 10.000 L</span>
+              <span>Alerta Mínimo: 200 L</span>
+              <span>Capacidade: 1.000 L</span>
             </div>
           </div>
 
@@ -673,11 +689,33 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
     );
   });
 
-  const totalEstoqueLitros = getEstoqueTotalLitros(inventory);
-  const pctTanque = Math.min(100, Math.round((inventory.tanquePrincipalLitros / inventory.tanqueCapacidadeMaxima) * 100));
-  const isTanqueLow = inventory.tanquePrincipalLitros <= inventory.alertaMinimoTanque;
+  const handleDeleteHistoryEntry = (id: string) => {
+    if (!window.confirm('Excluir este registro do histórico de combustível?')) return;
+    const updated = history.filter(h => h.id !== id);
+    setHistory(updated);
+    saveFuelHistory(updated);
+    if (showToast) showToast('Registro excluído!', 'info');
+  };
 
-  const litrosGaloesPier = inventory.galoesPierQuantidade * 20 + inventory.galaoParcialLitros;
+  const handleClearAllHistory = () => {
+    if (!window.confirm('Tem certeza que deseja limpar todo o histórico de abastecimentos e movimentações?')) return;
+    setHistory([]);
+    saveFuelHistory([]);
+    if (showToast) showToast('Histórico limpo com sucesso!', 'success');
+  };
+
+  const totalEstoqueLitros = getEstoqueTotalLitros(inventory);
+  const tanquePrincipalLitros = Number(inventory?.tanquePrincipalLitros ?? 0);
+  const tanqueCapacidadeMaxima = Number(inventory?.tanqueCapacidadeMaxima || 1000);
+  const alertaMinimoTanque = Number(inventory?.alertaMinimoTanque || 200);
+  const galoesPierQuantidade = Number(inventory?.galoesPierQuantidade ?? 0);
+  const galoesCapacidadeLitros = Number(inventory?.galoesCapacidadeLitros || 20);
+  const galaoParcialLitros = Number(inventory?.galaoParcialLitros ?? 0);
+
+  const pctTanque = Math.min(100, Math.round((tanquePrincipalLitros / tanqueCapacidadeMaxima) * 100));
+  const isTanqueLow = tanquePrincipalLitros <= alertaMinimoTanque;
+
+  const litrosGaloesPier = galoesPierQuantidade * galoesCapacidadeLitros + galaoParcialLitros;
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6 text-slate-800 font-sans pb-12">
@@ -747,7 +785,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                 <span className="text-slate-500 font-bold text-sm">L</span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Tanque ({inventory.tanquePrincipalLitros.toLocaleString('pt-BR')}L) + Píer ({litrosGaloesPier.toLocaleString('pt-BR')}L)
+                Tanque ({tanquePrincipalLitros.toLocaleString('pt-BR')}L) + Píer ({litrosGaloesPier.toLocaleString('pt-BR')}L)
               </p>
             </div>
           </div>
@@ -771,7 +809,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
               <div className="flex items-baseline justify-between mb-1.5">
                 <div className="flex items-baseline gap-1">
                   <span className="text-3xl font-extrabold text-slate-900 font-mono">
-                    {inventory.tanquePrincipalLitros.toLocaleString('pt-BR')}
+                    {tanquePrincipalLitros.toLocaleString('pt-BR')}
                   </span>
                   <span className="text-slate-500 font-bold text-sm">L</span>
                 </div>
@@ -851,9 +889,21 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
             )}
           </div>
 
-          <span className="text-xs text-slate-400 font-medium">
-            {filteredHistory.length} registros
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-400 font-medium">
+              {filteredHistory.length} registros
+            </span>
+            {history.length > 0 && (
+              <button
+                onClick={handleClearAllHistory}
+                className="px-2.5 py-1 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Limpar todos os registros de teste"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Limpar Histórico</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Minimalist History Table */}
@@ -866,13 +916,14 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                   <th className="p-3">Data & Operador</th>
                   <th className="p-3">Volume</th>
                   <th className="p-3">Detalhes</th>
-                  <th className="p-3 pr-4 text-right">Status</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 pr-4 text-right">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-slate-400">
+                    <td colSpan={6} className="p-8 text-center text-slate-400">
                       Nenhum registro no histórico.
                     </td>
                   </tr>
@@ -940,7 +991,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                         {h.notaFiscal && <span className="text-[10px] text-slate-400 font-mono">NF: {h.notaFiscal}</span>}
                       </td>
 
-                      <td className="p-3 pr-4 text-right">
+                      <td className="p-3">
                         {h.diferencaLitros && h.diferencaLitros !== 0 ? (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                             Divergência ({h.diferencaLitros > 0 ? `+${h.diferencaLitros}` : h.diferencaLitros}L)
@@ -950,6 +1001,16 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                             OK
                           </span>
                         )}
+                      </td>
+
+                      <td className="p-3 pr-4 text-right">
+                        <button
+                          onClick={() => handleDeleteHistoryEntry(h.id)}
+                          title="Excluir este registro"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -1090,7 +1151,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
             <form onSubmit={handleRegisterTransfer} className="p-5 space-y-4">
               <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 flex items-center justify-between">
                 <span>Saldo no Tanque:</span>
-                <strong className="font-mono text-sm">{inventory.tanquePrincipalLitros.toLocaleString('pt-BR')} L</strong>
+                <strong className="font-mono text-sm">{tanquePrincipalLitros.toLocaleString('pt-BR')} L</strong>
               </div>
 
               <div className="space-y-1">

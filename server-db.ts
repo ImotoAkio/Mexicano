@@ -521,21 +521,38 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    try {
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN descricaoServico TEXT;`);
-    } catch (e) {}
-    try {
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN tituloChamado VARCHAR(255);`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN dataChamado VARCHAR(20);`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN prazoEntrega VARCHAR(20);`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN orcamentoAprovado TINYINT(1) DEFAULT 0;`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN localizacao VARCHAR(50);`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN horasMotorAtual INT;`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN proximaRevisaoHoras INT;`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN acessorios TEXT;`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN pecas TEXT;`);
-      await connection.query(`ALTER TABLE Manutencoes ADD COLUMN whatsappStatus VARCHAR(50);`);
-    } catch (e) {}
+    const manutCols = [
+      "ALTER TABLE Manutencoes ADD COLUMN codigoOS VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN chamadoId VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN tipoManutencaoId VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN tipoManutencaoNome VARCHAR(255);",
+      "ALTER TABLE Manutencoes ADD COLUMN categoria VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN mecanicoResponsavelId VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN mecanicoNome VARCHAR(255);",
+      "ALTER TABLE Manutencoes ADD COLUMN dataEntradaOficina VARCHAR(20);",
+      "ALTER TABLE Manutencoes ADD COLUMN previsaoTermino VARCHAR(20);",
+      "ALTER TABLE Manutencoes ADD COLUMN dataTermino VARCHAR(20);",
+      "ALTER TABLE Manutencoes ADD COLUMN concluidoEm VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN urgencia VARCHAR(20);",
+      "ALTER TABLE Manutencoes ADD COLUMN custoTotal DECIMAL(10, 2);",
+      "ALTER TABLE Manutencoes ADD COLUMN titulo VARCHAR(255);",
+      "ALTER TABLE Manutencoes ADD COLUMN tituloChamado VARCHAR(255);",
+      "ALTER TABLE Manutencoes ADD COLUMN dataChamado VARCHAR(20);",
+      "ALTER TABLE Manutencoes ADD COLUMN prazoEntrega VARCHAR(20);",
+      "ALTER TABLE Manutencoes ADD COLUMN orcamentoAprovado TINYINT(1) DEFAULT 0;",
+      "ALTER TABLE Manutencoes ADD COLUMN localizacao VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN descricaoServico TEXT;",
+      "ALTER TABLE Manutencoes ADD COLUMN gerarFinanceiro TINYINT(1) DEFAULT 1;",
+      "ALTER TABLE Manutencoes ADD COLUMN horasMotorAtual INT;",
+      "ALTER TABLE Manutencoes ADD COLUMN proximaRevisaoHoras INT;",
+      "ALTER TABLE Manutencoes ADD COLUMN acessorios TEXT;",
+      "ALTER TABLE Manutencoes ADD COLUMN pecas TEXT;",
+      "ALTER TABLE Manutencoes ADD COLUMN whatsappStatus VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN clienteId VARCHAR(50);"
+    ];
+    for (const sql of manutCols) {
+      try { await connection.query(sql); } catch (e) {}
+    }
 
     // 12. Mecanicos Table
     await connection.query(`
@@ -1968,27 +1985,94 @@ async function updateBoatMaintenanceStatus(pool: any, boatId: string) {
 export async function upsertManutencao(m: any) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  if (!m || !m.id) throw new Error("ID da manutenção é obrigatório.");
 
-  const [existing] = await currentPool.query("SELECT id FROM Manutencoes WHERE id = ?", [m.id]);
-  const isNew = (existing as any[]).length === 0;
+  const dataSaida = m.dataSaida || m.dataChamado || new Date().toISOString().split('T')[0];
+  const createdAt = m.createdAt || new Date().toISOString();
 
   await currentPool.query(
-    `INSERT INTO Manutencoes (id, embarcacaoId, dataSaida, mecanico, orcamento, custo, valorRepassado, status, createdAt, descricaoServico, tituloChamado, dataChamado, prazoEntrega, orcamentoAprovado, localizacao, horasMotorAtual, proximaRevisaoHoras, acessorios, pecas, whatsappStatus)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO Manutencoes (
+      id, codigoOS, chamadoId, embarcacaoId, clienteId, titulo, tituloChamado,
+      tipoManutencaoId, tipoManutencaoNome, categoria, mecanico, mecanicoResponsavelId,
+      mecanicoNome, dataSaida, dataChamado, dataEntradaOficina, prazoEntrega,
+      previsaoTermino, dataTermino, concluidoEm, urgencia, custoTotal, orcamento,
+      custo, valorRepassado, orcamentoAprovado, status, localizacao,
+      descricaoServico, gerarFinanceiro, horasMotorAtual, proximaRevisaoHoras,
+      acessorios, pecas, whatsappStatus, createdAt
+    )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-       embarcacaoId=VALUES(embarcacaoId), dataSaida=VALUES(dataSaida), mecanico=VALUES(mecanico),
-       orcamento=VALUES(orcamento), custo=VALUES(custo), valorRepassado=VALUES(valorRepassado),
-       status=VALUES(status), descricaoServico=VALUES(descricaoServico),
-       tituloChamado=VALUES(tituloChamado), dataChamado=VALUES(dataChamado), prazoEntrega=VALUES(prazoEntrega),
-       orcamentoAprovado=VALUES(orcamentoAprovado), localizacao=VALUES(localizacao), horasMotorAtual=VALUES(horasMotorAtual),
-       proximaRevisaoHoras=VALUES(proximaRevisaoHoras), acessorios=VALUES(acessorios), pecas=VALUES(pecas), whatsappStatus=VALUES(whatsappStatus)`,
+       codigoOS=VALUES(codigoOS),
+       chamadoId=VALUES(chamadoId),
+       embarcacaoId=VALUES(embarcacaoId),
+       clienteId=VALUES(clienteId),
+       titulo=VALUES(titulo),
+       tituloChamado=VALUES(tituloChamado),
+       tipoManutencaoId=VALUES(tipoManutencaoId),
+       tipoManutencaoNome=VALUES(tipoManutencaoNome),
+       categoria=VALUES(categoria),
+       mecanico=VALUES(mecanico),
+       mecanicoResponsavelId=VALUES(mecanicoResponsavelId),
+       mecanicoNome=VALUES(mecanicoNome),
+       dataSaida=VALUES(dataSaida),
+       dataChamado=VALUES(dataChamado),
+       dataEntradaOficina=VALUES(dataEntradaOficina),
+       prazoEntrega=VALUES(prazoEntrega),
+       previsaoTermino=VALUES(previsaoTermino),
+       dataTermino=VALUES(dataTermino),
+       concluidoEm=VALUES(concluidoEm),
+       urgencia=VALUES(urgencia),
+       custoTotal=VALUES(custoTotal),
+       orcamento=VALUES(orcamento),
+       custo=VALUES(custo),
+       valorRepassado=VALUES(valorRepassado),
+       orcamentoAprovado=VALUES(orcamentoAprovado),
+       status=VALUES(status),
+       localizacao=VALUES(localizacao),
+       descricaoServico=VALUES(descricaoServico),
+       gerarFinanceiro=VALUES(gerarFinanceiro),
+       horasMotorAtual=VALUES(horasMotorAtual),
+       proximaRevisaoHoras=VALUES(proximaRevisaoHoras),
+       acessorios=VALUES(acessorios),
+       pecas=VALUES(pecas),
+       whatsappStatus=VALUES(whatsappStatus)`,
     [
-      m.id, m.embarcacaoId, m.dataSaida, m.mecanico || null, m.orcamento || null,
-      m.custo || null, m.valorRepassado || null, m.status || 'em_andamento', m.createdAt, m.descricaoServico || null,
-      m.tituloChamado || null, m.dataChamado || null, m.prazoEntrega || null, m.orcamentoAprovado ? 1 : 0,
-      m.localizacao || null, m.horasMotorAtual || null, m.proximaRevisaoHoras || null,
-      m.acessorios ? JSON.stringify(m.acessorios) : null, m.pecas ? JSON.stringify(m.pecas) : null,
-      m.whatsappStatus || null
+      m.id,
+      m.codigoOS || null,
+      m.chamadoId || null,
+      m.embarcacaoId,
+      m.clienteId || null,
+      m.titulo || null,
+      m.tituloChamado || null,
+      m.tipoManutencaoId || null,
+      m.tipoManutencaoNome || null,
+      m.categoria || null,
+      m.mecanico || null,
+      m.mecanicoResponsavelId || null,
+      m.mecanicoNome || null,
+      dataSaida,
+      m.dataChamado || null,
+      m.dataEntradaOficina || null,
+      m.prazoEntrega || null,
+      m.previsaoTermino || null,
+      m.dataTermino || null,
+      m.concluidoEm || null,
+      m.urgencia || null,
+      m.custoTotal !== undefined ? m.custoTotal : (m.orcamento || null),
+      m.orcamento !== undefined ? m.orcamento : null,
+      m.custo !== undefined ? m.custo : null,
+      m.valorRepassado !== undefined ? m.valorRepassado : null,
+      m.orcamentoAprovado ? 1 : 0,
+      m.status || 'chamado_aberto',
+      m.localizacao || 'marina',
+      m.descricaoServico || null,
+      m.gerarFinanceiro !== undefined ? (m.gerarFinanceiro ? 1 : 0) : 1,
+      m.horasMotorAtual !== undefined ? m.horasMotorAtual : null,
+      m.proximaRevisaoHoras !== undefined ? m.proximaRevisaoHoras : null,
+      m.acessorios ? (typeof m.acessorios === 'string' ? m.acessorios : JSON.stringify(m.acessorios)) : null,
+      m.pecas ? (typeof m.pecas === 'string' ? m.pecas : JSON.stringify(m.pecas)) : null,
+      m.whatsappStatus || 'nao_enviado',
+      createdAt
     ]
   );
 
@@ -2255,8 +2339,8 @@ export async function saveFuelHistoryInDb(history: any[]): Promise<void> {
 export async function resetFuelDataInDb(): Promise<void> {
   await setConfigValue("marina_fuel_inventory", JSON.stringify({
     tanquePrincipalLitros: 0,
-    tanqueCapacidadeMaxima: 10000,
-    alertaMinimoTanque: 2000,
+    tanqueCapacidadeMaxima: 1000,
+    alertaMinimoTanque: 200,
     galoesPierQuantidade: 0,
     galoesCapacidadeLitros: 20,
     galaoParcialLitros: 0,
@@ -2325,6 +2409,29 @@ export async function getNextChamadoCode(): Promise<string> {
   }
 
   const lastCode = existing[0].codigoChamado; // e.g. "CHM-2026-005"
+  const lastNum = parseInt(lastCode.replace(prefix, ''), 10) || 0;
+  return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
+}
+
+export async function getNextCodigoOS(): Promise<string> {
+  const currentPool = getDbPool();
+  if (!currentPool) {
+    return `OS-${new Date().getFullYear()}-${String(Date.now() % 1000).padStart(3, '0')}`;
+  }
+
+  const year = new Date().getFullYear();
+  const prefix = `OS-${year}-`;
+  const [rows] = await currentPool.query(
+    "SELECT codigoOS FROM Manutencoes WHERE codigoOS LIKE ? ORDER BY codigoOS DESC LIMIT 1",
+    [`${prefix}%`]
+  );
+
+  const existing = rows as any[];
+  if (existing.length === 0) {
+    return `${prefix}001`;
+  }
+
+  const lastCode = existing[0].codigoOS; // e.g. "OS-2026-005"
   const lastNum = parseInt(lastCode.replace(prefix, ''), 10) || 0;
   return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
 }

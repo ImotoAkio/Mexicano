@@ -96,9 +96,13 @@ export default function MaintenanceDocumentsView({
     texto += `*VALOR TOTAL:* ${(m.orcamento || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n`;
 
     try {
+      const token = localStorage.getItem('admin_token');
       const response = await fetch('/api/evolution/send-message', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           number: boat.whatsappGroupId,
           text: texto
@@ -109,7 +113,8 @@ export default function MaintenanceDocumentsView({
         alert("Orçamento enviado para o grupo de WhatsApp com sucesso!");
         onRefresh();
       } else {
-        alert("Falha ao enviar mensagem.");
+        const errJson = await response.json().catch(() => ({}));
+        alert(errJson.message || "Falha ao enviar mensagem.");
       }
     } catch (e) {
       console.error(e);

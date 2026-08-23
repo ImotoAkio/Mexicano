@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getBoatCode } from '../utils/boatUtils';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2 } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
-import { logAction } from '../db';
+import { logAction, chamadoDB } from '../db';
 import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
+import MarinaChamadosView from './MarinaChamadosView';
 import BoatPage from './BoatPage';
 import ClientPage from './ClientPage';
 import FinanceSchedulesPage from './FinanceSchedulesPage';
 import ControleFolgasPage from './ControleFolgasPage';
+import AvisosSaidaPage from './AvisosSaidaPage';
 import SettingsPage from './SettingsPage';
 import { getFuelInventory, consumeFuelForEmbarcacao } from '../utils/fuelInventory';
 import refFrente from '../assets/images/checklist/frente.svg';
@@ -54,6 +56,18 @@ const formatDisplayDate = (dateStr: string) => {
   return `${dayStr} De ${months[d.getMonth()]}`;
 };
 
+const parseTimeToMinutes = (timeStr?: string | null): number | null => {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const trimmed = timeStr.trim();
+  if (!trimmed || trimmed === 'Não informada' || trimmed === 'Sem previsão' || trimmed === '--:--') return null;
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hh = parseInt(match[1], 10);
+  const mm = parseInt(match[2], 10);
+  if (isNaN(hh) || isNaN(mm)) return null;
+  return hh * 60 + mm;
+};
+
 function ZoomableImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
   const [scale, setScale] = useState(1);
   return (
@@ -83,7 +97,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'combustivel' | 'tanques' | 'configuracoes'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'chamados' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes'>('home');
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
   const [filterType, setFilterType] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
@@ -221,6 +235,47 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     const lastX = chartPoints[chartPoints.length - 1].x;
     return `${chartPathD} L ${lastX},135 L ${firstX},135 Z`;
   }, [chartPathD, chartPoints]);
+
+  // Cálculo dinâmico de Eficiência Operacional (descidas antes ou no horário de previsão de saída)
+  const operationalEfficiency = useMemo(() => {
+    const dayReservations = (data?.reservations || []).filter(
+      (r: any) => r.data === selectedDate && r.status !== 'cancelado'
+    );
+
+    const totalAgendados = dayReservations.length;
+    const descidasRealizadas = dayReservations.filter((r: any) => !!r.horaDescida);
+
+    const descidasComPrevisao = descidasRealizadas.filter((r: any) => {
+      const descidaMin = parseTimeToMinutes(r.horaDescida);
+      const prevMin = parseTimeToMinutes(r.previsaoSaida);
+      return descidaMin !== null && prevMin !== null;
+    });
+
+    const descidasAntesOuNoHorario = descidasComPrevisao.filter((r: any) => {
+      const descidaMin = parseTimeToMinutes(r.horaDescida)!;
+      const prevMin = parseTimeToMinutes(r.previsaoSaida)!;
+      return descidaMin <= prevMin;
+    });
+
+    const descidasAtrasadas = descidasComPrevisao.length - descidasAntesOuNoHorario.length;
+
+    // Se nenhuma descida foi realizada no dia, a eficiência é 0%
+    const percentual = descidasRealizadas.length === 0
+      ? 0
+      : descidasComPrevisao.length > 0
+        ? Math.round((descidasAntesOuNoHorario.length / descidasComPrevisao.length) * 100)
+        : 100;
+
+    return {
+      totalAgendados,
+      totalDescidas: descidasRealizadas.length,
+      totalComPrevisao: descidasComPrevisao.length,
+      antesDoHorario: descidasAntesOuNoHorario.length,
+      atrasadas: descidasAtrasadas,
+      percentual,
+      temDados: descidasRealizadas.length > 0
+    };
+  }, [data?.reservations, selectedDate]);
 
   const fetchData = async (isInitial = false) => {
     if (isInitial || !data) setLoading(true);
@@ -576,11 +631,22 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const kanbanNavegando = searchedDayReservations.filter((r: any) => (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado');
   const kanbanRetornaram = searchedDayReservations.filter((r: any) => (r.horaChegada || r.statusMarina === 'chegada' || r.statusOperacional === 'retornou') && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado');
 
+  const countTotalAgendamentos = totalDayReservations.filter((r: any) => r.status !== 'cancelado').length;
+  const countConfirmados = totalDayReservations.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado' && (r.status === 'confirmado' || r.statusMarina === 'confirmada')).length;
+  const countApenasAgendados = totalDayReservations.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado' && r.status !== 'confirmado' && r.statusMarina !== 'confirmada').length;
   const countAgendadosConfirmados = totalDayReservations.filter((r: any) => !r.horaDescida && !r.horaSaida && !r.horaChegada && !r.horaSubida && r.status !== 'cancelado').length;
   const countNoPier = totalDayReservations.filter((r: any) => r.horaDescida && !r.horaSaida && r.statusMarina !== 'saida' && r.statusOperacional !== 'navegando' && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
   const countNavegando = totalDayReservations.filter((r: any) => (r.horaSaida || r.statusMarina === 'saida' || r.statusOperacional === 'navegando') && !r.horaChegada && r.statusMarina !== 'chegada' && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
   const countRetornaram = totalDayReservations.filter((r: any) => (r.horaChegada || r.statusMarina === 'chegada' || r.statusOperacional === 'retornou') && !r.horaSubida && r.statusMarina !== 'guardada' && r.status !== 'cancelado').length;
   const countTodas = totalDayReservations.length;
+  const countPendingChamados = useMemo(() => {
+    try {
+      const allChm = chamadoDB.getAll();
+      return allChm.filter(c => (c.solicitanteTipo === 'gerente' || c.solicitanteTipo === 'operador') && (c.status === 'pendente' || c.status === 'em_analise')).length;
+    } catch {
+      return 0;
+    }
+  }, [data, activeTab]);
 
   // Auto-navegação para a aba com correspondência no modo Lista ao pesquisar
   useEffect(() => {
@@ -678,6 +744,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         </div>
 
         <div className="flex-1 overflow-y-auto py-5 px-3 space-y-6 subtle-scrollbar">
+          {/* Visão Geral */}
           <div>
             {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Visão Geral</p>}
             <nav className="space-y-1">
@@ -692,6 +759,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             </nav>
           </div>
 
+          {/* Operação do Píer */}
           <div>
             {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Operação do Píer</p>}
             <nav className="space-y-1">
@@ -704,11 +772,35 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 {isSidebarOpen && (
                   <div className="flex items-center justify-between w-full">
                     <span>Fila do Píer</span>
-                    <span className="px-1.5 py-0.2 bg-blue-500/20 text-blue-600 rounded-full text-[10px]">{countTodas}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeTab === 'operacao' ? 'bg-white/20 text-white' : 'bg-blue-500/20 text-blue-600'}`}>{countTodas}</span>
                   </div>
                 )}
               </button>
 
+              <button 
+                onClick={() => setActiveTab('checklists')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'checklists' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Auditoria de Checklists"
+              >
+                <ClipboardList className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Auditoria Checklists</span>}
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('aviso-saida')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'aviso-saida' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Planos de Navegação"
+              >
+                <Printer className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Planos de Navegação</span>}
+              </button>
+            </nav>
+          </div>
+
+          {/* Cadastros & Reservas */}
+          <div>
+            {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Cadastros & Reservas</p>}
+            <nav className="space-y-1">
               <button 
                 onClick={() => setActiveTab('clientes')}
                 className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'clientes' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
@@ -728,15 +820,6 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               </button>
 
               <button 
-                onClick={() => setActiveTab('checklists')}
-                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'checklists' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
-                title="Auditoria de Checklists"
-              >
-                <ClipboardList className="w-4 h-4 shrink-0" />
-                {isSidebarOpen && <span>Auditoria Checklists</span>}
-              </button>
-
-              <button 
                 onClick={() => setActiveTab('agendamentos')}
                 className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'agendamentos' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
                 title="Consulta de Agendamentos"
@@ -744,18 +827,34 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 <CalendarDays className="w-4 h-4 shrink-0" />
                 {isSidebarOpen && <span>Consulta Agendamentos</span>}
               </button>
+            </nav>
+          </div>
 
+          {/* Serviços & Manutenção */}
+          <div>
+            {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Serviços & Manutenção</p>}
+            <nav className="space-y-1">
               <button 
-                onClick={() => setActiveTab('folgas')}
-                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'folgas' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
-                title="Controle de Folgas"
+                onClick={() => setActiveTab('chamados')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'chamados' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Chamados de Serviços e Manutenção (Peças & Serviços)"
               >
-                <Calendar className="w-4 h-4 shrink-0" />
-                {isSidebarOpen && <span>Controle de Folgas</span>}
+                <Wrench className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && (
+                  <div className="flex items-center justify-between w-full">
+                    <span>Chamados de Serviços</span>
+                    {countPendingChamados > 0 && (
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeTab === 'chamados' ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-600'}`}>
+                        {countPendingChamados}
+                      </span>
+                    )}
+                  </div>
+                )}
               </button>
             </nav>
           </div>
 
+          {/* Insumos & Combustível */}
           <div>
             {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Insumos & Combustível</p>}
             <nav className="space-y-1">
@@ -775,6 +874,21 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               >
                 <Truck className="w-4 h-4 shrink-0" />
                 {isSidebarOpen && <span>Estoque de Tanques</span>}
+              </button>
+            </nav>
+          </div>
+
+          {/* Gestão de Equipe */}
+          <div>
+            {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Gestão de Equipe</p>}
+            <nav className="space-y-1">
+              <button 
+                onClick={() => setActiveTab('folgas')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'folgas' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Controle de Folgas"
+              >
+                <Calendar className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Controle de Folgas</span>}
               </button>
             </nav>
           </div>
@@ -872,7 +986,14 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <button 
+                    onClick={() => setActiveTab('chamados')}
+                    className="px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <Wrench className="w-4 h-4" />
+                    <span>Chamados</span>
+                  </button>
                   <button 
                     onClick={() => setActiveTab('clientes')}
                     className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
@@ -899,7 +1020,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
               {/* Metric Cards Grid - Estilo Analytics */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Metric 1 */}
+                {/* Metric 1: Agendamentos Hoje */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Agendamentos Hoje</span>
@@ -909,13 +1030,24 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   </div>
                   <div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-black text-slate-900">{countAgendadosConfirmados}</span>
-                      <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                        <TrendingUp className="w-3 h-3" />
-                        <span>Confirmadas</span>
-                      </span>
+                      <span className="text-3xl font-black text-slate-900">{countTotalAgendamentos}</span>
+                      {countConfirmados > 0 ? (
+                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-0.5 border border-emerald-100/60">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>{countConfirmados} Confirmada{countConfirmados > 1 ? 's' : ''}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full flex items-center gap-0.5 border border-amber-100/60">
+                          <Clock className="w-3 h-3 text-amber-600" />
+                          <span>Agendadas</span>
+                        </span>
+                      )}
                     </div>
-                    <p className="text-[11px] text-slate-400 font-medium mt-1">Total de descidas agendadas no dia</p>
+                    <p className="text-[11px] text-slate-400 font-medium mt-1">
+                      {countConfirmados > 0 
+                        ? `${countConfirmados} confirmada(s) • ${countApenasAgendados} aguardando check-in` 
+                        : 'Total de descidas agendadas no dia'}
+                    </p>
                   </div>
                 </div>
 
@@ -1027,27 +1159,26 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                           />
                         )}
 
-                        {/* Data Points - Exactly Aligned to Curve (x, y) */}
+                        {/* Data Points - Fixed and Exactly Aligned to Curve (x, y) */}
                         {chartPoints.map((pt, idx) => (
-                          <g key={idx} className="group cursor-pointer">
+                          <g key={idx}>
                             {/* Number badge label above point */}
                             <text
                               x={pt.x}
                               y={pt.y - 10}
                               textAnchor="middle"
-                              className="text-[11px] font-black fill-blue-700"
+                              className="text-[11px] font-black fill-blue-700 select-none pointer-events-none"
                             >
                               {pt.count}
                             </text>
-                            {/* Circle indicator */}
+                            {/* Circle indicator - Fixed, strictly at (x, y) without hover displacement */}
                             <circle
                               cx={pt.x}
                               cy={pt.y}
-                              r="5.5"
+                              r="5"
                               fill="#2563eb"
                               stroke="#ffffff"
                               strokeWidth="2.5"
-                              className="transition-transform group-hover:scale-125"
                             />
                           </g>
                         ))}
@@ -1068,7 +1199,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-extrabold text-base text-slate-900">Eficiência Operacional</h3>
-                      <p className="text-xs text-slate-400">Conformidade de Checklists & Atendimento</p>
+                      <p className="text-xs text-slate-400">Descidas antes ou no horário de saída previsto</p>
                     </div>
                   </div>
 
@@ -1085,7 +1216,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                           stroke="#f1f5f9"
                           strokeWidth="10"
                           strokeDasharray="251.2"
-                          strokeDashoffset="62.8"
+                          strokeDashoffset="0"
                           strokeLinecap="round"
                         />
                         {/* Active progress track */}
@@ -1094,21 +1225,76 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                           cy="50"
                           r="40"
                           fill="transparent"
-                          stroke="#10b981"
+                          stroke={
+                            !operationalEfficiency.temDados
+                              ? '#e2e8f0'
+                              : operationalEfficiency.percentual >= 90
+                              ? '#10b981'
+                              : operationalEfficiency.percentual >= 70
+                              ? '#f59e0b'
+                              : '#f43f5e'
+                          }
                           strokeWidth="10"
                           strokeDasharray="251.2"
-                          strokeDashoffset="80"
+                          strokeDashoffset={251.2 - (251.2 * operationalEfficiency.percentual) / 100}
                           strokeLinecap="round"
+                          className="transition-all duration-700 ease-out"
                         />
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pt-4">
-                        <span className="text-3xl font-black text-slate-900 font-mono">98%</span>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Conformidade</span>
+                        <span className="text-3xl font-black text-slate-900 font-mono">
+                          {operationalEfficiency.percentual}%
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          Pontualidade
+                        </span>
                       </div>
                     </div>
-                    <div className="w-full bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center mt-2">
-                      <p className="text-xs text-emerald-800 font-bold">100% dos Checklists em Dia</p>
-                      <p className="text-[10px] text-emerald-600 font-medium">Fotos de 6 ângulos registradas antes da descida</p>
+
+                    <div className={`w-full border rounded-xl p-3 text-center mt-2 ${
+                      operationalEfficiency.temDados
+                        ? operationalEfficiency.percentual >= 90
+                          ? 'bg-emerald-50 border-emerald-100'
+                          : operationalEfficiency.percentual >= 70
+                            ? 'bg-amber-50 border-amber-100'
+                            : 'bg-rose-50 border-rose-100'
+                        : 'bg-slate-50 border-slate-100'
+                    }`}>
+                      {operationalEfficiency.temDados ? (
+                        <>
+                          <p className={`text-xs font-bold ${
+                            operationalEfficiency.percentual >= 90
+                              ? 'text-emerald-800'
+                              : operationalEfficiency.percentual >= 70
+                                ? 'text-amber-800'
+                                : 'text-rose-800'
+                          }`}>
+                            {operationalEfficiency.totalComPrevisao > 0 
+                              ? `${operationalEfficiency.antesDoHorario} de ${operationalEfficiency.totalComPrevisao} ${operationalEfficiency.totalComPrevisao === 1 ? 'embarcação descida' : 'embarcações descidas'} no prazo`
+                              : `${operationalEfficiency.totalDescidas} descida(s) realizada(s)`}
+                          </p>
+                          <p className={`text-[10px] font-medium ${
+                            operationalEfficiency.percentual >= 90
+                              ? 'text-emerald-600'
+                              : operationalEfficiency.percentual >= 70
+                                ? 'text-amber-600'
+                                : 'text-rose-600'
+                          }`}>
+                            {operationalEfficiency.atrasadas > 0 
+                              ? `${operationalEfficiency.atrasadas} descida(s) realizada(s) após a previsão` 
+                              : 'Todas as descidas realizadas antes ou no horário previsto'}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-slate-700 font-bold">
+                            0 descidas realizadas de {operationalEfficiency.totalAgendados} agendadas
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-medium">
+                            Calculado automaticamente ao registrar descidas no píer
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1866,6 +2052,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           </div>
         )}
 
+        {activeTab === 'chamados' && (
+          <MarinaChamadosView 
+            operadorNome={operadorNome}
+            showToast={showToast}
+          />
+        )}
+
         {activeTab === 'checklists' && (
           <MarinaChecklistsView 
             data={data} 
@@ -1911,6 +2104,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         {activeTab === 'folgas' && (
           <div className="max-w-7xl mx-auto">
             <ControleFolgasPage />
+          </div>
+        )}
+
+        {activeTab === 'aviso-saida' && (
+          <div className="max-w-7xl mx-auto">
+            <AvisosSaidaPage />
           </div>
         )}
 

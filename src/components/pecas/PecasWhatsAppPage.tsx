@@ -533,8 +533,11 @@ export default function PecasWhatsAppPage() {
 
   const allAvailableGroupsList = () => {
     const list: Array<{ id: string; name: string; boatName?: string }> = [];
+    const addedIds = new Set<string>();
+
     boats.forEach(b => {
-      if (b.whatsappGroupId) {
+      if (b.whatsappGroupId && !addedIds.has(b.whatsappGroupId)) {
+        addedIds.add(b.whatsappGroupId);
         list.push({
           id: b.whatsappGroupId,
           name: `Grupo ${b.nome} (${b.numero ? 'M' + b.numero : 'Lancha'})`,
@@ -543,10 +546,12 @@ export default function PecasWhatsAppPage() {
       }
     });
     availableGroups.forEach(g => {
-      if (g.id && !list.some(l => l.id === g.id)) {
+      const gid = g?.id || g?.jid;
+      if (gid && !addedIds.has(gid)) {
+        addedIds.add(gid);
         list.push({
-          id: g.id,
-          name: g.subject || g.name || g.id
+          id: gid,
+          name: g.subject || g.name || gid
         });
       }
     });
@@ -800,13 +805,14 @@ export default function PecasWhatsAppPage() {
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.groups)) {
-        setAvailableGroups(data.groups);
+        const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
+        setAvailableGroups(unique);
         const newMapping: Record<string, string> = {};
         for (const b of boats) {
           if (b.whatsappGroupId) newMapping[b.id] = b.whatsappGroupId;
         }
         setMappingState(newMapping);
-        showToast(`${data.groups.length} grupos carregados.`);
+        showToast(`${unique.length} grupos carregados.`);
       } else {
         showToast('Erro ao carregar grupos', 'error');
       }
@@ -1934,8 +1940,8 @@ export default function PecasWhatsAppPage() {
                           className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
                         >
                           <option value="">-- Sem Grupo Associado --</option>
-                          {availableGroups.map(g => (
-                            <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
+                          {availableGroups.map((g, idx) => (
+                            <option key={g.id ? `grp-${g.id}-${idx}` : `grp-${idx}`} value={g.id}>{g.subject || g.name || g.id}</option>
                           ))}
                         </select>
                       </div>

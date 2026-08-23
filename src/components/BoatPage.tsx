@@ -288,11 +288,15 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
   const handleFetchGroups = async () => {
     setIsFetchingGroups(true);
     try {
-      const res = await fetch('/api/whatsapp/groups');
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch('/api/whatsapp/groups', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       const data = await res.json();
       if (data.success && Array.isArray(data.groups)) {
-        setAvailableGroups(data.groups);
-        showToast(`Foram carregados ${data.groups.length} grupos do WhatsApp com sucesso!`);
+        const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
+        setAvailableGroups(unique);
+        showToast(`Foram carregados ${unique.length} grupos do WhatsApp com sucesso!`);
       } else {
         showToast(data.message || 'Falha ao buscar grupos', 'error');
       }
@@ -307,7 +311,10 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     setIsMappingModalOpen(true);
     setIsFetchingGroups(true);
     try {
-      const res = await fetch('/api/whatsapp/groups');
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch('/api/whatsapp/groups', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       const data = await res.json();
       if (!data.success || !Array.isArray(data.groups)) {
         showToast(data.message || 'Falha ao baixar lista de grupos da API', 'error');
@@ -316,7 +323,8 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
         return;
       }
 
-      setAvailableGroups(data.groups);
+      const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
+      setAvailableGroups(unique);
 
       // Auto suggest
       const newMapping: Record<string, string> = {};
@@ -1059,8 +1067,8 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                           className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent font-mono"
                         >
                           <option value="">-- Sem Grupo Associado --</option>
-                          {availableGroups.map(g => (
-                            <option key={g.id} value={g.id}>{g.subject || g.name || g.id}</option>
+                          {availableGroups.map((g, idx) => (
+                            <option key={g.id ? `grp-${g.id}-${idx}` : `grp-${idx}`} value={g.id}>{g.subject || g.name || g.id}</option>
                           ))}
                         </select>
                       </div>
