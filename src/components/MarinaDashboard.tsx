@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getBoatCode } from '../utils/boatUtils';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction, chamadoDB } from '../db';
@@ -8,6 +8,7 @@ import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
 import MarinaChamadosView from './MarinaChamadosView';
+import MarinaCaixaView from './MarinaCaixaView';
 import BoatPage from './BoatPage';
 import ClientPage from './ClientPage';
 import FinanceSchedulesPage from './FinanceSchedulesPage';
@@ -97,7 +98,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'chamados' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'chamados' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes' | 'caixa'>('home');
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
   const [filterType, setFilterType] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
@@ -400,13 +401,14 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     if (!alvo) return;
     
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const currentOperator = operadorNome || 'Gerente';
     const updatedReserva = { 
       ...alvo, 
       horaDescida: horaAtual,
       fotosChecklistDescida: fotosChecklistDescida.length > 0 ? fotosChecklistDescida : alvo.fotosChecklistDescida,
       observacoesChecklistDescida: checklistObservacoes || alvo.observacoesChecklistDescida,
       statusMarina: 'pier',
-      operadorDescida: operadorNome || 'Operador'
+      operadorDescida: currentOperator
     };
     
     try {
@@ -423,8 +425,9 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         ...prev,
         reservations: prev.reservations.map((r: any) => r.id === alvo.id ? updatedReserva : r)
       }));
-      await logAction('Descida', 'Registrou descida com checklist', alvo.embarcacaoId, operadorNome);
+      await logAction('Descida', 'Registrou descida da embarcação para o píer', alvo.embarcacaoId, currentOperator);
       setChecklistOpen(false);
+      showToast('Embarcação baixada para o píer com sucesso!', 'success');
     } catch (err) {
       alert('Erro ao salvar descida.');
     }
@@ -433,11 +436,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const executeMarcarSaida = async (reserva: any) => {
     if (!confirm("Confirmar a saída efetiva da embarcação do pier?")) return;
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const currentOperator = operadorNome || 'Gerente';
     const updatedReserva = { 
       ...reserva, 
       horaSaida: horaAtual, 
       statusMarina: 'saida',
-      operadorSaida: operadorNome || 'Operador'
+      operadorSaida: currentOperator
     };
     
     try {
@@ -454,7 +458,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         ...prev,
         reservations: prev.reservations.map((r: any) => r.id === reserva.id ? updatedReserva : r)
       }));
-      await logAction('Saída', 'Marcou saída da embarcação', reserva.embarcacaoId, operadorNome);
+      await logAction('Saída', 'Marcou saída da embarcação', reserva.embarcacaoId, currentOperator);
+      showToast('Saída da embarcação registrada!', 'info');
     } catch (err) {
       alert('Erro ao marcar saída.');
     }
@@ -512,7 +517,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       await logAction('Chegada', `Marcou chegada e abastecimento de ${litersNum}L (Pendente de cobrança pelo gerente)`, updatedReserva.embarcacaoId, currentOperator);
 
       setFuelModalOpen(false);
-      alert('Chegada e abastecimento salvos com sucesso! O lançamento ficou PENDENTE para cobrança pelo gerente.');
+      showToast('Chegada e abastecimento salvos com sucesso!', 'success');
     } catch (err) {
       alert('Erro ao salvar chegada.');
     } finally {
@@ -530,13 +535,14 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     setIsSubmitting(true);
     
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const currentOperator = operadorNome || 'Gerente';
     const updatedReserva = { 
       ...alvo, 
       horaSubida: horaAtual,
       fotosChecklistSubida: fotosChecklistSubida.length > 0 ? fotosChecklistSubida : alvo.fotosChecklistSubida,
       observacoesChecklistSubida: checklistObservacoes || alvo.observacoesChecklistSubida,
       statusMarina: 'guardada',
-      operadorSubida: operadorNome || 'Operador'
+      operadorSubida: currentOperator
     };
     
     try {
@@ -554,10 +560,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         reservations: prev.reservations.map((r: any) => r.id === alvo.id ? updatedReserva : r)
       }));
       
-      await logAction('Subida', 'Registrou subida com checklist', alvo.embarcacaoId, operadorNome);
+      await logAction('Subida', 'Registrou subida da embarcação (guardada)', alvo.embarcacaoId, currentOperator);
 
       setChecklistOpen(false);
-      alert('Subida e checklist registrados com sucesso!');
+      showToast('Embarcação subida e guardada com sucesso!', 'success');
     } catch (err) {
       alert('Erro ao salvar subida.');
     } finally {
@@ -874,6 +880,21 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               >
                 <Truck className="w-4 h-4 shrink-0" />
                 {isSidebarOpen && <span>Estoque de Tanques</span>}
+              </button>
+            </nav>
+          </div>
+
+          {/* Caixa & Financeiro */}
+          <div>
+            {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Caixa & Financeiro</p>}
+            <nav className="space-y-1">
+              <button 
+                onClick={() => setActiveTab('caixa')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'caixa' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Controle de Caixa da Marina"
+              >
+                <Wallet className="w-4 h-4 shrink-0 text-emerald-500" />
+                {isSidebarOpen && <span>Controle de Caixa</span>}
               </button>
             </nav>
           </div>
@@ -1632,13 +1653,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
                               <span className="text-slate-400 font-medium">Vaga: {barco?.vaga || 'N/A'}</span>
                               <button
-                                onClick={() => {
-                                  setSelectedReserva(reserva);
-                                  setChecklistFotos({});
-                                  setChecklistObservacoes('');
-                                  setChecklistMode('descida');
-                                  setChecklistOpen(true);
-                                }}
+                                onClick={() => executeRegistrarDescida([], reserva)}
                                 className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer shadow-2xs"
                               >
                                 Baixar Barco
@@ -1782,12 +1797,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
                               <span className="text-emerald-700 font-bold">{litros ? `${litros}L Abastecido` : 'Retornado'}</span>
                               <button
-                                onClick={() => {
-                                  setSelectedReserva(reserva);
-                                  setChecklistFotos({});
-                                  setChecklistMode('subida');
-                                  setChecklistOpen(true);
-                                }}
+                                onClick={() => executeRegistrarSubida([], reserva)}
                                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                               >
                                 Subir Barco
@@ -1932,7 +1942,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                               {(reserva.horaDescida || reserva.horaSaida || reserva.horaChegada || reserva.horaSubida) && (
                                 <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 flex-wrap">
                                   {reserva.horaDescida && <span>Píer: <b>{reserva.horaDescida}</b></span>}
-                                  {reserva.horaSaida && <span>• Mar: <b>{reserva.horaSaida}</b></span>}
+                                  {reserva.horaSaida && <span>• Saída: <b>{reserva.horaSaida}</b></span>}
                                   {reserva.horaChegada && <span>• Chegou: <b>{reserva.horaChegada}</b></span>}
                                   {reserva.horaSubida && <span>• Subiu: <b>{reserva.horaSubida}</b></span>}
                                 </div>
@@ -1947,28 +1957,16 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                           >
                             {/* Agendado / Não Desceu */}
                             {reserva.status !== 'cancelado' && !reserva.horaDescida && (
-                              <>
-                                <button 
-                                  onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    if (confirm("Confirmar descida rápida sem fotos?")) {
-                                      executeRegistrarDescida([], reserva);
-                                    }
-                                  }}
-                                  title="Descida Rápida (sem fotos)"
-                                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/60 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
-                                >
-                                  <Zap className="w-3.5 h-3.5 text-amber-600" />
-                                  <span>Rápida</span>
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); openChecklistForDescida(reserva); }}
-                                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                                >
-                                  <Camera className="w-3.5 h-3.5" />
-                                  <span>Checklist Saída</span>
-                                </button>
-                              </>
+                              <button 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  executeRegistrarDescida([], reserva);
+                                }}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                              >
+                                <ArrowDownCircle className="w-3.5 h-3.5" />
+                                <span>Baixar Barco</span>
+                              </button>
                             )}
 
                             {/* No Píer */}
@@ -2012,11 +2010,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                                   </span>
                                 )}
                                 <button 
-                                  onClick={(e) => { e.stopPropagation(); openChecklistForSubida(reserva); }}
+                                  onClick={(e) => { e.stopPropagation(); executeRegistrarSubida([], reserva); }}
                                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
                                 >
-                                  <Camera className="w-3.5 h-3.5" />
-                                  <span>Checklist Subida</span>
+                                  <ArrowUpCircle className="w-3.5 h-3.5" />
+                                  <span>Subir Barco</span>
                                 </button>
                               </>
                             )}
@@ -2080,6 +2078,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           <MarinaTanksView 
             operadorNome={operadorNome}
             showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'caixa' && (
+          <MarinaCaixaView 
+            operadorNome={operadorNome}
+            clients={data?.clients || []}
+            boats={data?.boats || []}
+            reloadData={fetchData}
           />
         )}
 
@@ -2503,19 +2510,19 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   <button 
                     type="submit" 
                     disabled={isSubmitting}
-                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-slate-800 disabled:opacity-70 transition-colors shadow-md"
+                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-slate-800 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
                   >
                     <ArrowRight className="w-5 h-5" />
-                    Avançar p/ Chegada (Sem Fuel)
+                    Confirmar Chegada (Sem Abastecimento)
                   </button>
                 ) : (
                   <button 
                     type="submit" 
                     disabled={isSubmitting}
-                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-blue-700 disabled:opacity-70 transition-colors shadow-md"
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-blue-700 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
                   >
-                    <ArrowRight className="w-5 h-5" />
-                    Ir para Checklist
+                    <Check className="w-5 h-5" />
+                    Confirmar Chegada & Abastecimento
                   </button>
                 )}
               </div>

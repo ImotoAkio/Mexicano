@@ -410,3 +410,80 @@ export interface TipoManutencao {
   descricao?: string;
   createdAt: string;
 }
+
+export type TipoTransacaoCaixa = 'entrada' | 'saida';
+
+export type CategoriaTransacaoCaixa = 
+  | 'combustivel'
+  | 'descida_avulsa_jet'
+  | 'descida_avulsa_lancha'
+  | 'aluguel_coletes'
+  | 'diarista'
+  | 'compra_operacional'
+  | 'manutencao_equipamentos'
+  | 'limpeza_pier'
+  | 'sangria'
+  | 'suprimento'
+  | 'outros_entrada'
+  | 'outros_saida';
+
+export type FormaPagamentoCaixa = 
+  | 'dinheiro'
+  | 'pix'
+  | 'cartao_debito'
+  | 'cartao_credito'
+  | 'transferencia'
+  | 'faturado'
+  | 'outro';
+
+export interface TransacaoCaixaMarina {
+  id: string;
+  tipo: TipoTransacaoCaixa;
+  categoria: CategoriaTransacaoCaixa | string;
+  descricao: string;
+  valor: number;
+  formaPagamento: FormaPagamentoCaixa | string;
+  data: string; // YYYY-MM-DD
+  hora?: string; // HH:mm
+  status?: 'confirmado' | 'pendente' | 'cancelado';
+  clienteTipo?: 'avulso' | 'mensalista' | 'cotista';
+  clienteId?: string | null;
+  clienteNome?: string | null;
+  embarcacaoId?: string | null;
+  embarcacaoNome?: string | null;
+  reservaId?: string | null;
+  combustivelLitros?: number | null;
+  quantidadeColetes?: number | null;
+  coletesDevolvidos?: boolean;
+  dataDevolucaoColetes?: string | null;
+  comprovanteUrl?: string | null;
+  observacoes?: string | null;
+  registradoPor: string;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface FechamentoCaixaMarina {
+  id: string;
+  data: string; // YYYY-MM-DD
+  saldoAberturaDinheiro: number;
+  totalEntradasDinheiro: number;
+  totalSaidasDinheiro: number;
+  totalSangriasDinheiro: number;
+  saldoEsperadoDinheiro: number;
+  saldoContadoDinheiro: number;
+  diferencaDinheiro: number;
+  totalPix: number;
+  totalCartaoDebito: number;
+  totalCartaoCredito: number;
+  totalGeralEntradas: number;
+  totalGeralSaidas: number;
+  saldoFinalTotal: number;
+  status: 'aberto' | 'fechado';
+  abertoPor?: string | null;
+  abertoEm?: string | null;
+  fechadoPor?: string | null;
+  fechadoEm?: string | null;
+  observacoesFechamento?: string | null;
+  createdAt: string;
+}

@@ -83,6 +83,7 @@ if (typeof window !== 'undefined') {
                              url.startsWith('/api/manutencoes') ||
                              url.startsWith('/api/mecanicos') ||
                              url.startsWith('/api/catalogo-epis') ||
+                             url.startsWith('/api/epis') ||
                              url.startsWith('/api/whatsapp/') ||
                              url.startsWith('/api/config') ||
                              url.startsWith('/api/comercial/');

@@ -228,22 +228,40 @@ export default function MarinaChamadosView({ operadorNome, showToast }: MarinaCh
     }
   };
 
-  // Descartar/Cancelar Chamado (se ainda estiver pendente)
-  const handleCancelChamado = (chamado: Chamado) => {
-    if (chamado.status === 'os_gerada' || chamado.status === 'concluido') {
-      if (showToast) showToast('Não é possível cancelar um chamado já aceito ou concluído pela oficina.', 'warning');
-      else alert('Não é possível cancelar um chamado já aceito ou concluído pela oficina.');
-      return;
+  // Apagar / Excluir Chamado Permanentemente
+  const handleDeleteChamado = (chamado: Chamado) => {
+    const linkedOS = manutencoes.find(m => m.chamadoId === chamado.id || m.id === chamado.osId);
+    
+    let confirmMsg = `Deseja realmente apagar o chamado ${chamado.codigoChamado} (${chamado.titulo})?`;
+    if (linkedOS) {
+      confirmMsg += `\n\n⚠️ Atenção: Este chamado possui uma Ordem de Serviço vinculada (${linkedOS.codigoOS || linkedOS.id}). A exclusão removerá o registro do chamado do sistema. Deseja continuar?`;
     }
 
-    if (window.confirm(`Deseja realmente cancelar o chamado ${chamado.codigoChamado}?`)) {
-      chamadoDB.update(chamado.id, { 
-        status: 'descartado',
-        observacoesAnalise: `Cancelado pela Marina (${operadorNome || 'Gerente'}) em ${new Date().toLocaleDateString('pt-BR')}`
-      });
-      if (showToast) showToast(`Chamado ${chamado.codigoChamado} cancelado com sucesso.`, 'info');
-      setSelectedChamadoDetails(null);
-      loadData();
+    if (window.confirm(confirmMsg)) {
+      try {
+        chamadoDB.delete(chamado.id);
+        
+        if (linkedOS) {
+          maintenanceDB.update(linkedOS.id, {
+            chamadoId: undefined
+          });
+        }
+
+        if (showToast) {
+          showToast(`Chamado ${chamado.codigoChamado} apagado com sucesso!`, 'info');
+        } else {
+          alert(`Chamado ${chamado.codigoChamado} apagado com sucesso!`);
+        }
+
+        setSelectedChamadoDetails(null);
+        loadData();
+      } catch (err: any) {
+        if (showToast) {
+          showToast(`Erro ao apagar chamado: ${err.message || 'Erro inesperado'}`, 'warning');
+        } else {
+          alert(`Erro ao apagar chamado: ${err.message || 'Erro inesperado'}`);
+        }
+      }
     }
   };
 
@@ -698,20 +716,35 @@ export default function MarinaChamadosView({ operadorNome, showToast }: MarinaCh
                   )}
                 </div>
 
-                {/* Card Footer: Status Badge + Action */}
+                {/* Card Footer: Status Badge + Actions */}
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                   <div className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 shrink-0 ${statusInfo.bg}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
                     <span>{statusInfo.label}</span>
                   </div>
 
-                  <button
-                    onClick={() => setSelectedChamadoDetails(chamado)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                  >
-                    <span>Detalhes</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteChamado(chamado);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl transition-colors cursor-pointer"
+                      title="Apagar chamado permanentemente"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChamadoDetails(chamado)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                    >
+                      <span>Detalhes</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
               </div>
@@ -1085,18 +1118,19 @@ export default function MarinaChamadosView({ operadorNome, showToast }: MarinaCh
 
               {/* Footer */}
               <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/40">
-                {selectedChamadoDetails.status === 'pendente' && (
-                  <button
-                    onClick={() => handleCancelChamado(selectedChamadoDetails)}
-                    className="px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Cancelar Chamado</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteChamado(selectedChamadoDetails)}
+                  className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs rounded-xl transition-all flex items-center gap-2 cursor-pointer active:scale-95 shadow-2xs"
+                  title="Apagar este chamado permanentemente"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>Apagar Chamado</span>
+                </button>
 
                 <div className="ml-auto flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={() => setSelectedChamadoDetails(null)}
                     className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer"
                   >

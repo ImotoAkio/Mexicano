@@ -882,6 +882,71 @@ export async function initializeDatabase() {
     `);
     console.log("✅ Chamados table ready.");
 
+    // ── 27. CaixaMarinaTransacoes Table ──
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS CaixaMarinaTransacoes (
+        id VARCHAR(50) PRIMARY KEY,
+        tipo VARCHAR(20) NOT NULL,
+        categoria VARCHAR(50) NOT NULL,
+        descricao TEXT NOT NULL,
+        valor DECIMAL(10, 2) NOT NULL,
+        formaPagamento VARCHAR(50) NOT NULL,
+        data VARCHAR(20) NOT NULL,
+        hora VARCHAR(10),
+        status VARCHAR(20) DEFAULT 'confirmado',
+        clienteTipo VARCHAR(20) DEFAULT 'avulso',
+        clienteId VARCHAR(50) NULL,
+        clienteNome VARCHAR(255) NULL,
+        embarcacaoId VARCHAR(50) NULL,
+        embarcacaoNome VARCHAR(255) NULL,
+        reservaId VARCHAR(50) NULL,
+        combustivelLitros DECIMAL(10, 2) NULL,
+        quantidadeColetes INT NULL,
+        coletesDevolvidos TINYINT(1) DEFAULT 0,
+        dataDevolucaoColetes VARCHAR(50) NULL,
+        comprovanteUrl VARCHAR(500) NULL,
+        observacoes TEXT NULL,
+        registradoPor VARCHAR(100) NOT NULL,
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NULL,
+        INDEX idx_caixa_data (data),
+        INDEX idx_caixa_tipo (tipo),
+        INDEX idx_caixa_categoria (categoria),
+        INDEX idx_caixa_status (status),
+        INDEX idx_caixa_forma_pagto (formaPagamento)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // ── 28. CaixaMarinaFechamentos Table ──
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS CaixaMarinaFechamentos (
+        id VARCHAR(50) PRIMARY KEY,
+        data VARCHAR(20) NOT NULL UNIQUE,
+        saldoAberturaDinheiro DECIMAL(10, 2) DEFAULT 0.00,
+        totalEntradasDinheiro DECIMAL(10, 2) DEFAULT 0.00,
+        totalSaidasDinheiro DECIMAL(10, 2) DEFAULT 0.00,
+        totalSangriasDinheiro DECIMAL(10, 2) DEFAULT 0.00,
+        saldoEsperadoDinheiro DECIMAL(10, 2) DEFAULT 0.00,
+        saldoContadoDinheiro DECIMAL(10, 2) DEFAULT 0.00,
+        diferencaDinheiro DECIMAL(10, 2) DEFAULT 0.00,
+        totalPix DECIMAL(10, 2) DEFAULT 0.00,
+        totalCartaoDebito DECIMAL(10, 2) DEFAULT 0.00,
+        totalCartaoCredito DECIMAL(10, 2) DEFAULT 0.00,
+        totalGeralEntradas DECIMAL(10, 2) DEFAULT 0.00,
+        totalGeralSaidas DECIMAL(10, 2) DEFAULT 0.00,
+        saldoFinalTotal DECIMAL(10, 2) DEFAULT 0.00,
+        status VARCHAR(20) DEFAULT 'aberto',
+        abertoPor VARCHAR(100) NULL,
+        abertoEm VARCHAR(50) NULL,
+        fechadoPor VARCHAR(100) NULL,
+        fechadoEm VARCHAR(50) NULL,
+        observacoesFechamento TEXT NULL,
+        createdAt VARCHAR(50) NOT NULL,
+        INDEX idx_fechamento_data (data)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ Caixa da Marina tables ready.");
+
     connection.release();
     isInitialized = true;
     console.log("VPS Database tables validated/initialized successfully.");
@@ -2434,6 +2499,283 @@ export async function getNextCodigoOS(): Promise<string> {
   const lastCode = existing[0].codigoOS; // e.g. "OS-2026-005"
   const lastNum = parseInt(lastCode.replace(prefix, ''), 10) || 0;
   return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
+}
+
+// ──────────── Controle de Caixa da Marina ────────────
+
+export async function getCaixaMarinaTransacoes(filters: {
+  startDate?: string;
+  endDate?: string;
+  tipo?: string;
+  categoria?: string;
+  formaPagamento?: string;
+  status?: string;
+  search?: string;
+} = {}): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  let query = "SELECT * FROM CaixaMarinaTransacoes WHERE 1=1";
+  const params: any[] = [];
+
+  if (filters.startDate) {
+    query += " AND data >= ?";
+    params.push(filters.startDate);
+  }
+  if (filters.endDate) {
+    query += " AND data <= ?";
+    params.push(filters.endDate);
+  }
+  if (filters.tipo && filters.tipo !== 'todos') {
+    query += " AND tipo = ?";
+    params.push(filters.tipo);
+  }
+  if (filters.categoria && filters.categoria !== 'todas') {
+    query += " AND categoria = ?";
+    params.push(filters.categoria);
+  }
+  if (filters.formaPagamento && filters.formaPagamento !== 'todas') {
+    query += " AND formaPagamento = ?";
+    params.push(filters.formaPagamento);
+  }
+  if (filters.status && filters.status !== 'todos') {
+    query += " AND status = ?";
+    params.push(filters.status);
+  }
+  if (filters.search && filters.search.trim()) {
+    const s = `%${filters.search.trim()}%`;
+    query += " AND (descricao LIKE ? OR clienteNome LIKE ? OR embarcacaoNome LIKE ? OR observacoes LIKE ?)";
+    params.push(s, s, s, s);
+  }
+
+  query += " ORDER BY data DESC, hora DESC, createdAt DESC";
+
+  const [rows] = await currentPool.query(query, params);
+  return (rows as any[]).map(r => ({
+    ...r,
+    valor: Number(r.valor) || 0,
+    combustivelLitros: r.combustivelLitros !== null ? Number(r.combustivelLitros) : null,
+    quantidadeColetes: r.quantidadeColetes !== null ? Number(r.quantidadeColetes) : null,
+    coletesDevolvidos: r.coletesDevolvidos === 1 || r.coletesDevolvidos === true,
+  }));
+}
+
+export async function upsertCaixaMarinaTransacao(t: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const id = t.id || `cx_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const tipo = t.tipo || 'entrada';
+  const categoria = t.categoria || 'outros';
+  const descricao = t.descricao || 'Lançamento de Caixa';
+  const valor = Number(t.valor) || 0;
+  const formaPagamento = t.formaPagamento || 'dinheiro';
+  const data = t.data || new Date().toISOString().split('T')[0];
+  const hora = t.hora || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const status = t.status || 'confirmado';
+  const clienteTipo = t.clienteTipo || 'avulso';
+  const clienteId = t.clienteId || null;
+  const clienteNome = t.clienteNome || null;
+  const embarcacaoId = t.embarcacaoId || null;
+  const embarcacaoNome = t.embarcacaoNome || null;
+  const reservaId = t.reservaId || null;
+  const combustivelLitros = t.combustivelLitros !== undefined && t.combustivelLitros !== null ? Number(t.combustivelLitros) : null;
+  const quantidadeColetes = t.quantidadeColetes !== undefined && t.quantidadeColetes !== null ? Number(t.quantidadeColetes) : null;
+  const coletesDevolvidos = t.coletesDevolvidos ? 1 : 0;
+  const dataDevolucaoColetes = t.dataDevolucaoColetes || null;
+  const comprovanteUrl = t.comprovanteUrl || null;
+  const observacoes = t.observacoes || null;
+  const registradoPor = t.registradoPor || 'Gerente';
+  const createdAt = t.createdAt || new Date().toISOString();
+  const updatedAt = new Date().toISOString();
+
+  await currentPool.query(
+    `INSERT INTO CaixaMarinaTransacoes (
+      id, tipo, categoria, descricao, valor, formaPagamento, data, hora, status,
+      clienteTipo, clienteId, clienteNome, embarcacaoId, embarcacaoNome, reservaId,
+      combustivelLitros, quantidadeColetes, coletesDevolvidos, dataDevolucaoColetes,
+      comprovanteUrl, observacoes, registradoPor, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      tipo = VALUES(tipo),
+      categoria = VALUES(categoria),
+      descricao = VALUES(descricao),
+      valor = VALUES(valor),
+      formaPagamento = VALUES(formaPagamento),
+      data = VALUES(data),
+      hora = VALUES(hora),
+      status = VALUES(status),
+      clienteTipo = VALUES(clienteTipo),
+      clienteId = VALUES(clienteId),
+      clienteNome = VALUES(clienteNome),
+      embarcacaoId = VALUES(embarcacaoId),
+      embarcacaoNome = VALUES(embarcacaoNome),
+      reservaId = VALUES(reservaId),
+      combustivelLitros = VALUES(combustivelLitros),
+      quantidadeColetes = VALUES(quantidadeColetes),
+      coletesDevolvidos = VALUES(coletesDevolvidos),
+      dataDevolucaoColetes = VALUES(dataDevolucaoColetes),
+      comprovanteUrl = VALUES(comprovanteUrl),
+      observacoes = VALUES(observacoes),
+      registradoPor = VALUES(registradoPor),
+      updatedAt = VALUES(updatedAt)`,
+    [
+      id, tipo, categoria, descricao, valor, formaPagamento, data, hora, status,
+      clienteTipo, clienteId, clienteNome, embarcacaoId, embarcacaoNome, reservaId,
+      combustivelLitros, quantidadeColetes, coletesDevolvidos, dataDevolucaoColetes,
+      comprovanteUrl, observacoes, registradoPor, createdAt, updatedAt
+    ]
+  );
+}
+
+export async function deleteCaixaMarinaTransacao(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM CaixaMarinaTransacoes WHERE id = ?", [id]);
+}
+
+export async function devolverColetesCaixaMarina(id: string, devolvidoPor: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  const agora = new Date().toISOString();
+  await currentPool.query(
+    "UPDATE CaixaMarinaTransacoes SET coletesDevolvidos = 1, dataDevolucaoColetes = ?, updatedAt = ? WHERE id = ?",
+    [agora, agora, id]
+  );
+}
+
+export async function getCaixaMarinaFechamento(dataStr: string): Promise<any | null> {
+  const currentPool = getDbPool();
+  if (!currentPool) return null;
+
+  const [rows] = await currentPool.query(
+    "SELECT * FROM CaixaMarinaFechamentos WHERE data = ?",
+    [dataStr]
+  );
+
+  const existing = rows as any[];
+  if (existing.length === 0) return null;
+
+  const f = existing[0];
+  return {
+    ...f,
+    saldoAberturaDinheiro: Number(f.saldoAberturaDinheiro) || 0,
+    totalEntradasDinheiro: Number(f.totalEntradasDinheiro) || 0,
+    totalSaidasDinheiro: Number(f.totalSaidasDinheiro) || 0,
+    totalSangriasDinheiro: Number(f.totalSangriasDinheiro) || 0,
+    saldoEsperadoDinheiro: Number(f.saldoEsperadoDinheiro) || 0,
+    saldoContadoDinheiro: Number(f.saldoContadoDinheiro) || 0,
+    diferencaDinheiro: Number(f.diferencaDinheiro) || 0,
+    totalPix: Number(f.totalPix) || 0,
+    totalCartaoDebito: Number(f.totalCartaoDebito) || 0,
+    totalCartaoCredito: Number(f.totalCartaoCredito) || 0,
+    totalGeralEntradas: Number(f.totalGeralEntradas) || 0,
+    totalGeralSaidas: Number(f.totalGeralSaidas) || 0,
+    saldoFinalTotal: Number(f.saldoFinalTotal) || 0,
+  };
+}
+
+export async function salvarCaixaMarinaFechamento(f: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const id = f.id || `fech_${f.data || Date.now()}`;
+  await currentPool.query(
+    `INSERT INTO CaixaMarinaFechamentos (
+      id, data, saldoAberturaDinheiro, totalEntradasDinheiro, totalSaidasDinheiro,
+      totalSangriasDinheiro, saldoEsperadoDinheiro, saldoContadoDinheiro, diferencaDinheiro,
+      totalPix, totalCartaoDebito, totalCartaoCredito, totalGeralEntradas, totalGeralSaidas,
+      saldoFinalTotal, status, abertoPor, abertoEm, fechadoPor, fechadoEm, observacoesFechamento, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      saldoAberturaDinheiro = VALUES(saldoAberturaDinheiro),
+      totalEntradasDinheiro = VALUES(totalEntradasDinheiro),
+      totalSaidasDinheiro = VALUES(totalSaidasDinheiro),
+      totalSangriasDinheiro = VALUES(totalSangriasDinheiro),
+      saldoEsperadoDinheiro = VALUES(saldoEsperadoDinheiro),
+      saldoContadoDinheiro = VALUES(saldoContadoDinheiro),
+      diferencaDinheiro = VALUES(diferencaDinheiro),
+      totalPix = VALUES(totalPix),
+      totalCartaoDebito = VALUES(totalCartaoDebito),
+      totalCartaoCredito = VALUES(totalCartaoCredito),
+      totalGeralEntradas = VALUES(totalGeralEntradas),
+      totalGeralSaidas = VALUES(totalGeralSaidas),
+      saldoFinalTotal = VALUES(saldoFinalTotal),
+      status = VALUES(status),
+      abertoPor = VALUES(abertoPor),
+      abertoEm = VALUES(abertoEm),
+      fechadoPor = VALUES(fechadoPor),
+      fechadoEm = VALUES(fechadoEm),
+      observacoesFechamento = VALUES(observacoesFechamento)`,
+    [
+      id, f.data,
+      Number(f.saldoAberturaDinheiro) || 0,
+      Number(f.totalEntradasDinheiro) || 0,
+      Number(f.totalSaidasDinheiro) || 0,
+      Number(f.totalSangriasDinheiro) || 0,
+      Number(f.saldoEsperadoDinheiro) || 0,
+      Number(f.saldoContadoDinheiro) || 0,
+      Number(f.diferencaDinheiro) || 0,
+      Number(f.totalPix) || 0,
+      Number(f.totalCartaoDebito) || 0,
+      Number(f.totalCartaoCredito) || 0,
+      Number(f.totalGeralEntradas) || 0,
+      Number(f.totalGeralSaidas) || 0,
+      Number(f.saldoFinalTotal) || 0,
+      f.status || 'aberto',
+      f.abertoPor || null,
+      f.abertoEm || null,
+      f.fechadoPor || null,
+      f.fechadoEm || null,
+      f.observacoesFechamento || null,
+      f.createdAt || new Date().toISOString()
+    ]
+  );
+}
+
+export async function getAbastecimentosPendentesCaixa(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  // Busca reservas que possuem abastecimento registrado mas ainda não foram baixadas no caixa
+  const [rows] = await currentPool.query(`
+    SELECT r.id as reservaId, r.data, r.embarcacaoId, r.clienteId,
+           r.abastecimentoLitros, r.litrosAbastecidos, r.abastecimentoValorTotal,
+           r.abastecimentoFormaPagamento, r.abastecimentoStatusCobranca,
+           r.abastecimentoComprovanteUrl, r.abastecimentoOperador, r.operadorChegada,
+           e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
+           c.nome as clienteNome, c.telefone as clienteTelefone
+    FROM Reservas r
+    LEFT JOIN Embarcacoes e ON r.embarcacaoId = e.id
+    LEFT JOIN Clientes c ON r.clienteId = c.id
+    WHERE (
+      (CAST(r.abastecimentoLitros AS DECIMAL(10,2)) > 0 OR CAST(r.litrosAbastecidos AS DECIMAL(10,2)) > 0)
+      AND (r.abastecimentoStatusCobranca = 'pendente' OR r.abastecimentoStatusCobranca IS NULL OR r.abastecimentoStatusCobranca = '')
+      AND r.id NOT IN (SELECT reservaId FROM CaixaMarinaTransacoes WHERE reservaId IS NOT NULL AND status = 'confirmado')
+    )
+    ORDER BY r.data DESC, r.horaChegada DESC
+  `);
+
+  return (rows as any[]).map(r => {
+    const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
+    const valorUnitario = 9.00; // Valor padrão do litro
+    const valorTotal = Number(r.abastecimentoValorTotal) || (litros * valorUnitario);
+
+    return {
+      reservaId: r.reservaId,
+      data: r.data,
+      embarcacaoId: r.embarcacaoId,
+      embarcacaoNome: r.embarcacaoNome ? `${r.embarcacaoNumero ? `M${r.embarcacaoNumero} - ` : ''}${r.embarcacaoNome}` : 'Embarcação',
+      clienteId: r.clienteId,
+      clienteNome: r.clienteNome || 'Cliente Cotista',
+      clienteTelefone: r.clienteTelefone,
+      litros,
+      valorTotal,
+      formaPagamentoSugerida: r.abastecimentoFormaPagamento || 'pix',
+      operador: r.abastecimentoOperador || r.operadorChegada || 'Marinheiro',
+      comprovanteUrl: r.abastecimentoComprovanteUrl
+    };
+  });
 }
 
 

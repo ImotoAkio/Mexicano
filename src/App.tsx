@@ -15,7 +15,6 @@ const FinancePage = lazy(() => import('./components/FinancePage'));
 import LoginPage from './components/LoginPage';
 import ClientLoginPage from './components/ClientLoginPage';
 const ClientDashboardPage = lazy(() => import('./components/ClientDashboardPage'));
-import LandingPage from './components/LandingPage';
 const MarinaDashboard = lazy(() => import('./components/MarinaDashboard'));
 const MarinaOperadorDashboard = lazy(() => import('./components/MarinaOperadorDashboard'));
 const ComercialDashboard = lazy(() => import('./components/ComercialDashboard'));
@@ -370,10 +369,9 @@ export default function App() {
 
   const isFeedbackRoute = currentPath === '/feedback' || currentPath.startsWith('/feedback');
   const isAdminRoute = currentPath.startsWith('/admin');
-  const isPortalRoute = currentPath.startsWith('/portal');
   const isSimuladorRoute = currentPath === '/simulador-epi';
   const isSharedChecklistRoute = currentPath.startsWith('/checklist/share/');
-  const isLandingRoute = !isAdminRoute && !isPortalRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute;
+  const isClientRoute = !isAdminRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute;
 
   // ═══════════ FEEDBACK PUBLIC PAGE (/feedback) ═══════════
   if (isFeedbackRoute) {
@@ -395,7 +393,7 @@ export default function App() {
   }
 
   // ═══════════ PORTAL DO CLIENTE (Módulo PWA) ═══════════
-  if (isPortalRoute) {
+  if (isClientRoute) {
     if (!clientToken) {
       return (
         <ClientLoginPage 
@@ -432,11 +430,6 @@ export default function App() {
         )}
       </Suspense>
     );
-  }
-
-  // ═══════════ LANDING PAGE PÚBLICA (/) ═══════════
-  if (isLandingRoute) {
-    return <LandingPage />;
   }
 
   // ═══════════ PAINEL ADMINISTRATIVO (/admin) ═══════════

@@ -3,7 +3,8 @@ import {
   Droplets, Loader2, Save, AlertTriangle, 
   CheckCircle2, Truck, ArrowUpRight, ArrowDownRight,
   X, Search, Download, RefreshCw, Package, ShieldCheck,
-  ChevronRight, FileText, Printer, BarChart2, Trash2
+  ChevronRight, FileText, Printer, BarChart2, Trash2,
+  SlidersHorizontal, Gauge, Wrench, Settings
 } from 'lucide-react';
 import {
   FuelInventory,
@@ -65,6 +66,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [closureModalOpen, setClosureModalOpen] = useState(false);
+  const [advancedModalOpen, setAdvancedModalOpen] = useState(false);
 
   // Form states - Compra
   const [purchaseDestino, setPurchaseDestino] = useState<'tanque_principal' | 'galoes_pier'>('tanque_principal');
@@ -82,6 +84,15 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
 
   // Form states - Fechamento
   const [closureGaloesFisicosCheios, setClosureGaloesFisicosCheios] = useState('');
+
+  // Form states - Controle Avançado (Ajuste Manual pelo Gerente)
+  const [adjTanqueLitros, setAdjTanqueLitros] = useState('');
+  const [adjTanqueCapacidadeMaxima, setAdjTanqueCapacidadeMaxima] = useState('');
+  const [adjAlertaMinimoTanque, setAdjAlertaMinimoTanque] = useState('');
+  const [adjGaloesPierQuantidade, setAdjGaloesPierQuantidade] = useState('');
+  const [adjGaloesCapacidadeLitros, setAdjGaloesCapacidadeLitros] = useState('');
+  const [adjGalaoParcialLitros, setAdjGalaoParcialLitros] = useState('');
+  const [adjMotivo, setAdjMotivo] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -110,6 +121,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
       const isTransfer = h.tipo === 'transferencia_tanque_pier';
       const isAbast = h.tipo === 'abastecimento_embarcacao';
       const isFech = h.tipo === 'fechamento_turno';
+      const isAjuste = h.tipo === 'ajuste_manual';
 
       let tipoLabel = 'Movimentação';
       if (h.tipo === 'compra_tanque') tipoLabel = 'Compra: Tanque Principal';
@@ -117,6 +129,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
       else if (isTransfer) tipoLabel = 'Enchimento de Galões';
       else if (isAbast) tipoLabel = h.barcoNome ? `Abastecimento (${h.barcoNome})` : 'Abastecimento Embarcação';
       else if (isFech) tipoLabel = 'Fechamento de Turno';
+      else if (isAjuste) tipoLabel = 'Ajuste Avançado (Gerente)';
 
       let volumeFormatted = `${h.litros} L`;
       let volumeColor = '#0f172a';
@@ -126,10 +139,16 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
       } else if (isAbast) {
         volumeFormatted = `-${h.litros} L`;
         volumeColor = '#b91c1c';
+      } else if (isAjuste) {
+        const difVal = h.diferencaLitros ?? 0;
+        volumeFormatted = `${difVal >= 0 ? '+' : ''}${difVal} L`;
+        volumeColor = difVal >= 0 ? '#047857' : '#b91c1c';
       }
 
       let statusBadge = '<span style="background-color: #ffffff; color: #047857; border: 1.5px solid #047857; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700;">OK</span>';
-      if (h.diferencaLitros && h.diferencaLitros !== 0) {
+      if (isAjuste) {
+        statusBadge = '<span style="background-color: #ffffff; color: #4338ca; border: 1.5px solid #4338ca; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700;">Ajustado</span>';
+      } else if (h.diferencaLitros && h.diferencaLitros !== 0) {
         const difText = h.diferencaLitros > 0 ? `+${h.diferencaLitros}` : `${h.diferencaLitros}`;
         statusBadge = `<span style="background-color: #ffffff; color: #b45309; border: 1.5px solid #b45309; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700;">Divergência (${difText}L)</span>`;
       }
@@ -677,6 +696,63 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
     }, 300);
   };
 
+  // 4. Controle Avançado - Abertura e Salvar Ajuste Manual
+  const handleOpenAdvancedModal = () => {
+    setAdjTanqueLitros(String(inventory.tanquePrincipalLitros ?? 0));
+    setAdjTanqueCapacidadeMaxima(String(inventory.tanqueCapacidadeMaxima ?? 1000));
+    setAdjAlertaMinimoTanque(String(inventory.alertaMinimoTanque ?? 200));
+    setAdjGaloesPierQuantidade(String(inventory.galoesPierQuantidade ?? 0));
+    setAdjGaloesCapacidadeLitros(String(inventory.galoesCapacidadeLitros ?? 20));
+    setAdjGalaoParcialLitros(String(inventory.galaoParcialLitros ?? 0));
+    setAdjMotivo('Aferição física e ajuste manual de estoque');
+    setAdvancedModalOpen(true);
+  };
+
+  const handleSaveAdvancedAdjustment = (e: React.FormEvent) => {
+    e.preventDefault();
+    const novoTanque = Math.max(0, Number(adjTanqueLitros || 0));
+    const novaCapTanque = Math.max(100, Number(adjTanqueCapacidadeMaxima || 1000));
+    const novoAlerta = Math.max(0, Number(adjAlertaMinimoTanque || 200));
+    const novosGaloes = Math.max(0, Number(adjGaloesPierQuantidade || 0));
+    const novaCapGalao = Math.max(1, Number(adjGaloesCapacidadeLitros || 20));
+    const novoParcial = Math.max(0, Math.min(novaCapGalao, Number(adjGalaoParcialLitros || 0)));
+
+    const currentTotal = getEstoqueTotalLitros(inventory);
+    const newTotal = novoTanque + (novosGaloes * novaCapGalao) + novoParcial;
+    const difTotal = newTotal - currentTotal;
+
+    setIsSubmitting(true);
+
+    setTimeout(() => {
+      const updatedInv: FuelInventory = {
+        tanquePrincipalLitros: novoTanque,
+        tanqueCapacidadeMaxima: novaCapTanque,
+        alertaMinimoTanque: novoAlerta,
+        galoesPierQuantidade: novosGaloes,
+        galoesCapacidadeLitros: novaCapGalao,
+        galaoParcialLitros: novoParcial,
+        ultimaAtualizacao: new Date().toLocaleDateString('pt-BR')
+      };
+
+      saveFuelInventory(updatedInv);
+
+      addFuelHistoryEntry({
+        tipo: 'ajuste_manual',
+        litros: Math.abs(difTotal),
+        galoes: novosGaloes,
+        diferencaLitros: difTotal,
+        operador: operadorNome || 'Gerente Marina',
+        detalhes: `Ajuste Gerencial (${adjMotivo || 'Aferição manual'}). Tanque: ${novoTanque}L, Píer: ${novosGaloes} galões (${novosGaloes * novaCapGalao + novoParcial}L) | Saldo: ${difTotal >= 0 ? '+' : ''}${difTotal}L`
+      });
+
+      refreshData();
+      setAdvancedModalOpen(false);
+      setIsSubmitting(false);
+
+      if (showToast) showToast('Estoque ajustado e sincronizado no banco de dados!', 'success');
+    }, 300);
+  };
+
   // Filtro
   const filteredHistory = history.filter(h => {
     const term = searchTerm.toLowerCase();
@@ -752,6 +828,16 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
             >
               <RefreshCw className="w-4 h-4 text-slate-600" />
               <span>Encher Galões</span>
+            </button>
+
+            {/* Botão Controle Avançado (Ajuste Manual pelo Gerente) */}
+            <button
+              onClick={handleOpenAdvancedModal}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer active:scale-98"
+              title="Ajuste manual e calibração de volumes de combustível"
+            >
+              <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+              <span>Controle Avançado</span>
             </button>
 
             {/* Botão Nova Compra */}
@@ -952,6 +1038,11 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                               <ShieldCheck className="w-3.5 h-3.5" />
                             </div>
                           )}
+                          {h.tipo === 'ajuste_manual' && (
+                            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                              <SlidersHorizontal className="w-3.5 h-3.5" />
+                            </div>
+                          )}
 
                           <div>
                             <span className="font-semibold text-slate-900 block text-xs">
@@ -960,6 +1051,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                               {h.tipo === 'transferencia_tanque_pier' && 'Enchimento de Galões'}
                               {h.tipo === 'abastecimento_embarcacao' && (h.barcoNome || 'Abastecimento Embarcação')}
                               {h.tipo === 'fechamento_turno' && 'Fechamento de Turno'}
+                              {h.tipo === 'ajuste_manual' && 'Ajuste Avançado (Gerente)'}
                             </span>
                           </div>
                         </div>
@@ -971,7 +1063,12 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                       </td>
 
                       <td className="p-3">
-                        {h.tipo.startsWith('compra') || h.tipo === 'transferencia_tanque_pier' ? (
+                        {h.tipo === 'ajuste_manual' ? (
+                          <span className={`font-semibold flex items-center gap-0.5 ${(h.diferencaLitros ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {(h.diferencaLitros ?? 0) >= 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+                            {(h.diferencaLitros ?? 0) >= 0 ? `+${h.diferencaLitros}` : `${h.diferencaLitros}`} L
+                          </span>
+                        ) : h.tipo.startsWith('compra') || h.tipo === 'transferencia_tanque_pier' ? (
                           <span className="font-semibold text-emerald-600 flex items-center gap-0.5">
                             <ArrowUpRight className="w-3.5 h-3.5" />
                             +{h.litros} L
@@ -992,7 +1089,11 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                       </td>
 
                       <td className="p-3">
-                        {h.diferencaLitros && h.diferencaLitros !== 0 ? (
+                        {h.tipo === 'ajuste_manual' ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            Ajustado
+                          </span>
+                        ) : h.diferencaLitros && h.diferencaLitros !== 0 ? (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                             Divergência ({h.diferencaLitros > 0 ? `+${h.diferencaLitros}` : h.diferencaLitros}L)
                           </span>
@@ -1292,6 +1393,288 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
           </div>
         </div>
       )}
+
+      {/* 4. Modal: Controle Avançado (Ajuste Manual pelo Gerente) */}
+      {advancedModalOpen && (() => {
+        const curTanque = Number(inventory.tanquePrincipalLitros ?? 0);
+        const curGaloes = Number(inventory.galoesPierQuantidade ?? 0);
+        const curCapGalao = Number(inventory.galoesCapacidadeLitros || 20);
+        const curParcial = Number(inventory.galaoParcialLitros ?? 0);
+        const curPierTotal = curGaloes * curCapGalao + curParcial;
+        const currentEstoqueTotal = curTanque + curPierTotal;
+
+        const newTanque = Math.max(0, Number(adjTanqueLitros || 0));
+        const newGaloes = Math.max(0, Number(adjGaloesPierQuantidade || 0));
+        const newCapGalao = Math.max(1, Number(adjGaloesCapacidadeLitros || 20));
+        const newParcial = Math.max(0, Math.min(newCapGalao, Number(adjGalaoParcialLitros || 0)));
+        const newPierTotal = newGaloes * newCapGalao + newParcial;
+        const newTotalEstoque = newTanque + newPierTotal;
+        const diffTotal = newTotalEstoque - currentEstoqueTotal;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl border border-slate-200 w-full max-w-2xl overflow-hidden shadow-2xl my-auto animate-in fade-in zoom-in-95 duration-200">
+              
+              {/* Modal Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500/20 border border-amber-400/30 rounded-2xl text-amber-400">
+                    <SlidersHorizontal className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-base text-white tracking-tight">Controle Avançado de Estoque</h3>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] font-extrabold uppercase tracking-wider">
+                        Gerencial
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 font-normal">
+                      Ajuste e calibração precisa das quantidades de combustível nos tanques e galões.
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setAdvancedModalOpen(false)} 
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveAdvancedAdjustment} className="p-5 sm:p-6 space-y-5">
+                
+                {/* Live Real-time Comparison Preview Box */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Estoque Atual</span>
+                    <p className="text-lg font-black text-slate-700 font-mono">
+                      {currentEstoqueTotal.toLocaleString('pt-BR')} <span className="text-xs font-semibold text-slate-400">L</span>
+                    </p>
+                    <span className="text-[10px] text-slate-500 block">
+                      Tanque: {curTanque}L | Píer: {curPierTotal}L
+                    </span>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">Novo Total Calculado</span>
+                    <p className="text-lg font-black text-blue-900 font-mono">
+                      {newTotalEstoque.toLocaleString('pt-BR')} <span className="text-xs font-semibold text-blue-500">L</span>
+                    </p>
+                    <span className="text-[10px] text-blue-600/80 font-medium block">
+                      Tanque: {newTanque}L | Píer: {newPierTotal}L
+                    </span>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Impacto do Ajuste</span>
+                    <p className={`text-lg font-black font-mono flex items-center gap-1 ${
+                      diffTotal === 0 ? 'text-slate-600' : diffTotal > 0 ? 'text-emerald-600' : 'text-rose-600'
+                    }`}>
+                      {diffTotal > 0 ? `+${diffTotal}` : diffTotal} <span className="text-xs font-semibold">L</span>
+                    </p>
+                    <span className="text-[10px] text-slate-400 block font-medium">
+                      {diffTotal === 0 ? 'Sem alteração de saldo' : diffTotal > 0 ? 'Acréscimo de volume' : 'Redução de volume'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  
+                  {/* Seção 1: Tanque Principal */}
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-4 space-y-3.5 shadow-2xs">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
+                        <Droplets className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">Tanque Principal (Bulk)</h4>
+                        <p className="text-[10px] text-slate-400">Medição da régua ou sensor do reservatório</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                        <span>Volume Real Atual (Litros) *</span>
+                        <span className="text-[10px] text-slate-400 font-normal">Na régua / tanque</span>
+                      </label>
+                      <div className="relative">
+                        <input 
+                          type="number"
+                          required
+                          min="0"
+                          step="1"
+                          value={adjTanqueLitros}
+                          onChange={(e) => setAdjTanqueLitros(e.target.value)}
+                          className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white font-mono transition-all"
+                          placeholder="Ex: 800"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">L</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5 pt-1">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-600 block">Capacidade Tanque</label>
+                        <div className="relative">
+                          <input 
+                            type="number"
+                            min="100"
+                            step="100"
+                            value={adjTanqueCapacidadeMaxima}
+                            onChange={(e) => setAdjTanqueCapacidadeMaxima(e.target.value)}
+                            className="w-full pl-2.5 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 font-mono"
+                            placeholder="1000"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">L</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-600 block">Alerta Nível Mínimo</label>
+                        <div className="relative">
+                          <input 
+                            type="number"
+                            min="0"
+                            step="50"
+                            value={adjAlertaMinimoTanque}
+                            onChange={(e) => setAdjAlertaMinimoTanque(e.target.value)}
+                            className="w-full pl-2.5 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
+                            placeholder="200"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">L</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Seção 2: Galões no Píer */}
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-4 space-y-3.5 shadow-2xs">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
+                        <Package className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">Galões no Píer (Disponíveis)</h4>
+                        <p className="text-[10px] text-slate-400">Contagem de galões cheios e abertos</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                        <span>Galões Cheios (Qtd) *</span>
+                        <span className="text-[10px] text-slate-400 font-normal">({newGaloes * newCapGalao} Litros)</span>
+                      </label>
+                      <div className="relative">
+                        <input 
+                          type="number"
+                          required
+                          min="0"
+                          step="1"
+                          value={adjGaloesPierQuantidade}
+                          onChange={(e) => setAdjGaloesPierQuantidade(e.target.value)}
+                          className="w-full pl-3 pr-14 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white font-mono transition-all"
+                          placeholder="Ex: 9"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">galões</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5 pt-1">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-600 block">Galão Aberto / Parcial</label>
+                        <div className="relative">
+                          <input 
+                            type="number"
+                            min="0"
+                            max={newCapGalao}
+                            step="1"
+                            value={adjGalaoParcialLitros}
+                            onChange={(e) => setAdjGalaoParcialLitros(e.target.value)}
+                            className="w-full pl-2.5 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                            placeholder="0"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">L</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-600 block">Capacidade do Galão</label>
+                        <div className="relative">
+                          <input 
+                            type="number"
+                            min="5"
+                            step="1"
+                            value={adjGaloesCapacidadeLitros}
+                            onChange={(e) => setAdjGaloesCapacidadeLitros(e.target.value)}
+                            className="w-full pl-2.5 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                            placeholder="20"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">L</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Justificativa e Auditoria */}
+                <div className="space-y-1.5 bg-slate-50 border border-slate-200/90 rounded-2xl p-4">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Motivo / Justificativa do Ajuste *</span>
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    value={adjMotivo}
+                    onChange={(e) => setAdjMotivo(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    placeholder="Ex: Aferição física com régua no tanque principal e contagem de galões no píer."
+                  />
+                  <span className="text-[10px] text-slate-400 block pt-0.5">
+                    ℹ️ Esta alteração ficará registrada permanentemente no histórico de auditoria do banco de dados MySQL com a sua identificação ({operadorNome || 'Gerente Marina'}).
+                  </span>
+                </div>
+
+                {/* Modal Footer Actions */}
+                <div className="pt-2 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
+                  <span className="text-[11px] text-slate-400 font-medium text-center sm:text-left">
+                    Gravação direta no banco MySQL
+                  </span>
+
+                  <div className="flex items-center gap-2.5 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setAdvancedModalOpen(false)}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || adjTanqueLitros === '' || adjGaloesPierQuantidade === '' || !adjMotivo}
+                      className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-98"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Gravando no Banco...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Salvar e Sincronizar Estoque</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

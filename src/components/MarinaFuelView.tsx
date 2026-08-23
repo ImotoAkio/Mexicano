@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2, Banknote, QrCode } from 'lucide-react';
+import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2, Banknote, QrCode, Zap } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
 import { logAction } from '../db';
@@ -44,6 +44,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
   // New Fuel Modal state
   const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
+  const [saleMode, setSaleMode] = useState<'avulso' | 'embarcacao'>('avulso');
+  const [avulsoIdentificacao, setAvulsoIdentificacao] = useState('');
   const [selectedBoatId, setSelectedBoatId] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [liters, setLiters] = useState('');
@@ -279,8 +281,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
   const fuelTransactions = allTransactions.filter(t => {
     // Boat filter
-    if (boatFilter !== 'all' && t.embarcacaoId !== boatFilter) {
-      return false;
+    if (boatFilter !== 'all') {
+      if (boatFilter === 'avulso') {
+        const isAvulsoItem = t.isAvulso || !t.embarcacaoId || (t.descricao && t.descricao.toLowerCase().includes('avulso'));
+        if (!isAvulsoItem) return false;
+      } else if (t.embarcacaoId !== boatFilter) {
+        return false;
+      }
     }
 
     // Client filter
@@ -316,10 +323,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     if (term) {
       const boat = getEmbarcacao(t.embarcacaoId);
       const client = getCliente(t.clienteId);
+      const isAvulsoItem = t.isAvulso || !t.embarcacaoId || (t.descricao && t.descricao.toLowerCase().includes('avulso'));
       const matchesSearch = (
         boat?.nome?.toLowerCase().includes(term) ||
         client?.nome?.toLowerCase().includes(term) ||
         t.descricao?.toLowerCase().includes(term) ||
+        t.identificacaoAvulso?.toLowerCase().includes(term) ||
+        (isAvulsoItem && 'avulso'.includes(term)) ||
         t.id?.toLowerCase().includes(term)
       );
       if (!matchesSearch) return false;
@@ -350,7 +360,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   let totalPendingValue = 0;
   let totalDinheiro = 0;
   let totalPix = 0;
-  let totalCartao = 0;
+  let totalCredito = 0;
+  let totalDebito = 0;
   let totalAdmin = 0;
 
   fuelTransactions.forEach(t => {
@@ -365,8 +376,12 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         totalDinheiro += valor;
       } else if (pm === 'admin' || desc.includes('faturado') || desc.includes('administradora')) {
         totalAdmin += valor;
-      } else if (pm === 'credit' || pm === 'debit' || desc.includes('crédito') || desc.includes('débito') || desc.includes('cartão')) {
-        totalCartao += valor;
+      } else if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
+        totalCredito += valor;
+      } else if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
+        totalDebito += valor;
+      } else if (desc.includes('cartão') || desc.includes('cartao') || desc.includes('maquininha')) {
+        totalDebito += valor;
       } else {
         totalPix += valor;
       }
@@ -421,9 +436,17 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
   const handleSaveFuelTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBoatId || !liters) {
-      alert('Selecione uma embarcação e informe os litros.');
-      return;
+    
+    if (saleMode === 'embarcacao') {
+      if (!selectedBoatId || !liters) {
+        alert('Selecione uma embarcação e informe os litros.');
+        return;
+      }
+    } else {
+      if (!liters || parseFloat(liters.replace(',', '.')) <= 0) {
+        alert('Informe a quantidade de litros abastecidos.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -446,22 +469,30 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     }
     const valorTotal = litrosNum * precoPorLitro;
 
-    const boat = getEmbarcacao(selectedBoatId);
-    const clientId = selectedClientId || boat?.donos?.[0] || '';
+    const isAvulso = saleMode === 'avulso';
+    const boat = isAvulso ? null : getEmbarcacao(selectedBoatId);
+    const clientId = isAvulso ? '' : (selectedClientId || boat?.donos?.[0] || '');
+    const identificacao = avulsoIdentificacao.trim() || 'Visitante Externo';
+
+    const descricao = isAvulso
+      ? `Abastecimento Avulso (${identificacao}): ${litrosNum}L a R$${precoPorLitro.toFixed(2)}/L (${paymentLabel})`
+      : `Abastecimento Marina (${paymentLabel}): ${litrosNum}L`;
 
     const newTransacao = {
       id: `trans_${Date.now()}`,
       tipo: 'receita',
       categoria: 'receita_combustivel',
-      descricao: `Abastecimento Marina (${paymentLabel}): ${litrosNum}L`,
+      descricao,
       valor: valorTotal,
-      status: paymentType === 'admin' ? 'pendente' : 'pago',
+      status: (paymentType === 'admin' && !isAvulso) ? 'pendente' : 'pago',
       metodoPagamento: paymentType,
       data: getTodayStr(),
       dataVencimento: getTodayStr(),
-      dataPagamento: paymentType === 'admin' ? null : getTodayStr(),
+      dataPagamento: (paymentType === 'admin' && !isAvulso) ? null : getTodayStr(),
       clienteId: clientId,
-      embarcacaoId: selectedBoatId,
+      embarcacaoId: isAvulso ? '' : selectedBoatId,
+      isAvulso,
+      identificacaoAvulso: isAvulso ? identificacao : undefined,
       comprovanteUrl,
       operadorMarina: operadorNome || 'Operador',
       createdAt: new Date().toISOString()
@@ -478,7 +509,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       });
       
       const { consumeFuelForEmbarcacao } = await import('../utils/fuelInventory');
-      consumeFuelForEmbarcacao(litrosNum, boat?.nome || 'Embarcação', operadorNome || 'Gerente');
+      consumeFuelForEmbarcacao(
+        litrosNum, 
+        isAvulso ? `Avulso (${identificacao})` : (boat?.nome || 'Embarcação'), 
+        operadorNome || 'Gerente'
+      );
 
       if (setData) {
         setData((prev: any) => ({
@@ -487,9 +522,15 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         }));
       }
 
-      await logAction('Abastecimento Avulso', `Registrou abastecimento de ${litrosNum}L (R$ ${valorTotal}).`, selectedBoatId, operadorNome);
+      await logAction(
+        isAvulso ? 'Abastecimento Avulso' : 'Abastecimento Marina', 
+        `Registrou abastecimento ${isAvulso ? `avulso (${identificacao})` : `de ${boat?.nome || 'Embarcação'}`} de ${litrosNum}L via ${paymentLabel} (R$ ${valorTotal.toFixed(2)}).`, 
+        selectedBoatId || '', 
+        operadorNome
+      );
       setIsFuelModalOpen(false);
       alert('Abastecimento registrado com sucesso!');
+      if (reloadData) reloadData();
     } catch (err) {
       alert('Erro ao salvar abastecimento.');
     } finally {
@@ -854,8 +895,10 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
   const handleSaveEditItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingItem || !editBoatId || !editLiters) {
-      alert('Informe a embarcação e a quantidade de litros.');
+    const isAvulsoItem = editingItem?.isAvulso || !editingItem?.embarcacaoId || (editingItem?.descricao && editingItem.descricao.toLowerCase().includes('avulso'));
+
+    if (!editingItem || (!editBoatId && !isAvulsoItem) || !editLiters) {
+      alert(isAvulsoItem ? 'Informe a quantidade de litros.' : 'Informe a embarcação e a quantidade de litros.');
       return;
     }
 
@@ -878,23 +921,29 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     }
 
     const valorTotal = litrosNum * pricePerLiter;
-    const boat = getEmbarcacao(editBoatId);
-    const boatName = getBoatCode(boat);
+    const boat = isAvulsoItem ? null : getEmbarcacao(editBoatId);
+    const boatName = isAvulsoItem ? 'Venda Avulsa' : getBoatCode(boat);
+
+    const descricao = isAvulsoItem
+      ? `Abastecimento Avulso (${editingItem.identificacaoAvulso || 'Visitante Externo'}): ${litrosNum}L a R$${pricePerLiter.toFixed(2)}/L (${paymentLabel})`
+      : `Abastecimento Marina (${paymentLabel}): ${litrosNum}L a R$${pricePerLiter.toFixed(2)}/L`;
 
     const updatedTrans = {
+      ...editingItem,
       id: editingItem.isFromReservation ? `trx_fuel_${Date.now()}` : editingItem.id,
       reservaId: editingItem.reservaId || editingItem.reservationRef?.id || null,
       tipo: 'receita',
-      categoria: 'Combustível',
+      categoria: 'receita_combustivel',
       valor: valorTotal,
       data: editDate,
       dataVencimento: editDate,
       dataPagamento: editStatus === 'pago' ? editDate : null,
       status: editStatus,
       metodoPagamento: editPaymentType,
-      descricao: `Abastecimento Marina (${paymentLabel}): ${litrosNum}L a R$${pricePerLiter.toFixed(2)}/L`,
-      clienteId: editClientId || boat?.donos?.[0] || '',
-      embarcacaoId: editBoatId,
+      descricao,
+      clienteId: isAvulsoItem ? '' : (editClientId || boat?.donos?.[0] || ''),
+      embarcacaoId: isAvulsoItem ? '' : editBoatId,
+      isAvulso: isAvulsoItem,
       operador: editingItem.operador || operadorNome || 'Gerente',
       comprovanteUrl: editingItem.comprovanteUrl || null,
       createdAt: editingItem.createdAt || new Date().toISOString()
@@ -954,10 +1003,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     let totalLiters = 0;
     let totalRevenue = 0;
     let totalPixValue = 0;
+    let totalDinheiroValue = 0;
     let totalCreditValue = 0;
+    let totalDebitValue = 0;
     let totalAdminValue = 0;
     let totalPixLiters = 0;
+    let totalDinheiroLiters = 0;
     let totalCreditLiters = 0;
+    let totalDebitLiters = 0;
     let totalAdminLiters = 0;
 
     const boatMap: Record<string, { name: string; liters: number; value: number; count: number }> = {};
@@ -970,13 +1023,20 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       totalLiters += litersVal;
       totalRevenue += val;
 
-      const pm = t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || 'pix';
-      if (pm === 'credit') {
-        totalCreditValue += val;
-        totalCreditLiters += litersVal;
-      } else if (pm === 'admin') {
+      const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
+      const desc = (t.descricao || '').toLowerCase();
+      if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
+        totalDinheiroValue += val;
+        totalDinheiroLiters += litersVal;
+      } else if (pm === 'admin' || desc.includes('faturado') || desc.includes('administradora')) {
         totalAdminValue += val;
         totalAdminLiters += litersVal;
+      } else if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
+        totalCreditValue += val;
+        totalCreditLiters += litersVal;
+      } else if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
+        totalDebitValue += val;
+        totalDebitLiters += litersVal;
       } else {
         totalPixValue += val;
         totalPixLiters += litersVal;
@@ -1269,7 +1329,17 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             
             <div class="bar-item">
               <div class="bar-label">
-                <span>Pix / Dinheiro (R$ 9,00/L)</span>
+                <span>Caixa Físico / Dinheiro (R$ 9,00/L)</span>
+                <span>${totalDinheiroValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalDinheiroValue / totalRevenue) * 100) : 0}%)</span>
+              </div>
+              <div class="bar-bg">
+                <div class="bar-fill bg-pix" style="width: ${totalRevenue > 0 ? (totalDinheiroValue / totalRevenue) * 100 : 0}%"></div>
+              </div>
+            </div>
+
+            <div class="bar-item">
+              <div class="bar-label">
+                <span>PIX Digital (R$ 9,00/L)</span>
                 <span>${totalPixValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalPixValue / totalRevenue) * 100) : 0}%)</span>
               </div>
               <div class="bar-bg">
@@ -1284,6 +1354,16 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               </div>
               <div class="bar-bg">
                 <div class="bar-fill bg-credit" style="width: ${totalRevenue > 0 ? (totalCreditValue / totalRevenue) * 100 : 0}%"></div>
+              </div>
+            </div>
+
+            <div class="bar-item">
+              <div class="bar-label">
+                <span>Cartão de Débito (R$ 9,00/L)</span>
+                <span>${totalDebitValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalDebitValue / totalRevenue) * 100) : 0}%)</span>
+              </div>
+              <div class="bar-bg">
+                <div class="bar-fill bg-credit" style="width: ${totalRevenue > 0 ? (totalDebitValue / totalRevenue) * 100 : 0}%"></div>
               </div>
             </div>
 
@@ -1338,6 +1418,19 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
               const isFaturado = (t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoFormaPagamento === 'admin');
               const isPago = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado';
+              const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
+              const desc = (t.descricao || '').toLowerCase();
+              
+              let pmLabel = 'PIX';
+              if (isFaturado || pm === 'admin' || desc.includes('faturado') || desc.includes('admin')) {
+                pmLabel = 'Enviar p/ Administradora';
+              } else if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
+                pmLabel = 'Dinheiro (Caixa)';
+              } else if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
+                pmLabel = 'Cartão Crédito';
+              } else if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
+                pmLabel = 'Cartão Débito';
+              }
 
               return `
                 <tr>
@@ -1347,7 +1440,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   <td>${client?.nome || 'N/A'}</td>
                   <td style="font-weight:bold;">${litersVal.toFixed(1)} L</td>
                   <td style="font-weight:bold;">${Number(t.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                  <td>${isFaturado ? 'Enviar p/ Administradora' : t.metodoPagamento === 'credit' ? 'Cartão Crédito' : 'Pix / Dinheiro'}</td>
+                  <td>${pmLabel}</td>
                   <td><span class="badge ${isPago ? 'badge-pago' : 'badge-pendente'}">${isPago ? 'Concluído' : 'Pendente'}</span></td>
                 </tr>
               `;
@@ -1397,12 +1490,12 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Period Selector Button */}
             <div className="relative">
               <button
                 onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-                className={`px-3.5 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs ${
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs ${
                   isFilterPanelOpen || activeFilterCount > 0
                     ? 'bg-blue-50 border-blue-200 text-blue-700'
                     : 'bg-slate-50 border-slate-200/90 text-slate-700 hover:bg-slate-100'
@@ -1416,25 +1509,46 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
             <button
               onClick={() => handleExportSelected()}
-              className="px-4 py-2.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
             >
               <Download className="w-4 h-4 text-slate-500" />
               <span>Exportar</span>
             </button>
 
+            {/* Botão 1: Abastecimento Avulso (Externo) */}
             <button
               onClick={() => {
-                setIsFuelModalOpen(true);
+                setSaleMode('avulso');
                 setSelectedBoatId('');
                 setSelectedClientId('');
+                setAvulsoIdentificacao('');
                 setLiters('');
                 setComprovanteUrl(null);
                 setPaymentType('pix');
+                setIsFuelModalOpen(true);
               }}
-              className="px-4 py-2.5 bg-[#2563EB] hover:bg-[#1d4ed8] text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+            >
+              <Zap className="w-4 h-4 text-emerald-100" />
+              <span>+ Abastecimento Avulso</span>
+            </button>
+
+            {/* Botão 2: Lançar Embarcação Cadastrada */}
+            <button
+              onClick={() => {
+                setSaleMode('embarcacao');
+                setSelectedBoatId('');
+                setSelectedClientId('');
+                setAvulsoIdentificacao('');
+                setLiters('');
+                setComprovanteUrl(null);
+                setPaymentType('pix');
+                setIsFuelModalOpen(true);
+              }}
+              className="px-4 py-2.5 bg-[#2563EB] hover:bg-[#1d4ed8] active:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              <span>Venda Rápida</span>
+              <span>Lançar Embarcação</span>
             </button>
           </div>
         </div>
@@ -1514,7 +1628,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
         </div>
 
-        {/* Caixa Físico vs PIX vs Cartões vs Administradora Breakdown */}
+        {/* Caixa Físico vs PIX vs Cartão Crédito vs Cartão Débito vs Administradora Breakdown */}
         <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2.5">
@@ -1523,7 +1637,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               </div>
               <div>
                 <h3 className="font-bold text-sm text-slate-800 tracking-tight">Conferência & Fechamento de Caixa da Marina</h3>
-                <p className="text-[11px] text-slate-500">Separação de dinheiro físico em espécie vs transações bancárias / faturadas</p>
+                <p className="text-[11px] text-slate-500">Separação de dinheiro físico em espécie vs transações bancárias / maquininha / faturadas</p>
               </div>
             </div>
             <div className="text-right">
@@ -1534,60 +1648,74 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5">
             {/* 1. Dinheiro em Espécie (Caixa da Marina) */}
-            <div className="bg-emerald-50/50 border border-emerald-200/60 rounded-xl p-3 space-y-1">
+            <div className="bg-emerald-50/50 hover:bg-emerald-50/80 border border-emerald-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1">
-                <Banknote className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Caixa Físico (Dinheiro)</span>
+                <Banknote className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">Caixa Físico</span>
               </span>
-              <p className="text-lg sm:text-xl font-black text-emerald-900 font-mono">
+              <p className="text-base sm:text-lg font-black text-emerald-900 font-mono tracking-tight">
                 {totalDinheiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
-              <p className="text-[10px] text-emerald-600/80 font-medium">
-                💵 Cédulas na gaveta do caixa
+              <p className="text-[10px] text-emerald-600/80 font-medium truncate">
+                💵 Cédulas no caixa
               </p>
             </div>
 
             {/* 2. PIX (Conta Bancária) */}
-            <div className="bg-cyan-50/50 border border-cyan-200/60 rounded-xl p-3 space-y-1">
+            <div className="bg-cyan-50/50 hover:bg-cyan-50/80 border border-cyan-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
               <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 flex items-center gap-1">
-                <QrCode className="w-3.5 h-3.5 text-cyan-600" />
-                <span>PIX (Conta Bancária)</span>
+                <QrCode className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+                <span className="truncate">PIX (Digital)</span>
               </span>
-              <p className="text-lg sm:text-xl font-black text-cyan-900 font-mono">
+              <p className="text-base sm:text-lg font-black text-cyan-900 font-mono tracking-tight">
                 {totalPix.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
-              <p className="text-[10px] text-cyan-600/80 font-medium">
-                📱 Transferência / QR Code
+              <p className="text-[10px] text-cyan-600/80 font-medium truncate">
+                📱 Transferência / QR
               </p>
             </div>
 
-            {/* 3. Cartões (Crédito & Débito) */}
-            <div className="bg-blue-50/50 border border-blue-200/60 rounded-xl p-3 space-y-1">
+            {/* 3. Cartão de Crédito */}
+            <div className="bg-indigo-50/50 hover:bg-indigo-50/80 border border-indigo-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1">
+                <CreditCard className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span className="truncate">Cartão Crédito</span>
+              </span>
+              <p className="text-base sm:text-lg font-black text-indigo-900 font-mono tracking-tight">
+                {totalCredito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </p>
+              <p className="text-[10px] text-indigo-600/80 font-medium truncate">
+                💳 Maquininha (Crédito)
+              </p>
+            </div>
+
+            {/* 4. Cartão de Débito */}
+            <div className="bg-blue-50/50 hover:bg-blue-50/80 border border-blue-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
               <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 flex items-center gap-1">
-                <CreditCard className="w-3.5 h-3.5 text-blue-600" />
-                <span>Cartões (Maquininha)</span>
+                <CreditCard className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="truncate">Cartão Débito</span>
               </span>
-              <p className="text-lg sm:text-xl font-black text-blue-900 font-mono">
-                {totalCartao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              <p className="text-base sm:text-lg font-black text-blue-900 font-mono tracking-tight">
+                {totalDebito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
-              <p className="text-[10px] text-blue-600/80 font-medium">
-                💳 Maquininha no píer
+              <p className="text-[10px] text-blue-600/80 font-medium truncate">
+                💳 Maquininha (Débito)
               </p>
             </div>
 
-            {/* 4. Administradora (Faturado Pós-pago) */}
-            <div className="bg-purple-50/50 border border-purple-200/60 rounded-xl p-3 space-y-1">
+            {/* 5. Administradora (Faturado Pós-pago) */}
+            <div className="bg-purple-50/50 hover:bg-purple-50/80 border border-purple-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
               <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5 text-purple-600" />
-                <span>Administradora (Faturado)</span>
+                <Building2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                <span className="truncate">Administradora</span>
               </span>
-              <p className="text-lg sm:text-xl font-black text-purple-900 font-mono">
+              <p className="text-base sm:text-lg font-black text-purple-900 font-mono tracking-tight">
                 {totalAdmin.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
-              <p className="text-[10px] text-purple-600/80 font-medium">
-                🏢 Faturamento pós-pago
+              <p className="text-[10px] text-purple-600/80 font-medium truncate">
+                🏢 Faturado pós-pago
               </p>
             </div>
           </div>
@@ -1707,6 +1835,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   <SearchableSelect
                     options={[
                       { value: 'all', label: 'Todas as Embarcações' },
+                      { value: 'avulso', label: '⚡ Apenas Vendas Avulsas / Externas' },
                       ...(data?.boats || []).map((boat) => ({
                         value: boat.id,
                         label: getBoatCode(boat),
@@ -1812,7 +1941,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
               {boatFilter !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">
-                  <span>Barco: {getEmbarcacao(boatFilter)?.nome || boatFilter}</span>
+                  <span>Barco: {boatFilter === 'avulso' ? '⚡ Vendas Avulsas' : (getEmbarcacao(boatFilter)?.nome || boatFilter)}</span>
                   <button onClick={() => setBoatFilter('all')} className="hover:text-indigo-900 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
@@ -1830,7 +1959,16 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
               {paymentFilter !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold">
-                  <span>Pagamento: {paymentFilter === 'pix' ? 'Pix/Dinheiro' : paymentFilter === 'credit' ? 'Cartão Crédito' : 'Admin'}</span>
+                  <span>
+                    Pagamento: {
+                      paymentFilter === 'dinheiro' ? 'Caixa Físico' :
+                      paymentFilter === 'pix' ? 'PIX' :
+                      paymentFilter === 'credit' ? 'Cartão Crédito' :
+                      paymentFilter === 'debit' ? 'Cartão Débito' :
+                      paymentFilter === 'admin' ? 'Administradora' :
+                      paymentFilter
+                    }
+                  </span>
                   <button onClick={() => setPaymentFilter('all')} className="hover:text-amber-900 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
@@ -1880,6 +2018,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   const boat = getEmbarcacao(t.embarcacaoId);
                   const client = getCliente(t.clienteId);
                   const isSelected = selectedIds.includes(t.id);
+                  const isAvulsoItem = t.isAvulso || !t.embarcacaoId || (t.descricao && t.descricao.toLowerCase().includes('avulso'));
+                  const avulsoDetail = t.identificacaoAvulso || (t.descricao?.includes('Avulso (') ? t.descricao.split('Avulso (')[1]?.split(')')[0] : 'Visitante Externo');
                   
                   const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
                   const litersVal = match ? parseFloat(match[1].replace(',', '.')) : 0;
@@ -1888,7 +2028,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
                   return (
                     <div 
-                      key={t.id}
+                      key={t.id} 
                       className={`p-3.5 sm:p-4 transition-colors space-y-2.5 ${isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}
                     >
                       {/* Top Row: Checkbox, Boat Name, Status Pill */}
@@ -1900,12 +2040,18 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                             onChange={() => toggleSelectOne(t.id)}
                             className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer shrink-0"
                           />
-                          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-100">
-                            <Droplets className="w-4 h-4" />
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 border ${
+                            isAvulsoItem ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-blue-50 text-blue-600 border-blue-100'
+                          }`}>
+                            {isAvulsoItem ? <Zap className="w-4 h-4 text-emerald-600" /> : <Droplets className="w-4 h-4 text-blue-600" />}
                           </div>
                           <div className="min-w-0">
-                            <span className="font-bold text-slate-900 text-sm truncate block leading-tight">{boat ? getBoatCode(boat) : 'Venda Avulsa'}</span>
-                            <span className="text-[10px] text-slate-400 font-mono block">#{t.id.substring(t.id.length - 8)}</span>
+                            <span className="font-bold text-slate-900 text-sm truncate block leading-tight">
+                              {isAvulsoItem ? '⚡ Abastecimento Avulso' : (boat ? getBoatCode(boat) : 'Venda Avulsa')}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              {isAvulsoItem ? (avulsoDetail || 'Visitante Externo') : `#${t.id.substring(t.id.length - 8)}`}
+                            </span>
                           </div>
                         </div>
 
@@ -1933,8 +2079,10 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                         </div>
 
                         <div>
-                          <span className="text-[10px] text-slate-400 font-medium block uppercase tracking-wider">Cotista / Data</span>
-                          <span className="font-bold text-slate-800 truncate block">{client?.nome || 'N/A'}</span>
+                          <span className="text-[10px] text-slate-400 font-medium block uppercase tracking-wider">Cliente / Data</span>
+                          <span className="font-bold text-slate-800 truncate block">
+                            {isAvulsoItem ? 'Cliente Avulso (Externo)' : (client?.nome || 'N/A')}
+                          </span>
                           <span className="text-[10px] text-slate-500 font-mono block">{t.data}</span>
                         </div>
                       </div>
@@ -2055,6 +2203,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     const boat = getEmbarcacao(t.embarcacaoId);
                     const client = getCliente(t.clienteId);
                     const isSelected = selectedIds.includes(t.id);
+                    const isAvulsoItem = t.isAvulso || !t.embarcacaoId || (t.descricao && t.descricao.toLowerCase().includes('avulso'));
+                    const avulsoDetail = t.identificacaoAvulso || (t.descricao?.includes('Avulso (') ? t.descricao.split('Avulso (')[1]?.split(')')[0] : 'Visitante Externo');
                     
                     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
                     const litersVal = match ? parseFloat(match[1].replace(',', '.')) : 0;
@@ -2077,12 +2227,25 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
                         <td className="p-3.5">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-100/80">
-                              <Droplets className="w-4 h-4" />
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border ${
+                              isAvulsoItem ? 'bg-emerald-50 text-emerald-600 border-emerald-200/80' : 'bg-blue-50 text-blue-600 border-blue-100/80'
+                            }`}>
+                              {isAvulsoItem ? <Zap className="w-4 h-4 text-emerald-600" /> : <Droplets className="w-4 h-4" />}
                             </div>
                             <div>
-                              <span className="font-bold text-slate-900 block text-sm">{boat ? getBoatCode(boat) : 'Venda Avulsa'}</span>
-                              <span className="text-[11px] text-slate-400 font-mono block">#{t.id.substring(t.id.length - 8)}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-slate-900 block text-sm">
+                                  {isAvulsoItem ? 'Abastecimento Avulso' : (boat ? getBoatCode(boat) : 'Venda Avulsa')}
+                                </span>
+                                {isAvulsoItem && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800">
+                                    ⚡ Avulso
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-400 font-medium block">
+                                {isAvulsoItem ? (avulsoDetail || 'Visitante Externo') : `#${t.id.substring(t.id.length - 8)}`}
+                              </span>
                             </div>
                           </div>
                         </td>
@@ -2095,10 +2258,12 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                         </td>
 
                         <td className="p-3.5">
-                          <span className="font-semibold text-slate-800 block">{client?.nome || 'N/A'}</span>
+                          <span className="font-semibold text-slate-800 block">
+                            {isAvulsoItem ? 'Cliente Avulso (Externo)' : (client?.nome || 'N/A')}
+                          </span>
                           <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
                             <UserIcon className="w-3 h-3 text-slate-400" />
-                            <span>Lançado por: <strong className="text-slate-600 font-semibold">{t.operador || 'Marinheiro'}</strong></span>
+                            <span>Lançado por: <strong className="text-slate-600 font-semibold">{t.operador || t.operadorMarina || 'Gerente'}</strong></span>
                           </span>
                         </td>
 
@@ -2272,70 +2437,145 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
             <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto my-2 shrink-0 sm:hidden"></div>
-            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            
+            {/* Modal Header */}
+            <div className={`p-4 sm:p-5 border-b flex items-center justify-between ${
+              saleMode === 'avulso' ? 'bg-emerald-50/50 border-emerald-100' : 'bg-slate-50/50 border-slate-100'
+            }`}>
               <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
-                <Droplets className="w-5 h-5 text-[#2563EB]" />
-                <span>Nova Venda / Abastecimento</span>
+                {saleMode === 'avulso' ? (
+                  <>
+                    <Zap className="w-5 h-5 text-emerald-600" />
+                    <span>Abastecimento Avulso</span>
+                  </>
+                ) : (
+                  <>
+                    <Droplets className="w-5 h-5 text-[#2563EB]" />
+                    <span>Lançar Abastecimento</span>
+                  </>
+                )}
               </h3>
-              <button onClick={() => setIsFuelModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full shadow-xs">
+              <button onClick={() => setIsFuelModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full shadow-xs cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveFuelTransaction} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 subtle-scrollbar">
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
-                <SearchableSelect
-                  options={[
-                    { value: '', label: 'Selecione o barco...' },
-                    ...(data?.boats || []).map((b) => ({
-                      value: b.id,
-                      label: b.nome,
-                      sublabel: b.vaga ? `Vaga: ${b.vaga}` : 'Sem Vaga',
-                    })),
-                  ]}
-                  value={selectedBoatId}
-                  onChange={(boatId) => {
-                    setSelectedBoatId(boatId);
-                    const b = getEmbarcacao(boatId);
-                    if (b?.donos?.[0]) {
-                      setSelectedClientId(b.donos[0]);
-                    } else {
-                      setSelectedClientId('');
-                    }
+              
+              {/* Mode Switcher Tabs */}
+              <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl text-xs font-bold gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaleMode('avulso');
+                    if (paymentType === 'admin') setPaymentType('pix');
                   }}
-                  placeholder="Selecione o barco..."
-                  searchPlaceholder="Pesquisar barco..."
-                />
+                  className={`py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    saleMode === 'avulso'
+                      ? 'bg-emerald-600 text-white shadow-xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Zap className="w-4 h-4" />
+                  <span>⚡ Venda Avulsa (Externo)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSaleMode('embarcacao')}
+                  className={`py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    saleMode === 'embarcacao'
+                      ? 'bg-[#2563EB] text-white shadow-xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Ship className="w-4 h-4" />
+                  <span>⛵ Embarcação Marina</span>
+                </button>
               </div>
 
-              {/* Seleção do Cotista / Cliente */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 text-xs">Cotista / Cliente *</label>
-                <SearchableSelect
-                  disabled={!selectedBoatId}
-                  options={[
-                    { value: '', label: !selectedBoatId ? 'Selecione a embarcação primeiro...' : 'Selecione o cotista...' },
-                    ...((data?.clients || []).filter((c) => {
-                      const selectedBoat = getEmbarcacao(selectedBoatId);
-                      if (!selectedBoat) return true;
-                      if (selectedBoat.donos && Array.isArray(selectedBoat.donos) && selectedBoat.donos.length > 0) {
-                        return selectedBoat.donos.includes(c.id);
-                      }
-                      return true;
-                    })).map((c) => ({
-                      value: c.id,
-                      label: c.nome,
-                      sublabel: c.cota ? `Cota ${c.cota}` : c.cpf ? `CPF: ${c.cpf}` : undefined,
-                    })),
-                  ]}
-                  value={selectedClientId}
-                  onChange={(val) => setSelectedClientId(val)}
-                  placeholder={!selectedBoatId ? 'Selecione a embarcação primeiro...' : 'Selecione o cotista...'}
-                  searchPlaceholder="Pesquisar cotista/cliente..."
-                />
-              </div>
+              {/* Mode: AVULSO */}
+              {saleMode === 'avulso' ? (
+                <>
+                  <div className="p-3 bg-emerald-50 border border-emerald-200/80 rounded-2xl text-xs text-emerald-950 flex items-start gap-2.5">
+                    <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-black text-emerald-950">Cliente Externo / Jet sem Cadastro</strong>
+                      Dispensado cadastro de cotista ou barco. O pagamento é realizado e recebido à vista no ato.
+                    </div>
+                  </div>
 
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 text-xs flex items-center justify-between">
+                      <span>Identificação do Jet / Veículo (Opcional)</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Ex: Jet Sea-Doo Amarelo, Placa...</span>
+                    </label>
+                    <input 
+                      type="text"
+                      value={avulsoIdentificacao}
+                      onChange={(e) => setAvulsoIdentificacao(e.target.value)}
+                      placeholder="Ex: Jet Sea-Doo Spark / Visitante..."
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:ring-emerald-500 focus:bg-white transition-all"
+                    />
+                  </div>
+                </>
+              ) : (
+                /* Mode: EMBARCAÇÃO DA MARINA */
+                <>
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
+                    <SearchableSelect
+                      options={[
+                        { value: '', label: 'Selecione o barco...' },
+                        ...(data?.boats || []).map((b) => ({
+                          value: b.id,
+                          label: getBoatCode(b),
+                          sublabel: b.vaga ? `Vaga: ${b.vaga}` : 'Sem Vaga',
+                        })),
+                      ]}
+                      value={selectedBoatId}
+                      onChange={(boatId) => {
+                        setSelectedBoatId(boatId);
+                        const b = getEmbarcacao(boatId);
+                        if (b?.donos?.[0]) {
+                          setSelectedClientId(b.donos[0]);
+                        } else {
+                          setSelectedClientId('');
+                        }
+                      }}
+                      placeholder="Selecione o barco..."
+                      searchPlaceholder="Pesquisar barco..."
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 text-xs">Cotista / Cliente *</label>
+                    <SearchableSelect
+                      disabled={!selectedBoatId}
+                      options={[
+                        { value: '', label: !selectedBoatId ? 'Selecione a embarcação primeiro...' : 'Selecione o cotista...' },
+                        ...((data?.clients || []).filter((c) => {
+                          const selectedBoat = getEmbarcacao(selectedBoatId);
+                          if (!selectedBoat) return true;
+                          if (selectedBoat.donos && Array.isArray(selectedBoat.donos) && selectedBoat.donos.length > 0) {
+                            return selectedBoat.donos.includes(c.id);
+                          }
+                          return true;
+                        })).map((c) => ({
+                          value: c.id,
+                          label: c.nome,
+                          sublabel: c.cota ? `Cota ${c.cota}` : c.cpf ? `CPF: ${c.cpf}` : undefined,
+                        })),
+                      ]}
+                      value={selectedClientId}
+                      onChange={(val) => setSelectedClientId(val)}
+                      placeholder={!selectedBoatId ? 'Selecione a embarcação primeiro...' : 'Selecione o cotista...'}
+                      searchPlaceholder="Pesquisar cotista/cliente..."
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Litros Input */}
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 text-xs">Litros Abastecidos (L) *</label>
                 <input 
@@ -2344,102 +2584,137 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   pattern="[0-9]*[.,]?[0-9]*"
                   value={liters}
                   onChange={(e) => setLiters(e.target.value.replace(',', '.'))}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200/80 rounded-xl font-mono text-xl font-black text-slate-900 focus:ring-[#2563EB]"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200/80 rounded-xl font-mono text-xl font-black text-slate-900 focus:ring-blue-600 focus:bg-white"
                   placeholder="0.0"
                 />
               </div>
 
+              {/* Formas de Pagamento */}
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 text-xs block">Forma de Pagamento *</label>
                 <div className="grid grid-cols-1 gap-2">
+                  
+                  {/* Dinheiro */}
                   <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'dinheiro' ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="payment" value="dinheiro" checked={paymentType === 'dinheiro'} onChange={() => setPaymentType('dinheiro')} className="sr-only" />
-                    <div className="flex-1">
-                      <span className="font-bold text-sm text-emerald-950 flex items-center gap-1.5">
-                        <Banknote className="w-4 h-4 text-emerald-600" />
-                        <span>Dinheiro (Caixa Físico)</span>
-                      </span>
-                      <span className="block text-[11px] text-emerald-700 font-medium mt-0.5">R$ 9,00/L (Entrada física de cédulas no caixa da marina)</span>
+                    <div className="flex-1 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-sm text-emerald-950 flex items-center gap-1.5">
+                          <Banknote className="w-4 h-4 text-emerald-600" />
+                          <span>Dinheiro (Caixa Físico)</span>
+                        </span>
+                        <span className="block text-[11px] text-emerald-700 font-medium mt-0.5">R$ 9,00/L (Entrada física de cédulas na marina)</span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-emerald-800">R$ 9,00/L</span>
                     </div>
                   </label>
+
+                  {/* PIX */}
                   <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'pix' ? 'border-cyan-600 bg-cyan-50 ring-1 ring-cyan-600' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="payment" value="pix" checked={paymentType === 'pix'} onChange={() => setPaymentType('pix')} className="sr-only" />
-                    <div className="flex-1">
-                      <span className="font-bold text-sm text-cyan-950 flex items-center gap-1.5">
-                        <QrCode className="w-4 h-4 text-cyan-600" />
-                        <span>PIX (Conta Bancária)</span>
-                      </span>
-                      <span className="block text-[11px] text-cyan-700 font-medium mt-0.5">R$ 9,00/L (Transferência bancária / QR Code)</span>
+                    <div className="flex-1 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-sm text-cyan-950 flex items-center gap-1.5">
+                          <QrCode className="w-4 h-4 text-cyan-600" />
+                          <span>PIX (Conta Bancária)</span>
+                        </span>
+                        <span className="block text-[11px] text-cyan-700 font-medium mt-0.5">R$ 9,00/L (Transferência digital imediata)</span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-cyan-800">R$ 9,00/L</span>
                     </div>
                   </label>
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'credit' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
-                    <div className="flex-1">
-                      <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                        <CreditCard className="w-4 h-4 text-blue-600" />
-                        <span>Cartão de Crédito</span>
-                      </span>
-                      <span className="block text-[11px] text-slate-500 font-medium mt-0.5">R$ 10,00/L (Recebido na maquininha)</span>
-                    </div>
-                  </label>
+
+                  {/* Cartão de Débito */}
                   <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'debit' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="payment" value="debit" checked={paymentType === 'debit'} onChange={() => setPaymentType('debit')} className="sr-only" />
-                    <div className="flex-1">
-                      <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                        <CreditCard className="w-4 h-4 text-blue-600" />
-                        <span>Cartão de Débito</span>
-                      </span>
-                      <span className="block text-[11px] text-slate-500 font-medium mt-0.5">R$ 9,00/L (Recebido na maquininha)</span>
+                    <div className="flex-1 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                          <CreditCard className="w-4 h-4 text-blue-600" />
+                          <span>Cartão de Débito</span>
+                        </span>
+                        <span className="block text-[11px] text-slate-500 font-medium mt-0.5">R$ 9,00/L (Recebido na maquininha)</span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-slate-700">R$ 9,00/L</span>
                     </div>
                   </label>
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'admin' ? 'border-purple-600 bg-purple-50 ring-1 ring-purple-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
-                    <div className="flex-1">
-                      <span className="font-bold text-sm text-purple-950 flex items-center gap-1.5">
-                        <Building2 className="w-4 h-4 text-purple-600" />
-                        <span>Enviar para a Administradora</span>
-                      </span>
-                      <span className="block text-[11px] text-purple-700 font-medium mt-0.5">R$ 13,00/L (Cobrança Mensal Pendente)</span>
-                    </div>
-                  </label>
-                </div>
 
-                {/* Banner de Orientação */}
-                {paymentType === 'dinheiro' && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-medium flex items-start gap-2 animate-in fade-in">
-                    <Banknote className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="block text-emerald-950 font-bold">💵 Entrada no Caixa Físico da Marina</strong>
-                      O valor deve ser recebido em cédulas e recolhido na gaveta física para a conferência diária do caixa.
+                  {/* Cartão de Crédito */}
+                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'credit' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
+                    <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
+                    <div className="flex-1 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                          <CreditCard className="w-4 h-4 text-blue-600" />
+                          <span>Cartão de Crédito</span>
+                        </span>
+                        <span className="block text-[11px] text-slate-500 font-medium mt-0.5">R$ 10,00/L (Recebido na maquininha)</span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-blue-800">R$ 10,00/L</span>
                     </div>
-                  </div>
-                )}
-                {paymentType === 'pix' && (
-                  <div className="p-3 bg-cyan-50 border border-cyan-300 rounded-xl text-xs text-cyan-900 font-medium flex items-start gap-2 animate-in fade-in">
-                    <QrCode className="w-4 h-4 text-cyan-700 shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="block text-cyan-950 font-bold">📱 Pagamento Digital PIX</strong>
-                      Transação direta na conta bancária da Marina. Anexe o comprovante abaixo caso desejado.
-                    </div>
-                  </div>
-                )}
+                  </label>
+
+                  {/* Administradora - apenas para embarcação da marina */}
+                  {saleMode === 'embarcacao' && (
+                    <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'admin' ? 'border-purple-600 bg-purple-50 ring-1 ring-purple-600' : 'border-slate-200 bg-white'}`}>
+                      <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
+                      <div className="flex-1 flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-sm text-purple-950 flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-purple-600" />
+                            <span>Enviar para a Administradora</span>
+                          </span>
+                          <span className="block text-[11px] text-purple-700 font-medium mt-0.5">R$ 13,00/L (Cobrança Mensal Pendente)</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-purple-800">R$ 13,00/L</span>
+                      </div>
+                    </label>
+                  )}
+                </div>
               </div>
+
+              {/* Total Calculation Display */}
+              {(() => {
+                const l = parseFloat(liters.replace(',', '.') || '0');
+                let p = 9.0;
+                if (paymentType === 'credit') p = 10.0;
+                if (paymentType === 'admin' && saleMode === 'embarcacao') p = 13.0;
+                const tot = l * p;
+                return (
+                  <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                    saleMode === 'avulso' ? 'bg-emerald-50/70 border-emerald-200' : 'bg-blue-50/70 border-blue-200'
+                  }`}>
+                    <div className="text-xs">
+                      <span className="text-slate-500 font-bold uppercase block text-[10px]">Valor Total:</span>
+                      <span className="text-[11px] font-bold text-slate-700">
+                        {l > 0 ? `${l.toFixed(1)}L x R$ ${p.toFixed(2)}/L` : 'Informe os litros'}
+                      </span>
+                    </div>
+                    <span className={`text-xl font-black font-mono ${saleMode === 'avulso' ? 'text-emerald-950' : 'text-blue-950'}`}>
+                      {tot.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                  </div>
+                );
+              })()}
 
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 text-xs block">Comprovante (Opcional)</label>
                 <div className="flex items-center justify-center w-full">
-                  <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <div className="flex flex-col items-center justify-center pt-2 pb-2">
                       {isUploadingComprovante ? (
-                        <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
+                        <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
                       ) : comprovanteUrl ? (
-                        <CheckCircle2 className="w-6 h-6 text-emerald-500 mb-2" />
+                        <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-xs">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          <span>Comprovante Anexado</span>
+                        </div>
                       ) : (
-                        <Upload className="w-6 h-6 text-slate-400 mb-2" />
+                        <>
+                          <Upload className="w-5 h-5 text-slate-400 mb-1" />
+                          <p className="text-[11px] text-slate-500 font-medium">Clique para enviar foto/PDF</p>
+                        </>
                       )}
-                      <p className="text-xs text-slate-500 font-medium">
-                        {comprovanteUrl ? 'Comprovante anexado' : 'Clique para enviar foto/PDF'}
-                      </p>
                     </div>
                     <input type="file" className="hidden" accept="image/*,.pdf" onChange={handleUploadComprovante} disabled={isUploadingComprovante} />
                   </label>
@@ -2450,17 +2725,25 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 <button
                   type="button"
                   onClick={() => setIsFuelModalOpen(false)}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || !selectedBoatId || !liters}
-                  className="px-5 py-2.5 bg-[#2563EB] hover:bg-[#1d4ed8] text-white font-bold rounded-xl shadow-md text-xs transition-all flex items-center gap-2"
+                  disabled={isSubmitting || (saleMode === 'embarcacao' ? (!selectedBoatId || !liters) : (!liters || parseFloat(liters.replace(',', '.') || '0') <= 0))}
+                  className={`px-5 py-2.5 text-white font-bold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                    saleMode === 'avulso' ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/20' : 'bg-[#2563EB] hover:bg-[#1d4ed8] active:bg-blue-800 shadow-blue-600/20'
+                  }`}
                 >
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  <span>Registrar Venda</span>
+                  {isSubmitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : saleMode === 'avulso' ? (
+                    <Zap className="w-4 h-4 text-emerald-100" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>{saleMode === 'avulso' ? 'Registrar Abastecimento Avulso' : 'Registrar Venda'}</span>
                 </button>
               </div>
             </form>
@@ -2648,7 +2931,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
       {/* Modal Editar Lançamento */}
       {editingItem && (() => {
-        const boat = getEmbarcacao(editBoatId);
+        const isAvulsoItem = editingItem?.isAvulso || !editingItem?.embarcacaoId || (editingItem?.descricao && editingItem.descricao.toLowerCase().includes('avulso'));
+        const boat = isAvulsoItem ? null : getEmbarcacao(editBoatId);
         const litrosNum = parseFloat(editLiters.replace(',', '.') || '0');
         let preco = 9.0;
         if (editPaymentType === 'credit') preco = 10.0;
@@ -2662,7 +2946,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
                   <SquarePen className="w-5 h-5 text-amber-600" />
-                  <span>Editar Lançamento</span>
+                  <span>Editar Lançamento {isAvulsoItem ? '(Avulso)' : ''}</span>
                 </h3>
                 <button onClick={() => setEditingItem(null)} className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full shadow-xs cursor-pointer">
                   <X className="w-5 h-5" />
@@ -2671,47 +2955,59 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
               <form onSubmit={handleSaveEditItem} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 subtle-scrollbar">
                 
-                {/* Embarcação */}
-                <div className="space-y-1.5">
-                  <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
-                  <SearchableSelect
-                    options={[
-                      { value: '', label: 'Selecione a embarcação...' },
-                      ...(data?.boats || []).map((b) => ({
-                        value: b.id,
-                        label: getBoatCode(b),
-                        sublabel: b.vaga ? `Vaga: ${b.vaga}` : 'Sem Vaga',
-                      })),
-                    ]}
-                    value={editBoatId}
-                    onChange={(val) => {
-                      setEditBoatId(val);
-                      const b = getEmbarcacao(val);
-                      if (b?.donos?.[0]) setEditClientId(b.donos[0]);
-                    }}
-                    placeholder="Selecione a embarcação..."
-                    searchPlaceholder="Pesquisar embarcação..."
-                  />
-                </div>
+                {isAvulsoItem ? (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex items-start gap-2">
+                    <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-black text-emerald-900">Abastecimento Avulso / Externo</strong>
+                      Lançamento sem vínculo obrigatório com embarcação ou cotista cadastrado.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Embarcação */}
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
+                      <SearchableSelect
+                        options={[
+                          { value: '', label: 'Selecione a embarcação...' },
+                          ...(data?.boats || []).map((b) => ({
+                            value: b.id,
+                            label: getBoatCode(b),
+                            sublabel: b.vaga ? `Vaga: ${b.vaga}` : 'Sem Vaga',
+                          })),
+                        ]}
+                        value={editBoatId}
+                        onChange={(val) => {
+                          setEditBoatId(val);
+                          const b = getEmbarcacao(val);
+                          if (b?.donos?.[0]) setEditClientId(b.donos[0]);
+                        }}
+                        placeholder="Selecione a embarcação..."
+                        searchPlaceholder="Pesquisar embarcação..."
+                      />
+                    </div>
 
-                {/* Cliente */}
-                <div className="space-y-1.5">
-                  <label className="font-bold text-slate-700 text-xs">Cliente / Proprietário</label>
-                  <SearchableSelect
-                    options={[
-                      { value: '', label: 'Selecione o cliente...' },
-                      ...(data?.clients || []).map((c) => ({
-                        value: c.id,
-                        label: c.nome,
-                        sublabel: c.telefone || undefined,
-                      })),
-                    ]}
-                    value={editClientId}
-                    onChange={(val) => setEditClientId(val)}
-                    placeholder="Selecione o cliente..."
-                    searchPlaceholder="Pesquisar cliente..."
-                  />
-                </div>
+                    {/* Cliente */}
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-700 text-xs">Cliente / Proprietário</label>
+                      <SearchableSelect
+                        options={[
+                          { value: '', label: 'Selecione o cliente...' },
+                          ...(data?.clients || []).map((c) => ({
+                            value: c.id,
+                            label: c.nome,
+                            sublabel: c.telefone || undefined,
+                          })),
+                        ]}
+                        value={editClientId}
+                        onChange={(val) => setEditClientId(val)}
+                        placeholder="Selecione o cliente..."
+                        searchPlaceholder="Pesquisar cliente..."
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   {/* Litros */}

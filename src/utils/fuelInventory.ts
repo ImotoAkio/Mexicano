@@ -12,7 +12,7 @@ export interface FuelInventory {
 
 export interface FuelHistoryEntry {
   id: string;
-  tipo: 'compra_tanque' | 'compra_galoes' | 'transferencia_tanque_pier' | 'abastecimento_embarcacao' | 'fechamento_turno';
+  tipo: 'compra_tanque' | 'compra_galoes' | 'transferencia_tanque_pier' | 'abastecimento_embarcacao' | 'fechamento_turno' | 'ajuste_manual';
   litros: number;
   galoes?: number;
   fornecedor?: string;

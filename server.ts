@@ -33,8 +33,13 @@ import {
   getAllTiposManutencao, upsertTipoManutencao, deleteTipoManutencao,
   upsertFuncionario, deleteFuncionario,
   upsertFolga, deleteFolga,
+  upsertEPI, deleteEPI, saveHistoricoEPI, upsertCatalogoEPI, deleteCatalogoEPI,
+  getUserPreferences, upsertUserPreferences,
   getFuelInventoryFromDb, saveFuelInventoryInDb, getFuelHistoryFromDb, saveFuelHistoryInDb, resetFuelDataInDb,
-  getAllChamados, upsertChamado, deleteChamado, getNextChamadoCode
+  getAllChamados, upsertChamado, deleteChamado, getNextChamadoCode,
+  getCaixaMarinaTransacoes, upsertCaixaMarinaTransacao, deleteCaixaMarinaTransacao,
+  devolverColetesCaixaMarina, getCaixaMarinaFechamento, salvarCaixaMarinaFechamento,
+  getAbastecimentosPendentesCaixa
 } from "./server-db";
 import { getOrRegisterAsaasCustomer, createAsaasCharge, getPixQrCode, createAsaasBulkCharge } from "./server-asaas";
 
@@ -341,6 +346,18 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
     console.error("JWT Verification failed:", err);
     return res.status(401).json({ error: true, message: "Token inválido ou expirado." });
   }
+}
+
+function requireMarinaManagerOrAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  requireAdminAuth(req, res, () => {
+    const user = (req as any).user;
+    const role = (user?.role || "").toLowerCase().trim();
+    const isAllowed = role === "admin" || role === "gerente" || role === "marina_gerente" || role === "marina";
+    if (!isAllowed) {
+      return res.status(403).json({ error: true, message: "Acesso restrito ao Gerente da Marina e Administradores." });
+    }
+    next();
+  });
 }
 
 function requireClientAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -1166,6 +1183,15 @@ app.post("/api/funcionarios/save", requireAdminAuth, sensitiveLimiter, async (re
   try {
     if (action === 'delete') {
       await deleteFuncionario(data.id);
+    } else if (action === 'upsert') {
+      await upsertFuncionario(data);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[Funcionario Save Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to save funcionario" });
+  }
+});
 
 // Route: Financeiro - Asaas Payment Generation
 app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, async (req, res) => {
@@ -1409,12 +1435,176 @@ app.post("/api/financeiro/atividades/save", requireAdminAuth, sensitiveLimiter, 
   }
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ── ROTAS: CONTROLE DE CAIXA DA MARINA (Acesso Exclusivo Gerente / Admin) ──
+// ═════════════════════════════════════════════════════════════════════════════
+
+app.get("/api/marina/caixa/transacoes", requireMarinaManagerOrAdminAuth, async (req, res) => {
+  try {
+    const { startDate, endDate, tipo, categoria, formaPagamento, status, search } = req.query;
+    const transacoes = await getCaixaMarinaTransacoes({
+      startDate: startDate as string,
+      endDate: endDate as string,
+      tipo: tipo as string,
+      categoria: categoria as string,
+      formaPagamento: formaPagamento as string,
+      status: status as string,
+      search: search as string,
+    });
+    res.json(transacoes);
+  } catch (err: any) {
+    console.error("[Caixa Marina Transacoes Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao buscar lançamentos do caixa." });
+  }
+});
+
+app.post("/api/marina/caixa/transacoes/save", requireMarinaManagerOrAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    if (action === 'delete') {
+      await deleteCaixaMarinaTransacao(data.id || data);
+    } else if (action === 'upsert') {
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          await upsertCaixaMarinaTransacao(item);
+        }
+      } else {
+        await upsertCaixaMarinaTransacao(data);
+      }
+    } else {
+      return res.status(400).json({ error: true, message: `Ação inválida: ${action}` });
+    }
+
+    io.emit('marina_caixa_update', { action, data });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[Caixa Marina Save Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao salvar lançamento do caixa." });
+  }
+});
+
+app.post("/api/marina/caixa/transacoes/devolver-coletes", requireMarinaManagerOrAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { id, devolvidoPor } = req.body;
+  if (!id) return res.status(400).json({ error: true, message: "ID da transação não fornecido." });
+
+  try {
+    await devolverColetesCaixaMarina(id, devolvidoPor || 'Gerente');
+    io.emit('marina_caixa_update', { action: 'devolver_coletes', id });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[Caixa Marina Devolver Coletes Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao marcar coletes como devolvidos." });
+  }
+});
+
+app.get("/api/marina/caixa/fechamento", requireMarinaManagerOrAdminAuth, async (req, res) => {
+  try {
+    const dataStr = (req.query.data as string) || new Date().toISOString().split('T')[0];
+    const fechamento = await getCaixaMarinaFechamento(dataStr);
+    res.json(fechamento || null);
+  } catch (err: any) {
+    console.error("[Caixa Marina Fechamento Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao obter fechamento de caixa." });
+  }
+});
+
+app.post("/api/marina/caixa/fechamento/salvar", requireMarinaManagerOrAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    const fechamentoData = req.body;
+    if (!fechamentoData || !fechamentoData.data) {
+      return res.status(400).json({ error: true, message: "Data do fechamento é obrigatória." });
+    }
+
+    await salvarCaixaMarinaFechamento(fechamentoData);
+    io.emit('marina_caixa_update', { action: 'fechamento', data: fechamentoData });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[Caixa Marina Salvar Fechamento Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao salvar fechamento de caixa." });
+  }
+});
+
+app.get("/api/marina/caixa/abastecimentos-pendentes", requireMarinaManagerOrAdminAuth, async (req, res) => {
+  try {
+    const pendentes = await getAbastecimentosPendentesCaixa();
+    res.json(pendentes);
+  } catch (err: any) {
+    console.error("[Caixa Marina Abastecimentos Pendentes Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao buscar abastecimentos pendentes." });
+  }
+});
+
+app.post("/api/marina/caixa/abastecimentos-baixar", requireMarinaManagerOrAdminAuth, sensitiveLimiter, async (req, res) => {
+  const { reservaId, formaPagamento, valorTotal, operadorNome, comprovanteUrl } = req.body;
+  if (!reservaId) return res.status(400).json({ error: true, message: "ID da reserva é obrigatório." });
+
+  try {
+    const currentPool = getDbPool();
+    if (!currentPool) throw new Error("Banco de dados offline.");
+
+    // Obter dados da reserva
+    const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ?", [reservaId]);
+    const reserva = (rows as any[])[0];
+    if (!reserva) return res.status(404).json({ error: true, message: "Reserva não encontrada." });
+
+    const litros = Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) || 0;
+    const finalValor = Number(valorTotal) || Number(reserva.abastecimentoValorTotal) || (litros * 9.00);
+    const finalFormaPagamento = formaPagamento || reserva.abastecimentoFormaPagamento || 'pix';
+    const finalOperador = operadorNome || 'Gerente';
+    const finalComprovante = comprovanteUrl || reserva.abastecimentoComprovanteUrl || null;
+
+    // 1. Atualizar a reserva
+    await currentPool.query(
+      `UPDATE Reservas SET 
+        abastecimentoStatusCobranca = 'cobrado',
+        abastecimentoFormaPagamento = ?,
+        abastecimentoValorTotal = ?,
+        abastecimentoComprovanteUrl = ?
+       WHERE id = ?`,
+      [finalFormaPagamento, finalValor, finalComprovante, reservaId]
+    );
+
+    // 2. Criar lançamento no Caixa da Marina
+    const caixaTransacao = {
+      id: `cx_fuel_${reservaId}_${Date.now()}`,
+      tipo: 'entrada',
+      categoria: 'combustivel',
+      descricao: `Abastecimento de ${litros}L (Reserva ${reservaId})`,
+      valor: finalValor,
+      formaPagamento: finalFormaPagamento,
+      data: reserva.data || new Date().toISOString().split('T')[0],
+      hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      status: 'confirmado',
+      clienteTipo: 'cotista',
+      clienteId: reserva.clienteId || null,
+      embarcacaoId: reserva.embarcacaoId || null,
+      reservaId: reservaId,
+      combustivelLitros: litros,
+      comprovanteUrl: finalComprovante,
+      observacoes: `Baixa de combustível realizada por ${finalOperador}`,
+      registradoPor: finalOperador,
+      createdAt: new Date().toISOString()
+    };
+
+    await upsertCaixaMarinaTransacao(caixaTransacao);
+
+    io.emit('marina_update', { action: 'update', reservation: { id: reservaId, abastecimentoStatusCobranca: 'cobrado' } });
+    io.emit('marina_caixa_update', { action: 'upsert', data: caixaTransacao });
+
+    res.json({ success: true, transacao: caixaTransacao });
+  } catch (err: any) {
+    console.error("[Caixa Marina Baixa Abastecimento Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao dar baixa no abastecimento." });
+  }
+});
+
+
 // Route: Operacional - EPIs
 app.post("/api/funcionarios/:id/epis", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   try {
     const { id, ...epiData } = req.body;
     const finalId = id || `epi_${Date.now()}`;
-    await import('./server-db.js').then(m => m.upsertEPI(req.params.id, { ...epiData, id: finalId }));
+    await upsertEPI(req.params.id, { ...epiData, id: finalId });
     res.json({ success: true, id: finalId });
   } catch (err: any) {
     console.error("[EPI Save Error]", err);
@@ -1424,7 +1614,7 @@ app.post("/api/funcionarios/:id/epis", requireAdminAuth, sensitiveLimiter, async
 
 app.delete("/api/epis/:id", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   try {
-    await import('./server-db.js').then(m => m.deleteEPI(req.params.id));
+    await deleteEPI(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
     console.error("[EPI Delete Error]", err);
@@ -1435,11 +1625,11 @@ app.delete("/api/epis/:id", requireAdminAuth, sensitiveLimiter, async (req, res)
 app.post("/api/funcionarios/:id/historico-epi", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   try {
     const logData = req.body;
-    await import('./server-db.js').then(m => m.saveHistoricoEPI({ 
+    await saveHistoricoEPI({ 
       ...logData, 
       funcionarioId: req.params.id,
       id: logData.id || `hist_epi_${Date.now()}`
-    }));
+    });
     res.json({ success: true });
   } catch (err: any) {
     console.error("[Historico EPI Save Error]", err);
@@ -1452,7 +1642,7 @@ app.post("/api/catalogo-epis", requireAdminAuth, sensitiveLimiter, async (req, r
   try {
     const { id, ...epiData } = req.body;
     const finalId = id || `epi_cat_${Date.now()}_${Math.floor(Math.random()*1000)}`;
-    await import('./server-db.js').then(m => m.upsertCatalogoEPI({ ...epiData, id: finalId }));
+    await upsertCatalogoEPI({ ...epiData, id: finalId });
     res.json({ success: true, id: finalId });
   } catch (err: any) {
     console.error("[Catalogo EPI Save Error]", err);
@@ -1462,21 +1652,11 @@ app.post("/api/catalogo-epis", requireAdminAuth, sensitiveLimiter, async (req, r
 
 app.delete("/api/catalogo-epis/:id", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   try {
-    await import('./server-db.js').then(m => m.deleteCatalogoEPI(req.params.id));
+    await deleteCatalogoEPI(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
     console.error("[Catalogo EPI Delete Error]", err);
     res.status(500).json({ error: true, message: err.message });
-  }
-});
-
-    } else if (action === 'upsert') {
-      await upsertFuncionario(data);
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error("[Funcionario Save Error]", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to save funcionario" });
   }
 });
 
@@ -3302,7 +3482,6 @@ app.get("/api/comercial/preferences", requireAdminAuth, async (req, res) => {
   try {
     const user = (req as any).user;
     if (!user || !user.id) return res.status(401).json({ error: true, message: "Unauthorized" });
-    const { getUserPreferences } = await import("./server-db.js");
     const prefs = await getUserPreferences(user.id);
     res.json(prefs || {});
   } catch(err: any) {
@@ -3324,22 +3503,17 @@ app.post("/api/comercial/preferences", requireAdminAuth, upload.fields([{ name: 
     if (files && files['logo'] && files['logo'][0]) {
       const file = files['logo'][0];
       const filename = `logo_${Date.now()}_${file.originalname}`;
-      const fsModule = await import("fs");
-      const pathModule = await import("path");
-      fsModule.writeFileSync(pathModule.join(uploadsDir, filename), file.buffer);
+      fs.writeFileSync(path.join(uploadsDir, filename), file.buffer);
       logoUrl = `/uploads/${filename}`;
     }
 
     if (files && files['background'] && files['background'][0]) {
       const file = files['background'][0];
       const filename = `bg_${Date.now()}_${file.originalname}`;
-      const fsModule = await import("fs");
-      const pathModule = await import("path");
-      fsModule.writeFileSync(pathModule.join(uploadsDir, filename), file.buffer);
+      fs.writeFileSync(path.join(uploadsDir, filename), file.buffer);
       backgroundUrl = `/uploads/${filename}`;
     }
 
-    const { getUserPreferences, upsertUserPreferences } = await import("./server-db.js");
     const prefs = await getUserPreferences(user.id);
     await upsertUserPreferences(user.id, {
       logoUrl: logoUrl !== undefined ? logoUrl : (prefs?.logoUrl || null),
