@@ -17,6 +17,11 @@ import fs from "fs";
 import crypto from "crypto";
 import compression from "compression";
 import { PDFParse } from "pdf-parse";
+import { apiLimiter, authLimiter, sensitiveLimiter, whatsappLimiter, requireAdminAuth, requireClientAuth, requireAnyAuth, requireMarinaManagerOrAdminAuth } from "./server-routes/middlewares";
+import clientRoutes from "./server-routes/client.routes";
+import authRoutes from "./server-routes/auth.routes";
+import financeiroRoutes from "./server-routes/financeiro.routes";
+import webhookRoutes from "./server-routes/webhook.routes";
 import { PDFDocument } from "pdf-lib";
 import {
   getDbPool, getDbStatus, initializeDatabase, pullDatabase,
@@ -25,7 +30,7 @@ import {
   getConfigValue, setConfigValue, getClientByCpf,
   getAdminByUsername, getClientAuth, upsertClientAuth,
   getAllAdmins, createAdmin, updateAdmin, deleteAdmin,
-  getAllTransacoes, upsertTransacao, deleteTransacao, syncClientFinancialStatus, deleteAllTransacoes, deleteTransacoesByClientIds,
+  getAllTransacoes, upsertTransacao, deleteTransacao, syncClientFinancialStatus, syncMultipleClientsFinancialStatus, deleteAllTransacoes, deleteTransacoesByClientIds,
   getAllAtividades, upsertAtividade, deleteAtividade,
   getAllFeedbacks, upsertFeedback, deleteFeedback,
   upsertManutencao, deleteManutencao, getNextCodigoOS,
@@ -45,7 +50,6 @@ import { getOrRegisterAsaasCustomer, createAsaasCharge, getPixQrCode, createAsaa
 
 // Load environment variables early
 dotenv.config();
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const cleanEnvStr = (val?: string) => val ? val.replace(/^['"]|['"]$/g, '').trim() : '';
 if (process.env.EVOLUTION_API_URL) process.env.EVOLUTION_API_URL = cleanEnvStr(process.env.EVOLUTION_API_URL);
@@ -124,7 +128,7 @@ const JWT_CLIENT_EXPIRY = "30d";
 // Create Express app
 const app = express();
 const httpServer = http.createServer(app);
-const io = new SocketIOServer(httpServer, {
+export const io = new SocketIOServer(httpServer, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
@@ -179,7 +183,7 @@ app.use(cors({
 }));
 
 // Audit Logging Utility for LGPD Compliance (Art. 37)
-function writeAuditLog(userId: string, userRole: string, action: string, ip: string, details?: string) {
+export function writeAuditLog(userId: string, userRole: string, action: string, ip: string, details?: string) {
   const clientIp = ip || 'unknown';
   const timestamp = new Date().toISOString();
   const logEntry = `[AUDIT] IP: ${clientIp} | User: ${userId} (${userRole}) | Action: ${action} | Details: ${details || "N/A"}`;
@@ -205,7 +209,19 @@ if (!fs.existsSync(checklistUploadsDir)) fs.mkdirSync(checklistUploadsDir, { rec
 if (!fs.existsSync(comprovantesUploadsDir)) fs.mkdirSync(comprovantesUploadsDir, { recursive: true });
 if (!fs.existsSync(driveUploadsDir)) fs.mkdirSync(driveUploadsDir, { recursive: true });
 if (!fs.existsSync(boletosUploadsDir)) fs.mkdirSync(boletosUploadsDir, { recursive: true });
-app.use('/uploads', express.static(uploadsDir));
+
+app.use('/uploads', express.static(uploadsDir, {
+  setHeaders: (res, path) => {
+    // Bloqueia execução de scripts nos arquivos enviados pelo cliente (Prevenção de XSS)
+    res.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline';");
+    // Força download (attachment) de extensões perigosas que o navegador tentaria renderizar
+    if (path.match(/\.(html|htm|svg|xml|js|json|css)$/i)) {
+      res.set('Content-Disposition', 'attachment');
+      res.set('X-Content-Type-Options', 'nosniff');
+    }
+  }
+}));
+
 const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
 
@@ -240,11 +256,11 @@ const authLimiter = rateLimit({
 });
 
 // Cache loaded client
-let cachedAuthClient: JWT | null = null;
+export let cachedAuthClient: JWT | null = null;
 let lastUsedSAJson: string | null = null;
 
 // Helper to load credentials and initialize standard Google Auth Client
-async function getGoogleAuthClient(): Promise<JWT | null> {
+export async function getGoogleAuthClient(): Promise<JWT | null> {
   const saJsonString = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || await getConfigValue("google_service_account_json") || "";
   const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
   let privateKey = process.env.GOOGLE_PRIVATE_KEY;
@@ -338,6 +354,7 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
 
     if (userRole && !validAdminRoles.includes(userRole)) {
       console.warn(`[AUTH WARNING] Non-standard admin role detected: '${userRole}'`);
+      return res.status(403).json({ error: true, message: "Acesso negado. Perfil de usuário não autorizado." });
     }
 
     (req as any).user = decoded;
@@ -683,242 +700,9 @@ app.post("/api/auth/change-password", async (req, res) => {
   }
 });
 
-// Route: Get client data using JWT (secure data fetch)
-app.get("/api/client/me", requireClientAuth, async (req, res) => {
-  try {
-    const userId = (req as any).user.id;
-    const dbData = await pullDatabase();
-    const client = dbData.clients.find((c: any) => c.id === userId);
-
-    if (!client) {
-      return res.status(404).json({ error: true, message: "Cliente não encontrado." });
-    }
-
-    const clientBoatsList = client.embarcacoes && client.embarcacoes.length > 0
-      ? client.embarcacoes.map((eb: any) => eb.embarcacaoId)
-      : [client.embarcacaoId];
-
-    const boats = dbData.boats.filter((b: any) => clientBoatsList.includes(b.id));
-    const reservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
-    const transacoes = dbData.transacoes.filter((t: any) => t.clienteId === client.id);
-    writeAuditLog(client.nome, "client", "FETCH_DATA", req.ip, `ID: ${client.id}`);
-    res.json({ client, boats, reservations, transacoes });
-  } catch (err: any) {
-    console.error("Client data fetch error:", err);
-    res.status(500).json({ error: true, message: "Erro ao carregar dados do cliente." });
-  }
-});
-
-// Route: Create a new reservation for the client securely
-app.post("/api/client/reserve", requireClientAuth, async (req, res) => {
-  try {
-    const userId = (req as any).user.id;
-    const { embarcacaoId, date, periodo = 'dia_inteiro', observacoes = '' } = req.body;
-
-    const dbData = await pullDatabase();
-    const client = dbData.clients.find((c: any) => c.id === userId);
-
-    if (!client) {
-      return res.status(404).json({ error: true, message: "Cliente não encontrado." });
-    }
-
-    const clientBoatsList = client.embarcacoes && client.embarcacoes.length > 0
-      ? client.embarcacoes.map((eb: any) => eb.embarcacaoId)
-      : [client.embarcacaoId];
-
-    if (!clientBoatsList.includes(embarcacaoId)) {
-      return res.status(403).json({ error: true, message: "Acesso negado à embarcação." });
-    }
-
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (date < todayStr) {
-      return res.status(400).json({ error: true, message: "Não é possível reservar datas passadas." });
-    }
-
-    // Check overlaps
-    const overlaps = dbData.reservations.filter((r: any) => 
-      r.embarcacaoId === embarcacaoId && r.data === date && r.status !== 'cancelado'
-    );
-    if (overlaps.length > 0) {
-      return res.status(400).json({ error: true, message: "A embarcação já possui reserva para esta data." });
-    }
-
-    const reqDateObj = new Date(date + "T12:00:00Z");
-    const reqDayOfWeek = reqDateObj.getUTCDay();
-
-    if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && client.plano !== 'completo') {
-      return res.status(400).json({ error: true, message: "A Marina é fechada às segundas e terças-feiras para o seu plano atual." });
-    }
-
-    if (reqDayOfWeek === 0 || reqDayOfWeek === 6) {
-      const reqMonth = reqDateObj.getUTCMonth();
-      const reqYear = reqDateObj.getUTCFullYear();
-      
-      const sameDayTypeReservations = dbData.reservations.filter((r: any) => {
-        if (r.clienteId !== userId || r.status === 'cancelado') return false;
-        const rDateObj = new Date(r.data + "T12:00:00Z");
-        return rDateObj.getUTCMonth() === reqMonth && 
-               rDateObj.getUTCFullYear() === reqYear && 
-               rDateObj.getUTCDay() === reqDayOfWeek;
-      });
-      
-      if (sameDayTypeReservations.length >= 1) {
-        const dayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
-        return res.status(400).json({ error: true, message: `Você já possui um agendamento para um ${dayName} neste mês.` });
-      }
-    }
-
-    const activeReservations = dbData.reservations.filter((r: any) => 
-      r.clienteId === userId && r.status !== 'cancelado' && r.data >= todayStr
-    );
-    if (activeReservations.length >= 2) {
-      return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas." });
-    }
-
-    const newRes = {
-      id: `res_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
-      embarcacaoId,
-      clienteId: userId,
-      data: date,
-      periodo,
-      observações: observacoes,
-      status: 'agendado',
-      statusMarina: 'agendado',
-      createdAt: new Date().toISOString()
-    };
-
-    await upsertReservation(newRes);
-
-    io.emit("marina_update", { action: 'new', reservation: newRes });
-
-    writeAuditLog(client.nome, "client", "CREATE_RESERVATION", req.ip, `Reserva criada: ${date} - ${embarcacaoId}`);
-    res.json({ success: true, reservation: newRes });
-  } catch (err: any) {
-    console.error("Client reserve error:", err);
-    res.status(500).json({ error: true, message: "Erro ao realizar agendamento." });
-  }
-});
-
-// Route: Update a reservation's googleEventId securely for a client
-app.post("/api/client/update-reservation", requireClientAuth, async (req, res) => {
-  try {
-    const userId = (req as any).user.id;
-    const { id, googleEventId } = req.body;
-    
-    if (!id || !googleEventId) {
-      return res.status(400).json({ error: true, message: "Faltam parâmetros." });
-    }
-
-    const currentPool = getDbPool();
-    if (!currentPool) {
-      return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
-    }
-
-    await currentPool.query(
-      "UPDATE Reservas SET googleEventId = ? WHERE id = ? AND clienteId = ?",
-      [googleEventId, id, userId]
-    );
-
-    // Emit event to update Marina/Admin panels automatically
-    io.emit("marina_update", { action: 'upsert', reservation: { id, googleEventId } });
-
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error("Client update reservation error:", err);
-    res.status(500).json({ error: true, message: "Erro ao atualizar agendamento." });
-  }
-});
-
-// Route: Register data deletion request under LGPD (Art. 18)
-app.post("/api/client/request-deletion", requireClientAuth, async (req, res) => {
-  try {
-    const userId = (req as any).user.id;
-    const userName = (req as any).user.nome;
-    
-    writeAuditLog(userName, "client", "REQUEST_DATA_DELETION", req.ip, `Solicitação de exclusão recebida para ID: ${userId}`);
-
-    res.json({
-      success: true,
-      message: "Sua solicitação de exclusão de dados pessoais foi registrada com sucesso sob protocolo LGPD. O Encarregado de Dados (DPO) entrará em contato em até 15 dias."
-    });
-  } catch (err: any) {
-    console.error("Data deletion request error:", err);
-    res.status(500).json({ error: true, message: "Erro ao processar solicitação de exclusão." });
-  }
-});
-
-// Route: Client day-of checkin (NORMAM info)
-app.post("/api/client/checkin", requireClientAuth, async (req, res) => {
-  try {
-    const userId = (req as any).user.id;
-    const { id, previsaoSaida, previsaoChegada, pessoasABordo, destino } = req.body;
-    
-    if (!id || !previsaoSaida || !pessoasABordo || !previsaoChegada || !destino) {
-      return res.status(400).json({ error: true, message: "Faltam parâmetros obrigatórios para a NORMAM." });
-    }
-
-    const currentPool = getDbPool();
-    if (!currentPool) {
-      return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
-    }
-
-    // Update reservation. Removed setting horaSaida and horaChegada during check-in so operational status isn't corrupted.
-    await currentPool.query(
-      "UPDATE Reservas SET previsaoSaida = ?, previsaoChegada = ?, pessoasABordo = ?, destino = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ?",
-      [previsaoSaida, previsaoChegada, pessoasABordo, destino, id]
-    );
-
-    const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ?", [id]);
-    const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, previsaoChegada, pessoasABordo, destino, statusMarina: 'agendado', status: 'confirmado' };
-
-    io.emit("marina_update", { action: 'checkin', reservation: updatedRes });
-
-    res.json({ success: true, reservation: updatedRes });
-  } catch (err: any) {
-    console.error("Client checkin error:", err);
-    res.status(500).json({ error: true, message: "Erro ao processar check-in." });
-  }
-});
-
-// Route: Client cancel reservation
-app.post("/api/client/cancel-reservation", requireClientAuth, async (req, res) => {
-  try {
-    const userId = (req as any).user.id;
-    const { id } = req.body;
-    
-    if (!id) {
-      return res.status(400).json({ error: true, message: "Falta o ID da reserva." });
-    }
-
-    const currentPool = getDbPool();
-    if (!currentPool) {
-      return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
-    }
-
-    await currentPool.query(
-      "UPDATE Reservas SET status = 'cancelado' WHERE id = ? AND clienteId = ?",
-      [id, userId]
-    );
-
-    io.emit("marina_update", { action: 'cancel', reservation: { id, status: 'cancelado' } });
-
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error("Client cancel reservation error:", err);
-    res.status(500).json({ error: true, message: "Erro ao cancelar agendamento." });
-  }
-});
-
-// Route: Financeiro - Transacoes (List & Save)
-app.get("/api/financeiro/transacoes", requireAdminAuth, async (req, res) => {
-  try {
-    const transacoes = await getAllTransacoes();
-    res.json(transacoes);
-  } catch (err: any) {
-    console.error("Error fetching transacoes:", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to fetch transacoes" });
-  }
-});
+app.use('/api/client/', clientRoutes);
+app.use('/api/financeiro', financeiroRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // Route: Save admin user
 app.post("/api/admin/users/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
@@ -1034,11 +818,11 @@ app.post("/api/manutencoes/save", requireAdminAuth, sensitiveLimiter, async (req
                   valor: valorRateado,
                   descricao: `${transacaoBase.descricao} | Rateio (1/${numDonos})`
                 };
-                await upsertTransacao(splitData);
+                await upsertTransacao(splitData, connection);
                 clientsToSync.add(donoId);
               }
             } else {
-              await upsertTransacao(transacaoBase);
+              await upsertTransacao(transacaoBase, connection);
             }
 
             await connection.commit();
@@ -1049,8 +833,8 @@ app.post("/api/manutencoes/save", requireAdminAuth, sensitiveLimiter, async (req
             connection.release();
           }
 
-          for (const clienteId of clientsToSync) {
-            await syncClientFinancialStatus(clienteId);
+          if (clientsToSync.length > 0) {
+            await syncMultipleClientsFinancialStatus(clientsToSync);
           }
         }
       }
@@ -1140,32 +924,6 @@ app.post("/api/chamados/save", requireAdminAuth, sensitiveLimiter, async (req, r
   }
 });
 
-app.post("/api/financeiro/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
-  const { action, data } = req.body;
-  try {
-    if (action === 'delete') {
-      await deleteTransacao(data.id || data);
-    } else if (action === 'delete_all') {
-      await deleteAllTransacoes();
-    } else if (action === 'delete_by_clients') {
-      await deleteTransacoesByClientIds(data.clientIds || data);
-    } else if (action === 'upsert') {
-      if (Array.isArray(data)) {
-        for (const item of data) {
-          await upsertTransacao(item);
-        }
-      } else {
-        await upsertTransacao(data);
-      }
-    } else {
-      return res.status(400).json({ error: true, message: `Unsupported action: ${action}` });
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error("[Transacao Save Error]", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to save transacao" });
-  }
-});
 
 // Route: Operacional - Funcionarios
 app.get("/api/funcionarios", requireAdminAuth, async (req, res) => {
@@ -1193,247 +951,12 @@ app.post("/api/funcionarios/save", requireAdminAuth, sensitiveLimiter, async (re
   }
 });
 
-// Route: Financeiro - Asaas Payment Generation
-app.post("/api/financeiro/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, async (req, res) => {
-  const { id } = req.params;
-  const { billingType } = req.body; // 'PIX', 'BOLETO', 'CREDIT_CARD'
-
-  if (!["PIX", "BOLETO", "CREDIT_CARD"].includes(billingType)) {
-    return res.status(400).json({ error: true, message: "Tipo de cobrança inválido" });
-  }
-
-  const currentPool = getDbPool();
-  if (!currentPool) {
-    return res.status(500).json({ error: true, message: "Banco de dados offline" });
-  }
-
-  try {
-    // 1. Fetch transaction
-    const [txRows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE id = ?", [id]);
-    const tx = (txRows as any[])[0];
-
-    if (!tx) {
-      return res.status(404).json({ error: true, message: "Transação não encontrada" });
-    }
-
-    const user = (req as any).user;
-    if (user.role === "client" && tx.clienteId !== user.id) {
-      return res.status(403).json({ error: true, message: "Acesso negado: esta transação pertence a outro cliente." });
-    }
-    if (tx.tipo !== "receita") {
-      return res.status(400).json({ error: true, message: "Apenas receitas podem ter cobranças Asaas" });
-    }
-    if (tx.status === "pago") {
-      return res.status(400).json({ error: true, message: "Esta transação já está paga" });
-    }
-    if (!tx.clienteId) {
-      return res.status(400).json({ error: true, message: "Transação não possui cliente vinculado" });
-    }
-
-    // 2. Fetch client
-    const [clientRows] = await currentPool.query("SELECT * FROM Clientes WHERE id = ?", [tx.clienteId]);
-    const client = (clientRows as any[])[0];
-    if (!client) {
-      return res.status(404).json({ error: true, message: "Cliente vinculado não encontrado" });
-    }
-
-    // 3. Synchronize / Get Asaas customer ID
-    const asaasCustomerId = await getOrRegisterAsaasCustomer(client);
-
-    // 4. Create charge on Asaas
-    const charge = await createAsaasCharge(tx, asaasCustomerId, billingType);
-
-    // 5. Save payment ID and URL back to transaction
-    await currentPool.query(
-      "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ? WHERE id = ?",
-      [charge.asaasPaymentId, charge.asaasPaymentUrl, tx.id]
-    );
-
-    // 6. If PIX, fetch QR Code
-    let qrCode = null;
-    if (billingType === "PIX") {
-      try {
-        qrCode = await getPixQrCode(charge.asaasPaymentId);
-      } catch (qrErr: any) {
-        console.error("Failed to fetch Pix QR Code from Asaas:", qrErr);
-      }
-    }
-
-    res.json({
-      success: true,
-      asaasPaymentId: charge.asaasPaymentId,
-      asaasPaymentUrl: charge.asaasPaymentUrl,
-      qrCode
-    });
-  } catch (err: any) {
-    console.error("Error generating Asaas charge:", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to generate Asaas charge" });
-  }
-});
-
-// Route: Financeiro - Asaas Bulk Payment Generation
-app.post("/api/financeiro/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (req, res) => {
-  const { billingType } = req.body; // 'PIX'
-
-  if (billingType !== "PIX") {
-    return res.status(400).json({ error: true, message: "Tipo de cobran\u00E7a inv\u00E1lido para fatura completa. Use PIX." });
-  }
-
-  const currentPool = getDbPool();
-  if (!currentPool) {
-    return res.status(500).json({ error: true, message: "Banco de dados offline" });
-  }
-
-  try {
-    const user = (req as any).user;
-    
-    // Buscar todas as transações pendentes/vencidas do cliente (qualquer status diferente de pago/cancelado)
-    const [txRows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado')", [user.id]);
-    const txs = (txRows as any[]);
-
-    if (txs.length === 0) {
-      return res.status(400).json({ error: true, message: "N\u00E3o h\u00E1 faturas pendentes para gerar cobran\u00E7a." });
-    }
-
-    const [clientRows] = await currentPool.query("SELECT * FROM Clientes WHERE id = ?", [user.id]);
-    const client = (clientRows as any[])[0];
-    if (!client) {
-      return res.status(404).json({ error: true, message: "Cliente n\u00E3o encontrado" });
-    }
-
-    const asaasCustomerId = await getOrRegisterAsaasCustomer(client);
-
-    const charge = await createAsaasBulkCharge(txs, asaasCustomerId, billingType);
-
-    // Save payment ID and URL back to all transactions
-    for (const tx of txs) {
-      await currentPool.query(
-        "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ? WHERE id = ?",
-        [charge.asaasPaymentId, charge.asaasPaymentUrl, tx.id]
-      );
-    }
-
-    let qrCode = null;
-    if (billingType === "PIX") {
-      try {
-        qrCode = await getPixQrCode(charge.asaasPaymentId);
-      } catch (qrErr: any) {
-        console.error("Failed to fetch Pix QR Code from Asaas:", qrErr);
-      }
-    }
-
-    res.json({
-      success: true,
-      asaasPaymentId: charge.asaasPaymentId,
-      asaasPaymentUrl: charge.asaasPaymentUrl,
-      qrCode
-    });
-  } catch (err: any) {
-    console.error("Error generating Asaas bulk charge:", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to generate Asaas charge" });
-  }
-});
 
 // Route: Asaas Webhook (Public Endpoint)
-app.post("/api/webhooks/asaas", async (req, res) => {
-  const token = req.headers["asaas-access-token"];
-  const expectedToken = process.env.ASAAS_WEBHOOK_TOKEN || await getConfigValue("asaas_webhook_token");
-  if (expectedToken && token !== expectedToken) {
-    console.warn("[Asaas Webhook] Invalid webhook token received.");
-    return res.status(401).json({ error: true, message: "Unauthorized token" });
-  }
-
-  const { event, payment } = req.body;
-  if (!event || !payment) {
-    return res.status(400).json({ error: true, message: "Invalid payload" });
-  }
-
-  console.log(`[Asaas Webhook] Event received: ${event} for payment: ${payment.id}`);
-
-  if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
-    const paymentId = payment.id;
-    const externalRef = payment.externalReference;
-
-    const currentPool = getDbPool();
-    if (currentPool) {
-      try {
-        if (externalRef && externalRef.startsWith("BULK-")) {
-          const [rows] = await currentPool.query("SELECT DISTINCT clienteId FROM TransacoesFinanceiras WHERE asaasPaymentId = ?", [paymentId]);
-          const todayStr = new Date().toISOString().split("T")[0];
-          await currentPool.query(
-            "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = ? WHERE asaasPaymentId = ? AND status != 'pago'",
-            [todayStr, paymentId]
-          );
-          console.log(`[Asaas Webhook] Marked BULK transactions for payment ${paymentId} as paid.`);
-          if ((rows as any[]).length > 0) {
-            for (const row of (rows as any[])) {
-              await syncClientFinancialStatus(row.clienteId);
-            }
-          }
-        } else {
-          let tx = null;
-          if (externalRef) {
-            const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE id = ?", [externalRef]);
-            if ((rows as any[]).length > 0) tx = (rows as any[])[0];
-          }
-          if (!tx && paymentId) {
-            const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE asaasPaymentId = ?", [paymentId]);
-            if ((rows as any[]).length > 0) tx = (rows as any[])[0];
-          }
-  
-          if (tx) {
-            if (tx.status !== "pago") {
-              const todayStr = new Date().toISOString().split("T")[0];
-              await currentPool.query(
-                "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = ?, valor = ? WHERE id = ?",
-                [todayStr, payment.value || tx.valor, tx.id]
-              );
-              console.log(`[Asaas Webhook] Marked transaction ${tx.id} as paid.`);
-              
-              if (tx.clienteId) {
-                await syncClientFinancialStatus(tx.clienteId);
-              }
-            }
-          } else {
-            console.warn(`[Asaas Webhook] No matching transaction found for Asaas payment ID ${paymentId} or externalRef ${externalRef}`);
-          }
-        }
-      } catch (err: any) {
-        console.error("[Asaas Webhook] Error processing webhook database update:", err);
-      }
-    }
-  }
-
-  return res.status(200).json({ received: true });
-});
 
 
 // Route: Financeiro - Atividades (Kanban)
-app.get("/api/financeiro/atividades", requireAdminAuth, async (req, res) => {
-  try {
-    const setor = req.query.setor as string | undefined;
-    const atividades = await getAllAtividades(setor);
-    res.setHeader("Content-Type", "application/json");
-    res.json(Array.isArray(atividades) ? atividades : []);
-  } catch (err: any) {
-    console.error("Error fetching atividades:", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to fetch atividades" });
-  }
-});
 
-app.post("/api/financeiro/atividades/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
-  const { action, data } = req.body;
-  try {
-    if (action === 'delete') {
-      await deleteAtividade(data.id);
-    } else if (action === 'upsert') {
-      await upsertAtividade(data);
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: true, message: err.message || "Failed to save atividade" });
-  }
-});
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ── ROTAS: CONTROLE DE CAIXA DA MARINA (Acesso Exclusivo Gerente / Admin) ──
