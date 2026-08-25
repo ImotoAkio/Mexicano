@@ -1865,9 +1865,10 @@ export async function getAllTransacoes() {
   return rows;
 }
 
-export async function upsertTransacao(t: any) {
+export async function upsertTransacao(t: any, connection?: any) {
   const currentPool = getDbPool();
-  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  if (!currentPool && !connection) throw new Error("MySQL Connection pool is offline.");
+  const dbConfig = connection || currentPool;
 
   // Clean description: remove "[IMPORTADO]" or "[IMPORTADO] " prefix case-insensitively
   let cleanedDesc = t.descricao || '';
@@ -1875,7 +1876,7 @@ export async function upsertTransacao(t: any) {
     cleanedDesc = cleanedDesc.replace(/^\[IMPORTADO\]\s*/i, '');
   }
 
-  await currentPool.query(
+  await dbConfig.query(
     `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl, reservaId, metodoPagamento)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
@@ -1936,6 +1937,13 @@ export async function deleteTransacoesByClientIds(clientIds: string[]) {
 
   for (const cId of clientIds) {
     await syncClientFinancialStatus(cId);
+  }
+}
+
+export async function syncMultipleClientsFinancialStatus(clientIds: string[]) {
+  if (!clientIds || clientIds.length === 0) return;
+  for (const id of clientIds) {
+    if (id) await syncClientFinancialStatus(id);
   }
 }
 
