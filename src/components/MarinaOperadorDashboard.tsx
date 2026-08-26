@@ -250,6 +250,9 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
     dataRef.current = data;
   }, [data]);
 
+  const getEmbarcacao = (id: string) => data?.boats?.find((b: any) => b.id === id);
+  const getCliente = (id: string) => data?.clients?.find((c: any) => c.id === id);
+
   const fetchData = async (isInitial = false) => {
     if (isInitial || !data) setLoading(true);
     try {
