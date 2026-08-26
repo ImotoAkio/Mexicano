@@ -25,10 +25,7 @@ export default function Logo({ className = "h-9 w-auto text-[#B69D74]", editable
     if (!customLogo) {
       (async () => {
         try {
-          const token = localStorage.getItem('admin_token');
-          const headers: Record<string, string> = {};
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-          const res = await fetch('/api/config?chaves=custom_sidebar_logo', { headers });
+          const res = await fetch('/api/config/public?chaves=custom_sidebar_logo');
           if (res.ok) {
             const { configs } = await res.json();
             if (configs.custom_sidebar_logo) {

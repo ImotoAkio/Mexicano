@@ -767,6 +767,22 @@ app.post("/api/logs/action", requireAnyAuth, async (req, res) => {
   }
 });
 
+// Route: Public config (only safe/cosmetic keys, no auth required)
+const PUBLIC_CONFIG_KEYS = new Set(["custom_sidebar_logo"]);
+app.get("/api/config/public", async (req, res) => {
+  try {
+    const chaves = (req.query.chaves as string || "").split(",").filter(k => PUBLIC_CONFIG_KEYS.has(k));
+    if (!chaves.length) return res.json({ configs: {} });
+    const configs: Record<string, string | null> = {};
+    for (const chave of chaves) {
+      configs[chave] = await getConfigValue(chave);
+    }
+    res.json({ configs });
+  } catch (error: any) {
+    res.status(500).json({ error: true, message: error.message || "Falha ao buscar configurações públicas." });
+  }
+});
+
 // Route: Get central configuration details from database
 app.get("/api/config", requireAdminAuth, async (req, res) => {
   try {
