@@ -52,6 +52,7 @@ import { ChecklistCaptureModal } from './MarinaOperador/ChecklistCaptureModal';
 import { FuelRegistrationModal } from './MarinaOperador/FuelRegistrationModal';
 import { AvulsoChecklistModal } from './MarinaOperador/AvulsoChecklistModal';
 import { ViewChecklistModal } from './MarinaOperador/ViewChecklistModal';
+import { PerfilTab } from './MarinaOperador/PerfilTab';
 
 // Jet Ski Reference Images
 import refJetFrente from '../assets/images/checklist/jet/frente.svg';
@@ -226,9 +227,11 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
   const [error, setError] = useState('');
 
   const [selectedDate, setSelectedDate] = useState<string>(getFormattedDate(new Date()));
-  const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'abastecimentos'>('operacao');
+  const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'abastecimentos' | 'perfil'>('operacao');
   const [filterType, setFilterType] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showOnlyConfirmed, setShowOnlyConfirmed] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'hora' | 'az'>('hora');
   
   
   // --- NOVOS MÓDULOS DE ESTADO ---
@@ -612,17 +615,27 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
       });
     }
 
+    if (showOnlyConfirmed) {
+      filtered = filtered.filter((r: any) => !r.horaDescida && (r.status === 'confirmado' || r.statusMarina === 'confirmada'));
+    }
+
     filtered.sort((a: any, b: any) => {
       const timeA = getSortTime(a);
       const timeB = getSortTime(b);
-      const timeCompare = timeA.localeCompare(timeB);
-      if (timeCompare !== 0) return timeCompare;
-
       const boatA = getEmbarcacao(a.embarcacaoId);
       const boatB = getEmbarcacao(b.embarcacaoId);
       const nameA = (boatA?.nome || a.barcoNome || '').toString();
       const nameB = (boatB?.nome || b.barcoNome || '').toString();
-      return nameA.localeCompare(nameB, 'pt-BR', { numeric: true });
+
+      if (sortOrder === 'hora') {
+        const timeCompare = timeA.localeCompare(timeB);
+        if (timeCompare !== 0) return timeCompare;
+        return nameA.localeCompare(nameB, 'pt-BR', { numeric: true });
+      } else {
+        const nameCompare = nameA.localeCompare(nameB, 'pt-BR', { numeric: true });
+        if (nameCompare !== 0) return nameCompare;
+        return timeA.localeCompare(timeB);
+      }
     });
     
     return filtered;
@@ -641,93 +654,6 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
 
     return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans pb-20">
-      {/* Header Fixo & Conectividade */}
-      <header className="bg-[#0B132B] text-white p-4 shadow-md sticky top-0 z-30 flex items-center justify-between border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2.5 rounded-2xl text-white shadow-md">
-            <Anchor className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-base font-black tracking-wider uppercase leading-none">Marina Náutica</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-[11px] font-bold text-slate-400">Terminal Operador</span>
-              <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-bold">
-                {currentUser?.nome || 'Operador'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Status do Socket */}
-          <div className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5 border ${
-            isSocketConnected
-              ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/80'
-              : 'bg-rose-950/80 text-rose-400 border-rose-800/80 animate-pulse'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-emerald-400' : 'bg-rose-500'}`} />
-            <span>{isSocketConnected ? 'Online' : 'Reconectando'}</span>
-          </div>
-
-          <button
-            onClick={() => {
-              if (window.confirm('Deseja realmente sair?')) {
-                localStorage.removeItem('token');
-                window.location.reload();
-              }
-            }}
-            title="Sair"
-            className="p-2 text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-700/60 rounded-xl transition cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
-      {/* Navegação por Abas Principais */}
-      <div className="bg-white border-b border-slate-200 px-4 pt-3 flex items-center justify-around sticky top-[69px] z-20 shadow-xs">
-        <button
-          onClick={() => setActiveTab('operacao')}
-          className={`pb-3 px-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'operacao'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-400 hover:text-slate-700'
-          }`}
-        >
-          <Play className="w-4 h-4" />
-          <span>Operação</span>
-          <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-            {reservasDoDia.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('checklists')}
-          className={`pb-3 px-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'checklists'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-400 hover:text-slate-700'
-          }`}
-        >
-          <ClipboardList className="w-4 h-4" />
-          <span>Checklists</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('abastecimentos')}
-          className={`pb-3 px-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'abastecimentos'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-400 hover:text-slate-700'
-          }`}
-        >
-          <Droplets className="w-4 h-4" />
-          <span>Combustível</span>
-          <span className="bg-cyan-100 text-cyan-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-            {reservasDoDia.filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0).length}
-          </span>
-        </button>
-      </div>
 
       {/* Conteúdo da Aba Selecionada */}
       {activeTab === 'operacao' && (
@@ -741,6 +667,12 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           onMarcarSaida={handleMarcarSaida}
           onChegadaEAbastecimento={handleChegadaEAbastecimento}
           onChecklistSubida={handleOpenChecklistSubida}
+          showOnlyConfirmed={showOnlyConfirmed}
+          setShowOnlyConfirmed={setShowOnlyConfirmed}
+          sortOrder={sortOrder}
+          setSortOrder={setSortOrder}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
         />
       )}
 
@@ -766,6 +698,82 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           }}
         />
       )}
+
+      {activeTab === 'perfil' && (
+        <PerfilTab
+          operadorNome={currentUser.nome}
+          isSocketConnected={isSocketConnected}
+          onLogout={() => {
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('admin_username');
+            localStorage.removeItem('admin_role');
+            localStorage.removeItem('admin_name');
+            onLogout();
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* Navegação por Abas Principais (Bottom Bar) */}
+      <div className="bg-white border-t border-slate-200 px-2 py-2 flex items-center justify-around fixed bottom-0 w-full z-40 shadow-[0_-4px_10px_-4px_rgba(0,0,0,0.1)] pb-safe">
+        <button
+          onClick={() => setActiveTab('operacao')}
+          className={`flex-1 pt-2 pb-1 px-1 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+            activeTab === 'operacao'
+              ? 'text-blue-600'
+              : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          <div className="relative">
+            <Play className={`w-6 h-6 ${activeTab === 'operacao' ? 'fill-current' : ''}`} />
+            <span className="absolute -top-2 -right-3 bg-blue-100 text-blue-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+              {reservasDoDia.length}
+            </span>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider mt-1">Operação</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('checklists')}
+          className={`flex-1 pt-2 pb-1 px-1 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+            activeTab === 'checklists'
+              ? 'text-blue-600'
+              : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          <ClipboardList className={`w-6 h-6`} />
+          <span className="text-[10px] font-bold uppercase tracking-wider mt-1">Checklists</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('abastecimentos')}
+          className={`flex-1 pt-2 pb-1 px-1 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+            activeTab === 'abastecimentos'
+              ? 'text-blue-600'
+              : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          <div className="relative">
+            <Droplets className={`w-6 h-6 ${activeTab === 'abastecimentos' ? 'fill-current' : ''}`} />
+            <span className="absolute -top-2 -right-3 bg-cyan-100 text-cyan-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+              {reservasDoDia.filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0).length}
+            </span>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider mt-1">Combustível</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('perfil')}
+          className={`flex-1 pt-2 pb-1 px-1 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+            activeTab === 'perfil'
+              ? 'text-blue-600'
+              : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          <UserIcon className="w-6 h-6" />
+          <span className="text-[10px] font-bold uppercase tracking-wider mt-1">Perfil</span>
+        </button>
+      </div>
 
       {/* Modal Single-Screen de Captura de Fotos e Checklist */}
       <ChecklistCaptureModal
