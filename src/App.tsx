@@ -145,6 +145,7 @@ export default function App() {
     return localStorage.getItem('admin_role') || null;
   });
   const [adminName, setAdminName] = useState<string>('');
+  const [adminUsername, setAdminUsername] = useState<string>('');
   const [isRoleLoading, setIsRoleLoading] = useState(false);
   const [isAdminDbLoaded, setIsAdminDbLoaded] = useState(false);
   const [dbData, setDbData] = useState<any>({});
@@ -180,6 +181,8 @@ export default function App() {
           setAdminRole(data.role as any);
           localStorage.setItem('admin_role', data.role || '');
           setAdminName(data.nome || data.username || 'Operador');
+          setAdminUsername(data.username || '');
+          localStorage.setItem('admin_username', data.username || '');
           const roleStr = (data.role || '').toLowerCase().trim();
           if (roleStr === 'financeiro' || roleStr.includes('financ')) {
             setActiveTab('finance-lancamentos');
@@ -436,7 +439,7 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <LoginPage 
-        onLogin={(role, name) => {
+        onLogin={(role, name, username) => {
           if (role) {
             setAdminRole(role);
             localStorage.setItem('admin_role', role);
@@ -455,6 +458,7 @@ export default function App() {
             setAdminName(name);
             localStorage.setItem('admin_name', name);
           }
+          if (username) { setAdminUsername(username); localStorage.setItem('admin_username', username); }
           setIsAuthenticated(true);
         }} 
       />
@@ -483,7 +487,7 @@ export default function App() {
     return (
       <div className="admin-panel h-full w-full">
         <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>}>
-          <MarinaOperadorDashboard onLogout={handleLogout} operadorNome={adminName} />
+          <MarinaOperadorDashboard onLogout={handleLogout} operadorNome={adminName} operadorUsername={adminUsername} />
         </Suspense>
       </div>
     );

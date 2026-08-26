@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import multer from "multer";
+import { uploadToR2, generatePresignedUrl } from "./server-r2";
 import sharp from "sharp";
 import { createServer as createViteServer } from "vite";
 import { Server as SocketIOServer } from "socket.io";
@@ -149,8 +150,9 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://frontend-cdn.perplexity.ai", "data:"],
-      connectSrc: ["'self'", "https://www.googleapis.com", "https://api.open-meteo.com", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "ws:", "wss:"],
-      imgSrc: ["'self'", "data:", "blob:", "https://api.qrserver.com", "https://*.ibb.co", "https://i.ibb.co"],
+      connectSrc: ["'self'", "https://www.googleapis.com", "https://api.open-meteo.com", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "ws:", "wss:", "https://*.r2.cloudflarestorage.com", "https://*.r2.dev"],
+      imgSrc: ["'self'", "data:", "blob:", "https://api.qrserver.com", "https://*.ibb.co", "https://i.ibb.co", "https://*.r2.cloudflarestorage.com", "https://*.r2.dev"],
+      mediaSrc: ["'self'", "data:", "blob:", "https://*.r2.cloudflarestorage.com", "https://*.r2.dev"],
       upgradeInsecureRequests: null,
     }
   },
@@ -482,13 +484,43 @@ app.delete("/api/catalogo-epis/:id", requireAdminAuth, sensitiveLimiter, async (
 
 
 // Route: Upload boat image
+
+// R2: Gerar Presigned URL para upload direto de vídeos via Client-side
+app.post("/api/upload/presigned-url", requireAdminAuth, async (req, res) => {
+  try {
+    const { filename, mimeType } = req.body;
+    if (!filename || !mimeType) {
+      return res.status(400).json({ error: true, message: "filename e mimeType são obrigatórios" });
+    }
+
+    if (!mimeType.startsWith("video/")) {
+      return res.status(400).json({ error: true, message: "Apenas vídeos podem utilizar este endpoint" });
+    }
+
+    const { uploadUrl, publicUrl } = await generatePresignedUrl(filename, mimeType);
+
+    res.json({ success: true, uploadUrl, publicUrl });
+  } catch (err: any) {
+    console.error("Presigned URL error:", err);
+    res.status(500).json({ error: true, message: err.message || "Falha ao gerar URL de upload rápido" });
+  }
+});
+
 app.post("/api/upload/boat-image", requireAdminAuth, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: true, message: "No image file provided." });
     const filename = `boat_${Date.now()}.webp`;
-    const outputPath = path.join(boatsUploadsDir, filename);
-    await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toFile(outputPath);
-    res.json({ success: true, imageUrl: `/uploads/boats/${filename}` });
+    const outBuf = await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+
+    try {
+      const publicUrl = await uploadToR2(outBuf, `boats/${filename}`, "image/webp");
+      res.json({ success: true, imageUrl: publicUrl });
+    } catch (r2Err) {
+      console.error("R2 Upload Failed:", r2Err);
+      const outputPath = path.join(boatsUploadsDir, filename);
+      require("fs").writeFileSync(outputPath, outBuf);
+      res.json({ success: true, imageUrl: `/uploads/boats/${filename}` });
+    }
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Failed to upload image" });
   }
@@ -500,14 +532,25 @@ app.post("/api/upload/boat-document", requireAdminAuth, upload.single('document'
     if (!req.file) return res.status(400).json({ error: true, message: "No file provided." });
     const isPDF = req.file.mimetype === 'application/pdf';
     let filename = '';
+    let outBuf = req.file.buffer;
+    let mime = req.file.mimetype;
+
     if (isPDF) {
       filename = `doc_${Date.now()}_${Math.floor(Math.random()*1000)}.pdf`;
-      require('fs').writeFileSync(path.join(boatsUploadsDir, filename), req.file.buffer);
     } else {
       filename = `doc_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
-      await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(boatsUploadsDir, filename));
+      outBuf = await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+      mime = "image/webp";
     }
-    res.json({ success: true, documentUrl: `/uploads/boats/${filename}` });
+
+    try {
+      const publicUrl = await uploadToR2(outBuf, `boats/${filename}`, mime);
+      res.json({ success: true, documentUrl: publicUrl });
+    } catch (r2Err) {
+      console.error("R2 Upload Failed:", r2Err);
+      require('fs').writeFileSync(path.join(boatsUploadsDir, filename), outBuf);
+      res.json({ success: true, documentUrl: `/uploads/boats/${filename}` });
+    }
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message });
   }
@@ -518,8 +561,19 @@ app.post("/api/upload/checklist-image", requireAdminAuth, upload.single('image')
   try {
     if (!req.file) return res.status(400).json({ error: true, message: "No image file provided." });
     const filename = `chk_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
-    await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(checklistUploadsDir, filename));
-    res.json({ success: true, imageUrl: `/uploads/checklists/${filename}` });
+
+    // Resize image and convert to webp buffer
+    const outBuf = await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+
+    try {
+      const publicUrl = await uploadToR2(outBuf, `checklists/${filename}`, "image/webp");
+      res.json({ success: true, imageUrl: publicUrl });
+    } catch (r2Err) {
+      console.error("R2 Upload Failed:", r2Err);
+      // Fallback local
+      require("fs").writeFileSync(path.join(checklistUploadsDir, filename), outBuf);
+      res.json({ success: true, imageUrl: `/uploads/checklists/${filename}` });
+    }
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message });
   }
@@ -533,15 +587,25 @@ app.post("/api/upload/comprovante", requireAdminAuth, upload.single('comprovante
     const isImage = req.file.mimetype.startsWith('image/');
     if (!isPdf && !isImage) return res.status(400).json({ error: true, message: "Apenas imagens e arquivos PDF sao permitidos." });
     let filename;
+    let outBuf = req.file.buffer;
+    let mime = req.file.mimetype;
     const originalNameClean = req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
     if (isImage) {
       filename = `comp_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
-      await sharp(req.file.buffer).resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 80 }).toFile(path.join(comprovantesUploadsDir, filename));
+      outBuf = await sharp(req.file.buffer).resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+      mime = "image/webp";
     } else {
       filename = `comp_${Date.now()}_${originalNameClean}`;
-      require('fs').writeFileSync(path.join(comprovantesUploadsDir, filename), req.file.buffer);
     }
-    res.json({ success: true, url: `/uploads/comprovantes/${filename}` });
+
+    try {
+      const publicUrl = await uploadToR2(outBuf, `comprovantes/${filename}`, mime);
+      res.json({ success: true, url: publicUrl });
+    } catch (r2Err) {
+      console.error("R2 Upload Failed:", r2Err);
+      require('fs').writeFileSync(path.join(comprovantesUploadsDir, filename), outBuf);
+      res.json({ success: true, url: `/uploads/comprovantes/${filename}` });
+    }
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message });
   }
@@ -2091,23 +2155,30 @@ app.post("/api/drive/folder", requireAdminAuth, async (req, res) => {
 app.post("/api/drive/upload", requireAdminAuth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: true, message: "Nenhum arquivo enviado." });
-    
+
     const { folderId, clienteId } = req.body;
     const uploaderName = (req as any).user.username;
-    
+
     const currentPool = getDbPool();
     if (!currentPool) return res.status(500).json({ error: true, message: "DB indisponível" });
 
-    // In a real app we'd save to disk. For MVP, we save using fs
     const uniqueFilename = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-    const filePath = path.join(driveUploadsDir, uniqueFilename);
-    fs.writeFileSync(filePath, req.file.buffer);
+    let publicUrl = "";
+
+    try {
+      publicUrl = await uploadToR2(req.file.buffer, `drive/${uniqueFilename}`, req.file.mimetype);
+    } catch (r2Err) {
+      console.error("R2 Upload Failed:", r2Err);
+      const filePath = path.join(driveUploadsDir, uniqueFilename);
+      fs.writeFileSync(filePath, req.file.buffer);
+      publicUrl = uniqueFilename; // keep old format if local
+    }
 
     const id = `file_${Date.now()}`;
     const fileRecord = {
       id,
       folderId: folderId || null,
-      filename: uniqueFilename,
+      filename: publicUrl.startsWith("http") ? publicUrl : uniqueFilename,
       originalName: req.file.originalname,
       mimeType: req.file.mimetype,
       size: req.file.size,
@@ -2290,25 +2361,35 @@ app.post("/api/comercial/preferences", requireAdminAuth, upload.fields([{ name: 
   try {
     const user = (req as any).user;
     if (!user || !user.id) return res.status(401).json({ error: true, message: "Unauthorized" });
-    
+
     const { greetingText } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    
+
     let logoUrl = req.body.logoUrl || null;
     let backgroundUrl = req.body.backgroundUrl || null;
 
     if (files && files['logo'] && files['logo'][0]) {
       const file = files['logo'][0];
-      const filename = `logo_${Date.now()}_${file.originalname}`;
-      fs.writeFileSync(path.join(uploadsDir, filename), file.buffer);
-      logoUrl = `/uploads/${filename}`;
+      const filename = `logo_${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      try {
+        logoUrl = await uploadToR2(file.buffer, `comercial/${filename}`, file.mimetype);
+      } catch (e) {
+        console.error("R2 fail:", e);
+        fs.writeFileSync(path.join(uploadsDir, filename), file.buffer);
+        logoUrl = `/uploads/${filename}`;
+      }
     }
 
     if (files && files['background'] && files['background'][0]) {
       const file = files['background'][0];
-      const filename = `bg_${Date.now()}_${file.originalname}`;
-      fs.writeFileSync(path.join(uploadsDir, filename), file.buffer);
-      backgroundUrl = `/uploads/${filename}`;
+      const filename = `bg_${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      try {
+        backgroundUrl = await uploadToR2(file.buffer, `comercial/${filename}`, file.mimetype);
+      } catch (e) {
+        console.error("R2 fail:", e);
+        fs.writeFileSync(path.join(uploadsDir, filename), file.buffer);
+        backgroundUrl = `/uploads/${filename}`;
+      }
     }
 
     const prefs = await getUserPreferences(user.id);
