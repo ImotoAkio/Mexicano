@@ -296,7 +296,7 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                       type="file"
                       accept="image/*"
                       capture="environment"
-                      ref={(el) => (fileInputRefs.current[angle.angleKey] = el)}
+                      ref={(el) => { fileInputRefs.current[angle.angleKey] = el; }}
                       className="hidden"
                       onChange={(e) => handleCaptureAngle(angle.angleKey, e)}
                     />

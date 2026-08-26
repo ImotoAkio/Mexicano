@@ -38,12 +38,20 @@ import {
   Plus,
   PlusCircle,
   Trash2,
-  Info
+  Info,
+  Play
 } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
 import { consumeFuelForEmbarcacao, getFuelInventory } from '../utils/fuelInventory';
+import { OperationsTab } from './MarinaOperador/OperationsTab';
+import { ChecklistsTab } from './MarinaOperador/ChecklistsTab';
+import { FuelRecordsTab } from './MarinaOperador/FuelRecordsTab';
+import { ChecklistCaptureModal } from './MarinaOperador/ChecklistCaptureModal';
+import { FuelRegistrationModal } from './MarinaOperador/FuelRegistrationModal';
+import { AvulsoChecklistModal } from './MarinaOperador/AvulsoChecklistModal';
+import { ViewChecklistModal } from './MarinaOperador/ViewChecklistModal';
 
 // Jet Ski Reference Images
 import refJetFrente from '../assets/images/checklist/jet/frente.svg';
@@ -216,8 +224,11 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+
   const [selectedDate, setSelectedDate] = useState<string>(getFormattedDate(new Date()));
+  const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'abastecimentos'>('operacao');
+  const [filterType, setFilterType] = useState<string>('todas');
+  const [searchTerm, setSearchTerm] = useState('');
   
   
   // --- NOVOS MÓDULOS DE ESTADO ---
