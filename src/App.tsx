@@ -438,6 +438,14 @@ export default function App() {
   }
 
   // ═══════════ PAINEL ADMINISTRATIVO (/admin) ═══════════
+  if (isPierTvRoute) {
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <PierTvDisplay />
+      </Suspense>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <LoginPage 
@@ -472,14 +480,6 @@ export default function App() {
       <div className="h-screen w-full flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
       </div>
-    );
-  }
-
-  if (isPierTvRoute) {
-    return (
-      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}>
-        <PierTvDisplay />
-      </Suspense>
     );
   }
 
