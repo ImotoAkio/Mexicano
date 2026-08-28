@@ -116,7 +116,7 @@ export default function StatusModal({
         previsaoChegada: statusVal === 'Confirmado' ? horaChegada : undefined,
         destino: statusVal === 'Confirmado' ? destino : undefined,
         pessoasABordo: statusVal === 'Confirmado' ? pessoasABordo : undefined,
-        statusMarina: statusVal === 'Confirmado' ? 'agendado' : undefined
+        statusMarina: statusVal === 'Confirmado' ? 'confirmada' : undefined
       });
 
       let success = true;

@@ -8,37 +8,43 @@ import {
   Eye,
   Plus,
   ShieldCheck,
-  Fuel,
-  Clock,
   FileText,
-  Sparkles,
-  ChevronRight,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  ZoomIn,
+  ZoomOut,
+  ImageIcon,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { uploadPhotoToStorage } from '../../utils/checklistStorage';
 import { getBoatCode } from '../../utils/boatUtils';
 
+/* ──────────────────────────────────────────────
+   TYPES
+   ────────────────────────────────────────────── */
+
 export interface ChecklistAngle {
   id: string;
+  angleKey: string;
   name: string;
   description: string;
   required: boolean;
-  angleKey: string;
+  svgPath?: string;
 }
 
 export interface ChecklistCaptureData {
   tipo: 'descida' | 'subida' | 'saida' | 'retorno' | 'avulso';
   fotos: { [angleKey: string]: string };
   fotosExtras: string[];
-  horimetro?: number;
-  nivelCombustivel?: string;
-  itensSeguranca: {
+  itensSeguranca?: {
     coletes: boolean;
     extintor: boolean;
     cortaCorrente: boolean;
     ancora: boolean;
     documento: boolean;
+    boiaCircular?: boolean;
+    primeirosSocorros?: boolean;
   };
   observacoes: string;
 }
@@ -52,21 +58,43 @@ interface ChecklistCaptureModalProps {
   onSuccess: (data: ChecklistCaptureData) => Promise<void>;
 }
 
-const DEFAULT_ANGLES_LANCHA: ChecklistAngle[] = [
-  { id: 'proa', angleKey: 'proa', name: 'Proa (Frente)', description: 'Vista frontal completa da proa e bico', required: true },
-  { id: 'popa', angleKey: 'popa', name: 'Popa (Traseira/Motor)', description: 'Motores, rabeta, escada e popa', required: true },
-  { id: 'bombordo', angleKey: 'bombordo', name: 'Bombordo (Lado Esquerdo)', description: 'Lateral esquerda do costado', required: true },
-  { id: 'boreste', angleKey: 'boreste', name: 'Boreste (Lado Direito)', description: 'Lateral direita do costado', required: true },
-  { id: 'painel', angleKey: 'painel', name: 'Painel & Comando', description: 'Instrumentos, manetes e rádio', required: true },
-  { id: 'casco', angleKey: 'casco', name: 'Casco & Hélice', description: 'Linha d\'água, fundo e hélice', required: false },
+/* ──────────────────────────────────────────────
+   ANGLE DEFINITIONS
+   ────────────────────────────────────────────── */
+
+const ANGLES_JET: ChecklistAngle[] = [
+  { id: 'frente',       angleKey: 'frente',       name: 'Frente (Proa)',            description: 'Bico e casco frontal',                          required: true,  svgPath: '/checklist/jet/frente.svg' },
+  { id: 'popa',         angleKey: 'popa',         name: 'Traseira (Popa/Turbina)',  description: 'Bocal de turbina e traseira',                    required: true,  svgPath: '/checklist/jet/tras.svg' },
+  { id: 'bombordo',     angleKey: 'bombordo',     name: 'Lateral Bombordo',         description: 'Costado lateral esquerdo completo',              required: true,  svgPath: '/checklist/jet/esquerda.svg' },
+  { id: 'boreste',      angleKey: 'boreste',      name: 'Lateral Boreste',          description: 'Costado lateral direito completo',               required: true,  svgPath: '/checklist/jet/direita.svg' },
+  { id: '45_bb_proa',   angleKey: '45_bb_proa',   name: '45° Bombordo Proa',        description: 'Diagonal esquerda frontal',                      required: true },
+  { id: '45_bb_popa',   angleKey: '45_bb_popa',   name: '45° Bombordo Popa',        description: 'Diagonal esquerda traseira',                     required: true },
+  { id: '45_be_proa',   angleKey: '45_be_proa',   name: '45° Boreste Proa',         description: 'Diagonal direita frontal',                       required: true },
+  { id: '45_be_popa',   angleKey: '45_be_popa',   name: '45° Boreste Popa',         description: 'Diagonal direita traseira',                      required: true },
+  { id: 'painel',       angleKey: 'painel',       name: 'Painel / Guidão / Display',description: 'Display digital, botões e guidão',               required: true,  svgPath: '/checklist/jet/painel.svg' },
+  { id: 'casco',        angleKey: 'casco',        name: 'Casco Inferior / Fundo',   description: 'Linha d\'água e fundo do casco',                 required: true,  svgPath: '/checklist/jet/casco.svg' },
 ];
 
-const DEFAULT_ANGLES_JET: ChecklistAngle[] = [
-  { id: 'proa', angleKey: 'proa', name: 'Proa (Frente)', description: 'Bico e casco frontal', required: true },
-  { id: 'popa', angleKey: 'popa', name: 'Popa (Traseira/Turbina)', description: 'Traseira, bocal e turbina', required: true },
-  { id: 'bombordo', angleKey: 'bombordo', name: 'Bombordo (Esquerdo)', description: 'Costado lateral esquerdo', required: true },
-  { id: 'boreste', angleKey: 'boreste', name: 'Boreste (Direito)', description: 'Costado lateral direito', required: true },
-  { id: 'painel', angleKey: 'painel', name: 'Guidão & Display', description: 'Painel digital e botões', required: true },
+const ANGLES_LANCHA: ChecklistAngle[] = [
+  { id: 'proa',           angleKey: 'proa',           name: 'Proa Frontal',             description: 'Vista frontal completa da proa e bico',         required: true,  svgPath: '/checklist/lancha/proa.svg' },
+  { id: 'costado_bb_proa',angleKey: 'costado_bb_proa',name: 'Costado Bombordo Proa',    description: 'Lado esquerdo, seção da proa',                  required: true,  svgPath: '/checklist/lancha/esquerda.svg' },
+  { id: 'costado_bb_popa',angleKey: 'costado_bb_popa',name: 'Costado Bombordo Popa',    description: 'Lado esquerdo, seção da popa',                  required: true },
+  { id: 'costado_be_proa',angleKey: 'costado_be_proa',name: 'Costado Boreste Proa',     description: 'Lado direito, seção da proa',                   required: true,  svgPath: '/checklist/lancha/direita.svg' },
+  { id: 'costado_be_popa',angleKey: 'costado_be_popa',name: 'Costado Boreste Popa',     description: 'Lado direito, seção da popa',                   required: true },
+  { id: 'popa',           angleKey: 'popa',           name: 'Popa / Motores / Rabeta',  description: 'Motores, rabeta, escada e popa completa',       required: true,  svgPath: '/checklist/lancha/popa.svg' },
+  { id: 'painel',         angleKey: 'painel',         name: 'Painel de Comando',        description: 'Instrumentos, manetes, rádio e eletrônica',     required: true,  svgPath: '/checklist/lancha/painel.svg' },
+  { id: 'casco',          angleKey: 'casco',          name: 'Casco / Fundo / Hélice',   description: 'Linha d\'água, fundo e hélice',                 required: true,  svgPath: '/checklist/lancha/casco.svg' },
+  { id: 'conves',         angleKey: 'conves',         name: 'Convés / Cabine',          description: 'Cobertura do convés, assentos e cabine',        required: false },
+];
+
+const SAFETY_ITEMS = [
+  { key: 'coletes',           label: 'Coletes Salva-Vidas presentes e conformes' },
+  { key: 'extintor',          label: 'Extintor de Incêndio na validade e pressurizado' },
+  { key: 'cortaCorrente',     label: 'Chave de segurança / Corta-corrente funcional' },
+  { key: 'ancora',            label: 'Âncora, corrente e cabos inspecionados' },
+  { key: 'documento',         label: 'Documentação / TIE a bordo' },
+  { key: 'boiaCircular',      label: 'Boia circular com retinida' },
+  { key: 'primeirosSocorros', label: 'Kit de primeiros socorros' },
 ];
 
 const QUICK_OBS_PRESETS = [
@@ -75,8 +103,19 @@ const QUICK_OBS_PRESETS = [
   'Estofamento com marcas de uso',
   'Capa molhada no compartimento',
   'Hélice com pequeno desgaste',
-  'Cliente já conferiu no local'
+  'Cliente já conferiu no local',
 ];
+
+/* ──────────────────────────────────────────────
+   COMPONENT
+   ────────────────────────────────────────────── */
+
+// Switch UI component to look like native iOS/Android toggle
+const NativeSwitch = ({ checked }: { checked: boolean }) => (
+  <div className={`w-14 h-8 rounded-full transition-colors duration-200 flex items-center px-1 shrink-0 ${checked ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+    <div className={`w-6 h-6 bg-white rounded-full transition-transform duration-200 shadow-md ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
+  </div>
+);
 
 export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
   isOpen,
@@ -91,18 +130,29 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
   const [uploadingExtra, setUploadingExtra] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // Additional fields
-  const [horimetro, setHorimetro] = useState<string>('');
-  const [nivelCombustivel, setNivelCombustivel] = useState<string>('3/4');
+  // Step wizard: 0 = fotos, 1 = segurança (lancha only), 2 = observações, 3 = revisão
+  const [step, setStep] = useState(0);
+
+  // Active angle being captured (full-screen capture card)
+  const [activeAngleIdx, setActiveAngleIdx] = useState(0);
+
+  // Preview modal state
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const [refGuideAngle, setRefGuideAngle] = useState<ChecklistAngle | null>(null);
+
+  // Safety items (only used for lanchas)
   const [itensSeguranca, setItensSeguranca] = useState({
-    coletes: true,
-    extintor: true,
-    cortaCorrente: true,
-    ancora: true,
-    documento: true
+    coletes: false,
+    extintor: false,
+    cortaCorrente: false,
+    ancora: false,
+    documento: false,
+    boiaCircular: false,
+    primeirosSocorros: false,
   });
+
   const [observacoes, setObservacoes] = useState('');
 
   const fileInputRefs = useRef<{ [angleKey: string]: HTMLInputElement | null }>({});
@@ -110,35 +160,48 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
 
   if (!isOpen) return null;
 
-  const embarcacao = embarcacaoTarget || (reservaTarget?.embarcacao) || {};
-  const isJetSki = (embarcacao.tipo || '').toLowerCase().includes('jet') || (embarcacao.nome || '').toLowerCase().includes('jet');
-  const angles = isJetSki ? DEFAULT_ANGLES_JET : DEFAULT_ANGLES_LANCHA;
+  const embarcacao = embarcacaoTarget || reservaTarget?.embarcacao || {};
+  const isJetSki = /jet/i.test(embarcacao.tipo || embarcacao.nome || '');
+  const angles = isJetSki ? ANGLES_JET : ANGLES_LANCHA;
 
   const totalRequired = angles.filter(a => a.required).length;
   const filledRequired = angles.filter(a => a.required && fotos[a.angleKey]).length;
   const isComplete = filledRequired >= totalRequired;
+  const progressPct = totalRequired > 0 ? (filledRequired / totalRequired) * 100 : 0;
 
   const getTipoLabel = () => {
     switch (tipo) {
-      case 'descida': return { label: 'Checklist de Descida', sub: 'Descida para a água / Rampa', badge: 'bg-blue-500/10 text-blue-400 border-blue-500/30' };
-      case 'subida': return { label: 'Checklist de Subida', sub: 'Retorno da água / Vaga Seca', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
-      case 'saida': return { label: 'Checklist de Saída', sub: 'Partida para navegação no mar', badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' };
-      case 'retorno': return { label: 'Checklist de Chegada', sub: 'Retorno da navegação', badge: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
-      default: return { label: 'Checklist Operacional', sub: 'Vistoria e Registro de Estado', badge: 'bg-purple-500/10 text-purple-400 border-purple-500/30' };
+      case 'descida': return { label: 'Checklist de Descida', sub: 'Descida para a água / Rampa', color: 'bg-blue-100 text-blue-700 border-blue-300' };
+      case 'subida':  return { label: 'Checklist de Subida', sub: 'Retorno da água / Vaga Seca', color: 'bg-emerald-100 text-emerald-700 border-emerald-300' };
+      case 'saida':   return { label: 'Checklist de Saída', sub: 'Partida para navegação no mar', color: 'bg-cyan-100 text-cyan-700 border-cyan-300' };
+      case 'retorno': return { label: 'Checklist de Chegada', sub: 'Retorno da navegação', color: 'bg-amber-100 text-amber-700 border-amber-300' };
+      default:        return { label: 'Checklist Operacional', sub: 'Vistoria e Registro', color: 'bg-purple-100 text-purple-700 border-purple-300' };
     }
   };
+
+  /* ── HANDLERS ── */
 
   const handleCaptureAngle = async (angleKey: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const localUrl = URL.createObjectURL(file);
+    setFotos(prev => ({ ...prev, [angleKey]: localUrl }));
+
     try {
       setUploadingAngle(angleKey);
       const url = await uploadPhotoToStorage(file);
       setFotos(prev => ({ ...prev, [angleKey]: url }));
+      setTimeout(() => URL.revokeObjectURL(localUrl), 1000);
     } catch (err: any) {
       console.error('Erro ao enviar foto:', err);
       alert('Falha ao processar foto. Tente novamente.');
+      setFotos(prev => {
+        const next = { ...prev };
+        delete next[angleKey];
+        return next;
+      });
+      URL.revokeObjectURL(localUrl);
     } finally {
       setUploadingAngle(null);
       if (fileInputRefs.current[angleKey]) {
@@ -151,13 +214,19 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const localUrl = URL.createObjectURL(file);
+    setFotosExtras(prev => [...prev, localUrl]);
+
     try {
       setUploadingExtra(true);
       const url = await uploadPhotoToStorage(file);
-      setFotosExtras(prev => [...prev, url]);
+      setFotosExtras(prev => prev.map(f => f === localUrl ? url : f));
+      setTimeout(() => URL.revokeObjectURL(localUrl), 1000);
     } catch (err: any) {
       console.error('Erro ao enviar foto extra:', err);
       alert('Falha ao processar foto extra. Tente novamente.');
+      setFotosExtras(prev => prev.filter(f => f !== localUrl));
+      URL.revokeObjectURL(localUrl);
     } finally {
       setUploadingExtra(false);
       if (extraFileInputRef.current) {
@@ -192,10 +261,8 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
         tipo,
         fotos,
         fotosExtras,
-        horimetro: horimetro ? parseFloat(horimetro) : undefined,
-        nivelCombustivel,
-        itensSeguranca,
-        observacoes
+        itensSeguranca: isJetSki ? undefined : itensSeguranca,
+        observacoes,
       });
       onClose();
     } catch (err: any) {
@@ -209,256 +276,352 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
   const typeInfo = getTipoLabel();
   const boatCode = getBoatCode(embarcacao);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-black/80 backdrop-blur-sm overflow-hidden animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700/80 w-full h-full md:h-auto md:max-h-[92vh] md:max-w-4xl md:rounded-2xl flex flex-col shadow-2xl overflow-hidden">
+  // Step configuration
+  const totalSteps = isJetSki ? 3 : 4;
+  // 0: fotos, 1: segurança (lanchas), 2/1: observações, 3/2: revisão final
+  const stepLabels = isJetSki
+    ? ['Fotos', 'Observações', 'Revisão']
+    : ['Fotos', 'Segurança', 'Observações', 'Revisão'];
 
-        {/* TOP BAR / HEADER */}
-        <div className="bg-slate-800/90 border-b border-slate-700/80 px-4 py-3.5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className={`px-2.5 py-1 rounded-lg border text-xs font-bold uppercase tracking-wider ${typeInfo.badge}`}>
-              {typeInfo.label}
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <span>{embarcacao.nome || 'Embarcação'}</span>
-                {boatCode && (
-                  <span className="text-xs px-2 py-0.5 bg-slate-700 text-slate-300 rounded font-mono">
-                    #{boatCode}
-                  </span>
-                )}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {embarcacao.modelo || 'Modelo'} {embarcacao.tamanho ? `• ${embarcacao.tamanho} pés` : ''} • {embarcacao.cliente_nome || reservaTarget?.cliente_nome || 'Cliente'}
-              </p>
-            </div>
+  const activeAngle = angles[activeAngleIdx];
+  const totalPhotos = Object.keys(fotos).length;
+
+  const canAdvanceFromPhotos = isComplete;
+
+  const handleNextStep = () => {
+    if (step < totalSteps - 1) setStep(step + 1);
+  };
+  const handlePrevStep = () => {
+    if (step > 0) setStep(step - 1);
+  };
+
+  const goToAngle = (idx: number) => {
+    setActiveAngleIdx(idx);
+    setStep(0);
+  };
+
+  // Step indexes mapped
+  const STEP_FOTOS = 0;
+  const STEP_SEGURANCA = isJetSki ? -1 : 1;
+  const STEP_OBS = isJetSki ? 1 : 2;
+  const STEP_REVIEW = isJetSki ? 2 : 3;
+
+  /* ── RENDER ── */
+
+  return (
+    <div className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+
+      {/* ═══════ NATIVE-STYLE TOP BAR ═══════ */}
+      <div className="bg-white border-b border-slate-100 shrink-0">
+        {/* Status row */}
+        <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+          <button
+            onClick={step === 0 ? onClose : handlePrevStep}
+            className="flex items-center gap-1 text-blue-600 font-semibold text-sm active:opacity-60 transition py-1 -ml-1"
+          >
+            <ChevronLeft className="w-5 h-5" />
+            <span>{step === 0 ? 'Fechar' : 'Voltar'}</span>
+          </button>
+
+          <div className="text-center flex-1 min-w-0 px-2">
+            <h1 className="text-base font-extrabold text-slate-900 truncate">
+              {embarcacao.nome || 'Embarcação'}
+              {boatCode && <span className="text-slate-400 font-mono text-sm ml-1.5">#{boatCode}</span>}
+            </h1>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded-xl transition"
+            className="p-2 -mr-1 text-slate-400 active:opacity-60 transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* PROGRESS INDICATOR BAR */}
-        <div className="bg-slate-800/40 border-b border-slate-700/50 px-4 py-2.5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${isComplete ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-            <span className="text-xs font-medium text-slate-300">
-              Fotos Obrigatórias: <strong className="text-white font-bold">{filledRequired} de {totalRequired}</strong>
-            </span>
-          </div>
-          <div className="w-32 bg-slate-700/80 h-2 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-300 ${isComplete ? 'bg-emerald-500' : 'bg-amber-500'}`}
-              style={{ width: `${(filledRequired / totalRequired) * 100}%` }}
-            />
-          </div>
+        {/* Step indicator pills */}
+        <div className="px-4 pb-3 flex items-center gap-2">
+          {stepLabels.map((label, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                // Allow going back freely, forward only if photos done or going to photos
+                if (i <= step || (i > 0 && canAdvanceFromPhotos)) setStep(i);
+              }}
+              className="flex-1 flex flex-col items-center gap-1"
+            >
+              <div className={`h-1 w-full rounded-full transition-colors duration-300 ${
+                i < step ? 'bg-emerald-500' : i === step ? 'bg-blue-600' : 'bg-slate-200'
+              }`} />
+              <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                i === step ? 'text-blue-600' : i < step ? 'text-emerald-600' : 'text-slate-400'
+              }`}>
+                {label}
+              </span>
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* MAIN SCROLLABLE CONTENT */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      {/* ═══════ MAIN CONTENT AREA ═══════ */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
 
-          {/* SECTION 1: PHOTO ANGLE GRID (TOUCH-FIRST SINGLE SCREEN) */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                <Camera className="w-4 h-4 text-cyan-400" />
-                <span>Ângulos da Embarcação</span>
-              </h3>
-              <span className="text-xs text-slate-400">Toque no quadrado para capturar</span>
-            </div>
+        {/* ────────── STEP: FOTOS ────────── */}
+        {step === STEP_FOTOS && (
+          <div className="flex flex-col h-full">
+            {/* Capture Card — Full Width, Big */}
+            <div className="px-4 pt-4 pb-3 flex-1 flex flex-col">
+              {/* Current angle as big capture card */}
+              <div className="flex-1 flex flex-col">
+                {/* Reference image or capture area */}
+                <div
+                  className={`relative flex-1 min-h-[280px] rounded-2xl overflow-hidden border-2 transition-all ${
+                    fotos[activeAngle.angleKey]
+                      ? 'border-emerald-400 bg-emerald-50'
+                      : 'border-dashed border-slate-300 bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    ref={(el) => { fileInputRefs.current[activeAngle.angleKey] = el; }}
+                    className="hidden"
+                    onChange={(e) => handleCaptureAngle(activeAngle.angleKey, e)}
+                  />
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {angles.map((angle) => {
-                const photoUrl = fotos[angle.angleKey];
-                const isUploading = uploadingAngle === angle.angleKey;
+                  {fotos[activeAngle.angleKey] ? (
+                    /* ── Photo captured ── */
+                    <>
+                      <img
+                        src={fotos[activeAngle.angleKey]}
+                        alt={activeAngle.name}
+                        className="w-full h-full object-cover absolute inset-0"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
 
-                return (
-                  <div
-                    key={angle.id}
-                    onClick={() => {
-                      if (!isUploading) {
-                        fileInputRefs.current[angle.angleKey]?.click();
-                      }
-                    }}
-                    className={`relative rounded-xl border-2 transition-all flex flex-col justify-between overflow-hidden cursor-pointer min-h-[140px] group ${
-                      photoUrl
-                        ? 'border-emerald-500/80 bg-slate-800/80 shadow-md shadow-emerald-950/30'
-                        : angle.required
-                        ? 'border-dashed border-slate-600 hover:border-cyan-500 bg-slate-800/40 hover:bg-slate-800/70'
-                        : 'border-dashed border-slate-700 hover:border-slate-500 bg-slate-800/20'
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      ref={(el) => { fileInputRefs.current[angle.angleKey] = el; }}
-                      className="hidden"
-                      onChange={(e) => handleCaptureAngle(angle.angleKey, e)}
-                    />
-
-                    {photoUrl ? (
-                      /* PHOTO PREVIEW CARD */
-                      <>
-                        <img
-                          src={photoUrl}
-                          alt={angle.name}
-                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-black/30 to-transparent pointer-events-none" />
-
-                        {/* Top Badge */}
-                        <div className="relative z-10 p-2 flex items-center justify-between">
-                          <span className="bg-emerald-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 shadow">
-                            <CheckCircle2 className="w-3 h-3" /> OK
-                          </span>
-
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewImage(photoUrl);
-                              }}
-                              className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm transition"
-                              title="Ver Ampliada"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => handleDeleteAnglePhoto(angle.angleKey, e)}
-                              className="p-1.5 bg-red-600/80 hover:bg-red-600 text-white rounded-lg backdrop-blur-sm transition"
-                              title="Remover Foto"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Bottom Label */}
-                        <div className="relative z-10 p-2 text-left">
-                          <p className="text-xs font-bold text-white leading-tight drop-shadow">
-                            {angle.name}
-                          </p>
-                          <p className="text-[10px] text-emerald-300 font-medium flex items-center gap-1">
-                            <RotateCcw className="w-2.5 h-2.5" /> Toque para trocar
-                          </p>
-                        </div>
-                      </>
-                    ) : (
-                      /* EMPTY ANGLE STATE (PROMPT TO CAPTURE) */
-                      <div className="flex-1 flex flex-col items-center justify-center p-3 text-center">
-                        {isUploading ? (
-                          <div className="flex flex-col items-center gap-2">
-                            <div className="w-7 h-7 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                            <span className="text-[11px] font-bold text-cyan-400">Enviando...</span>
-                          </div>
-                        ) : (
-                          <>
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 transition ${
-                              angle.required
-                                ? 'bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white'
-                                : 'bg-slate-700/50 text-slate-400'
-                            }`}>
-                              <Camera className="w-5 h-5" />
-                            </div>
-
-                            <p className="text-xs font-bold text-slate-200 group-hover:text-white">
-                              {angle.name} {angle.required && <span className="text-red-400">*</span>}
-                            </p>
-                            <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
-                              {angle.description}
-                            </p>
-                          </>
-                        )}
+                      {/* Status badge */}
+                      <div className="absolute top-3 left-3">
+                        <span className="bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
+                          <CheckCircle2 className="w-4 h-4" /> Foto capturada
+                        </span>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
 
-          {/* SECTION 2: EXTRA PHOTOS / DEFECTS */}
-          <div className="bg-slate-800/40 rounded-xl border border-slate-700/60 p-3.5">
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
-                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                  Fotos Extras & Avarias Detectadas ({fotosExtras.length})
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => extraFileInputRef.current?.click()}
-                disabled={uploadingExtra}
-                className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{uploadingExtra ? 'Enviando...' : 'Adicionar Foto'}</span>
-              </button>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                ref={extraFileInputRef}
-                className="hidden"
-                onChange={handleCaptureExtra}
-              />
-            </div>
-
-            {fotosExtras.length > 0 ? (
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 pt-1">
-                {fotosExtras.map((extraUrl, idx) => (
-                  <div key={idx} className="relative rounded-lg overflow-hidden border border-slate-700 aspect-square group">
-                    <img src={extraUrl} alt={`Extra ${idx + 1}`} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewImage(extraUrl)}
-                        className="p-1 bg-black/70 text-white rounded hover:bg-black"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeleteExtraPhoto(idx, e)}
-                        className="p-1 bg-red-600 text-white rounded hover:bg-red-700"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {/* Action buttons */}
+                      <div className="absolute bottom-4 left-4 right-4 flex gap-3">
+                        <button
+                          onClick={() => setPreviewImage(fotos[activeAngle.angleKey])}
+                          className="flex-1 py-3 bg-white/95 text-slate-800 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.97] transition backdrop-blur-sm"
+                        >
+                          <Eye className="w-5 h-5" /> Ver Foto
+                        </button>
+                        <button
+                          onClick={() => fileInputRefs.current[activeAngle.angleKey]?.click()}
+                          className="flex-1 py-3 bg-white/95 text-blue-600 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.97] transition backdrop-blur-sm"
+                        >
+                          <RotateCcw className="w-5 h-5" /> Refazer
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteAnglePhoto(activeAngle.angleKey, e)}
+                          className="py-3 px-4 bg-red-500/90 text-white rounded-xl shadow-lg active:scale-[0.97] transition backdrop-blur-sm"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </>
+                  ) : uploadingAngle === activeAngle.angleKey ? (
+                    /* ── Uploading ── */
+                    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 absolute inset-0">
+                      <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-base font-bold text-blue-600">Enviando foto...</span>
                     </div>
+                  ) : (
+                    /* ── Empty — tap to capture ── */
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => fileInputRefs.current[activeAngle.angleKey]?.click()}
+                      className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 active:bg-slate-100 transition cursor-pointer"
+                    >
+                      {/* Show reference SVG large if available */}
+                      {activeAngle.svgPath ? (
+                        <>
+                          <img
+                            src={activeAngle.svgPath}
+                            alt={`Referência ${activeAngle.name}`}
+                            className="w-32 h-32 object-contain opacity-40"
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewImage(activeAngle.svgPath!);
+                            }}
+                            className="absolute top-4 right-4 py-2 px-4 bg-white/90 text-blue-600 rounded-full font-bold text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition"
+                          >
+                            <Eye className="w-4 h-4" /> Ver Exemplo
+                          </button>
+                        </>
+                      ) : (
+                        <div className="w-20 h-20 rounded-full bg-blue-50 border-2 border-blue-200 flex items-center justify-center">
+                          <Camera className="w-10 h-10 text-blue-400" />
+                        </div>
+                      )}
+                      <div className="text-center">
+                        <p className="text-lg font-extrabold text-slate-800">Toque para fotografar</p>
+                        <p className="text-sm text-slate-500 mt-1">{activeAngle.description}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Angle name & counter below the card */}
+                <div className="flex items-center justify-between mt-3 px-1">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-slate-900 leading-tight">{activeAngle.name}</h2>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      {activeAngle.required ? 'Obrigatória' : 'Opcional'} · {activeAngleIdx + 1} de {angles.length}
+                    </p>
                   </div>
-                ))}
+                  <div className="text-right">
+                    <span className={`text-2xl font-black ${isComplete ? 'text-emerald-500' : 'text-slate-300'}`}>
+                      {filledRequired}/{totalRequired}
+                    </span>
+                  </div>
+                </div>
               </div>
-            ) : (
-              <p className="text-xs text-slate-500 italic py-1">
-                Nenhuma foto de avaria extra adicionada. Toque em 'Adicionar Foto' caso identifique arranhões, trincas ou detalhes.
-              </p>
-            )}
+            </div>
+
+            {/* Horizontal scroll mini-thumbnails for all angles */}
+            <div className="border-t border-slate-100 bg-white px-2 py-3 shrink-0">
+              <div className="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-none">
+                {angles.map((angle, idx) => {
+                  const hasPhoto = !!fotos[angle.angleKey];
+                  const isActive = idx === activeAngleIdx;
+
+                  return (
+                    <button
+                      key={angle.id}
+                      onClick={() => setActiveAngleIdx(idx)}
+                      className={`shrink-0 snap-center w-16 h-16 rounded-xl overflow-hidden border-2 transition-all active:scale-95 relative ${
+                        isActive
+                          ? 'border-blue-600 shadow-md shadow-blue-200'
+                          : hasPhoto
+                          ? 'border-emerald-400'
+                          : 'border-slate-200'
+                      }`}
+                    >
+                      {hasPhoto ? (
+                        <>
+                          <img src={fotos[angle.angleKey]} alt="" className="w-full h-full object-cover" />
+                          <div className="absolute top-0.5 right-0.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500 drop-shadow" />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                          {angle.svgPath ? (
+                            <img src={angle.svgPath} alt="" className="w-8 h-8 object-contain opacity-30" />
+                          ) : (
+                            <Camera className="w-5 h-5 text-slate-300" />
+                          )}
+                        </div>
+                      )}
+                      {/* Active indicator dot */}
+                      {isActive && (
+                        <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-blue-600" />
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* Extra photos button in the strip */}
+                <button
+                  onClick={() => extraFileInputRef.current?.click()}
+                  disabled={uploadingExtra}
+                  className="shrink-0 snap-center w-16 h-16 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 flex flex-col items-center justify-center gap-0.5 active:scale-95 transition"
+                >
+                  {uploadingExtra ? (
+                    <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Plus className="w-5 h-5 text-amber-500" />
+                      <span className="text-[8px] font-bold text-amber-600 uppercase">Extra</span>
+                      {fotosExtras.length > 0 && (
+                        <span className="text-[8px] font-bold text-amber-700">{fotosExtras.length}</span>
+                      )}
+                    </>
+                  )}
+                </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  ref={extraFileInputRef}
+                  className="hidden"
+                  onChange={handleCaptureExtra}
+                />
+              </div>
+            </div>
+
+            {/* Navigation arrows between angles + advance button */}
+            <div className="border-t border-slate-100 bg-white p-4 flex items-center gap-3 shrink-0">
+              <button
+                onClick={() => setActiveAngleIdx(Math.max(0, activeAngleIdx - 1))}
+                disabled={activeAngleIdx === 0}
+                className="w-14 h-14 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center active:scale-95 transition disabled:opacity-30"
+              >
+                <ChevronLeft className="w-7 h-7" />
+              </button>
+
+              {activeAngleIdx < angles.length - 1 ? (
+                <button
+                  onClick={() => setActiveAngleIdx(activeAngleIdx + 1)}
+                  className="flex-1 h-14 rounded-xl bg-blue-600 text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-sm"
+                >
+                  Próximo Ângulo <ChevronRight className="w-5 h-5" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleNextStep}
+                  disabled={!canAdvanceFromPhotos}
+                  className={`flex-1 h-14 rounded-xl font-bold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-sm ${
+                    canAdvanceFromPhotos
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-slate-200 text-slate-400'
+                  }`}
+                >
+                  {canAdvanceFromPhotos ? (
+                    <>Avançar <ChevronRight className="w-5 h-5" /></>
+                  ) : (
+                    <>Faltam {totalRequired - filledRequired} fotos</>
+                  )}
+                </button>
+              )}
+
+              <button
+                onClick={() => setActiveAngleIdx(Math.min(angles.length - 1, activeAngleIdx + 1))}
+                disabled={activeAngleIdx === angles.length - 1}
+                className="w-14 h-14 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center active:scale-95 transition disabled:opacity-30"
+              >
+                <ChevronRight className="w-7 h-7" />
+              </button>
+            </div>
           </div>
+        )}
 
-          {/* SECTION 3: SAFETY ITENS CHECKLIST (LARGE TOUCH SWITCHES) */}
-          <div>
-            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2 mb-3">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Conferência de Equipamentos e Segurança</span>
-            </h3>
+        {/* ────────── STEP: SEGURANÇA (lanchas) ────────── */}
+        {step === STEP_SEGURANCA && !isJetSki && (
+          <div className="px-4 py-5 space-y-4">
+            <div className="text-center mb-2">
+              <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                <ShieldCheck className="w-8 h-8 text-emerald-600" />
+              </div>
+              <h2 className="text-xl font-extrabold text-slate-900">Equipamentos de Segurança</h2>
+              <p className="text-sm text-slate-500 mt-1">Confirme cada item verificado a bordo</p>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {[
-                { key: 'coletes', label: 'Coletes Salva-Vidas presentes e conformes' },
-                { key: 'extintor', label: 'Extintor de Incêndio na validade e pressurizado' },
-                { key: 'cortaCorrente', label: 'Chave de segurança / Corta-circuito funcional' },
-                { key: 'ancora', label: 'Âncora, corrente e cabos inspecionados' },
-                { key: 'documento', label: 'Documentação / TIE a bordo' }
-              ].map((item) => {
-                const checked = (itensSeguranca as any)[item.key];
+            <div className="space-y-2">
+              {SAFETY_ITEMS.map((item) => {
+                const checked = (itensSeguranca as any)[item.key] ?? false;
                 return (
                   <button
                     key={item.key}
@@ -466,161 +629,264 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                     onClick={() =>
                       setItensSeguranca(prev => ({
                         ...prev,
-                        [item.key]: !checked
+                        [item.key]: !checked,
                       }))
                     }
-                    className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all ${
+                    className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.98] ${
                       checked
-                        ? 'bg-emerald-950/30 border-emerald-500/60 text-emerald-200'
-                        : 'bg-slate-800/40 border-slate-700 text-slate-400'
+                        ? 'bg-emerald-50 border-emerald-400'
+                        : 'bg-white border-slate-200'
                     }`}
                   >
-                    <span className="text-xs font-medium pr-2">{item.label}</span>
-                    <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
-                      checked ? 'bg-emerald-500 text-white' : 'border border-slate-600'
-                    }`}>
-                      {checked && <CheckCircle2 className="w-4 h-4" />}
-                    </div>
+                    <span className={`text-sm font-semibold pr-4 leading-snug ${checked ? 'text-emerald-800' : 'text-slate-700'}`}>
+                      {item.label}
+                    </span>
+                    <NativeSwitch checked={checked} />
                   </button>
                 );
               })}
             </div>
           </div>
+        )}
 
-          {/* SECTION 4: HORÍMETRO, COMBUSTÍVEL & OBSERVAÇÕES */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ────────── STEP: OBSERVAÇÕES ────────── */}
+        {step === STEP_OBS && (
+          <div className="px-4 py-5 space-y-5">
+            <div className="text-center mb-2">
+              <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                <FileText className="w-8 h-8 text-blue-600" />
+              </div>
+              <h2 className="text-xl font-extrabold text-slate-900">Observações</h2>
+              <p className="text-sm text-slate-500 mt-1">Adicione notas sobre o estado da embarcação</p>
+            </div>
 
-            {/* Quick Metrics */}
-            <div className="bg-slate-800/40 rounded-xl border border-slate-700/60 p-3.5 space-y-3">
-              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Horímetro & Nível</span>
-              </h4>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">Horímetro Atual (h)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="Ex: 142.5"
-                    value={horimetro}
-                    onChange={(e) => setHorimetro(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">Nível Tanque</label>
-                  <select
-                    value={nivelCombustivel}
-                    onChange={(e) => setNivelCombustivel(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-semibold focus:outline-none focus:border-cyan-500"
-                  >
-                    <option value="Cheio">Cheio (100%)</option>
-                    <option value="3/4">3/4 Tanque</option>
-                    <option value="1/2">1/2 Tanque (50%)</option>
-                    <option value="1/4">1/4 Tanque</option>
-                    <option value="Reserva">Reserva (&lt;10%)</option>
-                  </select>
-                </div>
+            {/* Quick presets as chips */}
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Notas rápidas</label>
+              <div className="flex flex-wrap gap-2">
+                {QUICK_OBS_PRESETS.map((preset, idx) => {
+                  const isSelected = observacoes.includes(preset);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setObservacoes(prev => prev.replace(preset, '').replace(/\.\s*\./g, '.').replace(/^\.\s*/, '').trim());
+                        } else {
+                          setObservacoes(prev => (prev ? `${prev}. ${preset}` : preset));
+                        }
+                      }}
+                      className={`px-4 py-2.5 rounded-full text-sm font-semibold transition active:scale-95 ${
+                        isSelected
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      {isSelected ? '✓ ' : '+ '}{preset}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Quick Notes */}
-            <div className="bg-slate-800/40 rounded-xl border border-slate-700/60 p-3.5 space-y-2">
-              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-purple-400" />
-                <span>Observações Rápidas</span>
-              </h4>
-
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {QUICK_OBS_PRESETS.map((preset, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      setObservacoes(prev => (prev ? `${prev}. ${preset}` : preset));
-                    }}
-                    className="text-[10px] bg-slate-700/60 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full border border-slate-600/50 transition"
-                  >
-                    + {preset}
-                  </button>
-                ))}
-              </div>
-
+            {/* Free-text */}
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Observação livre</label>
               <textarea
-                rows={2}
-                placeholder="Descreva detalhes relevantes do estado da embarcação..."
+                rows={4}
+                placeholder="Descreva detalhes do estado da embarcação..."
                 value={observacoes}
                 onChange={(e) => setObservacoes(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none"
+                className="w-full bg-white border-2 border-slate-200 rounded-2xl px-4 py-4 text-base text-slate-800 placeholder-slate-400 font-medium focus:outline-none focus:border-blue-500 resize-none transition"
               />
             </div>
 
-          </div>
-
-        </div>
-
-        {/* BOTTOM FIXED ACTION BAR (BIG TOUCH TARGET) */}
-        <div className="bg-slate-800/95 border-t border-slate-700/80 p-3 md:p-4 flex items-center justify-between gap-3 shrink-0 shadow-lg">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="px-4 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white font-semibold rounded-xl text-sm transition"
-          >
-            Cancelar
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!isComplete || isSubmitting}
-            className={`flex-1 py-3.5 px-6 rounded-xl font-bold text-sm md:text-base flex items-center justify-center gap-2 shadow-lg transition-all ${
-              isComplete
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50 active:scale-[0.98]'
-                : 'bg-slate-800 border border-slate-700 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            {isSubmitting ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Gravando Checklist...</span>
-              </>
-            ) : isComplete ? (
-              <>
-                <CheckCircle2 className="w-5 h-5" />
-                <span>Concluir e Salvar Checklist</span>
-              </>
-            ) : (
-              <>
-                <AlertCircle className="w-5 h-5" />
-                <span>Faltam {totalRequired - filledRequired} fotos obrigatórias</span>
-              </>
+            {/* Extra photos section */}
+            {fotosExtras.length > 0 && (
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                  Fotos extras adicionadas ({fotosExtras.length})
+                </label>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {fotosExtras.map((url, idx) => (
+                    <div key={idx} className="shrink-0 w-20 h-20 rounded-xl overflow-hidden border border-slate-200 relative group cursor-pointer" onClick={() => setPreviewImage(url)}>
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <button
+                        onClick={(e) => handleDeleteExtraPhoto(idx, e)}
+                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 group-active:opacity-100 transition shadow"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
-          </button>
-        </div>
+          </div>
+        )}
+
+        {/* ────────── STEP: REVISÃO FINAL ────────── */}
+        {step === STEP_REVIEW && (
+          <div className="px-4 py-5 space-y-5">
+            <div className="text-center mb-2">
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 ${isComplete ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+                {isComplete
+                  ? <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                  : <AlertCircle className="w-8 h-8 text-amber-600" />
+                }
+              </div>
+              <h2 className="text-xl font-extrabold text-slate-900">Revisão Final</h2>
+              <p className="text-sm text-slate-500 mt-1">{typeInfo.label} — {embarcacao.nome || 'Embarcação'}</p>
+            </div>
+
+            {/* Photos grid review */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Fotos ({totalPhotos} capturadas)
+                </span>
+                <span className={`text-xs font-bold ${isComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {filledRequired}/{totalRequired} obrigatórias
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {angles.map((angle, idx) => {
+                  const hasPhoto = !!fotos[angle.angleKey];
+                  return (
+                    <button
+                      key={angle.id}
+                      onClick={() => hasPhoto ? setPreviewImage(fotos[angle.angleKey]) : goToAngle(idx)}
+                      className={`aspect-square rounded-xl overflow-hidden border-2 relative transition active:scale-95 ${
+                        hasPhoto ? 'border-emerald-400' : angle.required ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      {hasPhoto ? (
+                        <>
+                          <img src={fotos[angle.angleKey]} alt="" className="w-full h-full object-cover" />
+                          <div className="absolute top-1 right-1">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500 drop-shadow" />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-1">
+                          <Camera className="w-5 h-5 text-slate-300 mb-1" />
+                          <span className="text-[8px] font-bold text-slate-400 text-center leading-tight">{angle.name}</span>
+                          {angle.required && <span className="text-[8px] font-bold text-red-400 mt-0.5">Faltando</span>}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Safety summary (lanchas) */}
+            {!isJetSki && (
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Segurança
+                  </span>
+                  <span className="text-xs font-bold text-emerald-600">
+                    {Object.values(itensSeguranca).filter(Boolean).length}/{SAFETY_ITEMS.length} OK
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {SAFETY_ITEMS.map(item => {
+                    const ok = (itensSeguranca as any)[item.key];
+                    return (
+                      <span key={item.key} className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                        {ok ? '✓' : '✗'} {item.label.split(' ')[0]}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Observations summary */}
+            {observacoes && (
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Observações</span>
+                <p className="text-sm text-slate-700 font-medium">{observacoes}</p>
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
 
-      {/* FULLSCREEN IMAGE MODAL PREVIEW */}
+      {/* ═══════ BOTTOM ACTION BAR (not on photo step — that has its own nav) ═══════ */}
+      {step !== STEP_FOTOS && (
+        <div className="border-t border-slate-100 bg-white p-4 shrink-0">
+          {step === STEP_REVIEW ? (
+            /* Final submit */
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!isComplete || isSubmitting}
+              className={`w-full h-14 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition active:scale-[0.98] ${
+                isComplete
+                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Gravando...
+                </>
+              ) : isComplete ? (
+                <>
+                  <CheckCircle2 className="w-6 h-6" />
+                  Concluir e Salvar Checklist
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-5 h-5" />
+                  Faltam {totalRequired - filledRequired} fotos obrigatórias
+                </>
+              )}
+            </button>
+          ) : (
+            /* Next step */
+            <button
+              onClick={handleNextStep}
+              className="w-full h-14 rounded-2xl bg-blue-600 text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-sm"
+            >
+              Continuar <ChevronRight className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ═══════ FULLSCREEN IMAGE PREVIEW ═══════ */}
       {previewImage && (
         <div
-          className="fixed inset-0 z-60 bg-black/90 flex flex-col items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
           onClick={() => setPreviewImage(null)}
         >
-          <button
-            onClick={() => setPreviewImage(null)}
-            className="absolute top-4 right-4 p-3 bg-slate-800/80 text-white rounded-full hover:bg-slate-700"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="absolute top-4 right-4 z-[10000]">
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="p-3 bg-white/20 text-white rounded-full backdrop-blur-md active:opacity-60 transition shadow-xl"
+            >
+              <X className="w-8 h-8" />
+            </button>
+          </div>
+
           <img
             src={previewImage}
-            alt="Preview Foto"
-            className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
+            alt="Preview"
+            className="w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
           />
+
+          <p className="absolute bottom-6 text-white/70 text-sm font-bold bg-black/50 px-4 py-2 rounded-full">
+            Toque fora para fechar
+          </p>
         </div>
       )}
     </div>

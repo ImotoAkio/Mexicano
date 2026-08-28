@@ -247,7 +247,8 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
   const [isAvulsoModalOpen, setIsAvulsoModalOpen] = useState(false);
   const [selectedViewReserva, setSelectedViewReserva] = useState<any>(null);
 
-  const isSocketConnected = true; // Substituir conforme implementação de socket anterior
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [unreadUpdateMessage, setUnreadUpdateMessage] = useState<string | null>(null);
   const currentUser = { nome: operadorNome || 'Operador' };
 
 const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
@@ -307,12 +308,18 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
     });
     
     socket.on('connect', () => {
+      setIsSocketConnected(true);
       fetchData();
+    });
+
+    socket.on('disconnect', () => {
+      setIsSocketConnected(false);
     });
 
     socket.on('marina_update', (payload: any) => {
       const reservationData = payload?.reservation || payload?.data;
       if (!reservationData || (payload.type && payload.type !== 'reservations')) {
+        setUnreadUpdateMessage('Atualização recebida no sistema!');
         fetchData();
         return;
       }
@@ -320,10 +327,18 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
       const reservation = reservationData;
       const { action } = payload;
 
+      console.log('--- Socket Update Received ---');
+      console.log('Action:', action);
+      console.log('Incoming Payload:', payload);
+
       setData((prev: any) => {
-        if (!prev) return prev;
+        if (!prev) {
+          console.log('No previous data in state, skipping update');
+          return prev;
+        }
         let updatedReservations = [...(prev.reservations || [])];
 
+        let preUpdateTarget = null;
         if (action === 'delete') {
           updatedReservations = updatedReservations.filter((r: any) => r.id !== reservation.id);
         } else if (action === 'new') {
@@ -332,11 +347,16 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         } else {
           const idx = updatedReservations.findIndex((r: any) => r.id === reservation.id);
           if (idx >= 0) {
+            preUpdateTarget = { ...updatedReservations[idx] };
             updatedReservations[idx] = { ...updatedReservations[idx], ...reservation };
           } else {
             updatedReservations.push(reservation);
           }
         }
+
+        console.log('Target Content BEFORE update:', preUpdateTarget);
+        console.log('Target Content AFTER update:', updatedReservations.find((r:any) => r.id === reservation.id));
+        console.log('------------------------------');
 
         return { ...prev, reservations: updatedReservations };
       });
@@ -354,6 +374,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
 
       const info = messages[action] || { msg: 'Atualização no píer recebida', type: 'info' as const };
       showToast(info.msg, info.type);
+      setUnreadUpdateMessage(info.msg);
 
       // Reproduz efeito sonoro (bip sonoro via Web Audio API)
       try {
@@ -653,7 +674,23 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
   }
 
     return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans pb-20">
+    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans pb-20 relative">
+
+      {/* Floating Notification Blob */}
+      {unreadUpdateMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9000] animate-in fade-in slide-in-from-top-4 duration-300">
+          <button
+            onClick={() => {
+              setUnreadUpdateMessage(null);
+              fetchData();
+            }}
+            className="bg-blue-600 text-white shadow-xl shadow-blue-500/30 px-5 py-2.5 rounded-full flex items-center gap-2 font-bold text-sm tracking-wide active:scale-95 transition-transform border-2 border-white/20"
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></span>
+            {unreadUpdateMessage}
+          </button>
+        </div>
+      )}
 
       {/* Conteúdo da Aba Selecionada */}
       {activeTab === 'operacao' && (

@@ -23,6 +23,7 @@ const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
 const PecasKanbanPage = lazy(() => import('./components/PecasKanbanPage'));
 const ChamadosPage = lazy(() => import('./components/ChamadosPage'));
+const PierTvDisplay = lazy(() => import('./components/MarinaOperador/PierTvDisplay'));
 const PecasHorimetrosPage = lazy(() => import('./components/pecas/PecasHorimetrosPage'));
 const PecasAcessoriosPage = lazy(() => import('./components/pecas/PecasAcessoriosPage'));
 const PecasWhatsAppPage = lazy(() => import('./components/pecas/PecasWhatsAppPage'));
@@ -374,7 +375,8 @@ export default function App() {
   const isAdminRoute = currentPath.startsWith('/admin');
   const isSimuladorRoute = currentPath === '/simulador-epi';
   const isSharedChecklistRoute = currentPath.startsWith('/checklist/share/');
-  const isClientRoute = !isAdminRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute;
+  const isPierTvRoute = currentPath === '/tv-pier' || currentPath.startsWith('/tv-pier');
+  const isClientRoute = !isAdminRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute && !isPierTvRoute;
 
   // ═══════════ FEEDBACK PUBLIC PAGE (/feedback) ═══════════
   if (isFeedbackRoute) {
@@ -470,6 +472,14 @@ export default function App() {
       <div className="h-screen w-full flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
       </div>
+    );
+  }
+
+  if (isPierTvRoute) {
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <PierTvDisplay />
+      </Suspense>
     );
   }
 
