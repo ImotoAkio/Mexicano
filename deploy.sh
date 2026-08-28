@@ -25,7 +25,11 @@ if [ -d ".git" ]; then
     git pull origin main || echo "⚠️ Aviso: git pull falhou ou sem alterações, continuando deploy..."
 fi
 
-# 3. Identifica o serviço ativo no Swarm
+# 3. Pull explicitly to ensure latest layout before update
+echo "📥 Forçando o download da nova imagem do GitHub..."
+docker pull ghcr.io/imotoakio/mexicano:latest
+
+# 4. Identifica o serviço ativo no Swarm
 SERVICE_NAME=$(docker service ls --filter "name=mexicano" --format "{{.Name}}" | head -n 1)
 
 if [ -z "$SERVICE_NAME" ]; then
