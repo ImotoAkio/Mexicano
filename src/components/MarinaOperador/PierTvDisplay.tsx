@@ -130,7 +130,7 @@ export default function PierTvDisplay() {
     let timeLabel = reserva.previsaoSaida;
     if (!timeLabel) {
       if (statusText === 'Agendado') {
-        timeLabel = 'A CONFIRMAR';
+        timeLabel = '---';
       } else {
         timeLabel = reserva.periodo === 'manha' ? 'MANHÃ' : reserva.periodo === 'tarde' ? 'TARDE' : 'DIA TODO';
       }
