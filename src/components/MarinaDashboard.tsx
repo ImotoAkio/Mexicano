@@ -388,11 +388,48 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
   const proceedChecklist = () => {
     const fotosArray = Object.values(checklistFotos).flat();
-    
+
     if (checklistMode === 'descida') {
       executeRegistrarDescida(fotosArray);
     } else if (checklistMode === 'subida') {
       executeRegistrarSubida(fotosArray);
+    }
+  };
+
+  // --- Drag and Drop Handlers ---
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, reserva: any, originCol: string) => {
+    e.dataTransfer.setData('application/json', JSON.stringify({ reservaId: reserva.id, originCol }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetCol: string) => {
+    e.preventDefault();
+    const dataStr = e.dataTransfer.getData('application/json');
+    if (!dataStr) return;
+
+    try {
+      const { reservaId, originCol } = JSON.parse(dataStr);
+      if (originCol === targetCol) return;
+
+      const reserva = totalDayReservations.find((r: any) => r.id === reservaId);
+      if (!reserva) return;
+
+      if (originCol === 'agendados' && targetCol === 'nopier') {
+        await executeRegistrarDescida([], reserva);
+      } else if (originCol === 'nopier' && targetCol === 'navegando') {
+        await executeMarcarSaida(reserva);
+      } else if ((originCol === 'nopier' || originCol === 'navegando') && targetCol === 'retornaram') {
+        openFuelForChegada(reserva);
+      } else {
+        showToast('Mudança de estágio inválida.', 'warning');
+      }
+    } catch (err) {
+      console.error('Erro no drag and drop', err);
     }
   };
 
@@ -1602,7 +1639,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 
                 {/* Coluna 1: Agendados / Confirmados */}
-                <div className="bg-amber-50/40 rounded-2xl p-3 border border-amber-200/60 space-y-3 flex flex-col min-h-[400px]">
+                <div
+                  className="bg-amber-50/40 rounded-2xl p-3 border border-amber-200/60 space-y-3 flex flex-col min-h-[400px]"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, 'agendados')}
+                >
                   <div className="flex items-center justify-between px-1">
                     <span className="font-extrabold text-xs text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
@@ -1624,7 +1665,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         const cliente = getCliente(reserva.clienteId);
                         const isConfirmado = reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada';
                         return (
-                          <div key={reserva.id} className={`bg-white p-3.5 rounded-xl border shadow-xs hover:shadow-md transition-all space-y-2 ${isConfirmado ? 'border-emerald-200 hover:border-emerald-300' : 'border-amber-100'}`}>
+                          <div
+                            key={reserva.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, reserva, 'agendados')}
+                            className={`bg-white p-3.5 rounded-xl border shadow-xs hover:shadow-md transition-all space-y-2 cursor-grab active:cursor-grabbing ${isConfirmado ? 'border-emerald-200 hover:border-emerald-300' : 'border-amber-100'}`}
+                          >
                             <div className="flex items-start justify-between gap-1">
                               <div>
                                 <span className="font-extrabold text-sm text-slate-900 block leading-tight">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
@@ -1667,7 +1713,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 </div>
 
                 {/* Coluna 2: No Píer */}
-                <div className="bg-blue-50/50 rounded-2xl p-3 border border-blue-200/60 space-y-3 flex flex-col min-h-[400px]">
+                <div
+                  className="bg-blue-50/50 rounded-2xl p-3 border border-blue-200/60 space-y-3 flex flex-col min-h-[400px]"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, 'nopier')}
+                >
                   <div className="flex items-center justify-between px-1">
                     <span className="font-extrabold text-xs text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
@@ -1688,7 +1738,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         const barco = getEmbarcacao(reserva.embarcacaoId);
                         const cliente = getCliente(reserva.clienteId);
                         return (
-                          <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                          <div
+                            key={reserva.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, reserva, 'nopier')}
+                            className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-xs hover:shadow-md transition-all space-y-2 cursor-grab active:cursor-grabbing"
+                          >
                             <div className="flex items-start justify-between">
                               <span className="font-extrabold text-sm text-slate-900">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
                               <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md">
@@ -1718,7 +1773,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 </div>
 
                 {/* Coluna 3: Navegando */}
-                <div className="bg-sky-50/50 rounded-2xl p-3 border border-sky-200/60 space-y-3 flex flex-col min-h-[400px]">
+                <div
+                  className="bg-sky-50/50 rounded-2xl p-3 border border-sky-200/60 space-y-3 flex flex-col min-h-[400px]"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, 'navegando')}
+                >
                   <div className="flex items-center justify-between px-1">
                     <span className="font-extrabold text-xs text-sky-900 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
@@ -1739,7 +1798,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         const barco = getEmbarcacao(reserva.embarcacaoId);
                         const cliente = getCliente(reserva.clienteId);
                         return (
-                          <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                          <div
+                            key={reserva.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, reserva, 'navegando')}
+                            className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs hover:shadow-md transition-all space-y-2 cursor-grab active:cursor-grabbing"
+                          >
                             <div className="flex items-start justify-between">
                               <span className="font-extrabold text-sm text-slate-900">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
                               <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-md ${reserva.horaSaida ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-400'}`}>
@@ -1764,7 +1828,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 </div>
 
                 {/* Coluna 4: Retornaram */}
-                <div className="bg-emerald-50/50 rounded-2xl p-3 border border-emerald-200/60 space-y-3 flex flex-col min-h-[400px]">
+                <div
+                  className="bg-emerald-50/50 rounded-2xl p-3 border border-emerald-200/60 space-y-3 flex flex-col min-h-[400px]"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, 'retornaram')}
+                >
                   <div className="flex items-center justify-between px-1">
                     <span className="font-extrabold text-xs text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
@@ -1786,7 +1854,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         const cliente = getCliente(reserva.clienteId);
                         const litros = reserva.abastecimentoLitros || reserva.litrosAbastecidos;
                         return (
-                          <div key={reserva.id} className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-xs hover:shadow-md transition-all space-y-2">
+                          <div
+                            key={reserva.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, reserva, 'retornaram')}
+                            className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-xs hover:shadow-md transition-all space-y-2 cursor-grab active:cursor-grabbing"
+                          >
                             <div className="flex items-start justify-between">
                               <span className="font-extrabold text-sm text-slate-900">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
                               <span className="text-[10px] font-bold font-mono px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md">

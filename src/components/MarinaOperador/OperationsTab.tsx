@@ -13,7 +13,8 @@ import {
   CheckCircle2,
   Circle,
   MapPin,
-  Users
+  Users,
+  Droplets
 } from 'lucide-react';
 import { getBoatCode } from '../../utils/boatUtils';
 
@@ -28,6 +29,7 @@ export interface OperationsTabProps {
   onMarcarSaida: (reserva: any) => void;
   onChegadaEAbastecimento: (reserva: any) => void;
   onChecklistSubida: (reserva: any) => void;
+  onAbastecer: (reserva: any) => void;
 
   showOnlyConfirmed: boolean;
   setShowOnlyConfirmed: (val: boolean) => void;
@@ -49,6 +51,7 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
   onMarcarSaida,
   onChegadaEAbastecimento,
   onChecklistSubida,
+  onAbastecer,
   showOnlyConfirmed,
   setShowOnlyConfirmed,
   sortOrder,
@@ -58,6 +61,7 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
 }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [boatFilter, setBoatFilter] = useState<'todos' | 'jet' | 'lancha'>('todos');
+  const [opStatusFilter, setOpStatusFilter] = useState<'todos' | 'pendente_descida' | 'pronto' | 'navegando' | 'retornou' | 'guardado'>('todos');
   const filterRef = useRef<HTMLDivElement>(null);
 
   // Fechar o filtro ao clicar fora
@@ -79,12 +83,36 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
     };
   }, [showFilters]);
 
-  // Aplicar filtro local de tipo de embarcação
+  // Aplicar filtro local de tipo de embarcação e status operacional
   const filteredReservas = reservasDoDia.filter((reserva: any) => {
-    if (boatFilter === 'todos') return true;
-    const boat = getEmbarcacao(reserva.embarcacaoId);
-    if (!boat) return true; // se não achou o barco, deixa passar ou ajusta
-    return boat.tipo === boatFilter;
+    // 1. Boat type
+    if (boatFilter !== 'todos') {
+      const boat = getEmbarcacao(reserva.embarcacaoId);
+      if (!boat || boat.tipo !== boatFilter) return false;
+    }
+
+    // Calcular flags de status
+    const isGuardado = reserva.statusMarina === 'guardada' || reserva.statusOperacional === 'guardado';
+    const isChegada = reserva.statusMarina === 'chegada' || reserva.statusOperacional === 'retornou';
+    const isPronto = reserva.statusMarina === 'pronta' || reserva.statusOperacional === 'pronto_na_agua' || (reserva.horaDescida && !reserva.horaSubida && !isGuardado && !isChegada);
+    const isSaidaMar = !!reserva.horaSaida;
+
+    // 2. OpStatus Filter
+    if (opStatusFilter !== 'todos') {
+      if (opStatusFilter === 'pendente_descida') {
+        if (isPronto || isSaidaMar || isChegada || isGuardado) return false;
+      } else if (opStatusFilter === 'pronto') {
+        if (!isPronto || isSaidaMar || isChegada || isGuardado) return false;
+      } else if (opStatusFilter === 'navegando') {
+        if (!isSaidaMar || isChegada || isGuardado) return false;
+      } else if (opStatusFilter === 'retornou') {
+        if (!isChegada || isGuardado) return false;
+      } else if (opStatusFilter === 'guardado') {
+        if (!isGuardado) return false;
+      }
+    }
+
+    return true;
   });
 
   return (
@@ -116,12 +144,12 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`p-3.5 rounded-xl border flex items-center justify-center transition-colors active:scale-95 ${
-              showFilters || showOnlyConfirmed || sortOrder !== 'hora'
+              showFilters || showOnlyConfirmed || sortOrder !== 'hora' || boatFilter !== 'todos' || opStatusFilter !== 'todos'
                 ? 'bg-blue-50 border-blue-200 text-blue-700'
                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
-            <Filter className={`w-5 h-5 ${showOnlyConfirmed || sortOrder !== 'hora' ? 'fill-blue-100' : ''}`} />
+            <Filter className={`w-5 h-5 ${showOnlyConfirmed || sortOrder !== 'hora' || boatFilter !== 'todos' || opStatusFilter !== 'todos' ? 'fill-blue-100' : ''}`} />
           </button>
         </div>
 
@@ -164,6 +192,75 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                     }`}
                   >
                     Jets
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Operacional Filter */}
+              <div>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2.5 block">
+                  Fase da Operação
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setOpStatusFilter('todos')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.97] ${
+                      opStatusFilter === 'todos'
+                        ? 'bg-blue-600 border-blue-700 text-white shadow-md'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setOpStatusFilter('pendente_descida')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.97] flex flex-col items-center justify-center gap-0.5 ${
+                      opStatusFilter === 'pendente_descida'
+                        ? 'bg-blue-600 border-blue-700 text-white shadow-md'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                    }`}
+                  >
+                    <span>Pendente Descida</span>
+                  </button>
+                  <button
+                    onClick={() => setOpStatusFilter('pronto')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.97] flex flex-col items-center justify-center gap-0.5 ${
+                      opStatusFilter === 'pronto'
+                        ? 'bg-cyan-600 border-cyan-700 text-white shadow-md'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                    }`}
+                  >
+                    <span>Na Água / Píer</span>
+                  </button>
+                  <button
+                    onClick={() => setOpStatusFilter('navegando')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.97] flex flex-col items-center justify-center gap-0.5 ${
+                      opStatusFilter === 'navegando'
+                        ? 'bg-purple-600 border-purple-700 text-white shadow-md'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                    }`}
+                  >
+                    <span>Navegando</span>
+                  </button>
+                  <button
+                    onClick={() => setOpStatusFilter('retornou')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.97] flex flex-col items-center justify-center gap-0.5 ${
+                      opStatusFilter === 'retornou'
+                        ? 'bg-amber-600 border-amber-700 text-white shadow-md'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                    }`}
+                  >
+                    <span>Retornou / Vaga</span>
+                  </button>
+                  <button
+                    onClick={() => setOpStatusFilter('guardado')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.97] flex flex-col items-center justify-center gap-0.5 ${
+                      opStatusFilter === 'guardado'
+                        ? 'bg-emerald-600 border-emerald-700 text-white shadow-md'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm'
+                    }`}
+                  >
+                    <span>Guardado</span>
                   </button>
                 </div>
               </div>
@@ -377,15 +474,24 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                     </button>
                   )}
 
-                  {/* Phase 4: Chegada -> Subida Vaga */}
+                  {/* Phase 4: Chegada -> Subida Vaga & Combustível */}
                   {isChegada && !isGuardado && (
-                    <button
-                      onClick={() => onChecklistSubida(reserva)}
-                      className="w-full py-4 sm:py-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-md active:scale-[0.98] cursor-pointer"
-                    >
-                      <ArrowUpCircle className="w-6 h-6" />
-                      <span>Checklist Subida / Vaga</span>
-                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => onAbastecer(reserva)}
+                        className="w-full py-4 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                      >
+                        <Droplets className="w-5 h-5 mb-0.5" />
+                        <span>Abastecer</span>
+                      </button>
+                      <button
+                        onClick={() => onChecklistSubida(reserva)}
+                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                      >
+                        <ArrowUpCircle className="w-5 h-5 mb-0.5" />
+                        <span>Subida / Vaga</span>
+                      </button>
+                    </div>
                   )}
 
                 </div>

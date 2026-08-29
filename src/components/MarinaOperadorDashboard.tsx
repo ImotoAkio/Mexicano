@@ -704,6 +704,11 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           onMarcarSaida={handleMarcarSaida}
           onChegadaEAbastecimento={handleChegadaEAbastecimento}
           onChecklistSubida={handleOpenChecklistSubida}
+          onAbastecer={(reserva) => {
+            setFuelReservaTarget(reserva);
+            setFuelEmbarcacaoTarget(getEmbarcacao(reserva.embarcacaoId));
+            setIsFuelModalOpen(true);
+          }}
           showOnlyConfirmed={showOnlyConfirmed}
           setShowOnlyConfirmed={setShowOnlyConfirmed}
           sortOrder={sortOrder}

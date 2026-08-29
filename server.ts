@@ -151,8 +151,8 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://frontend-cdn.perplexity.ai", "data:"],
       connectSrc: ["'self'", "https://www.googleapis.com", "https://api.open-meteo.com", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "ws:", "wss:", "https://*.r2.cloudflarestorage.com", "https://*.r2.dev"],
-      imgSrc: ["'self'", "data:", "blob:", "https://api.qrserver.com", "https://*.ibb.co", "https://i.ibb.co", "https://*.r2.cloudflarestorage.com", "https://*.r2.dev"],
-      mediaSrc: ["'self'", "data:", "blob:", "https://*.r2.cloudflarestorage.com", "https://*.r2.dev"],
+      imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+      mediaSrc: ["'self'", "data:", "blob:", "https:", "http:"],
       upgradeInsecureRequests: null,
     }
   },
@@ -229,7 +229,7 @@ app.use('/uploads', express.static(uploadsDir, {
 }));
 
 const storage = multer.memoryStorage();
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
+const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } }); // 5MB limit
 
 app.use('/api/', apiLimiter);
 

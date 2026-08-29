@@ -438,3 +438,297 @@ export async function generateOrcamentoOSPDF(
 
   return doc;
 }
+
+
+export async function generateMarinaCaixaPDF(
+  transacoes: any[],
+  metrics: any,
+  fechamentoHoje: any,
+  operador: string,
+  periodType: string,
+  logoUrl?: string
+) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const leftMargin = 15;
+  const rightMargin = 195;
+  let currentY = 15;
+
+  // Format helpers
+  const formatBRL = (val: number) => (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const formatDate = (dateStr: string) => {
+    try {
+      if (!dateStr) return '';
+      const parts = dateStr.split('-');
+      if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      return new Date(dateStr).toLocaleDateString('pt-BR');
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Header Title
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(15, 23, 42); // slate-900
+  doc.text('VILA NÁUTICA - RELATÓRIO DO CAIXA', leftMargin, currentY);
+
+  currentY += 6;
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139); // slate-500
+  doc.text('Relatório Oficial de Fechamento / Movimentação do Píer', leftMargin, currentY);
+
+  // Draw top line
+  currentY += 4;
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(226, 232, 240); // slate-200
+  doc.line(leftMargin, currentY, rightMargin, currentY);
+
+  currentY += 8;
+
+  // Caixa Info Box (Metadata)
+  doc.setFillColor(248, 250, 252); // slate-50
+  doc.roundedRect(leftMargin, currentY, 180, 20, 2, 2, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(leftMargin, currentY, 180, 20, 2, 2, 'D');
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105); // slate-600
+
+  const boxY = currentY + 6;
+  doc.text('Período / Status:', leftMargin + 4, boxY);
+  doc.text('Operador de Caixa:', leftMargin + 90, boxY);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+
+  const statusStr = fechamentoHoje?.status === 'aberto' ? 'Caixa Aberto' : (fechamentoHoje?.status === 'fechado' ? 'Caixa Fechado' : 'Não Inicializado');
+  doc.text(`${periodType} (${statusStr})`, leftMargin + 4, boxY + 5);
+  doc.text(`${operador || 'Usuário Atual'}`, leftMargin + 90, boxY + 5);
+
+  if (fechamentoHoje?.abertoEm) {
+     doc.setFont('Helvetica', 'bold');
+     doc.setTextColor(71, 85, 105);
+     doc.text('Abertura:', leftMargin + 4, boxY + 11);
+     doc.setFont('Helvetica', 'normal');
+     doc.setTextColor(15, 23, 42);
+     doc.text(`${formatDate(fechamentoHoje.data)} às ${fechamentoHoje.abertoEm}`, leftMargin + 20, boxY + 11);
+  }
+
+  if (fechamentoHoje?.fechadoEm) {
+     doc.setFont('Helvetica', 'bold');
+     doc.setTextColor(71, 85, 105);
+     doc.text('Fechamento:', leftMargin + 90, boxY + 11);
+     doc.setFont('Helvetica', 'normal');
+     doc.setTextColor(15, 23, 42);
+     doc.text(`${fechamentoHoje.fechadoEm}`, leftMargin + 112, boxY + 11);
+  }
+
+  currentY += 28;
+
+  // Resumo de Entradas (Receitas e Saldo)
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Resumo Financeiro (Geral)', leftMargin, currentY);
+
+  currentY += 5;
+  // Create small summary grid
+  // Col 1: Saldo Dinheiro Gaveta
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(leftMargin, currentY, 56, 16, 2, 2, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Fundo + Gaveta', leftMargin + 3, currentY + 6);
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatBRL(metrics.saldoDinheiroGaveta), leftMargin + 3, currentY + 12);
+
+  // Col 2: Total Recebido / Movido
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(leftMargin + 62, currentY, 56, 16, 2, 2, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Total Entradas (+)', leftMargin + 65, currentY + 6);
+  doc.setFontSize(10);
+  doc.setTextColor(16, 185, 129); // emerald-500
+  doc.text(formatBRL(metrics.totalEntradas), leftMargin + 65, currentY + 12);
+
+  // Col 3: Total Saídas
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(leftMargin + 124, currentY, 56, 16, 2, 2, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Total Saídas / Sangria (-)', leftMargin + 127, currentY + 6);
+  doc.setFontSize(10);
+  doc.setTextColor(244, 63, 94); // rose-500
+  doc.text(formatBRL(metrics.totalSaidas + (metrics.sangriasDinheiro || 0)), leftMargin + 127, currentY + 12);
+
+  currentY += 22;
+
+  // Formas de Pagamento
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Composição Entradas: PIX: ${formatBRL(metrics.totalPix)}  |  Cartões (D/C): ${formatBRL(metrics.totalCartoes)}  |  Bolsa Dinheiro: ${formatBRL(metrics.entradasDinheiro)}`, leftMargin, currentY);
+
+  currentY += 7;
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(leftMargin, currentY, rightMargin, currentY);
+
+  currentY += 8;
+
+  // Lista de Transações (Tabela)
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Registro de Lançamentos', leftMargin, currentY);
+
+  currentY += 5;
+
+  // Header Tabela
+  doc.setFillColor(248, 250, 252); // slate-100
+  doc.rect(leftMargin, currentY, 180, 8, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+
+  doc.text('HORA', leftMargin + 2, currentY + 5);
+  doc.text('DESC.', leftMargin + 16, currentY + 5);
+  doc.text('PAGTO.', leftMargin + 95, currentY + 5);
+  doc.text('TIPO', leftMargin + 120, currentY + 5);
+  doc.text('USUÁRIO', leftMargin + 140, currentY + 5);
+  doc.text('VALOR (R$)', rightMargin - 4, currentY + 5, { align: 'right' });
+
+  currentY += 9;
+
+  if (!transacoes || transacoes.length === 0) {
+    doc.setFont('Helvetica', 'italic');
+    doc.text('Ainda não há lançamentos para este período.', leftMargin + 2, currentY + 4);
+    currentY += 10;
+  } else {
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(8);
+    let rowStriped = false;
+
+    for (let t of transacoes) {
+      if (currentY > 270) {
+        doc.addPage();
+        currentY = 15;
+        doc.setFillColor(248, 250, 252);
+        doc.rect(leftMargin, currentY, 180, 8, 'F');
+        doc.setFont('Helvetica', 'bold');
+        doc.text('HORA', leftMargin + 2, currentY + 5);
+        doc.text('DESC.', leftMargin + 16, currentY + 5);
+        doc.text('PAGTO.', leftMargin + 95, currentY + 5);
+        doc.text('TIPO', leftMargin + 120, currentY + 5);
+        doc.text('USUÁRIO', leftMargin + 140, currentY + 5);
+        doc.text('VALOR (R$)', rightMargin - 4, currentY + 5, { align: 'right' });
+        currentY += 9;
+        doc.setFont('Helvetica', 'normal');
+      }
+
+      if (rowStriped) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(leftMargin, currentY, 180, 7.5, 'F');
+      }
+
+      const isSaida = t.tipo === 'saida';
+      const valorFormatado = (isSaida ? '- ' : '') + formatBRL(t.valor);
+
+      doc.setTextColor(100, 116, 139);
+      doc.text(t.hora || '--:--', leftMargin + 2, currentY + 5.2);
+
+      doc.setTextColor(15, 23, 42);
+      const shortDesc = doc.splitTextToSize(t.descricao || (t.categoria ? t.categoria.replace(/_/g, ' ') : 'S/N'), 75)[0];
+      doc.text(shortDesc, leftMargin + 16, currentY + 5.2);
+
+      doc.setTextColor(71, 85, 105);
+      doc.text((t.formaPagamento || 'N/A').toUpperCase(), leftMargin + 95, currentY + 5.2);
+
+      doc.setFont('Helvetica', 'bold');
+      if (isSaida) {
+        doc.setTextColor(244, 63, 94);
+        doc.text('SAÍDA', leftMargin + 120, currentY + 5.2);
+      } else {
+        doc.setTextColor(16, 185, 129);
+        doc.text('ENTRADA', leftMargin + 120, currentY + 5.2);
+      }
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(t.operadorNome || 'Operador', leftMargin + 140, currentY + 5.2);
+
+      doc.setTextColor(isSaida ? 244 : 15, isSaida ? 63 : 23, isSaida ? 94 : 42);
+      doc.text(valorFormatado, rightMargin - 4, currentY + 5.2, { align: 'right' });
+
+      currentY += 7.5;
+      rowStriped = !rowStriped;
+    }
+  }
+
+  if (currentY > 230) {
+    doc.addPage();
+    currentY = 15;
+  } else {
+    currentY += 15;
+  }
+
+  // Footer / Signatures
+  doc.setDrawColor(203, 213, 225);
+
+  if (fechamentoHoje && fechamentoHoje.status === 'fechado') {
+     doc.setFont('Helvetica', 'bold');
+     doc.setFontSize(9);
+     doc.setTextColor(15, 23, 42);
+     doc.text('Conferência de Fechamento', leftMargin, currentY);
+     currentY += 6;
+
+     doc.setFont('Helvetica', 'normal');
+     doc.setFontSize(8);
+     doc.setTextColor(71, 85, 105);
+     doc.text('Valor declarado pelo operador no fechamento da gaveta:', leftMargin, currentY);
+     doc.setFont('Helvetica', 'bold');
+     doc.text(`${formatBRL(fechamentoHoje.saldoContadoDinheiro)}`, leftMargin + 85, currentY);
+
+     currentY += 5;
+     doc.setFont('Helvetica', 'normal');
+     doc.text('Diferença / Divergência (Sistema vs Gaveta):', leftMargin, currentY);
+
+     const diferenca = fechamentoHoje.diferencaDinheiro || 0;
+     doc.setFont('Helvetica', 'bold');
+     if (diferenca < 0) {
+       doc.setTextColor(244, 63, 94);
+     } else if (diferenca > 0) {
+       doc.setTextColor(16, 185, 129);
+     } else {
+       doc.setTextColor(15, 23, 42);
+     }
+     doc.text(`${formatBRL(diferenca)}`, leftMargin + 70, currentY);
+
+     currentY += 15;
+  }
+
+  const signLineY = currentY + 12;
+  doc.setLineWidth(0.4);
+  doc.line(leftMargin + 15, signLineY, leftMargin + 75, signLineY);
+  doc.line(leftMargin + 105, signLineY, leftMargin + 165, signLineY);
+
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Assinatura do Operador (Caixa)', leftMargin + 45, signLineY + 5, { align: 'center' });
+  doc.text('Visto da Gerência / Financeiro', leftMargin + 135, signLineY + 5, { align: 'center' });
+
+  // Open PDF window
+  const pdfBlob = doc.output('blob');
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  window.open(pdfUrl, '_blank');
+
+  return doc;
+}

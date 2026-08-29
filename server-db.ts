@@ -2758,7 +2758,7 @@ export async function getAbastecimentosPendentesCaixa(): Promise<any[]> {
     LEFT JOIN Clientes c ON r.clienteId = c.id
     WHERE (
       (CAST(r.abastecimentoLitros AS DECIMAL(10,2)) > 0 OR CAST(r.litrosAbastecidos AS DECIMAL(10,2)) > 0)
-      AND (r.abastecimentoStatusCobranca = 'pendente' OR r.abastecimentoStatusCobranca IS NULL OR r.abastecimentoStatusCobranca = '')
+      AND (r.abastecimentoStatusCobranca = 'pendente' OR r.abastecimentoStatusCobranca IS NULL OR r.abastecimentoStatusCobranca = '' OR r.abastecimentoFormaPagamento = 'dinheiro')
       AND r.id NOT IN (SELECT reservaId FROM CaixaMarinaTransacoes WHERE reservaId IS NOT NULL AND status = 'confirmado')
     )
     ORDER BY r.data DESC, r.horaChegada DESC
