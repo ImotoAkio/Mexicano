@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle, Navigation, Clock, CheckCircle2 } from 'lucide-react';
 import { getBoatCode } from '../../utils/boatUtils';
 import { motion, AnimatePresence } from 'motion/react';
+import { io } from 'socket.io-client';
 import Logo from '../../components/Logo';
 
 export default function PierTvDisplay() {
@@ -46,8 +47,35 @@ export default function PierTvDisplay() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000); // 30s update
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchData, 30000); // Backstop para 30s
+
+    // Inicia a conexão do socket para receber push updates
+    const token = localStorage.getItem('admin_token');
+    if (!token) return () => clearInterval(interval);
+
+    const socket = io(window.location.origin, {
+      auth: { token },
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 10
+    });
+
+    socket.on('connect', () => {
+      console.log('[TVPier] Socket conectado:', socket.id);
+    });
+
+    socket.on('marina_update', (msg) => {
+      console.log('[TVPier] Recebeu marina_update pelo Socket, buscando novos dados...', msg);
+      fetchData(); // Atualiza a tela imediatamente quando recebe uma mudança
+    });
+
+    socket.on('disconnect', (reason) => {
+       console.log('[TVPier] Socket desconectado:', reason);
+    });
+
+    return () => {
+      clearInterval(interval);
+      socket.disconnect();
+    };
   }, []);
 
   const getEmbarcacao = (id: string) => data?.boats?.find((e: any) => e.id === id);
@@ -99,11 +127,20 @@ export default function PierTvDisplay() {
       dotColor = 'bg-[#0071e3]';
     }
 
+    let timeLabel = reserva.previsaoSaida;
+    if (!timeLabel) {
+      if (statusText === 'Agendado') {
+        timeLabel = 'A CONFIRMAR';
+      } else {
+        timeLabel = reserva.periodo === 'manha' ? 'MANHÃ' : reserva.periodo === 'tarde' ? 'TARDE' : 'DIA TODO';
+      }
+    }
+
     return {
       id: reserva.id,
       boatName: boat ? getBoatCode(boat) : (reserva.barcoNome || 'S/N'),
       boatNumber: boat?.numero?.toString().padStart(2, '0') || boat?.nome?.match(/\d+/)?.[0]?.padStart(2, '0') || '--',
-      time: reserva.previsaoSaida || (reserva.periodo === 'manha' ? 'MANHÃ' : reserva.periodo === 'tarde' ? 'TARDE' : 'DIA TODO'),
+      time: timeLabel,
       statusText,
       statusClass,
       dotColor,
@@ -139,9 +176,9 @@ export default function PierTvDisplay() {
   const totalPages = Math.ceil(activeItems.length / ITEMS_PER_PAGE) || 1;
   const currentItems = activeItems.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
 
-  // Tempo dinâmico: 4s adicionais por cada barco exibido + 5s fixos de leitura e transição
-  // Isso otimiza o tempo (páginas cheias ficam 25s, páginas quase vazias giram bem mais rápido)
-  const pageTime = 5000 + (currentItems.length * 4000);
+  // Tempo dinâmico mais rápido: 2s por barco exibido + 4s fixos
+  // 5 barcos = 14s. 1 barco = 6s.
+  const pageTime = 4000 + (currentItems.length * 2000);
 
   useEffect(() => {
     if (totalPages > 1) {
