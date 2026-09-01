@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { reservationDB, boatDB, clientDB, funcionarioDB, folgaDB, syncWithRemote } from '../db';
 import { fetchGoogleCalendarEvents, fetchGoogleCalendarEventsRange, deleteGoogleCalendarEvent, isCalendarConnected, setSimulatedConnection, setDeveloperToken, CalendarEvent, getGoogleClientId, setGoogleClientId, initiateOAuthLogin, handleOAuthCallback, setCachedToken, mergeLocalAndGoogleEvents, getCachedToken, createGoogleCalendarEvent, checkServerConfig } from '../googleCalendar';
 import { Reserva, Embarcacao, Cliente } from '../types';
@@ -7,10 +7,8 @@ import { Calendar, Ship, Trash2, Anchor, RefreshCw, Plus, Users, Shield, Radio, 
 
 export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const getLocalDateStr = (d: Date = new Date()) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
   };
 
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateStr());
@@ -21,7 +19,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
   const [activeReservations, setActiveReservations] = useState<Reserva[]>([]);
   const [dailyReservations, setDailyReservations] = useState<Reserva[]>([]);
   const [rangeReservations, setRangeReservations] = useState<Reserva[]>([]);
-  const [weather, setWeather] = useState<{ temp: number; desc: string } | null>(null);
+  const [weather, setWeather] = useState<{ temp?: number; desc?: string; error?: boolean } | null>(null);
 
   // Helper to split events into boats and jets
   const getVehicleCounts = (resList: Reserva[]) => {
@@ -83,9 +81,8 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
   // Modals / Feedback
   const [isResModalOpen, setIsResModalOpen] = useState(false);
   const [cancelConfirmation, setCancelConfirmation] = useState<Reserva | null>(null);
-  const [deleteGcalEventId, setDeleteGcalEventId] = useState<string | null>(null);
-  const [deleteGcalEventSummary, setDeleteGcalEventSummary] = useState<string>('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // VPS Cloud sync status
@@ -183,11 +180,12 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
   };
 
   // Safe load of data
-  const loadDashboardData = async () => {
+  const loadDashboardData = React.useCallback(async () => {
     setIsLoading(true);
     const startTime = Date.now();
     try {
@@ -207,17 +205,17 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
       }
 
       // Fetch local reservations in the 14-day range
-      const dStart = new Date(selectedDate);
-      const dEnd = new Date(selectedDate);
+      const dStart = new Date(selectedDate + 'T12:00:00');
+      const dEnd = new Date(selectedDate + 'T12:00:00');
       dEnd.setDate(dEnd.getDate() + 14);
       const startStr = getLocalDateStr(dStart);
       const endStr = getLocalDateStr(dEnd);
 
       if (connected && !simMode) {
-        const dStartMinus2 = new Date(selectedDate);
+        const dStartMinus2 = new Date(selectedDate + 'T12:00:00');
         dStartMinus2.setDate(dStartMinus2.getDate() - 2);
         const startStrMinus2 = getLocalDateStr(dStartMinus2);
-        
+
         const gcalEvents = await fetchGoogleCalendarEventsRange(startStrMinus2, 16);
         if (gcalEvents && gcalEvents.length > 0) {
           await mergeLocalAndGoogleEvents(gcalEvents, reservationDB.getAll(), boats, clients);
@@ -229,9 +227,9 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
       setActiveReservations(updatedLocalRes);
       setDailyReservations(updatedLocalRes);
 
-      const localResRange = reservationDB.getAll().filter(r => 
-        r.status === 'confirmado' && 
-        r.data >= startStr && 
+      const localResRange = reservationDB.getAll().filter(r =>
+        r.status === 'confirmado' &&
+        r.data >= startStr &&
         r.data <= endStr
       );
 
@@ -250,7 +248,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
       }
       setIsLoading(false);
     }
-  };
+  }, [selectedDate, simMode]);
 
   useEffect(() => {
     // Seed initial mock connection state
@@ -273,24 +271,27 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
         );
         if (!response.ok) throw new Error('Weather API call failed');
         const data = await response.json();
-        
+
         const temp = Math.round(data.current.temperature_2m);
         const code = data.current.weather_code;
-        
-        let desc = 'Ensolarado';
+
+        let desc = 'Desconhecido';
         if (code === 0) desc = 'Ensolarado';
-        else if (code === 1) desc = 'Limpo';
+        else if (code === 1) desc = 'Ligeiramente Nublado';
         else if (code === 2) desc = 'Parcialmente Nublado';
         else if (code === 3) desc = 'Nublado';
-        else if (code >= 51 && code <= 55) desc = 'Chuvisco';
-        else if (code >= 61 && code <= 65) desc = 'Chuva';
-        else if (code >= 80 && code <= 82) desc = 'Pancadas';
-        else if (code === 95) desc = 'Tempestade';
-        
-        setWeather({ temp, desc });
+        else if (code === 45 || code === 48) desc = 'Névoa/Neblina';
+        else if (code >= 51 && code <= 57) desc = 'Chuvisco';
+        else if (code >= 61 && code <= 67) desc = 'Chuva';
+        else if (code >= 71 && code <= 77) desc = 'Neve (Gelo)';
+        else if (code >= 80 && code <= 82) desc = 'Pancadas de Chuva';
+        else if (code >= 85 && code <= 86) desc = 'Pancadas de Neve';
+        else if (code >= 95 && code <= 99) desc = 'Tempestade';
+
+        setWeather({ temp, desc, error: false });
       } catch (err) {
         console.error('Erro ao buscar clima:', err);
-        setWeather({ temp: 24, desc: 'Ensolarado' });
+        setWeather({ error: true });
       }
     };
     fetchWeather();
@@ -375,27 +376,6 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
       setIsLoading(false);
     }
   };
-
-  const handleDeleteGcalEvent = (eventId: string, summary: string) => {
-    setDeleteGcalEventId(eventId);
-    setDeleteGcalEventSummary(summary);
-  };
-
-  const executeDeleteGcalEvent = async () => {
-    if (!deleteGcalEventId) return;
-    try {
-      setIsLoading(true);
-      await deleteGoogleCalendarEvent(deleteGcalEventId);
-      showToast('Evento excluído do Google Calendar com sucesso!');
-      setDeleteGcalEventId(null);
-      loadDashboardData();
-    } catch (err: any) {
-      showToast(err.message || 'Erro ao excluir o evento.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   
   const pendingSyncReservations = reservationDB.getAll().filter(r => 
@@ -791,7 +771,13 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
               <div>
                 <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block">Clima no São Francisco</span>
                 <span className="text-xs font-semibold text-slate-800">
-                  {weather ? `${weather.temp}°C - ${weather.desc}` : 'Carregando clima...'}
+                  {weather?.error ? (
+                    <span className="text-rose-500">Indisponível</span>
+                  ) : weather ? (
+                    `${weather.temp}°C - ${weather.desc}`
+                  ) : (
+                    'Carregando...'
+                  )}
                 </span>
               </div>
             </div>

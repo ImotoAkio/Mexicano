@@ -407,6 +407,63 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     e.dataTransfer.dropEffect = 'move';
   };
 
+  const executeMoveReservaToTarget = async (originCol: string, targetCol: string, reserva: any) => {
+    // Prevent reverting fully processed return tickets unless confirmed
+    if (reserva.abastecimentoLitros > 0 && targetCol !== 'retornaram') {
+      if (!confirm("Esta embarcação já retornou e possui registros de abastecimento. Retorná-la a um estado anterior manterá esses dados. Deseja continuar?")) return;
+    }
+
+    const currentOperator = operadorNome || 'Gerente';
+    const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    let updatedReserva = { ...reserva };
+
+    if (targetCol === 'agendados') {
+      updatedReserva.statusMarina = '';
+      updatedReserva.horaDescida = null;
+      updatedReserva.operadorDescida = null;
+      updatedReserva.horaSaida = null;
+      updatedReserva.operadorSaida = null;
+      updatedReserva.horaChegada = null;
+      updatedReserva.operadorChegada = null;
+    } else if (targetCol === 'nopier') {
+      updatedReserva.statusMarina = 'pier';
+      if (!updatedReserva.horaDescida) updatedReserva.horaDescida = horaAtual;
+      if (!updatedReserva.operadorDescida) updatedReserva.operadorDescida = currentOperator;
+      updatedReserva.horaSaida = null;
+      updatedReserva.operadorSaida = null;
+      updatedReserva.horaChegada = null;
+      updatedReserva.operadorChegada = null;
+    } else if (targetCol === 'navegando') {
+      updatedReserva.statusMarina = 'saida';
+      if (!updatedReserva.horaDescida) updatedReserva.horaDescida = horaAtual;
+      if (!updatedReserva.operadorDescida) updatedReserva.operadorDescida = currentOperator;
+      if (!updatedReserva.horaSaida) updatedReserva.horaSaida = horaAtual;
+      if (!updatedReserva.operadorSaida) updatedReserva.operadorSaida = currentOperator;
+      updatedReserva.horaChegada = null;
+      updatedReserva.operadorChegada = null;
+    }
+
+    try {
+      await fetch('/api/db/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+      });
+
+      setData((prev: any) => ({
+        ...prev,
+        reservations: prev.reservations.map((r: any) => r.id === reserva.id ? updatedReserva : r)
+      }));
+      await logAction('Estágio Alterado', `Embarcação movida para: ${targetCol}`, reserva.embarcacaoId, currentOperator);
+      showToast('Estágio da embarcação atualizado.', 'info');
+    } catch (err) {
+      alert('Erro ao atualizar o estágio.');
+    }
+  };
+
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetCol: string) => {
     e.preventDefault();
     const dataStr = e.dataTransfer.getData('application/json');
@@ -419,14 +476,17 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       const reserva = totalDayReservations.find((r: any) => r.id === reservaId);
       if (!reserva) return;
 
+      // Normal expected sequential flow
       if (originCol === 'agendados' && targetCol === 'nopier') {
         await executeRegistrarDescida([], reserva);
       } else if (originCol === 'nopier' && targetCol === 'navegando') {
         await executeMarcarSaida(reserva);
-      } else if ((originCol === 'nopier' || originCol === 'navegando') && targetCol === 'retornaram') {
+      } else if (targetCol === 'retornaram') {
+        // ALWAYS show fuel / return prompt if going to "retornaram", regardless of origin
         openFuelForChegada(reserva);
       } else {
-        showToast('Mudança de estágio inválida.', 'warning');
+        // Any other non-standard movement (skipping, or reverting backward)
+        await executeMoveReservaToTarget(originCol, targetCol, reserva);
       }
     } catch (err) {
       console.error('Erro no drag and drop', err);

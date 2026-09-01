@@ -27,6 +27,9 @@ const router = Router();
 router.get("/transacoes", requireAdminAuth, async (req, res) => {
   try {
     const transacoes = await getAllTransacoes();
+    if (req.query.clienteId) {
+      return res.json(transacoes.filter((t: any) => t.clienteId === req.query.clienteId));
+    }
     res.json(transacoes);
   } catch (err: any) {
     console.error("Error fetching transacoes:", err);

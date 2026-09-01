@@ -1,3 +1,4 @@
+import { fetchWithAuth, getAuthHeaders, getAdminToken } from '../utils/apiAuth';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   MessageSquare, QrCode, LogOut, CheckCircle, AlertTriangle, RefreshCw,
@@ -120,6 +121,7 @@ Equipe Financeira — Villa Nautica 🚢`,
 ] as const;
 
 export default function FinanceWhatsAppPage() {
+  const cancelSendingRef = useRef<boolean>(false);
   // Connection state
   const [instanceName, setInstanceName] = useState<string | null>(() => localStorage.getItem('finance_whatsapp_instance'));
   const [waStatus, setWaStatus] = useState<string>('loading');
@@ -133,7 +135,7 @@ export default function FinanceWhatsAppPage() {
     setIsFetchingInstances(true);
     try {
       const res = await fetch('/api/whatsapp/instances', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       if (Array.isArray(data)) setServerInstances(data);
@@ -148,7 +150,7 @@ export default function FinanceWhatsAppPage() {
     localStorage.setItem('finance_whatsapp_instance', inst);
     setInstanceName(inst);
     // sync in DB
-    const adminToken = localStorage.getItem('admin_token');
+    const adminToken = getAdminToken();
     if (adminToken) {
       fetch('/api/config', { 
         method: 'POST', 
@@ -167,7 +169,7 @@ export default function FinanceWhatsAppPage() {
     setIsRunningDebug(true);
     try {
       const inst = instanceName || 'financeiro_199998';
-      const token = localStorage.getItem('admin_token');
+      const token = getAdminToken();
       const res = await fetch(`/api/whatsapp/debug?instance=${inst}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -238,13 +240,15 @@ export default function FinanceWhatsAppPage() {
   const [showBoatDropdown, setShowBoatDropdown] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
   const boatDropdownRef = useRef<HTMLDivElement>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 5000);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
   };
 
   // Close dropdowns when clicking outside
@@ -266,7 +270,7 @@ export default function FinanceWhatsAppPage() {
     setIsFetchingWaStatus(true);
     try {
       const res = await fetch(`/api/whatsapp/status?instance=${instance}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+        headers: getAuthHeaders(),
       });
       const text = await res.text();
       let data: any = {};
@@ -294,7 +298,7 @@ export default function FinanceWhatsAppPage() {
   const fetchWaQrCode = async (instance: string) => {
     try {
       const res = await fetch(`/api/whatsapp/connect?instance=${instance}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+        headers: getAuthHeaders(),
       });
       const text = await res.text();
       let data: any = {};
@@ -317,7 +321,7 @@ export default function FinanceWhatsAppPage() {
   useEffect(() => { 
     setClients(clientDB.getAll()); 
     
-    const adminToken = localStorage.getItem('admin_token');
+    const adminToken = getAdminToken();
     const headers: Record<string, string> = {};
     if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
     
@@ -363,7 +367,7 @@ export default function FinanceWhatsAppPage() {
     try {
       const res = await fetch('/api/whatsapp/instance/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ instanceName: newInstance }),
       });
       const text = await res.text();
@@ -373,7 +377,7 @@ export default function FinanceWhatsAppPage() {
       localStorage.setItem('finance_whatsapp_instance', newInstance);
       setInstanceName(newInstance);
       // Persist to centralized database
-      const adminToken = localStorage.getItem('admin_token');
+      const adminToken = getAdminToken();
       const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
       if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
       fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_instance: newInstance } }) }).catch(console.warn);
@@ -391,13 +395,13 @@ export default function FinanceWhatsAppPage() {
     try {
       await fetch(`/api/whatsapp/instance/delete/${instanceName}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+        headers: getAuthHeaders(),
       });
     } catch (_) {}
     localStorage.removeItem('finance_whatsapp_instance');
     setInstanceName(null);
     // Clear in centralized database
-    const adminToken = localStorage.getItem('admin_token');
+    const adminToken = getAdminToken();
     const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
     fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_instance: '' } }) }).catch(console.warn);
@@ -480,7 +484,7 @@ export default function FinanceWhatsAppPage() {
     const updated = [...customLists, newList];
     setCustomLists(updated);
     localStorage.setItem('finance_whatsapp_custom_lists', JSON.stringify(updated));
-    const adminToken = localStorage.getItem('admin_token');
+    const adminToken = getAdminToken();
     const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
     fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_custom_lists: updated } }) }).catch(console.warn);
@@ -502,7 +506,7 @@ export default function FinanceWhatsAppPage() {
     const updated = customLists.filter(l => l.id !== id);
     setCustomLists(updated);
     localStorage.setItem('finance_whatsapp_custom_lists', JSON.stringify(updated));
-    const adminToken = localStorage.getItem('admin_token');
+    const adminToken = getAdminToken();
     const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
     fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_custom_lists: updated } }) }).catch(console.warn);
@@ -545,7 +549,7 @@ export default function FinanceWhatsAppPage() {
     const updated = [...customTemplates, newTpl];
     setCustomTemplates(updated);
     localStorage.setItem('finance_whatsapp_custom_templates', JSON.stringify(updated));
-    const adminToken = localStorage.getItem('admin_token');
+    const adminToken = getAdminToken();
     const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
     fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_custom_templates: updated } }) }).catch(console.warn);
@@ -561,7 +565,7 @@ export default function FinanceWhatsAppPage() {
     const updated = customTemplates.filter(t => t.id !== id);
     setCustomTemplates(updated);
     localStorage.setItem('finance_whatsapp_custom_templates', JSON.stringify(updated));
-    const adminToken2 = localStorage.getItem('admin_token');
+    const adminToken2 = getAdminToken();
     const hdr2: Record<string, string> = { 'Content-Type': 'application/json' };
     if (adminToken2) hdr2['Authorization'] = `Bearer ${adminToken2}`;
     fetch('/api/config', { method: 'POST', headers: hdr2, body: JSON.stringify({ configs: { finance_whatsapp_custom_templates: updated } }) }).catch(console.warn);
@@ -596,12 +600,18 @@ export default function FinanceWhatsAppPage() {
   };
 
   const handleMassSend = async () => {
+    cancelSendingRef.current = false;
     setShowConfirmModal(false);
     setSendingStatus('sending');
     const log: SendLogEntry[] = [];
     let successes = 0, failures = 0;
 
     for (let i = 0; i < selectedClientIds.length; i++) {
+      if (cancelSendingRef.current) {
+        log.push({ clientName: 'SISTEMA', phone: '-', status: 'error', timestamp: new Date().toLocaleTimeString() });
+        break;
+      }
+
       const client = clients.find(c => c.id === selectedClientIds[i]);
       if (!client?.telefone) { failures++; log.push({ clientName: client?.nome || '?', phone: '-', status: 'error', timestamp: new Date().toLocaleTimeString() }); continue; }
 
@@ -611,7 +621,7 @@ export default function FinanceWhatsAppPage() {
       try {
         const res = await fetch('/api/whatsapp/finance/send-message', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({
             instanceName, number: client.telefone, text: personalizedText,
             media: attachment?.base64, mimetype: attachment?.file.type, fileName: attachment?.file.name,
@@ -1281,6 +1291,14 @@ export default function FinanceWhatsAppPage() {
                   <span className="text-slate-300">|</span>
                   <span className="text-rose-500 font-bold">{progress.failures} falhas</span>
                 </div>
+                {sendingStatus === 'sending' && (
+                  <button
+                    onClick={() => { cancelSendingRef.current = true; setSendingStatus('idle'); }}
+                    className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold flex items-center gap-2"
+                  >
+                    <X className="w-3.5 h-3.5" /> Cancelar Envios
+                  </button>
+                )}
               </div>
 
               {/* Send log table */}

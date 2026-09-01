@@ -67,8 +67,6 @@ interface SyncDifference {
   calendarEvent?: any;
   [key: string]: any;
 }
-import DeleteConfirmationModal from './Schedules/DeleteConfirmationModal';
-import BulkWhatsAppModal from './Schedules/BulkWhatsAppModal';
 import StatusModal from './Schedules/StatusModal';
 
 export default function SchedulesPage() {
@@ -90,6 +88,7 @@ export default function SchedulesPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isResModalOpen, setIsResModalOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Status Edit States
   const [statusModalEvent, setStatusModalEvent] = useState<Reserva | null>(null);
@@ -100,7 +99,6 @@ export default function SchedulesPage() {
     periodo: 'dia_inteiro' as 'dia_inteiro' | 'manha' | 'tarde',
     observacoes: ''
   });
-  const [deleteGcalEventSummary, setDeleteGcalEventSummary] = useState('');
 
   // Resolution Modal States
   const [differences, setDifferences] = useState<SyncDifference[]>([]);
@@ -781,7 +779,8 @@ export default function SchedulesPage() {
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
   };
 
   const renderLocalData = (targetDate: string) => {
@@ -982,11 +981,6 @@ export default function SchedulesPage() {
 
   const setToday = () => {
     setSelectedDate(getLocalDateStr());
-  };
-
-  const [deleteGcalEventId, setDeleteGcalEventId] = useState<string | null>(null);
-  const executeDeleteGcalEvent = () => {
-    setDeleteGcalEventId(null);
   };
 
   // Delete Reservation (Local + GCal)
@@ -1383,14 +1377,6 @@ export default function SchedulesPage() {
 
       {/* Monthly visual scale workspace and exporter */}
       <MonthlyCalendarGenerator initialDate={selectedDate} />
-
-      {/* Custom Non-blocking confirmation modal for safe event deletion */}
-      <DeleteConfirmationModal
-        isOpen={!!deleteGcalEventId}
-        summary={deleteGcalEventSummary}
-        onClose={() => setDeleteGcalEventId(null)}
-        onConfirm={executeDeleteGcalEvent}
-      />
 
       {/* Dynamic Status Update Modal */}
       <StatusModal

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench, QrCode, Ticket } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench, QrCode, Ticket, RefreshCw } from 'lucide-react';
+import { io } from 'socket.io-client';
 // @ts-ignore
 import boatImg1 from '../assets/images/1.webp';
 // @ts-ignore
@@ -25,6 +26,37 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [privacyTab, setPrivacyTab] = useState<'general' | 'data' | 'rights' | 'dpo'>('general');
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+
+  // Real-time & Refresh states
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    if (!onRefresh || isRefreshing) return;
+    setIsRefreshing(true);
+    await Promise.resolve(onRefresh());
+    setTimeout(() => setIsRefreshing(false), 800); // Visual feedback time
+  };
+
+  useEffect(() => {
+    const socket = io('/', { path: '/socket.io' });
+
+    socket.on('marina_update', (data: any) => {
+      // Re-fetch data if the update is related to the client's boats
+      const isMyBoat = boats.some(b => b.id === data?.reservation?.embarcacaoId);
+      if (isMyBoat && onRefresh) {
+        onRefresh();
+      }
+    });
+
+    socket.on('marina_caixa_update', () => {
+       // Refresh just in case (finances/services updated)
+       if (onRefresh) onRefresh();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [boats, onRefresh]);
 
   // Asaas Pix payment states
   const [selectedTransactionDetails, setSelectedTransactionDetails] = useState<any>(null);
@@ -151,7 +183,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [selectedReservationForCheckin, setSelectedReservationForCheckin] = useState<any>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const d = new Date();
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
+  });
   const [reservationFilter, setReservationFilter] = useState<'all' | 'upcoming' | 'past'>('upcoming');
 
   // Check-in states
@@ -405,10 +441,19 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Bem-vindo(a)</p>
           <h1 className="text-xl font-light tracking-wide text-white mt-1">{client.nome.split(' ')[0]}</h1>
         </div>
-        <button className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md">
-          <Bell className="w-4 h-4 text-white/70" />
-          <span className="absolute top-2.5 right-3 w-1.5 h-1.5 bg-[#B69D74] rounded-full"></span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md active:bg-white/10 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 text-white/70 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
+          <button className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md">
+            <Bell className="w-4 h-4 text-white/70" />
+            <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-[#B69D74] rounded-full"></span>
+          </button>
+        </div>
       </div>
 
       {/* Dynamic Check-in Banners */}
@@ -1327,15 +1372,15 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   );
 
   return (
-    <div className="min-h-[100dvh] w-full bg-[#020202] text-white font-sans relative overflow-x-hidden pb-24 selection:bg-[#B69D74]/30 pwa-safe-top">
-      
+    <div className="h-[100dvh] w-full bg-[#020202] text-white font-sans relative overflow-x-hidden overflow-y-auto pb-24 selection:bg-[#B69D74]/30 pwa-safe-top">
+
       {/* Ambient Dark Background Effect */}
       <div className="fixed inset-0 pointer-events-none opacity-40 mix-blend-screen z-0">
         <div className="absolute top-[-20%] left-[-10%] w-[140%] h-[140%] bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.015)_0%,_transparent_60%)]"></div>
       </div>
 
       {/* Main Content Area (Mobile Container Logic) */}
-      <div className="relative z-10 w-full max-w-[480px] mx-auto min-h-[100dvh] flex flex-col">
+      <div className="relative z-10 w-full max-w-[480px] mx-auto min-h-max flex flex-col">
         {activeTab === 'home' && renderHome()}
         {activeTab === 'calendar' && renderCalendar()}
         {activeTab === 'finance' && renderFinance()}

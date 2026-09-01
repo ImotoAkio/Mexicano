@@ -36,18 +36,13 @@ export default function ScheduleCard({
     setLoadingTransactions(true);
     setFinanceError(null);
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch('/api/financeiro/transacoes', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const { fetchWithAuth } = await import('../../utils/apiAuth');
+      const response = await fetchWithAuth(`/api/financeiro/transacoes?clienteId=${client.id}`);
       if (!response.ok) {
         throw new Error('Não foi possível carregar os lançamentos financeiros.');
       }
       const data = await response.json();
       const clientTx = data
-        .filter((t: any) => t.clienteId === client.id)
         .sort((a: any, b: any) => {
           const statusOrder: Record<string, number> = { 'atrasado': 1, 'pendente': 2, 'pago': 3 };
           const orderA = statusOrder[a.status] || 99;
@@ -359,7 +354,11 @@ function FinanceSummaryModal({
     return `${day}/${month}/${year}`;
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const getLocalDateStr = (d: Date = new Date()) => {
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
+  };
+  const todayStr = getLocalDateStr(new Date());
 
   const totalAtrasado = transactions
     .filter(t => t.status === 'atrasado' || t.status === 'vencido' || (t.status === 'lancado' && t.dataVencimento < todayStr))

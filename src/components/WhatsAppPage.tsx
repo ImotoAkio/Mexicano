@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { fetchWithAuth, getAuthHeaders, getAdminToken } from '../utils/apiAuth';
+import React, { useState, useEffect, useRef } from 'react';
 import { reservationDB, boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente, Reserva, TransacaoFinanceira } from '../types';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
@@ -97,10 +98,11 @@ const calculateTransactionInterest = (t: TransacaoFinanceira) => {
 export default function WhatsAppPage() {
   const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'config'>('confirmations');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const token = localStorage.getItem('admin_token');
+    const token = getAdminToken();
     if (!token) return;
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
 
     const keys = [
       'whatsapp_conf_template1',
@@ -166,9 +168,7 @@ export default function WhatsAppPage() {
     setConfTemplate1(val);
     localStorage.setItem('whatsapp_conf_template1', val);
     // Persist to centralized database
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template1: val }) }).catch(console.warn);
   };
 
@@ -176,15 +176,14 @@ export default function WhatsAppPage() {
     setConfTemplate2(val);
     localStorage.setItem('whatsapp_conf_template2', val);
     // Persist to centralized database
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template2: val }) }).catch(console.warn);
   };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
   };
 
   // --- WHATSAPP CONFIG LOGIC ---
@@ -255,7 +254,7 @@ export default function WhatsAppPage() {
     error?: string;
     clientObj?: Cliente;
   }>>([]);
-  const [cancelSendingRef, setCancelSendingRef] = useState<boolean>(false);
+  const cancelSendingRef = useRef<boolean>(false);
 
   const handleSaveCustomTemplate = () => {
     if (!newTemplateTitle.trim() || !customText.trim()) {
@@ -266,9 +265,7 @@ export default function WhatsAppPage() {
     const updated = [...customTemplates, newT];
     setCustomTemplates(updated);
     localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_custom_templates: JSON.stringify(updated) }) }).catch(console.warn);
     setNewTemplateTitle('');
     setShowSaveTemplateModal(false);
@@ -279,9 +276,7 @@ export default function WhatsAppPage() {
     const updated = customTemplates.filter(t => t.id !== id);
     setCustomTemplates(updated);
     localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_custom_templates: JSON.stringify(updated) }) }).catch(console.warn);
     showToast('Modelo removido.');
   };
@@ -467,18 +462,16 @@ export default function WhatsAppPage() {
     }
 
     setCustomSendQueue(queue);
-    setCancelSendingRef(false);
+    cancelSendingRef.current = false;
     setCustomSendingStatus('sending');
     startSendingCustomQueue(queue);
   };
 
   const startSendingCustomQueue = async (initialQueue: typeof customSendQueue) => {
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
 
     for (let i = 0; i < initialQueue.length; i++) {
-      if (cancelSendingRef) {
+      if (cancelSendingRef.current) {
         showToast('Envio de mensagens cancelado pelo usuário.', 'error');
         setCustomSendingStatus('idle');
         return;
@@ -539,7 +532,7 @@ export default function WhatsAppPage() {
   };
 
   const handleStopCustomSend = () => {
-    setCancelSendingRef(true);
+    cancelSendingRef.current = true;
     setCustomSendingStatus('idle');
     showToast('Interrompendo envios...');
   };
@@ -623,12 +616,17 @@ export default function WhatsAppPage() {
       showToast('Nenhum agendamento selecionado.', 'error');
       return;
     }
+    cancelSendingRef.current = false;
     setConfSendingStatus('sending');
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
 
     for (const resId of confSelectedIds) {
+      if (cancelSendingRef.current) {
+        showToast('Envio de confirmações cancelado pelo usuário.', 'error');
+        setConfSendingStatus('idle');
+        return;
+      }
+
       const res = confReservations.find(r => r.id === resId);
       if (!res) continue;
       const client = clientDB.getById(res.clienteId);
@@ -677,6 +675,12 @@ export default function WhatsAppPage() {
     showToast('Processo de disparo concluído!', 'success');
   };
 
+  const handleStopConfSend = () => {
+    cancelSendingRef.current = true;
+    setConfSendingStatus('idle');
+    showToast('Interrompendo envios de confirmação...');
+  };
+
   // --- BLOQUEIO LOGIC ---
   const [bloqueioMode, setBloqueioMode] = useState<'vespera' | 'dia'>('vespera');
   const [bloqueioDate, setBloqueioDate] = useState(() => {
@@ -706,7 +710,7 @@ export default function WhatsAppPage() {
 
   useEffect(() => {
     fetch('/api/financeiro/transacoes', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
+      headers: getAuthHeaders()
     })
       .then(res => res.json())
       .then(data => {
@@ -721,9 +725,7 @@ export default function WhatsAppPage() {
     const selectedText = variations[currentCount % variations.length];
     const nextCount = String(currentCount + 1);
     localStorage.setItem('whatsapp_bloqueio_counter', nextCount);
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_counter: nextCount }) }).catch(console.warn);
     return selectedText;
   };
@@ -731,18 +733,14 @@ export default function WhatsAppPage() {
   const handleSaveBloqueioTemplateVespera = (val: string) => {
     setBloqueioTemplateVespera(val);
     localStorage.setItem('whatsapp_bloqueio_template_vespera', val);
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_template_vespera: val }) }).catch(console.warn);
   };
 
   const handleSaveBloqueioTemplateDia = (val: string) => {
     setBloqueioTemplateDia(val);
     localStorage.setItem('whatsapp_bloqueio_template_dia', val);
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_template_dia: val }) }).catch(console.warn);
   };
 
@@ -835,13 +833,17 @@ export default function WhatsAppPage() {
       showToast('Nenhum agendamento selecionado.', 'error');
       return;
     }
+    cancelSendingRef.current = false;
     setBloqueioSendingStatus('sending');
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
 
     let itemIndex = 0;
     for (const resId of bloqueioSelectedIds) {
+      if (cancelSendingRef.current) {
+        showToast('Envio de bloqueios cancelado pelo usuário.', 'error');
+        setBloqueioSendingStatus('idle');
+        return;
+      }
       const res = bloqueioReservations.find(r => r.id === resId);
       if (!res) continue;
       const client = clientDB.getById(res.clienteId);
@@ -912,11 +914,17 @@ export default function WhatsAppPage() {
     showToast('Disparo de avisos de bloqueio concluído!', 'success');
   };
 
+  const handleStopBloqueioSend = () => {
+    cancelSendingRef.current = true;
+    setBloqueioSendingStatus('idle');
+    showToast('Interrompendo envios de bloqueio...');
+  };
+
   const fetchWaStatus = async () => {
     setIsFetchingWaStatus(true);
     try {
       const res = await fetch('/api/whatsapp/status', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       const state = data?.instance?.state || 'close';
@@ -937,7 +945,7 @@ export default function WhatsAppPage() {
   const fetchWaQrCode = async () => {
     try {
       const res = await fetch('/api/whatsapp/connect', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       const qr = data.base64 || data.qrcode?.base64 || data.code;
@@ -957,7 +965,7 @@ export default function WhatsAppPage() {
     try {
       await fetch('/api/whatsapp/logout', {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+        headers: getAuthHeaders()
       });
       showToast('WhatsApp desconectado!');
       setWaStatus('close');
@@ -971,7 +979,7 @@ export default function WhatsAppPage() {
     setIsFetchingGroups(true);
     try {
       const res = await fetch('/api/whatsapp/groups', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.groups)) {
@@ -1018,7 +1026,7 @@ export default function WhatsAppPage() {
     setIsFetchingContacts(true);
     try {
       const res = await fetch('/api/whatsapp/contacts', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.contacts)) {
@@ -1096,9 +1104,7 @@ export default function WhatsAppPage() {
     setCalMessageTemplate(val);
     localStorage.setItem('whatsapp_cal_template', val);
     // Persist to centralized database
-    const token = localStorage.getItem('admin_token');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_cal_template: val }) }).catch(console.warn);
   };
 
@@ -1150,7 +1156,7 @@ export default function WhatsAppPage() {
     setCalSendResults(prev => ({ ...prev, [boatId]: 'sending' }));
     
     try {
-      const token = localStorage.getItem('admin_token');
+      const token = getAdminToken();
       
       const groupObj = availableGroups.find(g => g.id === boat.whatsappGroupId);
       const groupName = groupObj ? (groupObj.subject || groupObj.name || boat.whatsappGroupId) : boat.nome;
@@ -1408,7 +1414,15 @@ export default function WhatsAppPage() {
               )}
             </div>
             
-            <div className="shrink-0 pt-4 border-t flex justify-end">
+            <div className="shrink-0 pt-4 border-t flex justify-end gap-3">
+              {confSendingStatus === 'sending' && (
+                <button
+                  onClick={handleStopConfSend}
+                  className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-colors"
+                >
+                  <Pause className="w-4 h-4" /> Cancelar Envios
+                </button>
+              )}
               <button
                 disabled={confSendingStatus === 'sending' || confSelectedIds.length === 0}
                 onClick={handleSendConfirmations}
@@ -1662,7 +1676,16 @@ export default function WhatsAppPage() {
             </div>
 
             {/* Bottom Dispatch Button */}
-            <div className="shrink-0 pt-4 border-t border-slate-200 flex justify-end">
+            <div className="shrink-0 pt-4 border-t border-slate-200 flex justify-end gap-3">
+              {bloqueioSendingStatus === 'sending' && (
+                <button
+                  type="button"
+                  onClick={handleStopBloqueioSend}
+                  className="bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white px-6 py-3 rounded-xl font-extrabold text-sm flex items-center gap-2 transition-colors shadow-md cursor-pointer"
+                >
+                  <Pause className="w-4 h-4" /> Cancelar Envios
+                </button>
+              )}
               <button
                 type="button"
                 disabled={bloqueioSendingStatus === 'sending' || bloqueioSelectedIds.length === 0}
@@ -2454,9 +2477,10 @@ export default function WhatsAppPage() {
       )}
 
       {/* Hidden processing block for Bloqueio Debit Invoices */}
-      <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none aria-hidden">
-        {bloqueioReservations.map(res => {
-          const client = clientDB.getById(res.clienteId);
+      {bloqueioSelectedIds.length > 0 && (
+        <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none aria-hidden">
+          {bloqueioReservations.filter(res => bloqueioSelectedIds.includes(res.id)).map(res => {
+            const client = clientDB.getById(res.clienteId);
           if (!client) return null;
 
           const clientUnpaid = transacoes.filter(t => t.clienteId === client.id && t.status !== 'pago' && t.status !== 'cancelado');
@@ -2547,6 +2571,7 @@ export default function WhatsAppPage() {
           );
         })}
       </div>
+      )}
 
     </div>
   );

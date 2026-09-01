@@ -112,11 +112,11 @@ export default function StatusModal({
         somRetirado,
         somTesteSaida,
         somTesteRetorno,
-        previsaoSaida: statusVal === 'Confirmado' ? horaSaida : undefined,
-        previsaoChegada: statusVal === 'Confirmado' ? horaChegada : undefined,
-        destino: statusVal === 'Confirmado' ? destino : undefined,
-        pessoasABordo: statusVal === 'Confirmado' ? pessoasABordo : undefined,
-        statusMarina: statusVal === 'Confirmado' ? 'confirmada' : undefined
+        previsaoSaida: horaSaida || reserva.previsaoSaida,
+        previsaoChegada: horaChegada || reserva.previsaoChegada,
+        destino: destino || reserva.destino,
+        pessoasABordo: pessoasABordo || reserva.pessoasABordo,
+        statusMarina: statusVal === 'Confirmado' ? 'confirmada' : (reserva.statusMarina || 'agendada')
       });
 
       let success = true;
@@ -142,13 +142,11 @@ export default function StatusModal({
               observacoes: finalObs,
               createdAt: new Date().toISOString()
             };
-            const token = localStorage.getItem('admin_token');
-            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const { fetchWithAuth } = await import('../../utils/apiAuth');
 
-            await fetch('/api/db/save', {
+            await fetchWithAuth('/api/db/save', {
               method: 'POST',
-              headers,
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ type: 'controles_som', action: 'upsert', data: dataToSave })
             });
           } catch(e) { console.error('Failed to save to ControlesSom db', e); }
