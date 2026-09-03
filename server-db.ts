@@ -472,6 +472,13 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN metodoPagamento VARCHAR(50) NULL;`);
     } catch (e) {}
 
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN operador VARCHAR(100) NULL;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN metadata JSON NULL;`);
+    } catch (e) {}
+
     // 9. AtividadesFinanceiras Table (Kanban)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS AtividadesFinanceiras (
@@ -1136,7 +1143,10 @@ export async function pullDatabase(forceFresh = false) {
     })),
     mecanicos: mecanicos as any[],
     tiposManutencao: tiposManutencao as any[],
-    transacoes: transacoes as any[],
+    transacoes: (transacoes as any[]).map(t => ({
+      ...t,
+      metadata: typeof t.metadata === "string" && t.metadata.trim() ? (() => { try { return JSON.parse(t.metadata); } catch(e){ return null; } })() : (t.metadata || null)
+    })),
     funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : [], primeiroEmprego: f.primeiroEmprego === 1})),
     folgas: folgas as any[],
     catalogoEPIs: catalogoEPIs as any[],
@@ -1877,8 +1887,8 @@ export async function upsertTransacao(t: any, connection?: any) {
   }
 
   await dbConfig.query(
-    `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl, reservaId, metodoPagamento)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl, reservaId, metodoPagamento, operador, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        tipo=VALUES(tipo), categoria=VALUES(categoria), valor=VALUES(valor),
        dataVencimento=VALUES(dataVencimento), dataPagamento=VALUES(dataPagamento),
@@ -1886,11 +1896,13 @@ export async function upsertTransacao(t: any, connection?: any) {
        clienteId=VALUES(clienteId), embarcacaoId=VALUES(embarcacaoId),
        comprovante=VALUES(comprovante),
        asaasPaymentId=VALUES(asaasPaymentId), asaasPaymentUrl=VALUES(asaasPaymentUrl),
-       reservaId=VALUES(reservaId), metodoPagamento=VALUES(metodoPagamento)`,
+       reservaId=VALUES(reservaId), metodoPagamento=VALUES(metodoPagamento),
+       operador=VALUES(operador), metadata=VALUES(metadata)`,
     [
       t.id, t.tipo, t.categoria, t.valor, t.dataVencimento, t.dataPagamento || null,
       t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || t.comprovanteUrl || null, t.createdAt,
-      t.asaasPaymentId || null, t.asaasPaymentUrl || null, t.reservaId || null, t.metodoPagamento || null
+      t.asaasPaymentId || null, t.asaasPaymentUrl || null, t.reservaId || null, t.metodoPagamento || null,
+      t.operador || null, t.metadata ? JSON.stringify(t.metadata) : null
     ]
   );
 

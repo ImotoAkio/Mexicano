@@ -6,6 +6,7 @@ import {
   deleteAllTransacoes,
   deleteTransacoesByClientIds,
   upsertTransacao,
+  invalidateDbCache,
   getAllAtividades,
   deleteAtividade,
   upsertAtividade,
@@ -57,6 +58,7 @@ router.post("/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, 
     } else {
       return res.status(400).json({ error: true, message: `Unsupported action: ${action}` });
     }
+    invalidateDbCache();
     res.json({ success: true });
   } catch (err: any) {
     console.error("[Transacao Save Error]", err);

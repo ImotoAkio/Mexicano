@@ -11,6 +11,7 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { getBoatCode } from '../../utils/boatUtils';
+import { getFuelPrice } from '../../utils/constants';
 
 export interface FuelRecordsTabProps {
   totalDayReservations: any[];
@@ -81,8 +82,8 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
 
               const isCobrado = reserva.abastecimentoStatusCobranca === 'cobrado';
               const pm = (reserva.abastecimentoFormaPagamento || 'pix').toLowerCase();
-              const unitPrice = pm === 'credit' ? 10 : pm === 'admin' ? 13 : 9;
-              // const valor = reserva.abastecimentoValorTotal || (litros * unitPrice);
+              const unitPrice = getFuelPrice(pm);
+              const valor = reserva.abastecimentoValorTotal || (litros * unitPrice);
 
               return (
                 <div
@@ -106,9 +107,11 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
                           <h4 className="font-extrabold text-slate-900 text-sm leading-tight uppercase">
                             {boat ? getBoatCode(boat) : (reserva.barcoNome || 'Embarcação')}
                           </h4>
-                          <span className="bg-slate-900 text-white font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
-                            #{boatNumber}
-                          </span>
+                          {boat && (
+                            <span className="bg-slate-900 text-white font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
+                              #{boatNumber}
+                            </span>
+                          )}
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                             isCobrado
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -179,6 +182,11 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
                       <span className="text-base font-black text-blue-600 font-mono block">
                         {litros} L
                       </span>
+                      {Number(valor) > 0 && (
+                        <span className="text-[10px] font-bold text-slate-400 block mt-0.5">
+                          R$ {Number(valor).toFixed(2).replace('.', ',')}
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleOpenFuelModal(reserva)}

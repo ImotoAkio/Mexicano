@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { uploadPhotoToStorage } from '../../utils/checklistStorage';
 import { getBoatCode } from '../../utils/boatUtils';
+import { getFuelPrice } from '../../utils/constants';
 
 export interface FuelRegistrationData {
   liters: number;
@@ -56,22 +57,26 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setStatusCobranca('pendente'); // default rest
+      if (reservaTarget && (reservaTarget.abastecimentoLitros || reservaTarget.litrosAbastecidos)) {
+        setLiters((reservaTarget.abastecimentoLitros || reservaTarget.litrosAbastecidos).toString());
+        setStatusCobranca(reservaTarget.abastecimentoStatusCobranca === 'cobrado' ? 'cobrado' : 'pendente');
+        setPaymentType(reservaTarget.abastecimentoFormaPagamento || 'pix');
+        setComprovanteUrl(reservaTarget.abastecimentoComprovanteUrl || null);
+      } else {
+        setLiters('');
+        setStatusCobranca('pendente');
+        setPaymentType('pix');
+        setComprovanteUrl(null);
+      }
     }
-  }, [isOpen, standaloneMode]);
+  }, [isOpen, reservaTarget]);
 
   if (!isOpen) return null;
 
   const embarcacao = embarcacaoTarget || reservaTarget?.embarcacao;
   const cliente = standaloneClient || reservaTarget?.cliente || (embarcacaoTarget as any)?.cliente;
 
-  const getPricePerLiter = () => {
-    if (paymentType === 'credit') return 10;
-    if (paymentType === 'admin') return 13;
-    return 9;
-  };
-
-  const totalValue = Number(liters || 0) * getPricePerLiter();
+  const totalValue = Number(liters || 0) * getFuelPrice(paymentType);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -145,11 +150,16 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
             <label className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Litros Fornecidos *</label>
 
             <input
-              type="number"
-              step="0.1"
+              type="text"
+              inputMode="decimal"
               placeholder="0 (Deixe em branco para não abastecer)"
               value={liters}
-              onChange={(e) => setLiters(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value.replace(',', '.');
+                if (/^\d*\.?\d*$/.test(val)) {
+                  setLiters(val);
+                }
+              }}
               className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl px-5 py-4 text-2xl text-center font-black text-slate-800 focus:outline-none focus:border-cyan-500 focus:bg-white transition-all shadow-sm font-mono placeholder:text-slate-300 placeholder:text-sm"
             />
 
@@ -225,14 +235,15 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
                     <label className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Forma de Recebimento</label>
                     <div className="grid grid-cols-2 gap-2.5">
                       {[
-                        { id: 'dinheiro', label: 'Dinheiro (Caixa)', icon: Banknote, price: 'R$ 9,00' },
-                        { id: 'pix', label: 'PIX (Digital)', icon: QrCode, price: 'R$ 9,00' },
-                        { id: 'credit', label: 'C. Crédito', icon: CreditCard, price: 'R$ 10,00' },
-                        { id: 'debit', label: 'C. Débito', icon: CreditCard, price: 'R$ 9,00' },
-                        { id: 'admin', label: 'Administradora', icon: Building2, price: 'R$ 13,00' },
+                        { id: 'dinheiro', label: 'Dinheiro (Caixa)', icon: Banknote },
+                        { id: 'pix', label: 'PIX (Digital)', icon: QrCode },
+                        { id: 'credit', label: 'C. Crédito', icon: CreditCard },
+                        { id: 'debit', label: 'C. Débito', icon: CreditCard },
+                        { id: 'admin', label: 'Administradora', icon: Building2 },
                       ].map((item) => {
                         const IconComponent = item.icon;
                         const isSelected = paymentType === item.id;
+                        const itemPrice = getFuelPrice(item.id);
                         return (
                           <button
                             key={item.id}
@@ -249,7 +260,7 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
                             </div>
                             <div>
                               <span className="text-[11px] block">{item.label}</span>
-                              <span className={`text-[10px] block mt-0.5 ${isSelected ? 'text-cyan-700 font-bold' : 'text-slate-400 font-semibold'}`}>Base: {item.price}/L</span>
+                              <span className={`text-[10px] block mt-0.5 ${isSelected ? 'text-cyan-700 font-bold' : 'text-slate-400 font-semibold'}`}>Base: R$ {itemPrice.toFixed(2)}/L</span>
                             </div>
                           </button>
                         );
@@ -262,7 +273,7 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total (Imediato)</span>
                       <span className="text-xs text-slate-500 font-medium">
-                        {Number(liters)}L × R$ {getPricePerLiter().toFixed(2)}
+                        {Number(liters)}L × R$ {getFuelPrice(paymentType).toFixed(2)}
                       </span>
                     </div>
                     <span className="font-black font-mono text-xl text-white">

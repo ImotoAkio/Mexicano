@@ -45,6 +45,7 @@ import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
 import { consumeFuelForEmbarcacao, getFuelInventory } from '../utils/fuelInventory';
+import { getFuelPrice } from '../utils/constants';
 import { OperationsTab } from './MarinaOperador/OperationsTab';
 import { ChecklistsTab } from './MarinaOperador/ChecklistsTab';
 import { FuelRecordsTab } from './MarinaOperador/FuelRecordsTab';
@@ -381,8 +382,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
   };
 
   const handleFuelConfirm = async (fuelData: any) => {
-    const priceMap: any = { pix: 9, dinheiro: 9, credit: 10, debit: 9, admin: 13 };
-    const price = priceMap[fuelData.paymentType] || 9;
+    const price = getFuelPrice(fuelData.paymentType);
 
     try {
       if (fuelTargetMode === 'reserva') {
@@ -405,7 +405,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
         });
 
-        if (fuelData.statusCobranca === 'cobrado') {
+        if (fuelData.liters > 0 && fuelData.statusCobranca === 'cobrado') {
           const transacao = {
               id: `trans_fuel_${Date.now()}`,
               tipo: 'receita',
@@ -420,7 +420,8 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
               embarcacaoId: fuelReservaTarget.embarcacaoId,
               operador: currentUser.nome,
               comprovanteUrl: fuelData.comprovanteUrl || null,
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
+              metadata: { litros: fuelData.liters }
           };
           await fetch('/api/financeiro/transacoes/save', {
               method: 'POST',
@@ -434,31 +435,35 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         const client = fuelTargetMode === 'embarcacao' ? fuelSelectedClient : null;
         const targetName = boat ? (boat.nome || getBoatCode(boat)) : fuelAvulsoName;
         const isPaid = fuelData.statusCobranca === 'cobrado';
+        const existingId = fuelReservaTarget?.isStandalone ? fuelReservaTarget.id : null;
 
-        const transacao = {
-            id: `trans_standalone_fuel_${Date.now()}`,
-            tipo: 'receita',
-            categoria: 'Abastecimento Marina',
-            valor: fuelData.liters * price,
-            dataVencimento: new Date().toISOString().split('T')[0],
-            dataPagamento: isPaid ? new Date().toISOString().split('T')[0] : null,
-            status: isPaid ? 'pago' : 'pendente',
-            metodoPagamento: fuelData.paymentType,
-            descricao: `Abastecimento Standalone: ${fuelData.liters}L a R$${price.toFixed(2)}/L - ${targetName}`,
-            clienteId: client ? client.id : (boat ? boat.clienteId : 'cliente_avulso'),
-            embarcacaoId: boat ? boat.id : 'embarcacao_avulsa',
-            operador: currentUser.nome,
-            comprovanteUrl: fuelData.comprovanteUrl || null,
-            createdAt: new Date().toISOString()
-        };
-        await fetch('/api/financeiro/transacoes/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
-            body: JSON.stringify({ action: 'upsert', data: transacao })
-        });
+        if (fuelData.liters > 0) {
+          const transacao = {
+              id: existingId || `trans_standalone_fuel_${Date.now()}`,
+              tipo: 'receita',
+              categoria: 'Abastecimento Marina',
+              valor: fuelData.liters * price,
+              dataVencimento: new Date().toISOString().split('T')[0],
+              dataPagamento: isPaid ? new Date().toISOString().split('T')[0] : null,
+              status: isPaid ? 'pago' : 'lancado',
+              metodoPagamento: fuelData.paymentType,
+              descricao: `Abastecimento Standalone: ${fuelData.liters}L a R$${price.toFixed(2)}/L - ${targetName}`,
+              clienteId: client ? client.id : (boat ? boat.clienteId : 'cliente_avulso'),
+              embarcacaoId: boat ? boat.id : 'embarcacao_avulsa',
+              operador: currentUser.nome,
+              comprovanteUrl: fuelData.comprovanteUrl || null,
+              createdAt: new Date().toISOString(),
+              metadata: { litros: fuelData.liters }
+          };
+          await fetch('/api/financeiro/transacoes/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+              body: JSON.stringify({ action: 'upsert', data: transacao })
+          });
 
-        if (boat) {
-          await consumeFuelForEmbarcacao(boat.id, fuelData.liters, currentUser.nome);
+          if (boat) {
+            await consumeFuelForEmbarcacao(boat.id, fuelData.liters, currentUser.nome);
+          }
         }
       }
 
@@ -573,6 +578,45 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
   const reservasDoDia = getFilteredReservations();
   const descidasCount = totalDayReservations.filter((r: any) => r.horaDescida || r.statusMarina === 'pronta').length;
 
+  const standaloneFuelData = (data?.transacoes || []).filter((t: any) => {
+    if (t.categoria !== 'Abastecimento Marina') return false;
+    if (!t.id.startsWith('trans_standalone_fuel_')) return false;
+    const tDate = t.createdAt ? t.createdAt.split('T')[0] : t.dataVencimento;
+    return tDate === selectedDate;
+  }).map((t: any) => {
+    let liters = 0;
+    if (t.metadata?.litros) {
+        liters = parseFloat(t.metadata.litros);
+    } else {
+        const litersMatch = t.descricao?.match(/:\s*([\d\.]+)L/);
+        liters = litersMatch ? parseFloat(litersMatch[1]) : 0;
+    }
+
+    let targetName = 'Visitante';
+    if (t.descricao) {
+        const parts = t.descricao.split(' - ');
+        if (parts.length > 1) {
+            targetName = parts.slice(1).join(' - ');
+        }
+    }
+
+    return {
+      id: t.id,
+      embarcacaoId: t.embarcacaoId,
+      clienteId: t.clienteId,
+      abastecimentoLitros: liters,
+      abastecimentoFormaPagamento: t.metodoPagamento,
+      abastecimentoStatusCobranca: t.status === 'pago' ? 'cobrado' : 'pendente',
+      abastecimentoValorTotal: t.valor,
+      abastecimentoComprovanteUrl: t.comprovanteUrl,
+      abastecimentoOperador: t.operador,
+      barcoNome: targetName,
+      clienteNome: t.clienteId && t.clienteId !== 'cliente_avulso' ? getCliente(t.clienteId)?.nome : 'Visitante Avulso',
+      isStandalone: true,
+      transacaoOriginal: t
+    };
+  });
+
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#070B18] text-white">
@@ -639,12 +683,19 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
 
       {activeTab === 'abastecimentos' && (
         <FuelRecordsTab
-          totalDayReservations={reservasDoDia}
+          totalDayReservations={[...reservasDoDia, ...standaloneFuelData]}
           getEmbarcacao={getEmbarcacao}
           getCliente={getCliente}
           handleOpenFuelModal={(reserva) => {
-            setFuelTargetMode('reserva');
-            setFuelReservaTarget(reserva);
+            if (reserva.isStandalone) {
+              setFuelTargetMode(reserva.embarcacaoId === 'embarcacao_avulsa' ? 'avulso' : 'embarcacao');
+              setFuelAvulsoName(reserva.barcoNome);
+              setFuelSelectedClient(getCliente(reserva.clienteId));
+              setFuelReservaTarget(reserva); // We can still pass the mock reserva target
+            } else {
+              setFuelTargetMode('reserva');
+              setFuelReservaTarget(reserva);
+            }
             setFuelEmbarcacaoTarget(getEmbarcacao(reserva.embarcacaoId));
             setIsFuelModalOpen(true);
           }}
@@ -711,7 +762,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           <div className="relative">
             <Droplets className={`w-6 h-6 ${activeTab === 'abastecimentos' ? 'fill-current' : ''}`} />
             <span className="absolute -top-2 -right-3 bg-cyan-100 text-cyan-800 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
-              {reservasDoDia.filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0).length}
+              {[...reservasDoDia, ...standaloneFuelData].filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0).length}
             </span>
           </div>
           <span className="text-[10px] font-bold uppercase tracking-wider mt-1">Combustível</span>

@@ -20,6 +20,20 @@ export const FINANCE = {
   VALOR_MINIMO_COBRANCA: 0.01,
 } as const;
 
+export const FUEL_PRICES = {
+  dinheiro: 9,
+  pix: 9,
+  debit: 9,
+  credit: 10,
+  admin: 13,
+} as const;
+
+export type FuelPaymentMethod = keyof typeof FUEL_PRICES;
+
+export const getFuelPrice = (method: string): number => {
+  return FUEL_PRICES[method as FuelPaymentMethod] || 9;
+};
+
 // ─── Configurações de UI ───────────────────────────────────────────────────
 export const UI = {
   /** Duração padrão dos toasts em ms */
