@@ -109,6 +109,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
   const [isAvulsoFuelSelectorOpen, setIsAvulsoFuelSelectorOpen] = useState(false);
   const [fuelTargetMode, setFuelTargetMode] = useState<'reserva' | 'embarcacao' | 'avulso'>('reserva');
   const [fuelAvulsoName, setFuelAvulsoName] = useState('');
+  const [fuelSelectedClient, setFuelSelectedClient] = useState<any>(null);
 
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [captureModalTipo, setCaptureModalTipo] = useState<'descida' | 'subida' | 'saida' | 'retorno' | 'avulso'>('descida');
@@ -430,6 +431,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
       } else {
         // Modo Avulso ou Embarcação (Standalone)
         const boat = fuelTargetMode === 'embarcacao' ? fuelEmbarcacaoTarget : null;
+        const client = fuelTargetMode === 'embarcacao' ? fuelSelectedClient : null;
         const targetName = boat ? (boat.nome || getBoatCode(boat)) : fuelAvulsoName;
         const isPaid = fuelData.statusCobranca === 'cobrado';
 
@@ -443,7 +445,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
             status: isPaid ? 'pago' : 'pendente',
             metodoPagamento: fuelData.paymentType,
             descricao: `Abastecimento Standalone: ${fuelData.liters}L a R$${price.toFixed(2)}/L - ${targetName}`,
-            clienteId: boat ? boat.clienteId : 'cliente_avulso',
+            clienteId: client ? client.id : (boat ? boat.clienteId : 'cliente_avulso'),
             embarcacaoId: boat ? boat.id : 'embarcacao_avulsa',
             operador: currentUser.nome,
             comprovanteUrl: fuelData.comprovanteUrl || null,
@@ -747,12 +749,14 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           setFuelReservaTarget(null);
           setFuelEmbarcacaoTarget(null);
           setFuelAvulsoName('');
+          setFuelSelectedClient(null);
         }}
         reservaTarget={fuelReservaTarget}
         embarcacaoTarget={fuelEmbarcacaoTarget}
         onConfirm={handleFuelConfirm}
         standaloneMode={fuelTargetMode !== 'reserva' ? (fuelTargetMode as 'embarcacao'|'avulso') : undefined}
         avulsoNome={fuelAvulsoName}
+        standaloneClient={fuelSelectedClient}
       />
 
       {/* Modal Seletor de Abastecimento Avulso */}
@@ -766,10 +770,12 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           if (payload.type === 'embarcacao') {
             setFuelTargetMode('embarcacao');
             setFuelEmbarcacaoTarget(payload.boat);
+            setFuelSelectedClient(payload.client);
             setFuelReservaTarget(null);
           } else {
             setFuelTargetMode('avulso');
             setFuelAvulsoName(payload.name);
+            setFuelSelectedClient(null);
             setFuelReservaTarget(null);
             setFuelEmbarcacaoTarget(null);
           }
