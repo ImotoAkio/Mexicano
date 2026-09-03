@@ -2263,7 +2263,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-sm animate-toast-in">
+        <div className="fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-sm animate-toast-in">
           <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border backdrop-blur-xl ${
             toast.type === 'success' ? 'bg-emerald-950/90 border-emerald-700/50 text-emerald-100' :
             toast.type === 'warning' ? 'bg-amber-950/90 border-amber-700/50 text-amber-100' :

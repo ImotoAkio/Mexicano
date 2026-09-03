@@ -51,155 +51,22 @@ import { FuelRecordsTab } from './MarinaOperador/FuelRecordsTab';
 import { ChecklistCaptureModal } from './MarinaOperador/ChecklistCaptureModal';
 import { FuelRegistrationModal } from './MarinaOperador/FuelRegistrationModal';
 import { AvulsoChecklistModal } from './MarinaOperador/AvulsoChecklistModal';
+import { AvulsoFuelSelectorModal } from './MarinaOperador/AvulsoFuelSelectorModal';
 import { ViewChecklistModal } from './MarinaOperador/ViewChecklistModal';
 import { PerfilTab } from './MarinaOperador/PerfilTab';
 
 // Jet Ski Reference Images
-import refJetFrente from '../assets/images/checklist/jet/frente.svg';
-import refJetTras from '../assets/images/checklist/jet/tras.svg';
-import refJetEsquerda from '../assets/images/checklist/jet/esquerda.svg';
-import refJetDireita from '../assets/images/checklist/jet/direita.svg';
-import refJetPainel from '../assets/images/checklist/jet/painel.svg';
-import refJetCasco from '../assets/images/checklist/jet/casco.svg';
+// import refJetFrente from '../assets/images/checklist/jet/frente.svg';
+// import refJetTras from '../assets/images/checklist/jet/tras.svg';
+// import refJetEsquerda from '../assets/images/checklist/jet/esquerda.svg';
+// import refJetDireita from '../assets/images/checklist/jet/direita.svg';
+// import refJetPainel from '../assets/images/checklist/jet/painel.svg';
+// import refJetCasco from '../assets/images/checklist/jet/casco.svg';
 
 interface MarinaOperadorDashboardProps {
   onLogout: () => void;
   operadorNome?: string;
 }
-
-interface ChecklistAngle {
-  id: string;
-  label: string;
-  shortLabel: string;
-  icon: any;
-  refImage?: string;
-  tip: string;
-  instruction: string;
-  focus: string;
-}
-
-const CHECKLIST_ANGLES_JET: ChecklistAngle[] = [
-  { 
-    id: 'proa', 
-    label: 'Proa (Frente do Jet)', 
-    shortLabel: 'Proa',
-    icon: Navigation, 
-    refImage: refJetFrente,
-    tip: 'Frente do Jet Ski',
-    instruction: 'Posicione-se em frente ao Jet Ski enquadrando o bico frontal, espelhos e guidão.',
-    focus: 'Bico frontal, espelhos retrovisores, capô e guidão'
-  },
-  { 
-    id: 'popa', 
-    label: 'Popa (Traseira / Turbina)', 
-    shortLabel: 'Popa',
-    icon: Anchor, 
-    refImage: refJetTras,
-    tip: 'Traseira / Turbina',
-    instruction: 'Posicione-se atrás do Jet enquadrando o hidrojato/turbina, cinta e degrau de reembarque.',
-    focus: 'Turbina, bocal direcionador, degrau de reembarque e casco traseiro'
-  },
-  { 
-    id: 'bombordo', 
-    label: 'Lateral Esquerda (Bombordo)', 
-    shortLabel: 'L. Esquerda',
-    icon: Camera, 
-    refImage: refJetEsquerda,
-    tip: 'Costado Esquerdo',
-    instruction: 'Enquadre toda a lateral esquerda do Jet Ski da proa até a popa.',
-    focus: 'Costado de bombordo, friso emborrachado e adesivos laterais'
-  },
-  { 
-    id: 'estibordo', 
-    label: 'Lateral Direita (Boreste)', 
-    shortLabel: 'L. Direita',
-    icon: Camera, 
-    refImage: refJetDireita,
-    tip: 'Costado Direito',
-    instruction: 'Enquadre toda a lateral direita do Jet Ski da proa até a popa.',
-    focus: 'Costado de boreste, friso emborrachado e acabamentos'
-  },
-  { 
-    id: 'painel', 
-    label: 'Painel & Guidão do Jet', 
-    shortLabel: 'Painel',
-    icon: Ship, 
-    refImage: refJetPainel,
-    tip: 'Display e Guidão',
-    instruction: 'Enquadre o painel digital, manoplas, gatilhos de acelerador/reverso (IBR) e assento.',
-    focus: 'Painel digital, manoplas, gatilho do acelerador/IBR e estofado do banco'
-  },
-  { 
-    id: 'casco', 
-    label: 'Casco (Fundo do Jet)', 
-    shortLabel: 'Casco',
-    icon: Layers, 
-    refImage: refJetCasco,
-    tip: 'Fundo / Grelha',
-    instruction: 'Tire uma foto do fundo do casco e da grelha de captação de água da turbina.',
-    focus: 'Grelha de admissão, placa de fundo, quilha e gelcoat inferior'
-  }
-];
-
-const CHECKLIST_ANGLES_LANCHA: ChecklistAngle[] = [
-  { 
-    id: 'proa', 
-    label: 'Proa (Frente da Lancha)', 
-    shortLabel: 'Proa',
-    icon: Navigation, 
-    tip: 'Frente da Lancha',
-    instruction: 'Posicione-se em frente à lancha enquadrando o bico, púlpito de proa, âncora e guarda-mancebo.',
-    focus: 'Bico, guarda-mancebo em inox, âncora/guincho elétrico e solário de proa'
-  },
-  { 
-    id: 'popa', 
-    label: 'Popa (Motores / Plataforma)', 
-    shortLabel: 'Popa',
-    icon: Anchor, 
-    tip: 'Popa & Motores',
-    instruction: 'Posicione-se atrás da lancha enquadrando os motores, plataforma de teca, escada e espaço gourmet.',
-    focus: 'Motores de popa / rabeta, plataforma de teca, escada retrátil e espaço gourmet'
-  },
-  { 
-    id: 'bombordo', 
-    label: 'Lateral Esquerda (Bombordo)', 
-    shortLabel: 'L. Esquerda',
-    icon: Camera, 
-    tip: 'Costado de Bombordo',
-    instruction: 'Enquadre todo o costado esquerdo da lancha da proa até a popa.',
-    focus: 'Costado de bombordo, friso de proteção, vigias/janelas e defensas'
-  },
-  { 
-    id: 'estibordo', 
-    label: 'Lateral Direita (Boreste)', 
-    shortLabel: 'L. Direita',
-    icon: Camera, 
-    tip: 'Costado de Boreste',
-    instruction: 'Enquadre todo o costado direito da lancha da proa até a popa.',
-    focus: 'Costado de boreste, frisos, linha d’água e costado'
-  },
-  { 
-    id: 'painel', 
-    label: 'Cockpit & Posto de Comando', 
-    shortLabel: 'Painel',
-    icon: Ship, 
-    tip: 'Painel & Comando',
-    instruction: 'Enquadre o posto de comando, volante náutico, telas/relógios, manetes e bancos.',
-    focus: 'Volante esportivo, GPS/relógios, manete de aceleração, comandos e estofados'
-  },
-  { 
-    id: 'casco', 
-    label: 'Casco (Fundo em V da Lancha)', 
-    shortLabel: 'Casco',
-    icon: Layers, 
-    tip: 'Quilha e Fundo',
-    instruction: 'Tire uma foto do fundo do casco em V, quilha e linha d’água para verificar integridade.',
-    focus: 'Quilha central, redans/hidrofólios, gelcoat do fundo e linha d’água'
-  }
-];
-
-// Fallback compatibility alias
-const CHECKLIST_ANGLES = CHECKLIST_ANGLES_LANCHA;
 
 const getFormattedDate = (date: Date) => {
   const yyyy = date.getFullYear();
@@ -238,6 +105,10 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
   const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
   const [fuelReservaTarget, setFuelReservaTarget] = useState<any>(null);
   const [fuelEmbarcacaoTarget, setFuelEmbarcacaoTarget] = useState<any>(null);
+
+  const [isAvulsoFuelSelectorOpen, setIsAvulsoFuelSelectorOpen] = useState(false);
+  const [fuelTargetMode, setFuelTargetMode] = useState<'reserva' | 'embarcacao' | 'avulso'>('reserva');
+  const [fuelAvulsoName, setFuelAvulsoName] = useState('');
 
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [captureModalTipo, setCaptureModalTipo] = useState<'descida' | 'subida' | 'saida' | 'retorno' | 'avulso'>('descida');
@@ -441,7 +312,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
   };
 
   const handleChegadaEAbastecimento = async (reserva: any) => {
-    if (!window.confirm('Embarcação retornou. Deseja realizar checklist de chegada/subida?')) return;
+    if (!window.confirm('A embarcação encostou no píer e deseja registrar a chegada?')) return;
 
     const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const updatedReserva = {
@@ -457,8 +328,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
         body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
       });
-      showToast('Retorno registrado. Preencha o checklist de subida e/ou informe o combustível.', 'info');
-      handleOpenChecklistSubida(updatedReserva);
+      showToast('Chegada registrada! Agora você pode abastecer ou fazer a subida.', 'success');
     } catch (err) {
       showToast('Erro ao marcar chegada.', 'warning');
     }
@@ -473,7 +343,8 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         updatedReserva.horaDescida = horaAtual;
         updatedReserva.statusMarina = 'pronta'; // na água pronta para sair
-        updatedReserva.fotosChecklistDescida = Object.values(data.fotos).concat(data.fotosExtras);
+        updatedReserva.fotosChecklistDescida = data.fotos; // Mapeado por ângulo
+        updatedReserva.fotosExtrasDescida = data.fotosExtras; // Array normal
         updatedReserva.checklistEquipamentos = data.itensSeguranca;
         updatedReserva.checklistObservacoes = data.observacoes;
     } else if (captureModalTipo === 'subida') {
@@ -481,13 +352,15 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         updatedReserva.horaSubida = horaAtual;
         updatedReserva.statusMarina = 'guardada';
         updatedReserva.statusOperacional = 'guardado';
-        updatedReserva.fotosChecklistSubida = Object.values(data.fotos).concat(data.fotosExtras);
+        updatedReserva.fotosChecklistSubida = data.fotos;
+        updatedReserva.fotosExtrasSubida = data.fotosExtras;
         updatedReserva.operadorSubida = currentUser.nome;
     } else {
         // Para avulsos ou outros modos que não exigem lógica prévia
         const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         updatedReserva.horaManual = horaAtual;
-        updatedReserva.fotosAvulsas = Object.values(data.fotos).concat(data.fotosExtras);
+        updatedReserva.fotosAvulsas = data.fotos;
+        updatedReserva.fotosExtrasAvulsas = data.fotosExtras;
     }
 
     try {
@@ -507,43 +380,71 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
   };
 
   const handleFuelConfirm = async (fuelData: any) => {
-    if (!fuelReservaTarget) return;
-
-    const boat = fuelEmbarcacaoTarget;
     const priceMap: any = { pix: 9, dinheiro: 9, credit: 10, debit: 9, admin: 13 };
     const price = priceMap[fuelData.paymentType] || 9;
 
-    const updatedReserva = {
-      ...fuelReservaTarget,
-      abastecimentoLitros: fuelData.liters,
-      abastecimentoFormaPagamento: fuelData.paymentType,
-      abastecimentoStatusCobranca: fuelData.statusCobranca,
-      abastecimentoValorTotal: (fuelData.liters * price).toString(),
-      abastecimentoComprovanteUrl: fuelData.comprovanteUrl || null,
-      abastecimentoOperador: currentUser.nome
-    };
-
     try {
-      await fetch('/api/db/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
-        body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
-      });
+      if (fuelTargetMode === 'reserva') {
+        if (!fuelReservaTarget) return;
+        const boat = fuelEmbarcacaoTarget;
 
-      // Criar transação financeira se for cobrado
-      if (fuelData.statusCobranca === 'cobrado') {
+        const updatedReserva = {
+          ...fuelReservaTarget,
+          abastecimentoLitros: fuelData.liters,
+          abastecimentoFormaPagamento: fuelData.paymentType,
+          abastecimentoStatusCobranca: fuelData.statusCobranca,
+          abastecimentoValorTotal: (fuelData.liters * price).toString(),
+          abastecimentoComprovanteUrl: fuelData.comprovanteUrl || null,
+          abastecimentoOperador: currentUser.nome
+        };
+
+        await fetch('/api/db/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+          body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+        });
+
+        if (fuelData.statusCobranca === 'cobrado') {
+          const transacao = {
+              id: `trans_fuel_${Date.now()}`,
+              tipo: 'receita',
+              categoria: 'Abastecimento Marina',
+              valor: fuelData.liters * price,
+              dataVencimento: new Date().toISOString().split('T')[0],
+              dataPagamento: new Date().toISOString().split('T')[0],
+              status: 'pago',
+              metodoPagamento: fuelData.paymentType,
+              descricao: `Abastecimento Marina: ${fuelData.liters}L a R$${price.toFixed(2)}/L - ${boat?.nome || 'Desc'}`,
+              clienteId: fuelReservaTarget.clienteId,
+              embarcacaoId: fuelReservaTarget.embarcacaoId,
+              operador: currentUser.nome,
+              comprovanteUrl: fuelData.comprovanteUrl || null,
+              createdAt: new Date().toISOString()
+          };
+          await fetch('/api/financeiro/transacoes/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+              body: JSON.stringify({ action: 'upsert', data: transacao })
+          }).catch(() => null);
+        }
+      } else {
+        // Modo Avulso ou Embarcação (Standalone)
+        const boat = fuelTargetMode === 'embarcacao' ? fuelEmbarcacaoTarget : null;
+        const targetName = boat ? (boat.nome || getBoatCode(boat)) : fuelAvulsoName;
+        const isPaid = fuelData.statusCobranca === 'cobrado';
+
         const transacao = {
-            id: `trans_fuel_${Date.now()}`,
+            id: `trans_standalone_fuel_${Date.now()}`,
             tipo: 'receita',
             categoria: 'Abastecimento Marina',
             valor: fuelData.liters * price,
             dataVencimento: new Date().toISOString().split('T')[0],
-            dataPagamento: new Date().toISOString().split('T')[0],
-            status: 'pago',
+            dataPagamento: isPaid ? new Date().toISOString().split('T')[0] : null,
+            status: isPaid ? 'pago' : 'pendente',
             metodoPagamento: fuelData.paymentType,
-            descricao: `Abastecimento Marina: ${fuelData.liters}L a R$${price.toFixed(2)}/L - ${boat?.nome || 'Desc'}`,
-            clienteId: fuelReservaTarget.clienteId,
-            embarcacaoId: fuelReservaTarget.embarcacaoId,
+            descricao: `Abastecimento Standalone: ${fuelData.liters}L a R$${price.toFixed(2)}/L - ${targetName}`,
+            clienteId: boat ? boat.clienteId : 'cliente_avulso',
+            embarcacaoId: boat ? boat.id : 'embarcacao_avulsa',
             operador: currentUser.nome,
             comprovanteUrl: fuelData.comprovanteUrl || null,
             createdAt: new Date().toISOString()
@@ -552,11 +453,16 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
             body: JSON.stringify({ action: 'upsert', data: transacao })
-        }).catch(() => null);
+        });
+
+        if (boat) {
+          await consumeFuelForEmbarcacao(boat.id, fuelData.liters, currentUser.nome);
+        }
       }
 
       setIsFuelModalOpen(false);
       showToast('Abastecimento salvo com sucesso!', 'success');
+      fetchData(); // atualizar
     } catch (err) {
       showToast('Erro ao salvar abastecimento.', 'warning');
       throw err;
@@ -678,7 +584,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
 
       {/* Floating Notification Blob */}
       {unreadUpdateMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9000] animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-[max(1.5rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-[9000] animate-in fade-in slide-in-from-top-4 duration-300">
           <button
             onClick={() => {
               setUnreadUpdateMessage(null);
@@ -705,6 +611,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           onChegadaEAbastecimento={handleChegadaEAbastecimento}
           onChecklistSubida={handleOpenChecklistSubida}
           onAbastecer={(reserva) => {
+            setFuelTargetMode('reserva');
             setFuelReservaTarget(reserva);
             setFuelEmbarcacaoTarget(getEmbarcacao(reserva.embarcacaoId));
             setIsFuelModalOpen(true);
@@ -734,9 +641,13 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           getEmbarcacao={getEmbarcacao}
           getCliente={getCliente}
           handleOpenFuelModal={(reserva) => {
+            setFuelTargetMode('reserva');
             setFuelReservaTarget(reserva);
             setFuelEmbarcacaoTarget(getEmbarcacao(reserva.embarcacaoId));
             setIsFuelModalOpen(true);
+          }}
+          onOpenAvulsoFuel={() => {
+            setIsAvulsoFuelSelectorOpen(true);
           }}
         />
       )}
@@ -832,12 +743,38 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         isOpen={isFuelModalOpen}
         onClose={() => {
           setIsFuelModalOpen(false);
+          setFuelTargetMode('reserva');
           setFuelReservaTarget(null);
           setFuelEmbarcacaoTarget(null);
+          setFuelAvulsoName('');
         }}
         reservaTarget={fuelReservaTarget}
         embarcacaoTarget={fuelEmbarcacaoTarget}
         onConfirm={handleFuelConfirm}
+        standaloneMode={fuelTargetMode !== 'reserva' ? (fuelTargetMode as 'embarcacao'|'avulso') : undefined}
+        avulsoNome={fuelAvulsoName}
+      />
+
+      {/* Modal Seletor de Abastecimento Avulso */}
+      <AvulsoFuelSelectorModal
+        isOpen={isAvulsoFuelSelectorOpen}
+        onClose={() => setIsAvulsoFuelSelectorOpen(false)}
+        data={data}
+        getCliente={getCliente}
+        onConfirm={(payload) => {
+          setIsAvulsoFuelSelectorOpen(false);
+          if (payload.type === 'embarcacao') {
+            setFuelTargetMode('embarcacao');
+            setFuelEmbarcacaoTarget(payload.boat);
+            setFuelReservaTarget(null);
+          } else {
+            setFuelTargetMode('avulso');
+            setFuelAvulsoName(payload.name);
+            setFuelReservaTarget(null);
+            setFuelEmbarcacaoTarget(null);
+          }
+          setIsFuelModalOpen(true);
+        }}
       />
 
       {/* Modal de Checklist Avulso */}

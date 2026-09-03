@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Anchor, ArrowDownCircle, CheckCircle2, ArrowUpCircle, Image as ImageIcon, Download, Loader2, Compass, Shield, Volume2, LifeBuoy, Flame } from 'lucide-react';
+import { Anchor, ArrowDownCircle, CheckCircle2, ArrowUpCircle, Image as ImageIcon, Download, Loader2, Compass, Shield, Flame, Activity, FileText, Pocket, LifeBuoy } from 'lucide-react';
 import Logo from './Logo';
+
+const renderSafetyItem = (reserva: any, key: string, label: string, IconClass: any) => {
+  const status = reserva.checklistEquipamentos?.[key];
+  const isOk = status !== false; // Considera undefined como OK por padrão no legado
+  return (
+    <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
+      isOk ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+    }`}>
+      <span className="flex items-center gap-2 truncate"><IconClass className="w-4 h-4 text-[#B69D74] shrink-0" /> <span className="truncate">{label}</span></span>
+      <span className="shrink-0 ml-1">{isOk ? '✓ OK' : '⚠️ Avaria'}</span>
+    </div>
+  );
+};
 
 export default function SharedChecklistPage({ checklistId }: { checklistId: string }) {
   const [data, setData] = useState<any>(null);
@@ -26,23 +39,64 @@ export default function SharedChecklistPage({ checklistId }: { checklistId: stri
       });
   }, [checklistId]);
 
-  const parseFotos = (fotosStr: any): string[] => {
-    if (!fotosStr) return [];
-    if (Array.isArray(fotosStr)) return fotosStr;
-    if (typeof fotosStr !== 'string') return [];
-    try {
-      const parsed = JSON.parse(fotosStr);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return fotosStr.split(',').filter((f: string) => f.trim().length > 0);
-    }
+  const formatAngleLabel = (key: string) => {
+    const labels: Record<string, string> = {
+      'frente': 'Frente',
+      'traseira': 'Traseira',
+      'lat_esquerda': 'Lat. Esquerda',
+      'lat_direita': 'Lat. Direita',
+      'painel': 'Painel',
+      'casco_inferior': 'Casco Inferior',
+      'casco_traseiro': 'Casco Traseiro',
+      'porta_objetos': 'Porta Objetos',
+      'frente_proa': 'Frente - Proa',
+      'frente_conves': 'Frente - Convés',
+      'traseira_popa': 'Traseira - Popa',
+      'traseira_plataforma': 'Traseira - Plataforma',
+      'lat_esq_proa': 'Lat. Esq - Proa',
+      'lat_esq_popa': 'Lat. Esq - Popa',
+      'lat_dir_proa': 'Lat. Dir - Proa',
+      'lat_dir_popa': 'Lat. Dir - Popa',
+    };
+    return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
-  const handleDownloadAll = (urls: string[], title: string) => {
+  const parseFotos = (fotosStr: any, extras: any = []): { label: string, url: string }[] => {
+    let arr: { label: string, url: string }[] = [];
+    if (!fotosStr) {
+       arr = [];
+    } else if (Array.isArray(fotosStr)) {
+       arr = fotosStr.map((url, i) => ({ label: `Foto ${i + 1}`, url }));
+    } else if (typeof fotosStr === 'object') {
+       arr = Object.entries(fotosStr)
+         .filter(([_, v]) => typeof v === 'string')
+         .map(([k, v]) => ({ label: formatAngleLabel(k), url: v as string }));
+    } else if (typeof fotosStr === 'string') {
+      try {
+        const parsed = JSON.parse(fotosStr);
+        arr = Array.isArray(parsed)
+          ? parsed.map((url, i) => ({ label: `Foto ${i + 1}`, url }))
+          : [];
+      } catch (e) {
+        arr = fotosStr.split(',').filter((f: string) => f.trim().length > 0).map((url: string, i: number) => ({ label: `Foto ${i + 1}`, url }));
+      }
+    }
+
+    if (Array.isArray(extras)) {
+      extras.forEach((url, i) => {
+        if (typeof url === 'string') {
+          arr.push({ label: `Extra ${i + 1}`, url });
+        }
+      });
+    }
+    return arr;
+  };
+
+  const handleDownloadAll = (fotos: { label: string, url: string }[], title: string) => {
     // Para simplificar, abre cada URL. Em uma app real, poderia gerar um ZIP no backend.
-    urls.forEach((url, i) => {
+    fotos.forEach((f, i) => {
       const a = document.createElement('a');
-      a.href = url;
+      a.href = f.url;
       a.download = `${title.toLowerCase()}_foto_${i+1}.jpg`;
       a.target = '_blank';
       document.body.appendChild(a);
@@ -87,9 +141,9 @@ export default function SharedChecklistPage({ checklistId }: { checklistId: stri
   const fotosChegada = parseFotos(data.fotosChecklistChegada);
   const fotosSubida = parseFotos(data.fotosChecklistSubida);
 
-  const renderSection = (title: string, hora: string | null, fotos: string[], Icon: React.ElementType, colorClass: string) => {
+  const renderSection = (title: string, hora: string | null, fotos: { label: string, url: string }[], Icon: React.ElementType, colorClass: string) => {
     if (!hora && fotos.length === 0) return null;
-    
+
     return (
       <div className="bg-[#111111] rounded-2xl border border-white/5 p-6 mb-6">
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
@@ -103,7 +157,7 @@ export default function SharedChecklistPage({ checklistId }: { checklistId: stri
             </div>
           </div>
           {fotos.length > 0 && (
-            <button 
+            <button
               onClick={() => handleDownloadAll(fotos, title)}
               className="px-4 py-2 bg-[#1A1A1A] hover:bg-[#222] border border-white/10 rounded-lg text-sm text-[#B69D74] transition-colors flex items-center gap-2"
             >
@@ -111,18 +165,21 @@ export default function SharedChecklistPage({ checklistId }: { checklistId: stri
             </button>
           )}
         </div>
-        
+
         {fotos.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {fotos.map((url, i) => (
-              <div 
-                key={i} 
-                onClick={() => setModalPhotos({ title, urls: fotos })}
+            {fotos.map((foto, i) => (
+              <div
+                key={i}
+                onClick={() => setModalPhotos({ title, urls: fotos.map(f => f.url) })}
                 className="relative group rounded-xl overflow-hidden aspect-square bg-[#0A0A0A] cursor-pointer ring-1 ring-white/5 hover:ring-[#B69D74]/50 transition-all"
               >
-                <img src={url} alt={`${title} ${i+1}`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <ImageIcon className="w-6 h-6 text-white" />
+                <img src={foto.url} alt={`${title} ${i+1}`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
+                <div className="absolute inset-x-0 bottom-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity p-2 text-center text-xs text-white backdrop-blur-sm truncate">
+                  {foto.label}
+                </div>
+                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                  <ImageIcon className="w-6 h-6 text-white drop-shadow-md" />
                 </div>
               </div>
             ))}
@@ -187,30 +244,13 @@ export default function SharedChecklistPage({ checklistId }: { checklistId: stri
                 <span>Segurança & Equipamentos da Lancha</span>
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-bold">
-                <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-                  data.checklistEquipamentos?.som !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                }`}>
-                  <span className="flex items-center gap-2"><Volume2 className="w-4 h-4 text-[#B69D74]" /> Som</span>
-                  <span>{data.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                </div>
-                <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-                  data.checklistEquipamentos?.boias !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                }`}>
-                  <span className="flex items-center gap-2"><LifeBuoy className="w-4 h-4 text-[#B69D74]" /> Bóias</span>
-                  <span>{data.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                </div>
-                <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-                  data.checklistEquipamentos?.coletes !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                }`}>
-                  <span className="flex items-center gap-2"><Shield className="w-4 h-4 text-[#B69D74]" /> Coletes</span>
-                  <span>{data.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                </div>
-                <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-                  data.checklistEquipamentos?.extintor !== false ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                }`}>
-                  <span className="flex items-center gap-2"><Flame className="w-4 h-4 text-[#B69D74]" /> Extintor</span>
-                  <span>{data.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                </div>
+                {renderSafetyItem(data, 'coletes', 'Coletes', Shield)}
+                {renderSafetyItem(data, 'extintor', 'Extintor', Flame)}
+                {renderSafetyItem(data, 'cortaCorrente', 'Corta-Corrente', Activity)}
+                {renderSafetyItem(data, 'ancora', 'Âncora', Anchor)}
+                {renderSafetyItem(data, 'documento', 'Documentação', FileText)}
+                {renderSafetyItem(data, 'boiaCircular', 'Bóia Circular', LifeBuoy)}
+                {renderSafetyItem(data, 'primeirosSocorros', 'P. Socorros', Pocket)}
               </div>
               {data.checklistObservacoes && (
                 <div className="bg-[#1A1A1A] p-4 rounded-xl border border-white/10 text-xs text-white/80 mt-4">

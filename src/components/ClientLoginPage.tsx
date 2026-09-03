@@ -178,7 +178,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white selection:bg-[#B69D74]/30 selection:text-white">
+    <div className="min-h-screen w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white selection:bg-[#B69D74]/30 selection:text-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       
       {/* Absolute Minimal Background */}
       <div className="absolute inset-0 w-full h-full pointer-events-none opacity-40 mix-blend-screen">
@@ -444,11 +444,11 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
           </div>
         )}
 
-        {/* Administrative Link at the bottom if on welcome screen */}
+        {/* Administrative Link at the top right if on welcome screen */}
         {view === 'welcome' && (
-          <div className="absolute top-8 right-8">
-             <a href="/admin" className="text-[9px] uppercase tracking-[0.2em] text-white/20 hover:text-white transition-colors">
-               Admin
+          <div className="absolute top-[max(2rem,env(safe-area-inset-top))] right-[max(1.5rem,env(safe-area-inset-right))] z-50">
+             <a href="/admin" className="flex items-center justify-center gap-2 px-4 py-2 text-[10px] uppercase font-bold tracking-[0.1em] text-white/50 border border-white/10 rounded-full hover:text-white hover:border-white/30 hover:bg-white/5 transition-all shadow-sm cursor-pointer backdrop-blur-md">
+               <ShieldCheck className="w-4 h-4" /> <span>Acesso Admin</span>
              </a>
           </div>
         )}

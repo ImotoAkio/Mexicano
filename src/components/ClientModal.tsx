@@ -263,7 +263,7 @@ export default function ClientModal({
     <div id="client-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
       {/* Toast Banner */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-60 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold animate-in fade-in slide-in-from-top-2 duration-200 ${
+        <div className={`fixed top-[max(1rem,env(safe-area-inset-top))] right-4 z-60 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold animate-in fade-in slide-in-from-top-2 duration-200 ${
           toast.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
         }`}>
           {toast.message}

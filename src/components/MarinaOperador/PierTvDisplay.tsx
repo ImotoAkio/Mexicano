@@ -31,6 +31,7 @@ export default function PierTvDisplay() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.status === 401 || res.status === 403) {
+        window.dispatchEvent(new Event('auth-expired'));
         setError('Sessão expirada. Faça login novamente.');
         return;
       }
@@ -206,7 +207,7 @@ export default function PierTvDisplay() {
         <AlertTriangle className="w-16 h-16 mb-4 text-[#e30000]" />
         <h2 className="text-2xl font-semibold tracking-[-0.02em] mb-2">Conexão Perdida</h2>
         <p className="text-[#86868b] text-lg mb-8 max-w-md">{error}</p>
-        <button onClick={() => window.location.href = '/admin'} className="px-8 py-3 bg-[#0071e3] hover:bg-[#0077ED] text-white font-medium rounded-full text-[17px] transition-colors">
+        <button onClick={() => { localStorage.removeItem('admin_token'); window.location.reload(); }} className="px-8 py-3 bg-[#0071e3] hover:bg-[#0077ED] text-white font-medium rounded-full text-[17px] transition-colors">
           Tentar Novamente
         </button>
       </div>

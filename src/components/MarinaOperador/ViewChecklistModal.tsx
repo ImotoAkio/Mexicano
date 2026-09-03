@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Shield, Volume2, LifeBuoy, Flame } from 'lucide-react';
+import { X, Shield, FileText, Anchor, Activity, Pocket } from 'lucide-react';
 import { getBoatCode } from '../../utils/boatUtils';
 
 export interface ViewChecklistModalProps {
@@ -10,6 +10,19 @@ export interface ViewChecklistModalProps {
   onOpenChecklistForDescida: (reserva: any) => void;
   onOpenChecklistForSubida: (reserva: any) => void;
 }
+
+const renderSafetyItem = (reserva: any, key: string, label: string, IconClass: any) => {
+  const status = reserva.checklistEquipamentos?.[key];
+  const isOk = status !== false; // Considera undefined como OK por padrão no legado
+  return (
+    <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+      isOk ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+    }`}>
+      <span className="flex items-center gap-1 truncate"><IconClass className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">{label}</span></span>
+      <span className="shrink-0 ml-1">{isOk ? '✓ OK' : '⚠️ Avaria'}</span>
+    </div>
+  );
+};
 
 export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
   reserva,
@@ -22,6 +35,50 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
   const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
 
   if (!reserva) return null;
+
+  const formatAngleLabel = (key: string) => {
+    const labels: Record<string, string> = {
+      'frente': 'Frente',
+      'traseira': 'Traseira',
+      'lat_esquerda': 'Lat. Esquerda',
+      'lat_direita': 'Lat. Direita',
+      'painel': 'Painel',
+      'casco_inferior': 'Casco Inferior',
+      'casco_traseiro': 'Casco Traseiro',
+      'porta_objetos': 'Porta Objetos',
+      'frente_proa': 'Frente - Proa',
+      'frente_conves': 'Frente - Convés',
+      'traseira_popa': 'Traseira - Popa',
+      'traseira_plataforma': 'Traseira - Plataforma',
+      'lat_esq_proa': 'Lat. Esq - Proa',
+      'lat_esq_popa': 'Lat. Esq - Popa',
+      'lat_dir_proa': 'Lat. Dir - Proa',
+      'lat_dir_popa': 'Lat. Dir - Popa',
+    };
+    return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const parseFotos = (fotos: any, extras: any = []) => {
+    let arr: { label: string, url: string }[] = [];
+    if (Array.isArray(fotos)) {
+      arr = fotos.map((url, i) => ({ label: `Foto ${i + 1}`, url }));
+    } else if (fotos && typeof fotos === 'object') {
+      arr = Object.entries(fotos)
+        .filter(([_, v]) => typeof v === 'string')
+        .map(([k, v]) => ({ label: formatAngleLabel(k), url: v as string }));
+    }
+    if (Array.isArray(extras)) {
+      extras.forEach((url, i) => {
+        if (typeof url === 'string') {
+          arr.push({ label: `Extra ${i + 1}`, url });
+        }
+      });
+    }
+    return arr;
+  };
+
+  const fotosDescida = parseFotos(reserva.fotosChecklistDescida, reserva.fotosExtrasDescida);
+  const fotosSubida = parseFotos(reserva.fotosChecklistSubida, reserva.fotosExtrasSubida);
 
   return (
     <>
@@ -66,18 +123,21 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
               <h4 className="font-black text-slate-800 uppercase tracking-wider text-[11px] flex items-center justify-between">
                 <span>Fotos Checklist Descida</span>
                 <span className="text-slate-400 font-mono font-bold">
-                  {(reserva.fotosChecklistDescida?.length || 0)} foto(s)
+                  {fotosDescida.length} foto(s)
                 </span>
               </h4>
-              {(reserva.fotosChecklistDescida?.length || 0) === 0 ? (
+              {fotosDescida.length === 0 ? (
                 <p className="text-slate-400 italic text-[11px] bg-slate-50 p-3 rounded-xl border border-slate-100">
                   Nenhuma foto gravada na descida.
                 </p>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
-                  {reserva.fotosChecklistDescida.map((url: string, idx: number) => (
-                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer" onClick={() => setZoomedPhoto(url)}>
-                      <img src={url} alt={`Descida ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  {fotosDescida.map((foto, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer" onClick={() => setZoomedPhoto(foto.url)}>
+                      <img src={foto.url} alt={`Descida ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] p-1 truncate text-center backdrop-blur-sm">
+                        {foto.label}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -89,18 +149,21 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
               <h4 className="font-black text-slate-800 uppercase tracking-wider text-[11px] flex items-center justify-between">
                 <span>Fotos Checklist Subida</span>
                 <span className="text-slate-400 font-mono font-bold">
-                  {(reserva.fotosChecklistSubida?.length || 0)} foto(s)
+                  {fotosSubida.length} foto(s)
                 </span>
               </h4>
-              {(reserva.fotosChecklistSubida?.length || 0) === 0 ? (
+              {fotosSubida.length === 0 ? (
                 <p className="text-slate-400 italic text-[11px] bg-slate-50 p-3 rounded-xl border border-slate-100">
                   Nenhuma foto gravada na subida.
                 </p>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
-                  {reserva.fotosChecklistSubida.map((url: string, idx: number) => (
-                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer" onClick={() => setZoomedPhoto(url)}>
-                      <img src={url} alt={`Subida ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  {fotosSubida.map((foto, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer" onClick={() => setZoomedPhoto(foto.url)}>
+                      <img src={foto.url} alt={`Subida ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] p-1 truncate text-center backdrop-blur-sm">
+                        {foto.label}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -132,30 +195,13 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
                     <span>Segurança & Equipamentos da Lancha</span>
                   </h4>
                   <div className="grid grid-cols-2 gap-2 text-[11px] font-bold">
-                    <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                      reserva.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                    }`}>
-                      <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Som</span>
-                      <span>{reserva.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                    </div>
-                    <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                      reserva.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                    }`}>
-                      <span className="flex items-center gap-1"><LifeBuoy className="w-3.5 h-3.5" /> Bóias</span>
-                      <span>{reserva.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                    </div>
-                    <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                      reserva.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                    }`}>
-                      <span className="flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> Coletes</span>
-                      <span>{reserva.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                    </div>
-                    <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                      reserva.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                    }`}>
-                      <span className="flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> Extintor</span>
-                      <span>{reserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                    </div>
+                    {renderSafetyItem(reserva, 'coletes', 'Coletes', Shield)}
+                    {renderSafetyItem(reserva, 'extintor', 'Extintor', Flame)}
+                    {renderSafetyItem(reserva, 'cortaCorrente', 'Corta-Corrente', Activity)}
+                    {renderSafetyItem(reserva, 'ancora', 'Âncora', Anchor)}
+                    {renderSafetyItem(reserva, 'documento', 'Documentos', FileText)}
+                    {renderSafetyItem(reserva, 'boiaCircular', 'Bóia Circular', LifeBuoy)}
+                    {renderSafetyItem(reserva, 'primeirosSocorros', 'P. Socorros', Pocket)}
                   </div>
                   {reserva.checklistObservacoes && (
                     <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-700 font-medium mt-1">

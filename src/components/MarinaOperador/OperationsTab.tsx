@@ -459,7 +459,7 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                     </button>
                   )}
 
-                  {/* Phase 2.5/3: Na água (Pronto) OU Navegando (Saída) -> Checklist Retorno Simultâneo / Exclusivo */}
+                  {/* Phase 2.5/3: Na água (Pronto) OU Navegando (Saída) -> Chegada no Píer */}
                   {(isPronto || isSaidaMar) && !isChegada && !isGuardado && (
                     <button
                       onClick={() => onChegadaEAbastecimento(reserva)}
@@ -470,7 +470,7 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                       }`}
                     >
                       <Anchor className="w-6 h-6" />
-                      <span>Chegou! Iniciar Retorno</span>
+                      <span>Chegada no Píer</span>
                     </button>
                   )}
 
@@ -479,10 +479,17 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => onAbastecer(reserva)}
-                        className="w-full py-4 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                        className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all shadow-md active:scale-[0.98] cursor-pointer ${
+                          reserva.abastecimentoLitros ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-cyan-600 hover:bg-cyan-700 text-white"
+                        }`}
                       >
                         <Droplets className="w-5 h-5 mb-0.5" />
-                        <span>Abastecer</span>
+                        <div className="flex flex-col items-center">
+                          <span>{reserva.abastecimentoLitros ? 'Re-Abastecer' : 'Abastecer'}</span>
+                          {reserva.abastecimentoLitros && (
+                            <span className="text-[9px] bg-black/20 px-1.5 py-0.5 rounded mt-0.5">{reserva.abastecimentoLitros}L Registrado</span>
+                          )}
+                        </div>
                       </button>
                       <button
                         onClick={() => onChecklistSubida(reserva)}

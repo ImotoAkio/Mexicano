@@ -438,13 +438,6 @@ export default function App() {
   }
 
   // ═══════════ PAINEL ADMINISTRATIVO (/admin) ═══════════
-  if (isPierTvRoute) {
-    return (
-      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}>
-        <PierTvDisplay />
-      </Suspense>
-    );
-  }
 
   if (!isAuthenticated) {
     return (
@@ -472,6 +465,14 @@ export default function App() {
           setIsAuthenticated(true);
         }} 
       />
+    );
+  }
+
+  if (isPierTvRoute) {
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+        <PierTvDisplay />
+      </Suspense>
     );
   }
 
@@ -527,7 +528,7 @@ export default function App() {
     <div className="admin-panel h-screen w-full flex bg-[#eaeff3] text-slate-900 font-sans overflow-hidden">
       
       {/* Mobile Top Bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-100 z-50 flex items-center justify-between px-4">
+      <div className="md:hidden fixed top-[env(safe-area-inset-top)] left-0 right-0 h-14 bg-white border-b border-slate-100 z-50 flex items-center justify-between px-4">
         <div className="flex items-center space-x-2">
           <Logo className={`h-8 w-auto ${isPecasServicos ? 'text-[#B69D74]' : 'text-[#186b77]'}`} />
           {isPecasServicos ? (

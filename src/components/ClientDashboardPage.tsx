@@ -1960,7 +1960,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
       {/* TOAST NOTIFICATIONS */}
       {toastMsg && (
-        <div className="fixed top-6 right-6 z-[100] animate-in slide-in-from-right-8 fade-in duration-300">
+        <div className="fixed top-[max(1.5rem,env(safe-area-inset-top))] right-6 z-[100] animate-in slide-in-from-right-8 fade-in duration-300">
           <div className={`backdrop-blur-md border rounded-2xl p-4 shadow-2xl flex items-start gap-3 max-w-sm ${
             toastMsg.type === 'error' ? 'bg-rose-500/10 border-rose-500/30' :
             toastMsg.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30' :

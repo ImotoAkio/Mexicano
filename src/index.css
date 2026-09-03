@@ -17,6 +17,10 @@
     user-select: none;
     -webkit-user-select: none;
     overflow-x: hidden;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   /* Allow text selection in inputs and textareas, and enforce 16px to prevent iOS focus auto-zoom */

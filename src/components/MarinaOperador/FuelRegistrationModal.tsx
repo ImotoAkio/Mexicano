@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Droplets,
@@ -29,6 +29,8 @@ interface FuelRegistrationModalProps {
   reservaTarget: any;
   embarcacaoTarget: any;
   onConfirm: (data: FuelRegistrationData) => Promise<void>;
+  standaloneMode?: 'embarcacao' | 'avulso';
+  avulsoNome?: string;
 }
 
 export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
@@ -36,7 +38,9 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
   onClose,
   reservaTarget,
   embarcacaoTarget,
-  onConfirm
+  onConfirm,
+  standaloneMode,
+  avulsoNome
 }) => {
   const [liters, setLiters] = useState<string>('');
   const [statusCobranca, setStatusCobranca] = useState<'cobrado' | 'pendente'>('pendente');
@@ -47,6 +51,14 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen && standaloneMode === 'avulso') {
+      setStatusCobranca('cobrado');
+    } else if (isOpen) {
+      setStatusCobranca('pendente'); // default rest
+    }
+  }, [isOpen, standaloneMode]);
 
   if (!isOpen) return null;
 
@@ -113,7 +125,11 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
               <span>Painel de Combustível</span>
             </h3>
             <p className="text-[11px] text-slate-500 font-bold mt-0.5">
-              {embarcacao ? getBoatCode(embarcacao) : (reservaTarget?.barcoNome || 'Embarcação')} • {cliente?.nome || reservaTarget?.clienteNome || 'Cliente'}
+              {standaloneMode === 'avulso' ? (
+                <>Visitante • {avulsoNome || 'Não Identificado'}</>
+              ) : (
+                <>{embarcacao ? getBoatCode(embarcacao) : (reservaTarget?.barcoNome || 'Embarcação')} • {cliente?.nome || reservaTarget?.clienteNome || 'Cliente'}</>
+              )}
             </p>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-700 bg-slate-100/50 hover:bg-slate-200 rounded-xl cursor-pointer transition">
@@ -157,32 +173,39 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
               {/* Payment Status Segmented Control */}
               <div className="space-y-3 border-t border-slate-100 pt-5">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Tratamento Financeiro</label>
-                <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setStatusCobranca('pendente')}
-                    className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
-                      statusCobranca === 'pendente'
-                        ? 'bg-slate-900 text-white shadow-md'
-                        : 'text-slate-500 hover:text-slate-900 border border-transparent'
-                    }`}
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>PENDENTE</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatusCobranca('cobrado')}
-                    className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
-                      statusCobranca === 'cobrado'
-                        ? 'bg-cyan-600 text-white shadow-md'
-                        : 'text-slate-500 hover:text-cyan-700 border border-transparent'
-                    }`}
-                  >
+                {standaloneMode === 'avulso' ? (
+                  <div className="bg-amber-50 text-amber-800 p-3 rounded-xl border border-amber-200 flex items-center justify-center gap-2 font-black text-xs uppercase tracking-wider">
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>COBRADO AGORA</span>
-                  </button>
-                </div>
+                    Pagamento Imediato Obrigatório
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setStatusCobranca('pendente')}
+                      className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
+                        statusCobranca === 'pendente'
+                          ? 'bg-slate-900 text-white shadow-md'
+                          : 'text-slate-500 hover:text-slate-900 border border-transparent'
+                      }`}
+                    >
+                      <Clock className="w-4 h-4" />
+                      <span>PENDENTE</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatusCobranca('cobrado')}
+                      className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
+                        statusCobranca === 'cobrado'
+                          ? 'bg-cyan-600 text-white shadow-md'
+                          : 'text-slate-500 hover:text-cyan-700 border border-transparent'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>COBRADO AGORA</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Pendente Mode */}

@@ -63,28 +63,36 @@ interface ChecklistCaptureModalProps {
    ────────────────────────────────────────────── */
 
 const ANGLES_JET: ChecklistAngle[] = [
-  { id: 'frente',       angleKey: 'frente',       name: 'Frente (Proa)',            description: 'Bico e casco frontal',                          required: true,  svgPath: '/checklist/jet/frente.png' },
-  { id: 'popa',         angleKey: 'popa',         name: 'Traseira (Popa/Turbina)',  description: 'Bocal de turbina e traseira',                    required: true,  svgPath: '/checklist/jet/tras.png' },
-  { id: 'bombordo',     angleKey: 'bombordo',     name: 'Lateral Bombordo',         description: 'Costado lateral esquerdo completo',              required: true,  svgPath: '/checklist/jet/esquerda.png' },
-  { id: 'boreste',      angleKey: 'boreste',      name: 'Lateral Boreste',          description: 'Costado lateral direito completo',               required: true,  svgPath: '/checklist/jet/direita.png' },
-  { id: '45_bb_proa',   angleKey: '45_bb_proa',   name: '45° Bombordo Proa',        description: 'Diagonal esquerda frontal',                      required: true },
-  { id: '45_bb_popa',   angleKey: '45_bb_popa',   name: '45° Bombordo Popa',        description: 'Diagonal esquerda traseira',                     required: true },
-  { id: '45_be_proa',   angleKey: '45_be_proa',   name: '45° Boreste Proa',         description: 'Diagonal direita frontal',                       required: true },
-  { id: '45_be_popa',   angleKey: '45_be_popa',   name: '45° Boreste Popa',         description: 'Diagonal direita traseira',                      required: true },
-  { id: 'painel',       angleKey: 'painel',       name: 'Painel / Guidão / Display',description: 'Display digital, botões e guidão',               required: true,  svgPath: '/checklist/jet/painel.png' },
-  { id: 'casco',        angleKey: 'casco',        name: 'Casco Inferior / Fundo',   description: "Linha d'água e fundo do casco",                 required: true,  svgPath: '/checklist/jet/casco.png' },
+  { id: 'frente',         angleKey: 'frente',         name: 'Frente',                   description: 'Vista frontal do bico e casco',                 required: true,  svgPath: '/checklist/jet/frente.png' },
+  { id: 'traseira',       angleKey: 'traseira',       name: 'Traseira',                 description: 'Bocal de turbina, grade e traseira',             required: true,  svgPath: '/checklist/jet/tras.png' },
+  { id: 'lat_esquerda',   angleKey: 'lat_esquerda',   name: 'Lateral Esquerda',         description: 'Costado esquerdo completo (bombordo)',            required: true,  svgPath: '/checklist/jet/esquerda.png' },
+  { id: 'lat_direita',    angleKey: 'lat_direita',    name: 'Lateral Direita',          description: 'Costado direito completo (boreste)',              required: true,  svgPath: '/checklist/jet/direita.png' },
+  { id: 'painel',         angleKey: 'painel',         name: 'Painel / Guidão',          description: 'Display, botões e guidão',                       required: true,  svgPath: '/checklist/jet/painel.png' },
+  { id: 'casco_inferior', angleKey: 'casco_inferior', name: 'Casco Inferior',           description: 'Fundo do casco e linha d\'água',                 required: true,  svgPath: '/checklist/jet/casco.png' },
+  { id: 'casco_traseiro', angleKey: 'casco_traseiro', name: 'Casco Traseiro',           description: 'Parte traseira inferior do casco e turbina',     required: true },
+  { id: 'porta_objetos',  angleKey: 'porta_objetos',  name: 'Porta-Objetos',            description: 'Compartimento de armazenamento aberto',          required: true },
 ];
 
 const ANGLES_LANCHA: ChecklistAngle[] = [
-  { id: 'proa',           angleKey: 'proa',           name: 'Proa Frontal',             description: 'Vista frontal completa da proa e bico',         required: true,  svgPath: '/checklist/lancha/proa.svg' },
-  { id: 'costado_bb_proa',angleKey: 'costado_bb_proa',name: 'Costado Bombordo Proa',    description: 'Lado esquerdo, seção da proa',                  required: true,  svgPath: '/checklist/lancha/esquerda.svg' },
-  { id: 'costado_bb_popa',angleKey: 'costado_bb_popa',name: 'Costado Bombordo Popa',    description: 'Lado esquerdo, seção da popa',                  required: true },
-  { id: 'costado_be_proa',angleKey: 'costado_be_proa',name: 'Costado Boreste Proa',     description: 'Lado direito, seção da proa',                   required: true,  svgPath: '/checklist/lancha/direita.svg' },
-  { id: 'costado_be_popa',angleKey: 'costado_be_popa',name: 'Costado Boreste Popa',     description: 'Lado direito, seção da popa',                   required: true },
-  { id: 'popa',           angleKey: 'popa',           name: 'Popa / Motores / Rabeta',  description: 'Motores, rabeta, escada e popa completa',       required: true,  svgPath: '/checklist/lancha/popa.svg' },
-  { id: 'painel',         angleKey: 'painel',         name: 'Painel de Comando',        description: 'Instrumentos, manetes, rádio e eletrônica',     required: true,  svgPath: '/checklist/lancha/painel.svg' },
-  { id: 'casco',          angleKey: 'casco',          name: 'Casco / Fundo / Hélice',   description: 'Linha d\'água, fundo e hélice',                 required: true,  svgPath: '/checklist/lancha/casco.svg' },
-  { id: 'conves',         angleKey: 'conves',         name: 'Convés / Cabine',          description: 'Cobertura do convés, assentos e cabine',        required: false },
+  // Frente — lancha grande, dividir em proa e bico
+  { id: 'frente_proa',       angleKey: 'frente_proa',       name: 'Frente — Proa',             description: 'Vista frontal da proa, bico e olhal',            required: true,  svgPath: '/checklist/lancha/proa.svg' },
+  { id: 'frente_conves',     angleKey: 'frente_conves',     name: 'Frente — Convés da Proa',   description: 'Área do solário e deck da proa',                 required: true },
+  // Traseira
+  { id: 'traseira_popa',     angleKey: 'traseira_popa',     name: 'Traseira — Popa',           description: 'Vista da popa, motores, rabeta e escada',        required: true,  svgPath: '/checklist/lancha/popa.svg' },
+  { id: 'traseira_plataforma',angleKey:'traseira_plataforma',name: 'Traseira — Plataforma',    description: 'Plataforma de popa e escada de banho',           required: true },
+  // Lateral esquerda (bombordo) — dividir proa/popa
+  { id: 'lat_esq_proa',      angleKey: 'lat_esq_proa',     name: 'Lat. Esquerda — Proa',      description: 'Costado bombordo seção da proa',                 required: true,  svgPath: '/checklist/lancha/esquerda.svg' },
+  { id: 'lat_esq_popa',      angleKey: 'lat_esq_popa',     name: 'Lat. Esquerda — Popa',      description: 'Costado bombordo seção da popa',                 required: true },
+  // Lateral direita (boreste) — dividir proa/popa
+  { id: 'lat_dir_proa',      angleKey: 'lat_dir_proa',     name: 'Lat. Direita — Proa',       description: 'Costado boreste seção da proa',                  required: true,  svgPath: '/checklist/lancha/direita.svg' },
+  { id: 'lat_dir_popa',      angleKey: 'lat_dir_popa',     name: 'Lat. Direita — Popa',       description: 'Costado boreste seção da popa',                  required: true },
+  // Painel
+  { id: 'painel',            angleKey: 'painel',            name: 'Painel de Comando',         description: 'Instrumentos, manetes, rádio e eletrônica',      required: true,  svgPath: '/checklist/lancha/painel.svg' },
+  // Casco
+  { id: 'casco_inferior',    angleKey: 'casco_inferior',    name: 'Casco Inferior',            description: 'Fundo do casco, hélice e linha d\'água',         required: true,  svgPath: '/checklist/lancha/casco.svg' },
+  { id: 'casco_traseiro',    angleKey: 'casco_traseiro',    name: 'Casco Traseiro',            description: 'Parte traseira inferior, leme e hélice',         required: true },
+  // Porta-objetos / Cabine
+  { id: 'porta_objetos',     angleKey: 'porta_objetos',     name: 'Porta-Objetos / Cabine',    description: 'Compartimentos internos e cabine aberta',        required: true },
 ];
 
 const SAFETY_ITEMS = [

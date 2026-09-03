@@ -17,13 +17,15 @@ export interface FuelRecordsTabProps {
   getEmbarcacao: (id: string) => any;
   getCliente: (id: string) => any;
   handleOpenFuelModal: (reserva: any) => void;
+  onOpenAvulsoFuel: () => void;
 }
 
 export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
   totalDayReservations,
   getEmbarcacao,
   getCliente,
-  handleOpenFuelModal
+  handleOpenFuelModal,
+  onOpenAvulsoFuel
 }) => {
   const dayFuelReservations = totalDayReservations.filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0);
   const totalLitersDay = totalDayReservations.reduce((sum: number, r: any) => sum + (Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0), 0);
@@ -51,6 +53,14 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
           </p>
         </div>
       </div>
+
+      <button
+        onClick={onOpenAvulsoFuel}
+        className="w-full bg-cyan-600 hover:bg-cyan-700 text-white rounded-2xl p-4 flex items-center justify-center gap-2 font-black uppercase tracking-widest shadow-md transition-all active:scale-95"
+      >
+        <Droplets className="w-5 h-5 fill-current" />
+        Novo Abastecimento
+      </button>
 
       {/* Lançamentos do Dia */}
       <div className="space-y-2">

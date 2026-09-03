@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import Select from 'react-select';
-import { 
-  ClipboardCheck, Search, Calendar, Download, Edit2, Trash2, 
-  ArrowDownCircle, ArrowUpCircle, Anchor, Image as ImageIcon, 
+import {
+  ClipboardCheck, Search, Calendar, Download, Edit2, Trash2,
+  ArrowDownCircle, ArrowUpCircle, Anchor, Image as ImageIcon,
   Clock, CheckCircle2, MoreVertical, X, List, LayoutList, GitCommit,
-  Link as LinkIcon, Share2, Compass, AlertTriangle, Shield, Volume2, LifeBuoy, Flame,
+  Link as LinkIcon, Share2, Compass, AlertTriangle, Shield, Flame, Activity, FileText, Pocket, LifeBuoy,
   ChevronLeft, ChevronRight, Sliders
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
@@ -12,6 +12,19 @@ import { getBoatCode } from '../utils/boatUtils';
 import { ZoomableImage } from './ZoomableImage';
 import UserAvatarMenu from './header/UserAvatarMenu';
 import SystemSettingsModal from './header/SystemSettingsModal';
+
+const renderSafetyItem = (reserva: any, key: string, label: string, IconClass: any) => {
+  const status = reserva.checklistEquipamentos?.[key];
+  const isOk = status !== false; // Considera undefined como OK por padrão no legado
+  return (
+    <div className={`p-3 rounded-xl border flex items-center justify-between ${
+      isOk ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
+    }`}>
+      <span className="flex items-center gap-1.5 truncate"><IconClass className="w-4 h-4 shrink-0" /> <span className="truncate">{label}</span></span>
+      <span className="shrink-0 ml-1">{isOk ? '✓ OK' : '⚠️ Avaria'}</span>
+    </div>
+  );
+};
 
 interface AdminChecklistsPageProps {
   data: {
@@ -78,16 +91,57 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
     return b ? getBoatCode(b) : 'Desconhecido';
   };
 
-  const parseFotos = (fotosStr: any): string[] => {
-    if (!fotosStr) return [];
-    if (Array.isArray(fotosStr)) return fotosStr;
-    if (typeof fotosStr !== 'string') return [];
-    try {
-      const parsed = JSON.parse(fotosStr);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return fotosStr.split(',').filter((f: string) => f.trim().length > 0);
+  const formatAngleLabel = (key: string) => {
+    const labels: Record<string, string> = {
+      'frente': 'Frente',
+      'traseira': 'Traseira',
+      'lat_esquerda': 'Lat. Esquerda',
+      'lat_direita': 'Lat. Direita',
+      'painel': 'Painel',
+      'casco_inferior': 'Casco Inferior',
+      'casco_traseiro': 'Casco Traseiro',
+      'porta_objetos': 'Porta Objetos',
+      'frente_proa': 'Frente - Proa',
+      'frente_conves': 'Frente - Convés',
+      'traseira_popa': 'Traseira - Popa',
+      'traseira_plataforma': 'Traseira - Plataforma',
+      'lat_esq_proa': 'Lat. Esq - Proa',
+      'lat_esq_popa': 'Lat. Esq - Popa',
+      'lat_dir_proa': 'Lat. Dir - Proa',
+      'lat_dir_popa': 'Lat. Dir - Popa',
+    };
+    return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const parseFotos = (fotosStr: any, extras: any = []): { label: string, url: string }[] => {
+    let arr: { label: string, url: string }[] = [];
+    if (!fotosStr) {
+       arr = [];
+    } else if (Array.isArray(fotosStr)) {
+       arr = fotosStr.map((url, i) => ({ label: `Foto ${i + 1}`, url }));
+    } else if (typeof fotosStr === 'object') {
+       arr = Object.entries(fotosStr)
+         .filter(([_, v]) => typeof v === 'string')
+         .map(([k, v]) => ({ label: formatAngleLabel(k), url: v as string }));
+    } else if (typeof fotosStr === 'string') {
+      try {
+        const parsed = JSON.parse(fotosStr);
+        arr = Array.isArray(parsed)
+          ? parsed.map((url, i) => ({ label: `Foto ${i + 1}`, url }))
+          : [];
+      } catch (e) {
+        arr = fotosStr.split(',').filter((f: string) => f.trim().length > 0).map((url: string, i: number) => ({ label: `Foto ${i + 1}`, url }));
+      }
     }
+
+    if (Array.isArray(extras)) {
+      extras.forEach((url, i) => {
+        if (typeof url === 'string') {
+          arr.push({ label: `Extra ${i + 1}`, url });
+        }
+      });
+    }
+    return arr;
   };
 
   const filteredReservations = useMemo(() => {
@@ -555,7 +609,8 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
                 const isDescida = stage === 'Descida';
                 const isChegada = stage === 'Chegada';
                 const fotosStr = isDescida ? (viewingRes.fotosChecklistDescida || viewingRes.fotosChecklistSaida) : isChegada ? viewingRes.fotosChecklistChegada : viewingRes.fotosChecklistSubida;
-                const fotos = parseFotos(fotosStr);
+                const extrasStr = isDescida ? viewingRes.fotosExtrasDescida : isChegada ? [] : viewingRes.fotosExtrasSubida;
+                const fotos = parseFotos(fotosStr, extrasStr);
                 const hora = isDescida ? viewingRes.horaDescida : isChegada ? viewingRes.horaChegada : viewingRes.horaSubida;
                 const Icon = isDescida ? ArrowDownCircle : isChegada ? CheckCircle2 : ArrowUpCircle;
                 const colorClass = isDescida ? 'text-blue-600 bg-blue-50 border-blue-100' : isChegada ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100';
@@ -573,13 +628,16 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
                     </div>
                     {fotos.length > 0 ? (
                       <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                        {fotos.map((url, i) => (
-                          <div 
-                            key={i} 
-                            onClick={() => setModalPhotos({ title: `Fotos - ${stage}`, urls: fotos })}
-                            className="aspect-square bg-slate-200 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-500 transition-all"
+                        {fotos.map((foto, i) => (
+                          <div
+                            key={i}
+                            onClick={() => setModalPhotos({ title: `Fotos - ${stage}`, urls: fotos.map(f => f.url) })}
+                            className="aspect-square bg-slate-200 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-500 transition-all relative group"
                           >
-                            <img src={url} alt={`${stage} ${i+1}`} className="w-full h-full object-cover" />
+                            <img src={foto.url} alt={`${stage} ${i+1}`} className="w-full h-full object-cover" />
+                            <div className="absolute inset-x-0 bottom-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-center text-[9px] text-white backdrop-blur-sm truncate">
+                              {foto.label}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -613,30 +671,13 @@ export default function AdminChecklistsPage({ data, setData, reloadData }: Admin
                       <span>Segurança & Equipamentos da Lancha</span>
                     </h4>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
-                      <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                        viewingRes.checklistEquipamentos?.som !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                      }`}>
-                        <span className="flex items-center gap-1.5"><Volume2 className="w-4 h-4" /> Som</span>
-                        <span>{viewingRes.checklistEquipamentos?.som !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                      </div>
-                      <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                        viewingRes.checklistEquipamentos?.boias !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                      }`}>
-                        <span className="flex items-center gap-1.5"><LifeBuoy className="w-4 h-4" /> Bóias</span>
-                        <span>{viewingRes.checklistEquipamentos?.boias !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                      </div>
-                      <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                        viewingRes.checklistEquipamentos?.coletes !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                      }`}>
-                        <span className="flex items-center gap-1.5"><Shield className="w-4 h-4" /> Coletes</span>
-                        <span>{viewingRes.checklistEquipamentos?.coletes !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                      </div>
-                      <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                        viewingRes.checklistEquipamentos?.extintor !== false ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-rose-50 text-rose-900 border-rose-200'
-                      }`}>
-                        <span className="flex items-center gap-1.5"><Flame className="w-4 h-4" /> Extintor</span>
-                        <span>{viewingRes.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
-                      </div>
+                      {renderSafetyItem(viewingRes, 'coletes', 'Coletes', Shield)}
+                      {renderSafetyItem(viewingRes, 'extintor', 'Extintor', Flame)}
+                      {renderSafetyItem(viewingRes, 'cortaCorrente', 'Corta-Corrente', Activity)}
+                      {renderSafetyItem(viewingRes, 'ancora', 'Âncora', Anchor)}
+                      {renderSafetyItem(viewingRes, 'documento', 'Documentos', FileText)}
+                      {renderSafetyItem(viewingRes, 'boiaCircular', 'Bóia Circular', LifeBuoy)}
+                      {renderSafetyItem(viewingRes, 'primeirosSocorros', 'P. Socorros', Pocket)}
                     </div>
                     {viewingRes.checklistObservacoes && (
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium mt-3">

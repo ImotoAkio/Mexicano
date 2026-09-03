@@ -2095,6 +2095,29 @@ app.get("/api/public/checklist/:checklistId", async (req, res) => {
     const dbData = await pullDatabase();
     const reserva = dbData.reservations?.find((r: any) => r.id === checklistId);
 
+    if (!reserva) {
+      return res.status(404).json({ success: false, message: "Checklist de reserva não encontrado." });
+    }
+
+    // Anexar dados extras
+    let embarcacao = null;
+    let cliente = null;
+    if (reserva.embarcacaoId) {
+       embarcacao = dbData.embarcacoes?.find((e: any) => e.id === reserva.embarcacaoId);
+    }
+    if (reserva.clienteId) {
+       cliente = dbData.clientes?.find((c: any) => c.id === reserva.clienteId);
+    }
+
+    return res.json({
+      success: true,
+      checklist: {
+        ...reserva,
+        embarcacaoDetalhes: embarcacao,
+        clienteDetalhes: cliente
+      }
+    });
+
   } catch (err: any) {
     console.error("Error fetching shared checklist:", err);
     return res.status(500).json({ success: false, message: "Erro interno ao carregar checklist." });

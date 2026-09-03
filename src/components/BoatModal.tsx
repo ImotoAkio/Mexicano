@@ -291,7 +291,7 @@ export default function BoatModal({
   return (
     <div id="boat-modal" className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-50 animate-in fade-in duration-200">
       {toast && (
-        <div className={`fixed top-5 right-5 z-[60] px-4 py-3 rounded-xl shadow-xl border text-xs font-bold animate-in fade-in slide-in-from-top-2 ${
+        <div className={`fixed top-[max(1.25rem,env(safe-area-inset-top))] right-5 z-[60] px-4 py-3 rounded-xl shadow-xl border text-xs font-bold animate-in fade-in slide-in-from-top-2 ${
           toast.type === 'error' ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
         }`}>
           {toast.message}
