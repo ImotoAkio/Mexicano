@@ -3,13 +3,13 @@ import { clientDB, boatDB, reservationDB } from '../db';
 import { Reserva, Embarcacao, Cliente } from '../types';
 import { updateGoogleCalendarEvent, deleteGoogleCalendarEvent, formatEventTimes } from '../googleCalendar';
 import { generateAvisoSaidaPDF, generateAdminReportPDF } from '../utils/pdfGenerator';
-import { 
-  Search, 
-  Calendar, 
-  Ship, 
-  Users, 
-  FileText, 
-  Download, 
+import {
+  Search,
+  Calendar,
+  Ship,
+  Users,
+  FileText,
+  Download,
   Filter,
   Wrench,
   ShieldAlert,
@@ -17,7 +17,11 @@ import {
   CheckCircle2,
   X,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  XCircle,
+  Clock,
+  Anchor,
+  SlidersHorizontal
 } from 'lucide-react';
 
 export default function SchedulesReportPage() {
@@ -36,6 +40,11 @@ export default function SchedulesReportPage() {
 
   const [selectedBoatId, setSelectedBoatId] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedPeriodo, setSelectedPeriodo] = useState('');
+  const [selectedTipoEmb, setSelectedTipoEmb] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   
   const [results, setResults] = useState<Reserva[]>([]);
   const [boats, setBoats] = useState<Embarcacao[]>([]);
@@ -82,7 +91,7 @@ export default function SchedulesReportPage() {
 
   useEffect(() => {
     handleSearch();
-  }, [startDate, endDate, selectedBoatId, selectedClientId]);
+  }, [startDate, endDate, selectedBoatId, selectedClientId, selectedStatus, selectedPeriodo, selectedTipoEmb, searchText]);
 
   const handleSearch = () => {
     const allRes = reservationDB.getAll();
@@ -90,10 +99,44 @@ export default function SchedulesReportPage() {
       if (res.data < startDate || res.data > endDate) return false;
       if (selectedBoatId && res.embarcacaoId !== selectedBoatId) return false;
       if (selectedClientId && res.clienteId !== selectedClientId) return false;
+      if (selectedStatus && res.status !== selectedStatus) return false;
+      if (selectedPeriodo && res.periodo !== selectedPeriodo) return false;
+
+      // Tipo de embarcação
+      if (selectedTipoEmb) {
+        const boat = boats.find(b => b.id === res.embarcacaoId);
+        if (!boat || boat.tipo !== selectedTipoEmb) return false;
+      }
+
+      // Busca textual
+      if (searchText.trim()) {
+        const q = searchText.toLowerCase().trim();
+        const boat = boats.find(b => b.id === res.embarcacaoId);
+        const client = clients.find(c => c.id === res.clienteId);
+        const boatName = boat ? `${getBoatCode(boat)} ${boat.nome}`.toLowerCase() : '';
+        const clientName = client ? client.nome.toLowerCase() : '';
+        const obs = (res.observações || '').toLowerCase();
+        const dest = (res.destino || '').toLowerCase();
+        if (!boatName.includes(q) && !clientName.includes(q) && !obs.includes(q) && !dest.includes(q)) return false;
+      }
+
       return true;
     });
     filtered.sort((a, b) => a.data.localeCompare(b.data));
     setResults(filtered);
+  };
+
+  const activeFilterCount = [selectedStatus, selectedPeriodo, selectedTipoEmb, searchText.trim()].filter(Boolean).length;
+
+  const clearAllFilters = () => {
+    setSelectedBoatId('');
+    setSelectedClientId('');
+    setSelectedStatus('');
+    setSelectedPeriodo('');
+    setSelectedTipoEmb('');
+    setSearchText('');
+    setBoatSearchQuery('');
+    setClientSearchQuery('');
   };
 
   const getBoatCode = (boat: Embarcacao | undefined) => {
@@ -426,17 +469,45 @@ export default function SchedulesReportPage() {
 
       {/* Filters Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-        <div className="flex items-center gap-2 mb-4 text-slate-800 font-semibold">
-          <Filter className="w-5 h-5 text-indigo-600" />
-          Filtros de Pesquisa
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2 text-slate-800 font-semibold">
+            <Filter className="w-5 h-5 text-indigo-600" />
+            Filtros de Pesquisa
+          </div>
+          <div className="flex items-center gap-2">
+            {(selectedBoatId || selectedClientId || selectedStatus || selectedPeriodo || selectedTipoEmb || searchText.trim()) && (
+              <button
+                onClick={clearAllFilters}
+                className="px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-100 rounded-lg hover:bg-rose-100 transition-colors flex items-center gap-1.5"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Limpar Filtros
+              </button>
+            )}
+            <button
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 ${
+                showAdvancedFilters
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Avançado
+              {activeFilterCount > 0 && (
+                <span className="px-1.5 py-0.5 bg-indigo-600 text-white text-[10px] rounded-full leading-none">{activeFilterCount}</span>
+              )}
+            </button>
+          </div>
         </div>
-        
+
+        {/* Row 1: Date range + Embarcação + Cliente */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Data Inicial</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
+              <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -449,7 +520,7 @@ export default function SchedulesReportPage() {
             <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Data Final</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
+              <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
@@ -570,7 +641,153 @@ export default function SchedulesReportPage() {
             </div>
           </div>
         </div>
+
+        {/* Row 2: Advanced filters (collapsible) */}
+        {showAdvancedFilters && (
+          <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Status filter */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Status</label>
+                <div className="relative">
+                  <CheckCircle2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <select
+                    value={selectedStatus}
+                    onChange={(e) => setSelectedStatus(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm font-medium appearance-none"
+                  >
+                    <option value="">Todos os Status</option>
+                    <option value="agendado">Agendado</option>
+                    <option value="confirmado">Confirmado</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Período filter */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Período</label>
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <select
+                    value={selectedPeriodo}
+                    onChange={(e) => setSelectedPeriodo(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm font-medium appearance-none"
+                  >
+                    <option value="">Todos os Períodos</option>
+                    <option value="dia_inteiro">Dia Inteiro</option>
+                    <option value="manha">Manhã (08h - 13h)</option>
+                    <option value="tarde">Tarde (13h - 18h)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Tipo Embarcação filter */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Tipo Embarcação</label>
+                <div className="relative">
+                  <Anchor className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <select
+                    value={selectedTipoEmb}
+                    onChange={(e) => setSelectedTipoEmb(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm font-medium appearance-none"
+                  >
+                    <option value="">Todas (Lancha + Jet)</option>
+                    <option value="lancha">Lanchas</option>
+                    <option value="jet">Jet Skis</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Text search */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Busca Livre</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Nome, destino, obs..."
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm font-medium"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Active filter pills */}
+            {(selectedStatus || selectedPeriodo || selectedTipoEmb || searchText.trim()) && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {selectedStatus && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg border border-indigo-100">
+                    Status: {selectedStatus === 'agendado' ? 'Agendado' : selectedStatus === 'confirmado' ? 'Confirmado' : 'Cancelado'}
+                    <button onClick={() => setSelectedStatus('')} className="ml-0.5 hover:text-indigo-900"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+                {selectedPeriodo && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-semibold rounded-lg border border-amber-100">
+                    Período: {selectedPeriodo === 'dia_inteiro' ? 'Dia Inteiro' : selectedPeriodo === 'manha' ? 'Manhã' : 'Tarde'}
+                    <button onClick={() => setSelectedPeriodo('')} className="ml-0.5 hover:text-amber-900"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+                {selectedTipoEmb && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-cyan-50 text-cyan-700 text-xs font-semibold rounded-lg border border-cyan-100">
+                    Tipo: {selectedTipoEmb === 'lancha' ? 'Lancha' : 'Jet Ski'}
+                    <button onClick={() => setSelectedTipoEmb('')} className="ml-0.5 hover:text-cyan-900"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+                {searchText.trim() && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200">
+                    Busca: "{searchText.trim()}"
+                    <button onClick={() => setSearchText('')} className="ml-0.5 hover:text-slate-900"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Summary Metrics Cards */}
+      {results.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <FileText className="w-4 h-4 text-indigo-500" />
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</span>
+            </div>
+            <span className="text-2xl font-bold text-slate-800">{results.length}</span>
+          </div>
+          <div className="bg-white rounded-xl border border-emerald-100 shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Confirmados</span>
+            </div>
+            <span className="text-2xl font-bold text-emerald-700">{results.filter(r => r.status === 'confirmado').length}</span>
+          </div>
+          <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className="w-4 h-4 text-amber-500" />
+              <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider">Agendados</span>
+            </div>
+            <span className="text-2xl font-bold text-amber-700">{results.filter(r => r.status === 'agendado').length}</span>
+          </div>
+          <div className="bg-white rounded-xl border border-rose-100 shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <XCircle className="w-4 h-4 text-rose-500" />
+              <span className="text-xs font-semibold text-rose-600 uppercase tracking-wider">Cancelados</span>
+            </div>
+            <span className="text-2xl font-bold text-rose-700">{results.filter(r => r.status === 'cancelado').length}</span>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Ship className="w-4 h-4 text-indigo-500" />
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Embarcações</span>
+            </div>
+            <span className="text-2xl font-bold text-slate-800">{new Set(results.map(r => r.embarcacaoId)).size}</span>
+          </div>
+        </div>
+      )}
 
       {/* Results Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -599,6 +816,7 @@ export default function SchedulesReportPage() {
                   <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</th>
                   <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Embarcação</th>
                   <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cliente</th>
+                  <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Período</th>
                   <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right print:hidden">Ações</th>
                 </tr>
@@ -635,6 +853,16 @@ export default function SchedulesReportPage() {
                       </td>
                       <td className="px-6 py-3 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-700">{getOwnerName(res, client)}</span>
+                      </td>
+
+                      <td className="px-6 py-3 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-semibold rounded border ${
+                          res.periodo === 'dia_inteiro' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                          res.periodo === 'manha' ? 'bg-orange-50 text-orange-700 border-orange-100' :
+                          'bg-purple-50 text-purple-700 border-purple-100'
+                        }`}>
+                          {periodMap[res.periodo] || res.periodo}
+                        </span>
                       </td>
 
                       <td className="px-6 py-3 whitespace-nowrap">
