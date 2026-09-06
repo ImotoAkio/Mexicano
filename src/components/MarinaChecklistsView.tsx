@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
+import { generateAdminReportPDF } from '../utils/pdfGenerator';
 import { ZoomableImage } from './ZoomableImage';
 import { logAction } from '../db';
 
@@ -332,8 +333,44 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
             </div>
 
             <button
-              onClick={() => window.print()}
-              className="px-4 py-2.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
+              onClick={() => {
+                const columns = ['Embarcação', 'Cliente', 'Operador (Subida/Descida)', 'Status', 'Fotos', 'Observações'];
+                const rows = filteredChecklists.map(r => {
+                  const boat = getEmbarcacao(r.embarcacaoId);
+                  const client = getCliente(r.clienteId);
+                  const boatName = boat ? `${boat.nome} (${getBoatCode(boat)})` : 'N/A';
+                  const clientName = client ? client.nome : 'N/A';
+                  const operador = `${r.operadorSubida || 'N/A'} / ${r.operadorDescida || 'N/A'}`;
+                  const fotosDesc = parseFotos(r.fotosChecklistDescida).length;
+                  const fotosSub = parseFotos(r.fotosChecklistSubida).length;
+                  const totalFotos = fotosDesc + fotosSub;
+
+                  return [
+                    boatName,
+                    clientName,
+                    operador,
+                    r.statusMarina || r.status,
+                    totalFotos > 0 ? `${totalFotos} fotos (Sub: ${fotosSub}, Desc: ${fotosDesc})` : 'Nenhuma',
+                    [r.observacoesChecklistDescida, r.observacoesChecklistSubida, r.observações].filter(Boolean).join(' | ') || '-'
+                  ];
+                });
+
+                const metrics = [
+                  { label: 'Total Checklists', value: String(totalCount) },
+                  { label: 'Checklists Completos', value: String(completosCount) },
+                  { label: 'Com Avaria (Casco)', value: String(cascoCount) },
+                  { label: 'Atualmente na Água', value: String(naAguaCount) }
+                ];
+
+                generateAdminReportPDF(
+                  'VILA NÁUTICA - RELATÓRIO DE CHECKLISTS E INSPEÇÕES',
+                  `Data Referência: ${displayDateStr}`,
+                  columns,
+                  rows,
+                  metrics
+                );
+              }}
+              className="px-4 py-2.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 cursor-pointer print:hidden"
             >
               <Download className="w-4 h-4 text-slate-500" />
               <span>Exportar</span>
@@ -602,9 +639,39 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white border border-slate-200/90 shadow-2xl rounded-2xl px-5 py-3 flex items-center space-x-4 animate-slide-up-fast">
           <span className="text-xs font-black text-slate-900">{selectedIds.length} Selecionado(s)</span>
           <div className="h-4 w-[1px] bg-slate-200"></div>
-          <button 
-            onClick={() => window.print()} 
-            className="text-xs font-bold text-slate-700 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer"
+          <button
+            onClick={() => {
+              const selectedReservas = filteredChecklists.filter(r => selectedIds.includes(r.id));
+              const columns = ['Embarcação', 'Cliente', 'Operador (Sub/Desc)', 'Status', 'Fotos', 'Observações'];
+              const rows = selectedReservas.map(r => {
+                const boat = getEmbarcacao(r.embarcacaoId);
+                const client = getCliente(r.clienteId);
+                const boatName = boat ? `${boat.nome} (${getBoatCode(boat)})` : 'N/A';
+                const clientName = client ? client.nome : 'N/A';
+                const operador = `${r.operadorSubida || 'N/A'} / ${r.operadorDescida || 'N/A'}`;
+                const fotosDesc = parseFotos(r.fotosChecklistDescida).length;
+                const fotosSub = parseFotos(r.fotosChecklistSubida).length;
+                const totalFotos = fotosDesc + fotosSub;
+
+                return [
+                  boatName,
+                  clientName,
+                  operador,
+                  r.statusMarina || r.status,
+                  totalFotos > 0 ? `${totalFotos} fotos (Sub: ${fotosSub}, Desc: ${fotosDesc})` : 'Nenhuma',
+                  [r.observacoesChecklistDescida, r.observacoesChecklistSubida, r.observações].filter(Boolean).join(' | ') || '-'
+                ];
+              });
+
+              generateAdminReportPDF(
+                'VILA NÁUTICA - CHECKLISTS SELECIONADOS',
+                `Data Referência: ${displayDateStr}`,
+                columns,
+                rows,
+                [{ label: 'Total Selecionados', value: String(selectedReservas.length) }]
+              );
+            }}
+            className="text-xs font-bold text-slate-700 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer print:hidden"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Exportar PDF</span>

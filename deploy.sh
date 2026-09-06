@@ -6,7 +6,7 @@ echo "🚀 Iniciando Deploy - Mexicano App"
 echo "=========================================="
 
 # Token de acesso do GitHub (GHCR)
-GITHUB_TOKEN="${GH_TOKEN:-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}"
+GITHUB_TOKEN="${GH_TOKEN:?❌ Variável GH_TOKEN não definida. Configure no servidor com: export GH_TOKEN=seu_token}"
 GITHUB_USER="ImotoAkio"
 
 # Define diretório do script

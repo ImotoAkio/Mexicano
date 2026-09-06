@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { clientDB, boatDB, reservationDB } from '../db';
 import { Reserva, Embarcacao, Cliente } from '../types';
 import { updateGoogleCalendarEvent, deleteGoogleCalendarEvent, formatEventTimes } from '../googleCalendar';
-import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
+import { generateAvisoSaidaPDF, generateAdminReportPDF } from '../utils/pdfGenerator';
 import { 
   Search, 
   Calendar, 
@@ -369,8 +369,53 @@ export default function SchedulesReportPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => window.print()}
+          <button
+            onClick={() => {
+              const columns = ['Data', 'Embarcação', 'Cliente', 'Período', 'Status', 'Destino / Observações'];
+              const rows = results.map(res => {
+                const boat = boats.find(b => b.id === res.embarcacaoId);
+                const client = clients.find(c => c.id === res.clienteId);
+                const dt = new Date(res.data + 'T12:00:00');
+                const formattedDate = isNaN(dt.getTime()) ? res.data : dt.toLocaleDateString('pt-BR');
+                const periodMap: Record<string, string> = {
+                  'dia_inteiro': 'Dia Inteiro',
+                  'manha': 'Manhã (08h - 13h)',
+                  'tarde': 'Tarde (13h - 18h)'
+                };
+                const statusMap: Record<string, string> = {
+                  'agendado': 'Agendado',
+                  'confirmado': 'Confirmado',
+                  'cancelado': 'Cancelado'
+                };
+
+                const boatName = boat ? `${boat.nome} ${boat.tipo === 'jet' ? '(Jet)' : '(Lancha)'}` : 'N/A';
+                const dest = res.destino ? `Destino: ${res.destino}${res.observacoes ? ' | ' + res.observacoes : ''}` : (res.observacoes || '-');
+
+                return [
+                  formattedDate,
+                  boatName,
+                  client ? client.nome : 'N/A',
+                  periodMap[res.periodo] || res.periodo,
+                  statusMap[res.status] || res.status,
+                  dest
+                ];
+              });
+
+              const metrics = [
+                { label: 'Total de Agendamentos', value: String(results.length) },
+                { label: 'Confirmados', value: String(results.filter(r => r.status === 'confirmado').length) },
+                { label: 'Agendados (-24h)', value: String(results.filter(r => r.status === 'agendado').length) },
+                { label: 'Cancelados', value: String(results.filter(r => r.status === 'cancelado').length) },
+              ];
+
+              generateAdminReportPDF(
+                'VILA NÁUTICA - RELATÓRIO DE AGENDAMENTOS E HISTÓRICO',
+                `Período: ${new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR')} até ${new Date(endDate + 'T12:00:00').toLocaleDateString('pt-BR')}`,
+                columns,
+                rows,
+                metrics
+              );
+            }}
             className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl shadow-sm hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm"
           >
             <Download className="w-4 h-4" />
