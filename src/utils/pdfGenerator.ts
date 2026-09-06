@@ -733,7 +733,6 @@ export async function generateMarinaCaixaPDF(
 
   return doc;
 }
-import autoTable from 'jspdf-autotable';
 
 export async function generateAdminReportPDF(
   title: string,
@@ -764,7 +763,7 @@ export async function generateAdminReportPDF(
   doc.setFontSize(10);
   doc.setTextColor(100, 116, 139); 
   const dateStr = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  doc.text(\ - Gerado em: \, leftMargin, currentY);
+  doc.text(`${subtitle} - Gerado em: ${dateStr}`, leftMargin, currentY);
 
   currentY += 4;
   doc.setLineWidth(0.4);
