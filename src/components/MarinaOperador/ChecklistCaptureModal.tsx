@@ -20,6 +20,20 @@ import {
 import { uploadPhotoToStorage } from '../../utils/checklistStorage';
 import { getBoatCode } from '../../utils/boatUtils';
 
+import frenteJet from '../../assets/images/checklist/jet/frente.png';
+import trasJet from '../../assets/images/checklist/jet/tras.png';
+import esquerdaJet from '../../assets/images/checklist/jet/esquerda.png';
+import direitaJet from '../../assets/images/checklist/jet/direita.png';
+import painelJet from '../../assets/images/checklist/jet/painel.png';
+import cascoJet from '../../assets/images/checklist/jet/casco.png';
+
+import proaLancha from '../../assets/images/checklist/lancha/proa.svg';
+import popaLancha from '../../assets/images/checklist/lancha/popa.svg';
+import esquerdaLancha from '../../assets/images/checklist/lancha/esquerda.svg';
+import direitaLancha from '../../assets/images/checklist/lancha/direita.svg';
+import painelLancha from '../../assets/images/checklist/lancha/painel.svg';
+import cascoLancha from '../../assets/images/checklist/lancha/casco.svg';
+
 /* ──────────────────────────────────────────────
    TYPES
    ────────────────────────────────────────────── */
@@ -63,33 +77,33 @@ interface ChecklistCaptureModalProps {
    ────────────────────────────────────────────── */
 
 const ANGLES_JET: ChecklistAngle[] = [
-  { id: 'frente',         angleKey: 'frente',         name: 'Frente',                   description: 'Vista frontal do bico e casco',                 required: true,  svgPath: '/checklist/jet/frente.png' },
-  { id: 'traseira',       angleKey: 'traseira',       name: 'Traseira',                 description: 'Bocal de turbina, grade e traseira',             required: true,  svgPath: '/checklist/jet/tras.png' },
-  { id: 'lat_esquerda',   angleKey: 'lat_esquerda',   name: 'Lateral Esquerda',         description: 'Costado esquerdo completo (bombordo)',            required: true,  svgPath: '/checklist/jet/esquerda.png' },
-  { id: 'lat_direita',    angleKey: 'lat_direita',    name: 'Lateral Direita',          description: 'Costado direito completo (boreste)',              required: true,  svgPath: '/checklist/jet/direita.png' },
-  { id: 'painel',         angleKey: 'painel',         name: 'Painel / Guidão',          description: 'Display, botões e guidão',                       required: true,  svgPath: '/checklist/jet/painel.png' },
-  { id: 'casco_inferior', angleKey: 'casco_inferior', name: 'Casco Inferior',           description: 'Fundo do casco e linha d\'água',                 required: true,  svgPath: '/checklist/jet/casco.png' },
+  { id: 'frente',         angleKey: 'frente',         name: 'Frente',                   description: 'Vista frontal do bico e casco',                 required: true,  svgPath: frenteJet },
+  { id: 'traseira',       angleKey: 'traseira',       name: 'Traseira',                 description: 'Bocal de turbina, grade e traseira',             required: true,  svgPath: trasJet },
+  { id: 'lat_esquerda',   angleKey: 'lat_esquerda',   name: 'Lateral Esquerda',         description: 'Costado esquerdo completo (bombordo)',            required: true,  svgPath: esquerdaJet },
+  { id: 'lat_direita',    angleKey: 'lat_direita',    name: 'Lateral Direita',          description: 'Costado direito completo (boreste)',              required: true,  svgPath: direitaJet },
+  { id: 'painel',         angleKey: 'painel',         name: 'Painel / Guidão',          description: 'Display, botões e guidão',                       required: true,  svgPath: painelJet },
+  { id: 'casco_inferior', angleKey: 'casco_inferior', name: 'Casco Inferior',           description: 'Fundo do casco e linha d\'água',                 required: true,  svgPath: cascoJet },
   { id: 'casco_traseiro', angleKey: 'casco_traseiro', name: 'Casco Traseiro',           description: 'Parte traseira inferior do casco e turbina',     required: true },
   { id: 'porta_objetos',  angleKey: 'porta_objetos',  name: 'Porta-Objetos',            description: 'Compartimento de armazenamento aberto',          required: true },
 ];
 
 const ANGLES_LANCHA: ChecklistAngle[] = [
   // Frente — lancha grande, dividir em proa e bico
-  { id: 'frente_proa',       angleKey: 'frente_proa',       name: 'Frente — Proa',             description: 'Vista frontal da proa, bico e olhal',            required: true,  svgPath: '/checklist/lancha/proa.svg' },
+  { id: 'frente_proa',       angleKey: 'frente_proa',       name: 'Frente — Proa',             description: 'Vista frontal da proa, bico e olhal',            required: true,  svgPath: proaLancha },
   { id: 'frente_conves',     angleKey: 'frente_conves',     name: 'Frente — Convés da Proa',   description: 'Área do solário e deck da proa',                 required: true },
   // Traseira
-  { id: 'traseira_popa',     angleKey: 'traseira_popa',     name: 'Traseira — Popa',           description: 'Vista da popa, motores, rabeta e escada',        required: true,  svgPath: '/checklist/lancha/popa.svg' },
+  { id: 'traseira_popa',     angleKey: 'traseira_popa',     name: 'Traseira — Popa',           description: 'Vista da popa, motores, rabeta e escada',        required: true,  svgPath: popaLancha },
   { id: 'traseira_plataforma',angleKey:'traseira_plataforma',name: 'Traseira — Plataforma',    description: 'Plataforma de popa e escada de banho',           required: true },
   // Lateral esquerda (bombordo) — dividir proa/popa
-  { id: 'lat_esq_proa',      angleKey: 'lat_esq_proa',     name: 'Lat. Esquerda — Proa',      description: 'Costado bombordo seção da proa',                 required: true,  svgPath: '/checklist/lancha/esquerda.svg' },
+  { id: 'lat_esq_proa',      angleKey: 'lat_esq_proa',     name: 'Lat. Esquerda — Proa',      description: 'Costado bombordo seção da proa',                 required: true,  svgPath: esquerdaLancha },
   { id: 'lat_esq_popa',      angleKey: 'lat_esq_popa',     name: 'Lat. Esquerda — Popa',      description: 'Costado bombordo seção da popa',                 required: true },
   // Lateral direita (boreste) — dividir proa/popa
-  { id: 'lat_dir_proa',      angleKey: 'lat_dir_proa',     name: 'Lat. Direita — Proa',       description: 'Costado boreste seção da proa',                  required: true,  svgPath: '/checklist/lancha/direita.svg' },
+  { id: 'lat_dir_proa',      angleKey: 'lat_dir_proa',     name: 'Lat. Direita — Proa',       description: 'Costado boreste seção da proa',                  required: true,  svgPath: direitaLancha },
   { id: 'lat_dir_popa',      angleKey: 'lat_dir_popa',     name: 'Lat. Direita — Popa',       description: 'Costado boreste seção da popa',                  required: true },
   // Painel
-  { id: 'painel',            angleKey: 'painel',            name: 'Painel de Comando',         description: 'Instrumentos, manetes, rádio e eletrônica',      required: true,  svgPath: '/checklist/lancha/painel.svg' },
+  { id: 'painel',            angleKey: 'painel',            name: 'Painel de Comando',         description: 'Instrumentos, manetes, rádio e eletrônica',      required: true,  svgPath: painelLancha },
   // Casco
-  { id: 'casco_inferior',    angleKey: 'casco_inferior',    name: 'Casco Inferior',            description: 'Fundo do casco, hélice e linha d\'água',         required: true,  svgPath: '/checklist/lancha/casco.svg' },
+  { id: 'casco_inferior',    angleKey: 'casco_inferior',    name: 'Casco Inferior',            description: 'Fundo do casco, hélice e linha d\'água',         required: true,  svgPath: cascoLancha },
   { id: 'casco_traseiro',    angleKey: 'casco_traseiro',    name: 'Casco Traseiro',            description: 'Parte traseira inferior, leme e hélice',         required: true },
   // Porta-objetos / Cabine
   { id: 'porta_objetos',     angleKey: 'porta_objetos',     name: 'Porta-Objetos / Cabine',    description: 'Compartimentos internos e cabine aberta',        required: true },
@@ -458,7 +472,7 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                           <img
                             src={activeAngle.svgPath}
                             alt={`Referência ${activeAngle.name}`}
-                            className="w-32 h-32 object-contain opacity-40"
+                            className="w-3/4 h-3/4 object-contain opacity-50"
                           />
                           <button
                             onClick={(e) => {
