@@ -2547,39 +2547,154 @@ export async function upsertUserPreferences(userId: number, preferences: any) {
 
 // ---------------- Fuel Inventory & History Database Operations ----------------
 
+
 export async function getFuelInventoryFromDb(): Promise<any | null> {
-  const jsonStr = await getConfigValue("marina_fuel_inventory");
-  if (jsonStr) {
-    try {
-      return JSON.parse(jsonStr);
-    } catch (e) {
-      console.error("Error parsing fuel inventory from DB:", e);
-    }
+  const pool = getDbPool();
+  if (!pool) {
+    const jsonStr = await getConfigValue("marina_fuel_inventory");
+    return jsonStr ? JSON.parse(jsonStr) : null;
+  }
+  
+  const [rows] = await pool.query(`SELECT * FROM CombustivelEstoque WHERE id = 1`) as any;
+  if (rows.length > 0) {
+    const row = rows[0];
+    return {
+      tanquePrincipalLitros: Number(row.tanque_principal),
+      tanqueCapacidadeMaxima: Number(row.tanque_capacidade),
+      alertaMinimoTanque: Number(row.alerta_minimo),
+      galoesPierQuantidade: Number(row.galoes_qtd),
+      galoesCapacidadeLitros: Number(row.galoes_capacidade),
+      galaoParcialLitros: Number(row.galao_parcial),
+      ultimaAtualizacao: row.ultima_atualizacao
+    };
   }
   return null;
 }
 
 export async function saveFuelInventoryInDb(inv: any): Promise<void> {
+  const pool = getDbPool();
+  if (!pool) {
+    await setConfigValue("marina_fuel_inventory", JSON.stringify(inv));
+    return;
+  }
+
+  await pool.query(`
+    UPDATE CombustivelEstoque SET 
+      tanque_principal = ?, 
+      tanque_capacidade = ?, 
+      alerta_minimo = ?, 
+      galoes_qtd = ?, 
+      galoes_capacidade = ?, 
+      galao_parcial = ?
+    WHERE id = 1
+  `, [
+    inv.tanquePrincipalLitros || 0,
+    inv.tanqueCapacidadeMaxima || 1000,
+    inv.alertaMinimoTanque || 200,
+    inv.galoesPierQuantidade || 0,
+    inv.galoesCapacidadeLitros || 20,
+    inv.galaoParcialLitros || 0
+  ]);
+  
   await setConfigValue("marina_fuel_inventory", JSON.stringify(inv));
 }
 
 export async function getFuelHistoryFromDb(): Promise<any[]> {
-  const jsonStr = await getConfigValue("marina_fuel_history");
-  if (jsonStr) {
-    try {
-      return JSON.parse(jsonStr);
-    } catch (e) {
-      console.error("Error parsing fuel history from DB:", e);
-    }
+  const pool = getDbPool();
+  if (!pool) {
+    const jsonStr = await getConfigValue("marina_fuel_history");
+    return jsonStr ? JSON.parse(jsonStr) : [];
   }
-  return [];
+
+  const [rows] = await pool.query(`SELECT * FROM CombustivelMovimentacoes ORDER BY data_hora DESC LIMIT 500`) as any;
+  
+  return rows.map((r: any) => {
+    const dateObj = r.data_hora ? new Date(r.data_hora) : new Date();
+    const dateStr = dateObj.toLocaleDateString('pt-BR') + ' ' + dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    
+    return {
+      id: r.id,
+      tipo: r.tipo,
+      litros: Number(r.litros),
+      galoes: Number(r.galoes),
+      fornecedor: r.fornecedor,
+      notaFiscal: r.nota_fiscal,
+      valorTotal: r.valor_total ? Number(r.valor_total) : undefined,
+      barcoNome: r.barco_nome,
+      operador: r.operador,
+      dataHora: Number.isNaN(dateObj.getTime()) ? String(r.data_hora) : dateStr, 
+      detalhes: r.detalhes,
+      diferencaLitros: r.diferenca_litros ? Number(r.diferenca_litros) : undefined
+    };
+  });
 }
 
 export async function saveFuelHistoryInDb(history: any[]): Promise<void> {
-  await setConfigValue("marina_fuel_history", JSON.stringify(history));
+  const pool = getDbPool();
+  if (!pool) {
+    await setConfigValue("marina_fuel_history", JSON.stringify(history));
+    return;
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    
+    const parseDate = (dStr) => {
+      if (!dStr) return new Date();
+      if (typeof dStr === 'string' && dStr.includes('/')) {
+        const parts = dStr.split(' ');
+        if (!parts[0]) return new Date();
+        const dateParts = parts[0].split('/');
+        if (dateParts.length !== 3) return new Date();
+        const day = dateParts[0];
+        const m = dateParts[1];
+        const y = dateParts[2];
+        const t = parts[1] || '00:00';
+        return new Date(`${y}-${m}-${day}T${t}:00`);
+      }
+      return new Date(dStr);
+    };
+
+    for (const h of history) {
+      if (!h.id || !h.tipo) continue;
+      
+      const dbDate = parseDate(h.dataHora);
+
+      await connection.query(`
+        INSERT IGNORE INTO CombustivelMovimentacoes 
+        (id, tipo, litros, galoes, fornecedor, nota_fiscal, valor_total, barco_nome, operador, data_hora, detalhes, diferenca_litros)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        h.id.toString(), 
+        h.tipo,
+        h.litros || 0,
+        h.galoes || 0,
+        h.fornecedor || null,
+        h.notaFiscal || null,
+        h.valorTotal || null,
+        h.barcoNome || null,
+        h.operador || 'Sistema',
+        isNaN(dbDate.getTime()) ? new Date() : dbDate,
+        h.detalhes || null,
+        h.diferencaLitros || null
+      ]);
+    }
+    await connection.commit();
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function resetFuelDataInDb(): Promise<void> {
+  const pool = getDbPool();
+  if (pool) {
+    await pool.query(`TRUNCATE TABLE CombustivelMovimentacoes`);
+    await pool.query(`UPDATE CombustivelEstoque SET tanque_principal = 0, galoes_qtd = 0, galao_parcial = 0 WHERE id = 1`);
+  }
   await setConfigValue("marina_fuel_inventory", JSON.stringify({
     tanquePrincipalLitros: 0,
     tanqueCapacidadeMaxima: 1000,
@@ -2589,7 +2704,7 @@ export async function resetFuelDataInDb(): Promise<void> {
     galaoParcialLitros: 0,
     ultimaAtualizacao: new Date().toLocaleDateString('pt-BR')
   }));
-  await setConfigValue("marina_fuel_history", JSON.stringify([]));
+  await setConfigValue("marina_fuel_history", "[]");
 }
 
 
