@@ -462,7 +462,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
           });
 
           if (boat) {
-            await consumeFuelForEmbarcacao(boat.id, fuelData.liters, currentUser.nome);
+            consumeFuelForEmbarcacao(fuelData.liters, boat.nome || 'Embarcação', currentUser.nome);
           }
         }
       }

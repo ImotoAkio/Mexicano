@@ -116,7 +116,18 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
     const horaEmissao = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const respNome = operadorNome || 'Gerente da Marina';
 
-    const historyRowsHTML = history.slice(0, 25).map((h, i) => {
+    const historyRowsHTML = history.slice(0, 25).map((rawH, i) => {
+      // Sanitiza registros antigos com argumentos invertidos
+      const h = { ...rawH };
+      if (h.tipo === 'abastecimento_embarcacao') {
+        const litrosStr = String(h.litros || '');
+        const barcoStr = String(h.barcoNome || '');
+        if (litrosStr.startsWith('boat_') && !isNaN(Number(barcoStr))) {
+          h.barcoNome = h.detalhes?.match(/embarcação\s+(.+)/i)?.[1] || 'Embarcação';
+          h.litros = Number(barcoStr);
+        }
+      }
+
       const isCompra = h.tipo.startsWith('compra');
       const isTransfer = h.tipo === 'transferencia_tanque_pier';
       const isAbast = h.tipo === 'abastecimento_embarcacao';
@@ -1014,7 +1025,19 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                     </td>
                   </tr>
                 ) : (
-                  filteredHistory.map(h => (
+                  filteredHistory.map(rawH => {
+                    // Sanitiza registros antigos onde argumentos foram invertidos
+                    // (boat.id foi salvo como litros e litros como barcoNome)
+                    const h = { ...rawH };
+                    if (h.tipo === 'abastecimento_embarcacao') {
+                      const litrosStr = String(h.litros || '');
+                      const barcoStr = String(h.barcoNome || '');
+                      if (litrosStr.startsWith('boat_') && !isNaN(Number(barcoStr))) {
+                        h.barcoNome = h.detalhes?.match(/embarcação\s+(.+)/i)?.[1] || 'Embarcação';
+                        h.litros = Number(barcoStr);
+                      }
+                    }
+                    return (
                     <tr key={h.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="p-3 pl-4">
                         <div className="flex items-center gap-2.5">
@@ -1114,8 +1137,9 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
                         </button>
                       </td>
                     </tr>
-                  ))
-                )}
+                  );
+                })
+              )}
               </tbody>
             </table>
           </div>
