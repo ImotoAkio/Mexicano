@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench, QrCode, Ticket, RefreshCw } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
 import { io } from 'socket.io-client';
 // @ts-ignore
 import boatImg1 from '../assets/images/1.webp';
@@ -7,25 +7,40 @@ import boatImg1 from '../assets/images/1.webp';
 import boatImg2 from '../assets/images/2.webp';
 import ClientReservationModal from './ClientReservationModal';
 import ClientCheckinModal from './ClientCheckinModal';
+import ClientMaintenanceModal from './ClientMaintenanceModal';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
 import { getBoatCode } from '../utils/boatUtils';
+import { Chamado } from '../types';
+import { chamadoDB } from '../db';
 
 interface ClientDashboardPageProps {
   client: any;
   boats: any[];
   reservations: any[];
   transacoes?: any[];
+  chamados?: Chamado[];
   onLogout: () => void;
   onRefresh?: () => void;
 }
 
-export default function ClientDashboardPage({ client, boats, reservations, transacoes = [], onLogout, onRefresh }: ClientDashboardPageProps) {
-  const [activeTab, setActiveTab] = useState<'home' | 'calendar' | 'finance' | 'profile'>('home');
+export default function ClientDashboardPage({ client, boats, reservations, transacoes = [], chamados = [], onLogout, onRefresh }: ClientDashboardPageProps) {
+  const [activeTab, setActiveTab] = useState<'home' | 'calendar' | 'finance' | 'maintenance'>('home');
   const [financeTab, setFinanceTab] = useState<'fatura' | 'extrato'>('fatura');
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [privacyTab, setPrivacyTab] = useState<'general' | 'data' | 'rights' | 'dpo'>('general');
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
+  const [showProfilePanel, setShowProfilePanel] = useState(false);
+  const [maintenanceView, setMaintenanceView] = useState<'list' | 'create'>('list');
+  const [maintenanceSearch, setMaintenanceSearch] = useState('');
+  const [isMaintenanceSubmitting, setIsMaintenanceSubmitting] = useState(false);
+  const [maintenanceFormData, setMaintenanceFormData] = useState({
+    embarcacaoId: boats.length === 1 ? boats[0].id : '',
+    titulo: '',
+    descricaoAvaria: '',
+    urgencia: 'baixa' as 'baixa' | 'media' | 'alta' | 'critica'
+  });
 
   // Real-time & Refresh states
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -51,6 +66,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     socket.on('marina_caixa_update', () => {
        // Refresh just in case (finances/services updated)
        if (onRefresh) onRefresh();
+    });
+
+    socket.on('chamado_update', (data: any) => {
+      // Refresh to get the latest maintenance status
+      if (onRefresh) onRefresh();
     });
 
     return () => {
@@ -435,26 +455,6 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
   const renderHome = () => (
     <div className="flex flex-col flex-1 animate-in fade-in zoom-in-95 duration-500">
-      {/* Header */}
-      <div className="flex items-center justify-between p-6">
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Bem-vindo(a)</p>
-          <h1 className="text-xl font-light tracking-wide text-white mt-1">{client.nome.split(' ')[0]}</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleManualRefresh}
-            disabled={isRefreshing}
-            className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md active:bg-white/10 transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 text-white/70 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <button className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md">
-            <Bell className="w-4 h-4 text-white/70" />
-            <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-[#B69D74] rounded-full"></span>
-          </button>
-        </div>
-      </div>
 
       {/* Dynamic Check-in Banners */}
       {todayReservations.map((reservation) => {
@@ -820,12 +820,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     const occupiedBoatReservations = mergedReservations.filter(r => (!activeBoatId || r.embarcacaoId === activeBoatId) && r.status !== 'cancelado' && r.clienteId !== client.id);
 
     return (
-      <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6">
-        <div className="mb-4 mt-4">
-          <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Agenda de Cotas</p>
-          <h1 className="text-2xl font-light tracking-wide text-white mt-1">Agendamentos</h1>
-        </div>
-
+      <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pt-0">
         {/* Multi-Boat Selector Tabs (If client has more than 1 boat) */}
         {boats.length > 1 && (
           <div className="mb-5 bg-[#111] border border-white/10 rounded-2xl p-1.5 flex gap-2 overflow-x-auto subtle-scrollbar">
@@ -1115,12 +1110,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     };
 
     return (
-      <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pb-24">
-        <div className="mb-6 mt-2">
-          <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Conta</p>
-          <h1 className="text-2xl font-light tracking-wide text-white mt-1">Financeiro</h1>
-        </div>
-
+      <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pt-0 pb-24">
         {/* Cartão Estilo Black Card */}
         <div className="bg-gradient-to-br from-[#1a1a1a] via-[#111111] to-[#050505] border border-white/5 rounded-3xl p-6 shadow-2xl relative overflow-hidden mb-8 group">
           <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/[0.05] to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite]"></div>
@@ -1268,108 +1258,261 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     );
   };
 
-  const renderProfile = () => (
-    <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6">
-      <div className="mb-8 mt-4">
-        <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Configurações</p>
-        <h1 className="text-2xl font-light tracking-wide text-white mt-1">Meu Perfil</h1>
-      </div>
+  const handleMaintenanceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!maintenanceFormData.embarcacaoId || !maintenanceFormData.titulo || !maintenanceFormData.descricaoAvaria) {
+      showToast('Aviso', "Preencha todos os campos obrigatórios.", 'warning');
+      return;
+    }
 
-      {/* Avatar & Basic Info */}
-      <div className="flex items-center gap-4 mb-8">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-[#B69D74]/20 to-[#B69D74]/5 border border-[#B69D74]/30 flex items-center justify-center">
-          <User className="w-6 h-6 text-[#B69D74]" />
-        </div>
-        <div>
-          <h2 className="text-lg font-medium text-white">{client.nome}</h2>
-          <p className="text-xs text-white/40 font-mono mt-0.5">{client.cpf}</p>
-        </div>
-      </div>
+    setIsMaintenanceSubmitting(true);
+    try {
+      chamadoDB.create({
+        embarcacaoId: maintenanceFormData.embarcacaoId,
+        solicitanteTipo: 'cliente',
+        solicitanteNome: client.nome,
+        clienteId: client.id,
+        titulo: maintenanceFormData.titulo,
+        descricaoAvaria: maintenanceFormData.descricaoAvaria,
+        urgencia: maintenanceFormData.urgencia,
+        status: 'pendente'
+      });
 
-      <div className="space-y-6">
-        <div className="bg-white/[0.03] border border-white/5 rounded-3xl p-5 space-y-5">
-          <div className="flex items-center gap-4">
-            <Mail className="w-4 h-4 text-white/30" />
-            <div className="flex-1 border-b border-white/5 pb-4">
-              <p className="text-[10px] uppercase tracking-wider text-white/30">E-mail</p>
-              <p className="text-sm text-white/80 mt-1">{client.email || 'Não informado'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Phone className="w-4 h-4 text-white/30" />
-            <div className="flex-1 border-b border-white/5 pb-4">
-              <p className="text-[10px] uppercase tracking-wider text-white/30">Telefone</p>
-              <p className="text-sm text-white/80 mt-1">{client.telefone || 'Não informado'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Anchor className="w-4 h-4 text-white/30" />
-            <div className="flex-1">
-              <p className="text-[10px] uppercase tracking-wider text-white/30">Cota Principal</p>
-              <p className="text-sm text-[#B69D74] font-medium mt-1 uppercase tracking-widest">{client.cota || 'Padrão'}</p>
-            </div>
-          </div>
-        </div>
+      showToast('Sucesso', 'Seu chamado foi aberto com sucesso.', 'success');
+      setTimeout(() => {
+        setIsMaintenanceSubmitting(false);
+        setMaintenanceView('list');
+      }, 500);
 
-        {/* Install App Banner */}
-        {showInstallBanner && !isStandalone && (
-          <div className="bg-gradient-to-br from-[#1a1815] to-[#0d0b08] border border-[#B69D74]/25 rounded-3xl p-5 relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="absolute top-0 right-0 w-28 h-28 bg-[#B69D74]/15 rounded-full blur-[35px] translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center">
-                  <Smartphone className="w-5 h-5 text-[#B69D74]" />
+      setMaintenanceFormData({
+        embarcacaoId: boats.length === 1 ? boats[0].id : '',
+        titulo: '',
+        descricaoAvaria: '',
+        urgencia: 'baixa'
+      });
+    } catch (err) {
+      setIsMaintenanceSubmitting(false);
+      console.error(err);
+      showToast('Erro', 'Ocorreu um erro ao criar o chamado.', 'error');
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pendente': return <span className="bg-slate-500/20 text-slate-400 px-2.5 py-1 rounded-full text-xs font-medium border border-slate-500/30">Pendente</span>;
+      case 'em_analise': return <span className="bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-full text-xs font-medium border border-amber-500/30">Em Análise</span>;
+      case 'os_gerada': return <span className="bg-sky-500/20 text-sky-400 px-2.5 py-1 rounded-full text-xs font-medium border border-sky-500/30">Em Execução</span>;
+      case 'concluido': return <span className="bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-medium border border-emerald-500/30">Concluído</span>;
+      case 'rejeitado': return <span className="bg-rose-500/20 text-rose-400 px-2.5 py-1 rounded-full text-xs font-medium border border-rose-500/30">Rejeitado</span>;
+      case 'descartado': return <span className="bg-zinc-500/20 text-zinc-400 px-2.5 py-1 rounded-full text-xs font-medium border border-zinc-500/30">Descartado</span>;
+      default: return <span className="bg-slate-500/20 text-slate-400 px-2.5 py-1 rounded-full text-xs font-medium border border-slate-500/30">{status}</span>;
+    }
+  };
+
+  const getUrgenciaIcon = (urgencia: string) => {
+    switch (urgencia) {
+      case 'critica': return <ShieldAlert className="w-4 h-4 text-rose-500" />;
+      case 'alta': return <AlertTriangle className="w-4 h-4 text-orange-500" />;
+      case 'media': return <AlertTriangle className="w-4 h-4 text-amber-500" />;
+      case 'baixa': return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+      default: return <CheckCircle2 className="w-4 h-4 text-slate-500" />;
+    }
+  };
+
+  const renderMaintenance = () => {
+    const filteredChamados = chamados.filter(c =>
+      c.titulo.toLowerCase().includes(maintenanceSearch.toLowerCase()) ||
+      (c.codigoChamado || '').toLowerCase().includes(maintenanceSearch.toLowerCase())
+    );
+
+    return (
+      <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pt-0">
+
+        {maintenanceView === 'list' ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="py-4 flex gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                <input
+                  type="text"
+                  placeholder="Buscar chamados..."
+                  value={maintenanceSearch}
+                  onChange={(e) => setMaintenanceSearch(e.target.value)}
+                  className="w-full bg-white/[0.03] border border-white/[0.05] rounded-xl pl-9 pr-4 py-2 text-sm text-white placeholder-white/20 focus:border-[#B69D74] focus:ring-1 focus:ring-[#B69D74] transition-all outline-none"
+                />
+              </div>
+              <button
+                onClick={() => setMaintenanceView('create')}
+                className="bg-[#B69D74] hover:bg-[#a38b65] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Novo</span>
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-4 pt-2">
+              {filteredChamados.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-white/[0.02] border border-white/[0.05] rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Wrench className="w-8 h-8 text-white/20" />
+                  </div>
+                  <h3 className="text-white/80 font-medium mb-1">Nenhum chamado encontrado</h3>
+                  <p className="text-sm text-white/40 mb-6">Você ainda não solicitou nenhuma manutenção.</p>
+                  <button
+                    onClick={() => setMaintenanceView('create')}
+                    className="text-[#B69D74] hover:text-[#a38b65] font-medium text-sm transition-colors cursor-pointer"
+                  >
+                    + Criar primeiro chamado
+                  </button>
                 </div>
+              ) : (
+                filteredChamados.map(chamado => (
+                  <div key={chamado.id} className="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-5 hover:border-white/[0.1] transition-colors">
+                    <div className="flex flex-col sm:flex-row gap-4 sm:items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="text-xs font-mono text-white/40">{chamado.codigoChamado || 'Local'}</span>
+                          {getStatusBadge(chamado.status)}
+                        </div>
+                        <h4 className="text-white font-medium">{chamado.titulo}</h4>
+                        <div className="flex items-center gap-4 text-xs text-white/40">
+                          <p className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5" />
+                            {new Date(chamado.createdAt).toLocaleDateString('pt-BR')}
+                          </p>
+                          <p className="flex items-center gap-1.5" title="Urgência">
+                            {getUrgenciaIcon(chamado.urgencia)}
+                            <span className="capitalize">{chamado.urgencia}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-left sm:text-right mt-2 sm:mt-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-t-0">
+                        <p className="text-[10px] uppercase tracking-wider text-white/40 mb-0.5">Embarcação</p>
+                        <p className="text-sm font-medium text-white/80">
+                          {boats.find(b => b.id === chamado.embarcacaoId)?.nome || 'Excluída'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 subtle-scrollbar pt-2">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-light text-white">Novo Chamado</h2>
+                <p className="text-xs text-white/40 mt-1">Peças e Serviços</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleMaintenanceSubmit} className="space-y-6">
+              <div className="space-y-4 bg-white/[0.02] p-5 rounded-2xl border border-white/[0.05]">
                 <div>
-                  <h3 className="text-sm font-semibold text-white tracking-wide">Instale o App</h3>
-                  <p className="text-[10px] text-white/40 mt-0.5">Acesse como um aplicativo nativo</p>
+                  <label className="block text-xs font-medium text-white/60 mb-1.5">Embarcação</label>
+                  <select
+                    value={maintenanceFormData.embarcacaoId}
+                    onChange={e => setMaintenanceFormData(p => ({ ...p, embarcacaoId: e.target.value }))}
+                    className="w-full bg-[#050505] border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-[#B69D74] focus:ring-1 focus:ring-[#B69D74] outline-none transition-all cursor-pointer"
+                    required
+                  >
+                    <option value="" disabled>Selecione a embarcação...</option>
+                    {boats.map(boat => (
+                      <option key={boat.id} value={boat.id}>{boat.nome}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-white/60 mb-1.5">Título do Reparo</label>
+                  <input
+                    type="text"
+                    value={maintenanceFormData.titulo}
+                    onChange={e => setMaintenanceFormData(p => ({ ...p, titulo: e.target.value }))}
+                    placeholder="Ex: Revisão do motor, Troca de hélice..."
+                    className="w-full bg-[#050505] border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-[#B69D74] focus:ring-1 focus:ring-[#B69D74] outline-none transition-all placeholder-white/20"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-white/60 mb-1.5">Urgência</label>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                    {[
+                      { id: 'baixa', label: 'Baixa', icon: CheckCircle2, color: 'emerald' },
+                      { id: 'media', label: 'Média', icon: AlertTriangle, color: 'amber' },
+                      { id: 'alta', label: 'Alta', icon: AlertTriangle, color: 'orange' },
+                      { id: 'critica', label: 'Crítica', icon: ShieldAlert, color: 'rose' }
+                    ].map(u => {
+                      const Icon = u.icon;
+                      const isActive = maintenanceFormData.urgencia === u.id;
+
+                      let activeClasses = "";
+                      if (u.id === 'baixa') activeClasses = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+                      else if (u.id === 'media') activeClasses = 'bg-amber-500/10 border-amber-500/30 text-amber-400';
+                      else if (u.id === 'alta') activeClasses = 'bg-orange-500/10 border-orange-500/30 text-orange-400';
+                      else activeClasses = 'bg-rose-500/10 border-rose-500/30 text-rose-400';
+
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setMaintenanceFormData(p => ({ ...p, urgencia: u.id as any }))}
+                          className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs gap-1.5 transition-all cursor-pointer ${
+                            isActive
+                              ? activeClasses
+                              : 'bg-white/[0.02] border-white/10 text-white/40 hover:border-white/20 hover:text-white/60'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                          {u.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-white/60 mb-1.5">Descrição do Problema</label>
+                  <textarea
+                    value={maintenanceFormData.descricaoAvaria}
+                    onChange={e => setMaintenanceFormData(p => ({ ...p, descricaoAvaria: e.target.value }))}
+                    placeholder="Descreva com detalhes o que precisa ser feito..."
+                    className="w-full bg-[#050505] border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-[#B69D74] focus:ring-1 focus:ring-[#B69D74] outline-none transition-all placeholder-white/20 resize-none"
+                    rows={4}
+                    required
+                  />
                 </div>
               </div>
-              <p className="text-xs text-white/50 leading-relaxed mb-4">
-                Adicione o Vila Náutica à sua tela inicial para uma experiência completa, com carregamento instantâneo e acesso direto.
-              </p>
-              <div className="flex gap-3">
+
+              <div className="flex items-center gap-3 pt-2 pb-10">
                 <button
-                  onClick={handleInstallApp}
-                  className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                  type="button"
+                  onClick={() => setMaintenanceView('list')}
+                  className="flex-1 px-4 py-3 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] rounded-xl text-white font-medium text-sm transition-all cursor-pointer"
+                  disabled={isMaintenanceSubmitting}
                 >
-                  <Download className="w-4 h-4" />
-                  {isIOS ? 'Como Instalar' : 'Instalar App'}
+                  Cancelar
                 </button>
                 <button
-                  onClick={() => setShowInstallBanner(false)}
-                  className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors border border-white/10 cursor-pointer"
+                  type="submit"
+                  className="flex-[2] px-4 py-3 bg-[#B69D74] hover:bg-[#a38b65] text-white rounded-xl font-medium text-sm transition-all shadow-[0_5px_20px_rgba(182,157,116,0.3)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex justify-center"
+                  disabled={isMaintenanceSubmitting}
                 >
-                  Depois
+                  {isMaintenanceSubmitting ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    'Solicitar Manutenção'
+                  )}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         )}
-
-        <div className="bg-white/[0.03] border border-white/5 rounded-3xl overflow-hidden">
-          <button 
-            onClick={() => setShowPrivacyModal(true)}
-            className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-colors border-b border-white/5"
-          >
-            <div className="flex items-center gap-3">
-              <ShieldCheck className="w-4 h-4 text-white/50" />
-              <span className="text-sm font-light text-white">Privacidade & LGPD</span>
-            </div>
-            <span className="text-white/20">→</span>
-          </button>
-          
-          <button 
-            onClick={onLogout}
-            className="w-full flex items-center gap-3 p-5 hover:bg-white/5 transition-colors text-rose-400"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="text-sm font-light">Sair do Aplicativo</span>
-          </button>
-        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="h-[100dvh] w-full bg-[#020202] text-white font-sans relative overflow-x-hidden overflow-y-auto pb-24 selection:bg-[#B69D74]/30 pwa-safe-top">
@@ -1381,10 +1524,34 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
       {/* Main Content Area (Mobile Container Logic) */}
       <div className="relative z-10 w-full max-w-[480px] mx-auto min-h-max flex flex-col">
+        {/* Shared Header Start */}
+        <div className="flex items-center justify-between p-6">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Bem-vindo(a)</p>
+            <h1 className="text-xl font-light tracking-wide text-white mt-1">{client.nome.split(' ')[0]}</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md active:bg-white/10 transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 text-white/70 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setShowProfilePanel(true)}
+              className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md cursor-pointer hover:bg-white/10 transition-colors"
+            >
+              <User className="w-4 h-4 text-white/70" />
+            </button>
+          </div>
+        </div>
+        {/* Shared Header End */}
+
         {activeTab === 'home' && renderHome()}
         {activeTab === 'calendar' && renderCalendar()}
         {activeTab === 'finance' && renderFinance()}
-        {activeTab === 'profile' && renderProfile()}
+        {activeTab === 'maintenance' && renderMaintenance()}
       </div>
 
       {/* Bottom Navigation (iPhone Style Glassmorphism) */}
@@ -1424,7 +1591,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
           {/* Action Menu Popover Sheet */}
           {isActionMenuOpen && (
-            <div className="fixed bottom-24 left-1/2 w-[calc(100%-2rem)] max-w-[400px] z-50 animate-spring-pop">
+            <div className="fixed bottom-24 inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-[400px] z-50 animate-spring-pop">
               <div className="bg-[#121212]/95 border border-white/10 rounded-[2rem] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.9)] backdrop-blur-2xl space-y-2.5">
                 <div className="text-center pt-1 pb-2 border-b border-white/[0.06]">
                   <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-[#B69D74]">
@@ -1460,7 +1627,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 <button
                   onClick={() => {
                     setIsActionMenuOpen(false);
-                    showToast('Manutenção de Embarcações', 'O formulário de solicitação de manutenção será disponibilizado em breve.', 'warning');
+                    setActiveTab('maintenance');
                   }}
                   className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-amber-500/15 border border-white/[0.05] hover:border-amber-500/30 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-2"
                 >
@@ -1533,18 +1700,139 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </span>
           </button>
 
-          <button 
-            onClick={() => setActiveTab('profile')}
+          <button
+            onClick={() => setActiveTab('maintenance')}
             className="flex flex-col items-center gap-1.5 px-3 z-10"
           >
-            <User className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'profile' ? 'text-white' : 'text-white/30'}`} />
-            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'profile' ? 'text-white' : 'text-transparent'}`}>
-              Perfil
+            <Wrench className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-white/30'}`} />
+            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-transparent'}`}>
+              Manutenções
             </span>
           </button>
 
         </div>
       </nav>
+
+      {/* Profile Slide-over */}
+      <div
+        className={`fixed inset-0 z-50 transition-all duration-300 ${
+          showProfilePanel ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <div
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowProfilePanel(false)}
+        />
+        <div
+          className={`absolute top-0 right-0 h-full w-full max-w-sm bg-[#090909] border-l border-white/[0.04] p-6 shadow-2xl transition-transform duration-300 ease-out flex flex-col overflow-y-auto ${
+            showProfilePanel ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/[0.04]">
+            <h2 className="text-xl font-light text-white">Meu Perfil</h2>
+            <button
+              onClick={() => setShowProfilePanel(false)}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-[#B69D74]/20 to-[#B69D74]/5 border border-[#B69D74]/30 flex items-center justify-center">
+              <User className="w-6 h-6 text-[#B69D74]" />
+            </div>
+            <div>
+              <h2 className="text-lg font-medium text-white">{client.nome}</h2>
+              <p className="text-xs text-white/40 font-mono mt-0.5">{client.cpf}</p>
+            </div>
+          </div>
+
+          <div className="space-y-6 flex-1">
+            <div className="bg-white/[0.03] border border-white/5 rounded-3xl p-5 space-y-5">
+              <div className="flex items-center gap-4">
+                <Mail className="w-4 h-4 text-white/30" />
+                <div className="flex-1 border-b border-white/5 pb-4">
+                  <p className="text-[10px] uppercase tracking-wider text-white/30">E-mail</p>
+                  <p className="text-sm text-white/80 mt-1">{client.email || 'Não informado'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <Phone className="w-4 h-4 text-white/30" />
+                <div className="flex-1 border-b border-white/5 pb-4">
+                  <p className="text-[10px] uppercase tracking-wider text-white/30">Telefone</p>
+                  <p className="text-sm text-white/80 mt-1">{client.telefone || 'Não informado'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <Anchor className="w-4 h-4 text-white/30" />
+                <div className="flex-1">
+                  <p className="text-[10px] uppercase tracking-wider text-white/30">Cota Principal</p>
+                  <p className="text-sm text-[#B69D74] font-medium mt-1 uppercase tracking-widest">{client.cota || 'Padrão'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Install App Banner */}
+            {showInstallBanner && !isStandalone && (
+              <div className="bg-gradient-to-br from-[#1a1815] to-[#0d0b08] border border-[#B69D74]/25 rounded-3xl p-5 relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="absolute top-0 right-0 w-28 h-28 bg-[#B69D74]/15 rounded-full blur-[35px] translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+                <div className="relative z-10">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-9 h-9 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center">
+                      <Smartphone className="w-5 h-5 text-[#B69D74]" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-white tracking-wide">Instale o App</h3>
+                      <p className="text-[10px] text-white/40 mt-0.5">Acesso direto da tela inicial</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={handleInstallApp}
+                      className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      {isIOS ? 'Como Instalar' : 'Instalar'}
+                    </button>
+                    <button
+                      onClick={() => setShowInstallBanner(false)}
+                      className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors border border-white/10 cursor-pointer"
+                    >
+                      X
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 pt-6 border-t border-white/[0.04] space-y-3">
+            <button
+              onClick={() => {
+                setShowProfilePanel(false);
+                setShowPrivacyModal(true);
+              }}
+              className="w-full flex items-center justify-between p-4 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.05] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="w-4 h-4 text-white/70" />
+                <span className="text-sm font-light text-white/90">Privacidade & LGPD</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-white/30" />
+            </button>
+            <button
+              onClick={onLogout}
+              className="w-full flex items-center justify-between p-4 rounded-xl bg-white/[0.02] hover:bg-rose-500/10 border border-white/[0.05] hover:border-rose-500/30 transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center gap-3">
+                <LogOut className="w-4 h-4 text-rose-400 group-hover:text-rose-500" />
+                <span className="text-sm font-light text-rose-400 group-hover:text-rose-500">Sair do Aplicativo</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Privacy Modal (Minimalist Premium Dark) */}
       {showPrivacyModal && (
@@ -1909,6 +2197,20 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       )}
 
       {/* MODALS */}
+      
+      <ClientMaintenanceModal
+        isOpen={isMaintenanceModalOpen}
+        onClose={() => setIsMaintenanceModalOpen(false)}
+        boats={boats}
+        clientId={client.id}
+        clientName={client.nome}
+        chamados={chamados}
+        onSuccess={() => {
+          setIsMaintenanceModalOpen(false);
+          if (onRefresh) onRefresh();
+        }}
+      />
+
       <ClientReservationModal 
         isOpen={isReservationModalOpen}
         onClose={() => setIsReservationModalOpen(false)}
