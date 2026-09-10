@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2, Banknote, QrCode, Zap } from 'lucide-react';
+import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2, Banknote, QrCode, Zap, Wallet, User } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
 import { getFuelPrice, getFuelPaymentLabel } from '../utils/constants';
@@ -1871,7 +1871,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   <input
                     type="checkbox"
                     checked={selectedIds.length > 0 && selectedIds.length === fuelTransactions.length}
-                    onChange={toggleSelectAllList}
+                    onChange={toggleSelectAll}
                     className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 cursor-pointer"
                   />
                   <span className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">Embarcação / Ref</span>

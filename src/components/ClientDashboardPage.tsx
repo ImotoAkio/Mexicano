@@ -1515,7 +1515,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   };
 
   return (
-    <div className="h-[100dvh] w-full bg-[#020202] text-white font-sans relative overflow-x-hidden overflow-y-auto pb-24 selection:bg-[#B69D74]/30 pwa-safe-top">
+    <div className="h-[100dvh] w-full bg-[#020202] text-white font-sans relative overflow-x-hidden overflow-y-auto pb-24 selection:bg-[#B69D74]/30">
 
       {/* Ambient Dark Background Effect */}
       <div className="fixed inset-0 pointer-events-none opacity-40 mix-blend-screen z-0">
@@ -1525,7 +1525,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       {/* Main Content Area (Mobile Container Logic) */}
       <div className="relative z-10 w-full max-w-[480px] mx-auto min-h-max flex flex-col">
         {/* Shared Header Start */}
-        <div className="flex items-center justify-between p-6">
+        <div className="flex items-center justify-between px-6 pb-4 pt-[max(env(safe-area-inset-top),1.5rem)]">
           <div>
             <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Bem-vindo(a)</p>
             <h1 className="text-xl font-light tracking-wide text-white mt-1">{client.nome.split(' ')[0]}</h1>
@@ -1558,9 +1558,9 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       <nav className="fixed bottom-0 left-0 w-full z-50 px-4 pb-6 pt-4 bg-[#050505]/90 backdrop-blur-2xl border-t border-white/[0.04] pwa-safe-bottom">
         <div className="max-w-[400px] mx-auto flex items-center justify-between px-2 relative">
           
-          <button 
+          <button
             onClick={() => setActiveTab('home')}
-            className="flex flex-col items-center gap-1.5 px-3 z-10"
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10"
           >
             <Home className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'home' ? 'text-[#B69D74]' : 'text-white/30'}`} />
             <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'home' ? 'text-[#B69D74]' : 'text-transparent'}`}>
@@ -1568,18 +1568,18 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </span>
           </button>
 
-          <button 
+          <button
             onClick={() => setActiveTab('calendar')}
-            className="flex flex-col items-center gap-1.5 px-3 z-10"
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10"
           >
-            <Calendar className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'calendar' ? 'text-white' : 'text-white/30'}`} />
-            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'calendar' ? 'text-white' : 'text-transparent'}`}>
+            <Calendar className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'calendar' ? 'text-[#B69D74]' : 'text-white/30'}`} />
+            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'calendar' ? 'text-[#B69D74]' : 'text-transparent'}`}>
               Reservas
             </span>
           </button>
 
           {/* Spacer for Floating Button */}
-          <div className="w-16"></div>
+          <div className="w-[72px] shrink-0"></div>
 
           {/* Action Menu Floating Backdrop */}
           {isActionMenuOpen && (
@@ -1677,11 +1677,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
           {/* Central Floating Action Button */}
           <div className="absolute left-1/2 -top-10 -translate-x-1/2 z-50 pointer-events-auto">
-            <button 
+            <button
               onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
               className={`w-16 h-16 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(182,157,116,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 border-[4px] border-[#050505] cursor-pointer ${
-                isActionMenuOpen 
-                  ? 'bg-rose-600 shadow-[0_10px_30px_rgba(225,29,72,0.5)] rotate-45' 
+                isActionMenuOpen
+                  ? 'bg-rose-600 shadow-[0_10px_30px_rgba(225,29,72,0.5)] rotate-45'
                   : 'bg-gradient-to-tr from-[#B69D74] to-[#cbb28b] hover:from-[#a38b65] hover:to-[#B69D74]'
               }`}
               title={isActionMenuOpen ? "Fechar" : "Menu de Ações"}
@@ -1690,19 +1690,19 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </button>
           </div>
 
-          <button 
+          <button
             onClick={() => setActiveTab('finance')}
-            className="flex flex-col items-center gap-1.5 px-3 z-10"
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10"
           >
-            <Wallet className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'finance' ? 'text-white' : 'text-white/30'}`} />
-            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'finance' ? 'text-white' : 'text-transparent'}`}>
+            <Wallet className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'finance' ? 'text-[#B69D74]' : 'text-white/30'}`} />
+            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'finance' ? 'text-[#B69D74]' : 'text-transparent'}`}>
               Financeiro
             </span>
           </button>
 
           <button
             onClick={() => setActiveTab('maintenance')}
-            className="flex flex-col items-center gap-1.5 px-3 z-10"
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10"
           >
             <Wrench className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-white/30'}`} />
             <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-transparent'}`}>
@@ -1724,7 +1724,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           onClick={() => setShowProfilePanel(false)}
         />
         <div
-          className={`absolute top-0 right-0 h-full w-full max-w-sm bg-[#090909] border-l border-white/[0.04] p-6 shadow-2xl transition-transform duration-300 ease-out flex flex-col overflow-y-auto ${
+          className={`absolute top-0 right-0 h-full w-full max-w-sm bg-[#090909] border-l border-white/[0.04] px-6 pb-6 pt-[max(env(safe-area-inset-top),1.5rem)] shadow-2xl transition-transform duration-300 ease-out flex flex-col overflow-y-auto ${
             showProfilePanel ? 'translate-x-0' : 'translate-x-full'
           }`}
         >
