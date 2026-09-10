@@ -39,6 +39,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
       // Store JWT token securely
       localStorage.setItem('admin_token', data.token);
+      localStorage.setItem('last_user_type', 'admin');
       if (data.role) localStorage.setItem('admin_role', data.role);
       if (data.nome || data.username) localStorage.setItem('admin_name', data.nome || data.username);
       localStorage.setItem('admin_username', data.username);

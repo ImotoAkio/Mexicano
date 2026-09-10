@@ -8,7 +8,7 @@ interface LogoProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: string;
 }
 
-export default function Logo({ className = "h-9 w-auto text-[#B69D74]", editable = false, useCustomLogo = false, variant, ...props }: LogoProps) {
+export default function Logo({ className = "h-9 w-auto max-h-9 max-w-[140px] text-[#B69D74]", editable = false, useCustomLogo = false, variant, ...props }: LogoProps) {
   const [customLogo, setCustomLogo] = useState<string | null>(() => {
     return localStorage.getItem('custom_sidebar_logo');
   });
@@ -86,7 +86,7 @@ export default function Logo({ className = "h-9 w-auto text-[#B69D74]", editable
 
   return (
     <div 
-      className={`relative inline-flex items-center justify-center shrink-0 group ${editable ? 'cursor-pointer' : ''}`} 
+      className={`relative inline-flex items-center justify-center shrink-0 group ${className} ${editable ? 'cursor-pointer' : ''}`} 
       onClick={triggerUpload}
       title={editable ? "Clique para alterar a logo da sidebar" : undefined}
       {...props}
@@ -102,26 +102,26 @@ export default function Logo({ className = "h-9 w-auto text-[#B69D74]", editable
       )}
 
       {displayLogo ? (
-        <img 
-          src={displayLogo} 
-          alt="Logo Marina" 
-          className={`${className} object-contain max-h-9 max-w-[140px]`} 
+        <img
+          src={displayLogo}
+          alt="Logo Marina"
+          className="w-full h-full object-contain"
         />
       ) : (
-        <svg 
-          viewBox="0 0 100 100" 
-          fill="currentColor" 
-          xmlns="http://www.w3.org/2000/svg" 
-          className={`${className} h-9 w-auto max-h-9 max-w-[140px]`}
+        <svg
+          viewBox="0 0 100 100"
+          fill="currentColor"
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-full h-full"
         >
           {/* Bottom Triangle */}
-          <polygon points="12,75 80,75 85,55" />
-          
+          <polygon points="13.5,85 81.5,85 86.5,65" />
+
           {/* Middle Triangle */}
-          <polygon points="23,64 72,50 77,30" />
-          
+          <polygon points="24.5,74 73.5,60 78.5,40" />
+
           {/* Top Triangle */}
-          <polygon points="37,42 64,25 69,5" />
+          <polygon points="38.5,52 65.5,35 70.5,15" />
         </svg>
       )}
 

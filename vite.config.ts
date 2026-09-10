@@ -23,7 +23,7 @@ export default defineConfig(() => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
           maximumFileSizeToCacheInBytes: 5000000,
           navigateFallback: '/index.html',
-          navigateFallbackAllowlist: [/^\/portal/, /^\/feedback/, /^\/admin/],
+          navigateFallbackAllowlist: [/^\/portal/, /^\/feedback/, /^\/admin/, /^\/quiz/],
           runtimeCaching: [
             {
               // Cache Google Fonts

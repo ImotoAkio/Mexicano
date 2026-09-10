@@ -201,6 +201,12 @@ export interface TransacaoFinanceira {
   descricao: string;
   clienteId?: string; // Optional linkage to client
   embarcacaoId?: string; // Optional linkage to boat
+  fornecedorId?: string;
+  contaBancariaId?: string;
+  empresa?: string;
+  grupoParcelamentoId?: string;
+  numeroParcela?: number;
+  totalParcelas?: number;
   comprovante?: string; // URL/Path to receipt file
   createdAt: string;
   asaasPaymentId?: string;

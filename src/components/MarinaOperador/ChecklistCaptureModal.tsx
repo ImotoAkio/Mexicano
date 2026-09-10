@@ -177,6 +177,8 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
   const isComplete = filledRequired >= totalRequired;
   const progressPct = totalRequired > 0 ? (filledRequired / totalRequired) * 100 : 0;
 
+  const isUploadingBlob = Object.values(fotos).some(url => url.startsWith('blob:')) || fotosExtras.some(url => url.startsWith('blob:'));
+
   const getTipoLabel = () => {
     switch (tipo) {
       case 'descida': return { label: 'Checklist de Descida', sub: 'Descida para a água / Rampa', color: 'bg-blue-100 text-blue-700 border-blue-300' };
@@ -834,9 +836,9 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={!isComplete || isSubmitting}
+              disabled={!isComplete || isSubmitting || isUploadingBlob}
               className={`w-full h-14 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition active:scale-[0.98] ${
-                isComplete
+                isComplete && !isUploadingBlob
                   ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed'
               }`}
@@ -845,6 +847,11 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Gravando...
+                </>
+              ) : isUploadingBlob ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                  Aguarde o envio das fotos...
                 </>
               ) : isComplete ? (
                 <>

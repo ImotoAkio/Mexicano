@@ -17,7 +17,7 @@ let memoryRegistrosAtividades: any[] = [];
 
 // Helper: Get admin JWT token for authenticated API calls
 export function getAdminToken(): string | null {
-  return localStorage.getItem('admin_token');
+  return localStorage.getItem('admin_token') || localStorage.getItem('client_token');
 }
 
 const pendingSaves: Promise<any>[] = [];

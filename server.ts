@@ -27,6 +27,7 @@ import chamadosRoutes from "./server-routes/chamados.routes";
 import tiposManutencaoRoutes from "./server-routes/tipos-manutencao.routes";
 import financeiroRoutes from "./server-routes/financeiro.routes";
 import webhookRoutes from "./server-routes/webhook.routes";
+import publicLeadsRoutes from "./server-routes/leads.routes";
 import { PDFDocument } from "pdf-lib";
 import {
   getDbPool, getDbStatus, initializeDatabase, pullDatabase,
@@ -323,6 +324,7 @@ app.use("/api/tipos-manutencao", tiposManutencaoRoutes);
 app.use('/api/client/', clientRoutes);
 app.use('/api/financeiro', financeiroRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/leads', publicLeadsRoutes);
 
 // Route: Save admin user
 app.post("/api/admin/users/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {

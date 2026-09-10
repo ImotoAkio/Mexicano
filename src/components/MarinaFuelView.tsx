@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2, Banknote, QrCode, Zap } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
+import { getFuelPrice, getFuelPaymentLabel } from '../utils/constants';
 import { logAction } from '../db';
 import SearchableSelect from './shared/SearchableSelect';
 
@@ -246,7 +247,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
       const isCobrado = r.abastecimentoStatusCobranca === 'cobrado';
       const pm = (r.abastecimentoFormaPagamento || 'pix').toLowerCase();
-      const unitPrice = pm === 'credit' ? 10 : pm === 'admin' ? 13 : 9;
+      const unitPrice = getFuelPrice(pm);
       const valorTotal = r.abastecimentoValorTotal || (litros * unitPrice);
       return {
         id: `res_fuel_${r.id}`,
@@ -450,26 +451,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     }
 
     setIsSubmitting(true);
-    
+
     const litrosNum = parseFloat(liters.replace(',', '.'));
-    let precoPorLitro = 9.0;
-    let paymentLabel = 'PIX (Digital)';
-    if (paymentType === 'dinheiro') {
-      precoPorLitro = 9.0;
-      paymentLabel = 'Dinheiro (Caixa Físico)';
-    } else if (paymentType === 'credit') {
-      precoPorLitro = 10.0;
-      paymentLabel = 'Cartão de Crédito';
-    } else if (paymentType === 'debit') {
-      precoPorLitro = 9.0;
-      paymentLabel = 'Cartão de Débito';
-    } else if (paymentType === 'admin') {
-      precoPorLitro = 13.0;
-      paymentLabel = 'Enviar p/ Administradora';
-    }
+    const isAvulso = saleMode === 'avulso';
+    const usingAdmin = paymentType === 'admin' && !isAvulso;
+    const precoPorLitro = usingAdmin ? 13.0 : getFuelPrice(paymentType);
+    const paymentLabel = usingAdmin ? 'Enviar p/ Administradora' : getFuelPaymentLabel(paymentType);
     const valorTotal = litrosNum * precoPorLitro;
 
-    const isAvulso = saleMode === 'avulso';
     const boat = isAvulso ? null : getEmbarcacao(selectedBoatId);
     const clientId = isAvulso ? '' : (selectedClientId || boat?.donos?.[0] || '');
     const identificacao = avulsoIdentificacao.trim() || 'Visitante Externo';
@@ -621,27 +610,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
     const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
 
-    let pricePerLiter = 9.0;
-    let paymentLabel = 'PIX (Digital)';
-    let txStatus = 'pago';
-
-    if (chargePaymentType === 'dinheiro') {
-      pricePerLiter = 9.0;
-      paymentLabel = 'Dinheiro (Caixa Físico)';
-      txStatus = 'pago';
-    } else if (chargePaymentType === 'credit') {
-      pricePerLiter = 10.0;
-      paymentLabel = 'Cartão de Crédito';
-      txStatus = 'pago';
-    } else if (chargePaymentType === 'debit') {
-      pricePerLiter = 9.0;
-      paymentLabel = 'Cartão de Débito';
-      txStatus = 'pago';
-    } else if (chargePaymentType === 'admin') {
-      pricePerLiter = 13.0;
-      paymentLabel = 'Enviar para a Administradora';
-      txStatus = 'pendente';
-    }
+    const pricePerLiter = chargePaymentType === 'admin' ? 13.0 : getFuelPrice(chargePaymentType);
+    const paymentLabel = chargePaymentType === 'admin' ? 'Enviar para a Administradora' : getFuelPaymentLabel(chargePaymentType);
+    const txStatus = chargePaymentType === 'admin' ? 'pendente' : 'pago';
 
     const totalValue = litrosNum * pricePerLiter;
     const boat = getEmbarcacao(t.embarcacaoId);
@@ -904,21 +875,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
     setIsSubmitting(true);
     const litrosNum = parseFloat(editLiters.replace(',', '.'));
-    let pricePerLiter = 9.0;
-    let paymentLabel = 'PIX (Digital)';
-    if (editPaymentType === 'dinheiro') {
-      pricePerLiter = 9.0;
-      paymentLabel = 'Dinheiro (Caixa Físico)';
-    } else if (editPaymentType === 'credit') {
-      pricePerLiter = 10.0;
-      paymentLabel = 'Cartão de Crédito';
-    } else if (editPaymentType === 'debit') {
-      pricePerLiter = 9.0;
-      paymentLabel = 'Cartão de Débito';
-    } else if (editPaymentType === 'admin') {
-      pricePerLiter = 13.0;
-      paymentLabel = 'Faturado / Administradora';
-    }
+
+    const pricePerLiter = editPaymentType === 'admin' ? 13.0 : getFuelPrice(editPaymentType);
+    const paymentLabel = editPaymentType === 'admin' ? 'Faturado / Administradora' : getFuelPaymentLabel(editPaymentType);
 
     const valorTotal = litrosNum * pricePerLiter;
     const boat = isAvulsoItem ? null : getEmbarcacao(editBoatId);
@@ -1495,10 +1454,10 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             <div className="relative">
               <button
                 onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs ${
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer shadow-2xs ${
                   isFilterPanelOpen || activeFilterCount > 0
                     ? 'bg-blue-50 border-blue-200 text-blue-700'
-                    : 'bg-slate-50 border-slate-200/90 text-slate-700 hover:bg-slate-100'
+                    : 'bg-slate-50 border-slate-200/90 text-slate-700 hover:bg-slate-100 active:scale-95 transition-all'
                 }`}
               >
                 <Calendar className="w-4 h-4 text-blue-600" />
@@ -1509,31 +1468,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
             <button
               onClick={() => handleExportSelected()}
-              className="px-3.5 py-2.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
             >
               <Download className="w-4 h-4 text-slate-500" />
               <span>Exportar</span>
             </button>
 
-            {/* Botão 1: Abastecimento Avulso (Externo) */}
-            <button
-              onClick={() => {
-                setSaleMode('avulso');
-                setSelectedBoatId('');
-                setSelectedClientId('');
-                setAvulsoIdentificacao('');
-                setLiters('');
-                setComprovanteUrl(null);
-                setPaymentType('pix');
-                setIsFuelModalOpen(true);
-              }}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              <Zap className="w-4 h-4 text-emerald-100" />
-              <span>+ Abastecimento Avulso</span>
-            </button>
-
-            {/* Botão 2: Lançar Embarcação Cadastrada */}
+            {/* Unified Action Button */}
             <button
               onClick={() => {
                 setSaleMode('embarcacao');
@@ -1545,10 +1486,10 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 setPaymentType('pix');
                 setIsFuelModalOpen(true);
               }}
-              className="px-4 py-2.5 bg-[#2563EB] hover:bg-[#1d4ed8] active:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              className="px-4 py-2.5 bg-[#2563EB] hover:bg-[#1d4ed8] active:bg-blue-800 text-white font-semibold text-xs rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              <span>Lançar Embarcação</span>
+              <span>Registrar Abastecimento</span>
             </button>
           </div>
         </div>
@@ -1559,14 +1500,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
           {/* KPI Card 1: Total Revenue (Pago) */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Receita Recebida</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Receita Recebida</span>
               <MoreVertical className="w-4 h-4 text-slate-300" />
             </div>
             <div className="text-3xl font-black text-slate-900">
               {totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </div>
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+              <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
                 <ArrowUpRight className="w-3.5 h-3.5" />
                 <span>+12.5%</span>
               </span>
@@ -1577,14 +1518,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
           {/* KPI Card 2: Liters Sold */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total de Litros (Vendas)</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total de Litros (Vendas)</span>
               <MoreVertical className="w-4 h-4 text-slate-300" />
             </div>
             <div className="text-3xl font-black text-slate-900">
-              {totalLiters.toFixed(1)} <span className="text-xl font-bold text-slate-500">L</span>
+              {totalLiters.toFixed(1)} <span className="text-xl font-semibold text-slate-500">L</span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+              <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
                 <ArrowUpRight className="w-3.5 h-3.5" />
                 <span>+5.2%</span>
               </span>
@@ -1595,14 +1536,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
           {/* KPI Card 3: Pending Bills */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Faturamentos Abertos</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Faturamentos Abertos</span>
               <MoreVertical className="w-4 h-4 text-slate-300" />
             </div>
             <div className="text-3xl font-black text-slate-900">
               {totalPendingValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </div>
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-rose-600 font-bold flex items-center gap-0.5">
+              <span className="text-rose-600 font-semibold flex items-center gap-0.5">
                 <ArrowDownRight className="w-3.5 h-3.5" />
                 <span>-2.4%</span>
               </span>
@@ -1613,12 +1554,12 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
           {/* KPI Card 4: Orders/Transactions */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Abastecimentos</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Abastecimentos</span>
               <MoreVertical className="w-4 h-4 text-slate-300" />
             </div>
             <div className="text-3xl font-black text-slate-900">{fuelTransactions.length}</div>
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+              <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
                 <ArrowUpRight className="w-3.5 h-3.5" />
                 <span>+1.1%</span>
               </span>
@@ -1626,99 +1567,6 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             </div>
           </div>
 
-        </div>
-
-        {/* Caixa Físico vs PIX vs Cartão Crédito vs Cartão Débito vs Administradora Breakdown */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200/80 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-50 border border-emerald-200/60 rounded-xl text-emerald-600">
-                <Banknote className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-slate-800 tracking-tight">Conferência & Fechamento de Caixa da Marina</h3>
-                <p className="text-[11px] text-slate-500">Separação de dinheiro físico em espécie vs transações bancárias / maquininha / faturadas</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Geral Recebido</span>
-              <span className="text-lg font-black text-emerald-600 font-mono">
-                {totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5">
-            {/* 1. Dinheiro em Espécie (Caixa da Marina) */}
-            <div className="bg-emerald-50/50 hover:bg-emerald-50/80 border border-emerald-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1">
-                <Banknote className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="truncate">Caixa Físico</span>
-              </span>
-              <p className="text-base sm:text-lg font-black text-emerald-900 font-mono tracking-tight">
-                {totalDinheiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </p>
-              <p className="text-[10px] text-emerald-600/80 font-medium truncate">
-                💵 Cédulas no caixa
-              </p>
-            </div>
-
-            {/* 2. PIX (Conta Bancária) */}
-            <div className="bg-cyan-50/50 hover:bg-cyan-50/80 border border-cyan-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 flex items-center gap-1">
-                <QrCode className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-                <span className="truncate">PIX (Digital)</span>
-              </span>
-              <p className="text-base sm:text-lg font-black text-cyan-900 font-mono tracking-tight">
-                {totalPix.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </p>
-              <p className="text-[10px] text-cyan-600/80 font-medium truncate">
-                📱 Transferência / QR
-              </p>
-            </div>
-
-            {/* 3. Cartão de Crédito */}
-            <div className="bg-indigo-50/50 hover:bg-indigo-50/80 border border-indigo-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1">
-                <CreditCard className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                <span className="truncate">Cartão Crédito</span>
-              </span>
-              <p className="text-base sm:text-lg font-black text-indigo-900 font-mono tracking-tight">
-                {totalCredito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </p>
-              <p className="text-[10px] text-indigo-600/80 font-medium truncate">
-                💳 Maquininha (Crédito)
-              </p>
-            </div>
-
-            {/* 4. Cartão de Débito */}
-            <div className="bg-blue-50/50 hover:bg-blue-50/80 border border-blue-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 flex items-center gap-1">
-                <CreditCard className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span className="truncate">Cartão Débito</span>
-              </span>
-              <p className="text-base sm:text-lg font-black text-blue-900 font-mono tracking-tight">
-                {totalDebito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </p>
-              <p className="text-[10px] text-blue-600/80 font-medium truncate">
-                💳 Maquininha (Débito)
-              </p>
-            </div>
-
-            {/* 5. Administradora (Faturado Pós-pago) */}
-            <div className="bg-purple-50/50 hover:bg-purple-50/80 border border-purple-200/60 rounded-xl p-2.5 sm:p-3 space-y-1 transition-all">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                <span className="truncate">Administradora</span>
-              </span>
-              <p className="text-base sm:text-lg font-black text-purple-900 font-mono tracking-tight">
-                {totalAdmin.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </p>
-              <p className="text-[10px] text-purple-600/80 font-medium truncate">
-                🏢 Faturado pós-pago
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Search, Filter & Tabs Bar */}
@@ -1746,7 +1594,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               {/* Toggle Filter Panel Button */}
               <button
                 onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-                className={`px-3.5 py-2.5 border text-xs font-bold rounded-xl shadow-2xs transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+                className={`px-3.5 py-2.5 border text-xs font-semibold rounded-xl shadow-2xs transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
                   isFilterPanelOpen || activeFilterCount > 0
                     ? 'bg-blue-600 border-blue-600 text-white shadow-md'
                     : 'bg-white border-slate-200/90 text-slate-700 hover:bg-slate-50'
@@ -1772,7 +1620,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 <button
                   key={tab.id}
                   onClick={() => setStatusFilter(tab.id as any)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                     statusFilter === tab.id ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-900'
                   }`}
                 >
@@ -1794,7 +1642,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 {activeFilterCount > 0 && (
                   <button
                     onClick={handleResetFilters}
-                    className="text-[11px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
+                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                     <span>Limpar Filtros</span>
@@ -1806,7 +1654,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 
                 {/* 1. Período Preset */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                  <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
                     <span>Período</span>
                   </label>
@@ -1828,7 +1676,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
                 {/* 2. Embarcação Filter */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                  <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
                     <Ship className="w-3.5 h-3.5 text-slate-400" />
                     <span>Embarcação</span>
                   </label>
@@ -1851,7 +1699,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
                 {/* 3. Cliente Filter */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                  <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
                     <UserIcon className="w-3.5 h-3.5 text-slate-400" />
                     <span>Cliente</span>
                   </label>
@@ -1873,7 +1721,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
                 {/* 4. Forma de Pagamento Filter */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                  <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
                     <CreditCard className="w-3.5 h-3.5 text-slate-400" />
                     <span>Forma de Pagamento</span>
                   </label>
@@ -1897,7 +1745,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               {(periodPreset === 'custom' || periodPreset === 'all') && (
                 <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-200/60">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-slate-500">De:</span>
+                    <span className="text-[11px] font-semibold text-slate-500">De:</span>
                     <input
                       type="date"
                       value={startDate}
@@ -1909,7 +1757,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-slate-500">Até:</span>
+                    <span className="text-[11px] font-semibold text-slate-500">Até:</span>
                     <input
                       type="date"
                       value={endDate}
@@ -1931,7 +1779,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">Filtros ativos:</span>
               
               {periodPreset !== 'this_month' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-semibold">
                   <span>Período: {getPeriodLabel()}</span>
                   <button onClick={() => handleSelectPeriodPreset('this_month')} className="hover:text-blue-900 cursor-pointer">
                     <X className="w-3 h-3" />
@@ -1940,7 +1788,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               )}
 
               {boatFilter !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold">
                   <span>Barco: {boatFilter === 'avulso' ? '⚡ Vendas Avulsas' : (getEmbarcacao(boatFilter)?.nome || boatFilter)}</span>
                   <button onClick={() => setBoatFilter('all')} className="hover:text-indigo-900 cursor-pointer">
                     <X className="w-3 h-3" />
@@ -1949,7 +1797,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               )}
 
               {clientFilter !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-semibold">
                   <span>Cliente: {getCliente(clientFilter)?.nome || clientFilter}</span>
                   <button onClick={() => setClientFilter('all')} className="hover:text-purple-900 cursor-pointer">
                     <X className="w-3 h-3" />
@@ -1958,7 +1806,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               )}
 
               {paymentFilter !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold">
                   <span>
                     Pagamento: {
                       paymentFilter === 'dinheiro' ? 'Caixa Físico' :
@@ -1976,7 +1824,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               )}
 
               {searchTerm.trim() !== '' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-semibold">
                   <span>Busca: "{searchTerm}"</span>
                   <button onClick={() => setSearchTerm('')} className="hover:text-slate-900 cursor-pointer">
                     <X className="w-3 h-3" />
@@ -1986,7 +1834,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
               <button
                 onClick={handleResetFilters}
-                className="text-[11px] font-bold text-rose-600 hover:underline cursor-pointer ml-1"
+                className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer ml-1"
               >
                 Limpar tudo
               </button>
@@ -1995,389 +1843,231 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
         </div>
 
-        {/* Clean Data Table Container (Mobile Cards + Desktop Table) */}
-        <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white">
+        {/* Unified Data Table (Mobile Responsive + Apple Design) */}
+        <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-[24px] md:rounded-[32px] overflow-hidden shadow-sm ring-1 ring-black/5 mx-2 md:mx-0">
           {fuelTransactions.length === 0 ? (
-            <div className="p-10 sm:p-16 text-center text-slate-400 flex flex-col items-center gap-3">
-              <Droplets className="w-10 h-10 text-slate-300" />
-              <p className="text-xs font-bold text-slate-600">Nenhum registro de abastecimento encontrado com os filtros aplicados.</p>
+            <div className="p-12 sm:p-20 text-center text-slate-400 flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center">
+                <Droplets className="w-6 h-6 text-slate-300" />
+              </div>
+              <div>
+                <p className="text-[14px] font-medium tracking-tight text-slate-600">Nenhum registro encontrado</p>
+                <p className="text-[13px] text-slate-400 mt-0.5">Tente ajustar ou limpar os filtros de busca.</p>
+              </div>
               {activeFilterCount > 0 && (
                 <button
                   onClick={handleResetFilters}
-                  className="mt-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                  className="mt-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[13px] tracking-tight rounded-xl transition-all cursor-pointer active:scale-95"
                 >
                   Limpar Filtros
                 </button>
               )}
             </div>
           ) : (
-            <>
-              {/* Mobile Card List (Visible on Phone/Mobile) */}
-              <div className="block md:hidden divide-y divide-slate-100">
+            <div className="flex flex-col">
+              {/* Header Row (Hidden on Small Screens) */}
+              <div className="hidden md:grid grid-cols-[minmax(0,3.5fr)_minmax(0,2.5fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_50px] gap-4 px-5 py-3.5 bg-slate-50/50 backdrop-blur-md border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.length > 0 && selectedIds.length === fuelTransactions.length}
+                    onChange={toggleSelectAllList}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 cursor-pointer"
+                  />
+                  <span className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">Embarcação / Ref</span>
+                </div>
+                <span className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">Cliente / Data</span>
+                <span className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">Valor (Litros)</span>
+                <span className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">Status</span>
+                <span className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">Pagamento</span>
+                <span className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase text-right pr-2 col-span-2">Ações</span>
+              </div>
+
+              {/* Rows */}
+              <div className="divide-y divide-slate-100/50">
                 {fuelTransactions.map(t => {
                   const boat = getEmbarcacao(t.embarcacaoId);
                   const client = getCliente(t.clienteId);
                   const isSelected = selectedIds.includes(t.id);
                   const isAvulsoItem = t.isAvulso || !t.embarcacaoId || (t.descricao && t.descricao.toLowerCase().includes('avulso'));
                   const avulsoDetail = t.identificacaoAvulso || (t.descricao?.includes('Avulso (') ? t.descricao.split('Avulso (')[1]?.split(')')[0] : 'Visitante Externo');
-                  
+
                   const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
                   const litersVal = match ? parseFloat(match[1].replace(',', '.')) : 0;
+
                   const isItemCobrado = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
                   const isFaturado = (t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoFormaPagamento === 'admin');
 
+                  const StatusBadge = () => (
+                      isItemCobrado ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 tracking-tight shrink-0 border border-emerald-100/50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            {isFaturado ? 'Faturado' : 'Pago'}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 tracking-tight shrink-0 border border-amber-100/50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            Pendente
+                        </span>
+                      )
+                  );
+
                   return (
-                    <div 
-                      key={t.id} 
-                      className={`p-3.5 sm:p-4 transition-colors space-y-2.5 ${isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}
+                    <div
+                      key={t.id}
+                      className={`group flex flex-col md:grid md:grid-cols-[minmax(0,3.5fr)_minmax(0,2.5fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_50px] gap-3 md:gap-4 p-4 md:px-5 md:py-3.5 transition-colors ${
+                        isSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/50'
+                      }`}
                     >
-                      {/* Top Row: Checkbox, Boat Name, Status Pill */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <input 
-                            type="checkbox" 
-                            checked={isSelected}
-                            onChange={() => toggleSelectOne(t.id)}
-                            className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer shrink-0"
-                          />
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 border ${
-                            isAvulsoItem ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-blue-50 text-blue-600 border-blue-100'
-                          }`}>
-                            {isAvulsoItem ? <Zap className="w-4 h-4 text-emerald-600" /> : <Droplets className="w-4 h-4 text-blue-600" />}
-                          </div>
-                          <div className="min-w-0">
-                            <span className="font-bold text-slate-900 text-sm truncate block leading-tight">
-                              {isAvulsoItem ? '⚡ Abastecimento Avulso' : (boat ? getBoatCode(boat) : 'Venda Avulsa')}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono block">
-                              {isAvulsoItem ? (avulsoDetail || 'Visitante Externo') : `#${t.id.substring(t.id.length - 8)}`}
-                            </span>
-                          </div>
+                      {/* Embarcação / Identificação (Desktop + Shared Mobile Top Row) */}
+                      <div className="flex items-start md:items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectOne(t.id)}
+                          className="w-[18px] h-[18px] md:w-4 md:h-4 rounded border-slate-300 md:border-slate-300 text-blue-600 focus:ring-blue-600 cursor-pointer shrink-0 mt-1 md:mt-0"
+                        />
+
+                        <div className="flex bg-slate-50 border border-slate-100 rounded-xl w-10 h-10 md:hidden shrink-0 items-center justify-center">
+                            {isAvulsoItem ? <Zap className="w-5 h-5 text-indigo-500" /> : <Droplets className="w-5 h-5 text-blue-500" />}
                         </div>
 
-                        {isItemCobrado ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            <span>{isFaturado ? 'Faturado' : 'Pago'}</span>
+                        <div className="flex flex-col min-w-0 justify-center">
+                          <span className="text-[14px] md:text-[13px] font-medium tracking-tight text-slate-900 truncate block">
+                            {isAvulsoItem ? '⚡ Abst. Avulso' : (boat ? getBoatCode(boat) : 'Venda Avulsa')}
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200 shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span>Pendente</span>
+
+                          {/* Mobile subtitle rendering */}
+                          <span className="md:hidden text-[12px] opacity-70 text-slate-500 block truncate leading-tight">
+                            {isAvulsoItem ? (avulsoDetail || 'Visitante Externo') : (client?.nome || 'N/A')}
+                          </span>
+
+                          <span className="hidden md:block text-[11px] text-slate-400 font-mono truncate">
+                            {isAvulsoItem ? (avulsoDetail || 'Visitante Externo') : `#${t.id.substring(t.id.length - 8)}`}
+                          </span>
+                        </div>
+
+                        {/* Mobile Status placed right natively */}
+                        <div className="md:hidden ml-auto">
+                            <StatusBadge />
+                        </div>
+                      </div>
+
+                      {/* Desktop Client / Date */}
+                      <div className="hidden md:flex flex-col min-w-0 justify-center">
+                        <span className="text-[13px] tracking-tight text-slate-700 truncate">
+                          {isAvulsoItem ? 'Cliente Avulso' : (client?.nome || 'N/A')}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {t.data || '-'} {t.hora ? `às ${t.hora}` : ''}
+                        </span>
+                      </div>
+
+                      {/* Value / Quantities (Mobile boxed, Desktop inline) */}
+                      <div className="flex justify-between items-center md:flex-col md:items-start md:justify-center p-3 md:p-0 bg-slate-50/60 md:bg-transparent rounded-[16px] md:rounded-none border border-slate-100/80 md:border-transparent mt-1 md:mt-0">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] md:hidden text-slate-400 uppercase tracking-wider font-semibold mb-0.5">Valor & Volume</span>
+                            <span className="text-[14px] md:text-[13px] font-semibold text-slate-900 tracking-tight">
+                              {Number(t.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </span>
+                            <span className="text-[12px] md:text-[11px] text-indigo-600/90 font-medium md:text-slate-500 border md:border-transparent border-indigo-100/50 bg-indigo-50/50 md:bg-transparent px-1.5 md:px-0 py-0.5 md:py-0 rounded-md md:rounded-none self-start md:self-auto mt-1 md:mt-0">
+                              {litersVal.toFixed(1)} Litros
+                            </span>
+                          </div>
+
+                          <div className="md:hidden text-right flex flex-col items-end">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-0.5 block">Data</span>
+                            <span className="text-[12px] font-mono text-slate-600">{t.data || '-'}</span>
+                            <span className="text-[11px] text-slate-400 block">{t.hora ? `${t.hora}` : ''}</span>
+                          </div>
+                      </div>
+
+                      {/* Status (Desktop) */}
+                      <div className="hidden md:flex flex-col justify-center items-start">
+                        <StatusBadge />
+                      </div>
+
+                      {/* Payment Mode */}
+                      <div className="flex items-center md:flex-col md:items-start md:justify-center gap-2 md:gap-0 p-3 md:p-0 bg-slate-50/60 md:bg-transparent rounded-[16px] md:rounded-none border border-slate-100/80 md:border-transparent -mt-1 md:mt-0">
+                        <Wallet className="w-4 h-4 md:w-3.5 md:h-3.5 text-slate-400 shrink-0 inline-block md:hidden mb-0.5" />
+                        <span className="text-[12px] text-slate-700 tracking-tight truncate flex items-center md:gap-1.5 flex-1">
+                          <Wallet className="w-3.5 h-3.5 text-slate-400 shrink-0 hidden md:inline-block" />
+                          {getFuelPaymentLabel(t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '') || 'Não Informado'}
+                        </span>
+                        {t.operadorAbastecimento && (
+                          <span className="text-[11px] text-slate-400 font-medium truncate flex items-center gap-1 mt-0 md:mt-0.5 bg-white md:bg-transparent px-1.5 md:px-0 py-0.5 md:py-0 rounded border md:border-transparent border-slate-200/50" title="Operador">
+                              <User className="w-3 h-3 shrink-0 opacity-70" />
+                              {t.operadorAbastecimento}
                           </span>
                         )}
                       </div>
 
-                      {/* Middle Row: Value & Liters, Client & Date */}
-                      <div className="grid grid-cols-2 gap-2 pt-1 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 text-xs">
-                        <div>
-                          <span className="text-[10px] text-slate-400 font-medium block uppercase tracking-wider">Valor & Litros</span>
-                          <span className="font-extrabold text-slate-900 text-sm block">
-                            {Number(t.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                          </span>
-                          <span className="text-[11px] text-slate-500 font-semibold">{litersVal.toFixed(1)} Litros</span>
+                      {/* Actions (Unified approach for Mobile and Desktop Actions) */}
+                      <div className="flex items-center justify-end md:justify-end md:ml-auto md:col-span-2 mt-1 md:mt-0 w-full gap-2">
+                        {/* Mobile Actions: Buttons directly visible for easy access */}
+                        <div className="md:hidden flex w-full gap-2">
+                            {(!isItemCobrado) && (
+                                <button
+                                    onClick={() => {
+                                        setChargeTargetItem(t);
+                                        setChargePaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+                                        setChargeComprovanteUrl(t.comprovanteUrl || null);
+                                    }}
+                                    className="flex-1 py-3 bg-blue-600/90 hover:bg-blue-600 border border-blue-500/50 text-white font-medium text-[13px] tracking-tight rounded-[14px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm"
+                                >
+                                    <Droplets className="w-4 h-4" /> Cobrar
+                                </button>
+                            )}
+
+                            <button
+                                onClick={(e) => handleToggleActionMenu(e, t)}
+                                className={`${isItemCobrado ? 'w-full flex-1' : 'w-[52px]'} py-3 bg-slate-100 hover:bg-slate-200 border border-slate-200/60 text-slate-700 font-medium text-[13px] tracking-tight rounded-[14px] flex items-center justify-center gap-2 active:scale-95 transition-all`}
+                            >
+                                <MoreVertical className="w-4 h-4" />
+                                {isItemCobrado && <span>Mais Opções</span>}
+                            </button>
                         </div>
 
-                        <div>
-                          <span className="text-[10px] text-slate-400 font-medium block uppercase tracking-wider">Cliente / Data</span>
-                          <span className="font-bold text-slate-800 truncate block">
-                            {isAvulsoItem ? 'Cliente Avulso (Externo)' : (client?.nome || 'N/A')}
-                          </span>
-                          <span className="text-[10px] text-slate-500 font-mono block">{t.data}</span>
-                        </div>
-                      </div>
+                        {/* Desktop Actions */}
+                        <div className="hidden md:flex relative items-center gap-2">
+                            <button
+                                onClick={() => {
+                                  if (!isItemCobrado) {
+                                    setChargeTargetItem(t);
+                                    setChargePaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+                                    setChargeComprovanteUrl(t.comprovanteUrl || null);
+                                  }
+                                }}
+                                disabled={isItemCobrado}
+                                className={`px-3 py-1.5 font-semibold text-xs tracking-tight rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0 ${
+                                  isItemCobrado
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 cursor-default shadow-none pointer-events-none'
+                                    : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95'
+                                }`}
+                            >
+                                {isItemCobrado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Droplets className="w-3.5 h-3.5" />}
+                                <span>{isItemCobrado ? 'Cobrado' : 'Cobrar'}</span>
+                            </button>
 
-                      {/* Bottom Actions Row */}
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                          {(() => {
-                            const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
-                            const desc = (t.descricao || '').toLowerCase();
-                            if (isFaturado || pm === 'admin' || desc.includes('admin') || desc.includes('faturado')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200">
-                                  <Building2 className="w-3 h-3 text-purple-600" />
-                                  <span>Faturado Admin</span>
-                                </span>
-                              );
-                            }
-                            if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-300">
-                                  <Banknote className="w-3 h-3 text-emerald-600" />
-                                  <span>Dinheiro (Caixa)</span>
-                                </span>
-                              );
-                            }
-                            if (pm === 'pix' || desc.includes('pix')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-cyan-50 text-cyan-700 border border-cyan-300">
-                                  <QrCode className="w-3 h-3 text-cyan-600" />
-                                  <span>PIX (Digital)</span>
-                                </span>
-                              );
-                            }
-                            if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                                  <CreditCard className="w-3 h-3 text-blue-600" />
-                                  <span>Cartão Crédito</span>
-                                </span>
-                              );
-                            }
-                            if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                                  <CreditCard className="w-3 h-3 text-blue-600" />
-                                  <span>Cartão Débito</span>
-                                </span>
-                              );
-                            }
-                            return (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                <Clock className="w-3 h-3 text-slate-400" />
-                                <span>Pendente</span>
-                              </span>
-                            );
-                          })()}
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => {
-                              if (!isItemCobrado) {
-                                setChargeTargetItem(t);
-                                const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
-                                setChargePaymentType(pm === 'dinheiro' ? 'dinheiro' : pm === 'credit' ? 'credit' : pm === 'debit' ? 'debit' : pm === 'admin' ? 'admin' : 'pix');
-                                setChargeComprovanteUrl(t.comprovanteUrl || null);
-                              }
-                            }}
-                            disabled={isItemCobrado}
-                            className={`px-3 py-1.5 font-bold text-xs rounded-xl transition-all shadow-2xs flex items-center gap-1.5 ${
-                              isItemCobrado
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 cursor-default opacity-90'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95'
-                            }`}
-                          >
-                            {isItemCobrado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Droplets className="w-3.5 h-3.5" />}
-                            <span>{isItemCobrado ? 'Cobrado' : 'Cobrar'}</span>
-                          </button>
-
-                          <button
-                            onClick={(e) => handleToggleActionMenu(e, t)}
-                            className="p-1.5 rounded-xl transition-colors cursor-pointer border border-slate-200 text-slate-500 hover:text-slate-900 bg-white"
-                            title="Opções"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
+                            <div className="relative">
+                                <button
+                                    onClick={(e) => handleToggleActionMenu(e, t)}
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors active:scale-95 cursor-pointer ${
+                                        activeActionMenuId === t.id
+                                            ? 'bg-slate-900 text-white'
+                                            : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    <MoreVertical className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
-
-              {/* Desktop Data Table (Visible on Tablet/Desktop) */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                    <th className="p-3.5 w-10 text-center">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedIds.length === fuelTransactions.length && fuelTransactions.length > 0}
-                        onChange={toggleSelectAll}
-                        className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
-                      />
-                    </th>
-                    <th className="p-3.5">Produto & ID</th>
-                    <th className="p-3.5">Valor & Litros</th>
-                    <th className="p-3.5">Cliente</th>
-                    <th className="p-3.5">Pagamento</th>
-                    <th className="p-3.5 text-center">Status</th>
-                    <th className="p-3.5 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {fuelTransactions.map(t => {
-                    const boat = getEmbarcacao(t.embarcacaoId);
-                    const client = getCliente(t.clienteId);
-                    const isSelected = selectedIds.includes(t.id);
-                    const isAvulsoItem = t.isAvulso || !t.embarcacaoId || (t.descricao && t.descricao.toLowerCase().includes('avulso'));
-                    const avulsoDetail = t.identificacaoAvulso || (t.descricao?.includes('Avulso (') ? t.descricao.split('Avulso (')[1]?.split(')')[0] : 'Visitante Externo');
-                    
-                    const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-                    const litersVal = match ? parseFloat(match[1].replace(',', '.')) : 0;
-                    const isItemCobrado = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
-                    const isFaturado = (t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoFormaPagamento === 'admin');
-
-                    return (
-                      <tr 
-                        key={t.id} 
-                        className={`transition-colors hover:bg-slate-50/60 ${isSelected ? 'bg-indigo-50/30' : ''}`}
-                      >
-                        <td className="p-3.5 text-center">
-                          <input 
-                            type="checkbox" 
-                            checked={isSelected}
-                            onChange={() => toggleSelectOne(t.id)}
-                            className="w-4 h-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
-                          />
-                        </td>
-
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border ${
-                              isAvulsoItem ? 'bg-emerald-50 text-emerald-600 border-emerald-200/80' : 'bg-blue-50 text-blue-600 border-blue-100/80'
-                            }`}>
-                              {isAvulsoItem ? <Zap className="w-4 h-4 text-emerald-600" /> : <Droplets className="w-4 h-4" />}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-bold text-slate-900 block text-sm">
-                                  {isAvulsoItem ? 'Abastecimento Avulso' : (boat ? getBoatCode(boat) : 'Venda Avulsa')}
-                                </span>
-                                {isAvulsoItem && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800">
-                                    ⚡ Avulso
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-[11px] text-slate-400 font-medium block">
-                                {isAvulsoItem ? (avulsoDetail || 'Visitante Externo') : `#${t.id.substring(t.id.length - 8)}`}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="p-3.5">
-                          <span className="font-bold text-slate-800 block text-sm">
-                            {Number(t.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                          </span>
-                          <span className="text-[11px] text-slate-400 font-medium block">{litersVal.toFixed(1)} Litros</span>
-                        </td>
-
-                        <td className="p-3.5">
-                          <span className="font-semibold text-slate-800 block">
-                            {isAvulsoItem ? 'Cliente Avulso (Externo)' : (client?.nome || 'N/A')}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
-                            <UserIcon className="w-3 h-3 text-slate-400" />
-                            <span>Lançado por: <strong className="text-slate-600 font-semibold">{t.operador || t.operadorMarina || 'Gerente'}</strong></span>
-                          </span>
-                        </td>
-
-                        <td className="p-3.5">
-                          {(() => {
-                            const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
-                            const desc = (t.descricao || '').toLowerCase();
-                            if (isFaturado || pm === 'admin' || desc.includes('admin') || desc.includes('faturado')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200">
-                                  <Building2 className="w-3 h-3 text-purple-600" />
-                                  <span>Faturado Admin</span>
-                                </span>
-                              );
-                            }
-                            if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-300">
-                                  <Banknote className="w-3 h-3 text-emerald-600" />
-                                  <span>Dinheiro (Caixa)</span>
-                                </span>
-                              );
-                            }
-                            if (pm === 'pix' || desc.includes('pix')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-cyan-50 text-cyan-700 border border-cyan-300">
-                                  <QrCode className="w-3 h-3 text-cyan-600" />
-                                  <span>PIX (Digital)</span>
-                                </span>
-                              );
-                            }
-                            if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                                  <CreditCard className="w-3 h-3 text-blue-600" />
-                                  <span>Cartão Crédito</span>
-                                </span>
-                              );
-                            }
-                            if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                                  <CreditCard className="w-3 h-3 text-blue-600" />
-                                  <span>Cartão Débito</span>
-                                </span>
-                              );
-                            }
-                            return (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                <Clock className="w-3 h-3 text-slate-400" />
-                                <span>Pendente</span>
-                              </span>
-                            );
-                          })()}
-                          <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">{t.data}</span>
-                        </td>
-
-                        <td className="p-3.5 text-center">
-                          {isItemCobrado ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                              <span>{isFaturado ? 'Concluído (Faturado)' : 'Concluído (Pago)'}</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-200/60">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                              <span>Pendente</span>
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="p-3.5 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {/* 1. Cobrar button */}
-                            <button
-                              onClick={() => {
-                                if (!isItemCobrado) {
-                                  setChargeTargetItem(t);
-                                  setChargePaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
-                                  setChargeComprovanteUrl(t.comprovanteUrl || null);
-                                }
-                              }}
-                              disabled={isItemCobrado}
-                              className={`px-3 py-1.5 font-bold text-xs rounded-xl transition-all shadow-2xs flex items-center gap-1.5 shrink-0 ${
-                                isItemCobrado
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 cursor-default opacity-90'
-                                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-                              }`}
-                            >
-                              {isItemCobrado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Droplets className="w-3.5 h-3.5" />}
-                              <span>{isItemCobrado ? 'Cobrado' : 'Cobrar'}</span>
-                            </button>
-
-                            {/* 2. 3 pontinhos button */}
-                            <button
-                              onClick={(e) => handleToggleActionMenu(e, t)}
-                              className={`p-1.5 rounded-xl transition-colors cursor-pointer border ${
-                                activeActionMenuId === t.id
-                                  ? 'bg-slate-200 text-slate-900 border-slate-300'
-                                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 border-transparent hover:border-slate-200'
-                              }`}
-                              title="Opções"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
-          </>
           )}
         </div>
 
@@ -2391,7 +2081,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
           
           <button 
             onClick={handleExportSelected}
-            className="text-xs font-bold text-slate-200 hover:text-white flex items-center gap-1.5 cursor-pointer bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl transition-all"
+            className="text-xs font-semibold text-slate-200 hover:text-white flex items-center gap-1.5 cursor-pointer bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl transition-all"
           >
             <Download className="w-3.5 h-3.5 text-blue-400" />
             <span>Exportar</span>
@@ -2399,7 +2089,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
           <button 
             onClick={handleBulkDeleteFuel}
-            className="text-xs font-bold text-rose-300 hover:text-rose-200 flex items-center gap-1.5 cursor-pointer bg-rose-950/80 hover:bg-rose-900/90 border border-rose-800/60 px-3 py-1.5 rounded-xl transition-all"
+            className="text-xs font-semibold text-rose-300 hover:text-rose-200 flex items-center gap-1.5 cursor-pointer bg-rose-950/80 hover:bg-rose-900/90 border border-rose-800/60 px-3 py-1.5 rounded-xl transition-all"
           >
             <Trash2 className="w-3.5 h-3.5 text-rose-400" />
             <span>Apagar</span>
@@ -2407,7 +2097,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
           <button 
             onClick={() => setSelectedIds([])} 
-            className="text-xs font-bold text-slate-400 hover:text-slate-200 p-1 cursor-pointer ml-1"
+            className="text-xs font-semibold text-slate-400 hover:text-slate-200 p-1 cursor-pointer ml-1"
             title="Limpar seleção"
           >
             <X className="w-4 h-4" />
@@ -2417,9 +2107,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
       {/* Modal Comprovante */}
       {modalComprovante && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl overflow-hidden max-w-lg w-full shadow-2xl">
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <div className="fixed inset-0 z-[60] bg-slate-950/40 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[32px] overflow-hidden max-w-lg w-full shadow-2xl ring-1 ring-black/5 animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-900/5 bg-white/40 flex items-center justify-between">
               <h3 className="font-black text-slate-900 text-lg">Comprovante de Pagamento</h3>
               <button onClick={() => setModalComprovante(null)} className="p-2 text-slate-400 hover:bg-slate-200 rounded-full">
                 <X className="w-5 h-5" />
@@ -2434,13 +2124,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
       {/* New Fuel Record Modal */}
       {isFuelModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
+        <div className="fixed inset-0 z-[60] bg-slate-950/40 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-t-[32px] sm:rounded-[32px] border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
             <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto my-2 shrink-0 sm:hidden"></div>
             
             {/* Modal Header */}
             <div className={`p-4 sm:p-5 border-b flex items-center justify-between ${
-              saleMode === 'avulso' ? 'bg-emerald-50/50 border-emerald-100' : 'bg-slate-50/50 border-slate-100'
+              saleMode === 'avulso' ? 'bg-emerald-50/50 border-emerald-100' : 'bg-white/40 border-slate-900/5'
             }`}>
               <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
                 {saleMode === 'avulso' ? (
@@ -2463,7 +2153,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             <form onSubmit={handleSaveFuelTransaction} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 subtle-scrollbar">
               
               {/* Mode Switcher Tabs */}
-              <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl text-xs font-bold gap-1">
+              <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl text-xs font-semibold gap-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -2505,7 +2195,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 text-xs flex items-center justify-between">
+                    <label className="font-semibold text-slate-700 text-xs flex items-center justify-between">
                       <span>Identificação do Jet / Veículo (Opcional)</span>
                       <span className="text-[10px] text-slate-400 font-normal">Ex: Jet Sea-Doo Amarelo, Placa...</span>
                     </label>
@@ -2514,7 +2204,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                       value={avulsoIdentificacao}
                       onChange={(e) => setAvulsoIdentificacao(e.target.value)}
                       placeholder="Ex: Jet Sea-Doo Spark / Visitante..."
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:ring-emerald-500 focus:bg-white transition-all"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:ring-emerald-500 focus:bg-white transition-all"
                     />
                   </div>
                 </>
@@ -2522,7 +2212,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 /* Mode: EMBARCAÇÃO DA MARINA */
                 <>
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
+                    <label className="font-semibold text-slate-700 text-xs">Embarcação *</label>
                     <SearchableSelect
                       options={[
                         { value: '', label: 'Selecione o barco...' },
@@ -2548,7 +2238,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 text-xs">Cotista / Cliente *</label>
+                    <label className="font-semibold text-slate-700 text-xs">Cotista / Cliente *</label>
                     <SearchableSelect
                       disabled={!selectedBoatId}
                       options={[
@@ -2577,7 +2267,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
               {/* Litros Input */}
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 text-xs">Litros Abastecidos (L) *</label>
+                <label className="font-semibold text-slate-700 text-xs">Litros Abastecidos (L) *</label>
                 <input 
                   type="text"
                   inputMode="decimal"
@@ -2589,123 +2279,98 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 />
               </div>
 
-              {/* Formas de Pagamento */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 text-xs block">Forma de Pagamento *</label>
-                <div className="grid grid-cols-1 gap-2">
-                  
-                  {/* Dinheiro */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'dinheiro' ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="payment" value="dinheiro" checked={paymentType === 'dinheiro'} onChange={() => setPaymentType('dinheiro')} className="sr-only" />
-                    <div className="flex-1 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-sm text-emerald-950 flex items-center gap-1.5">
-                          <Banknote className="w-4 h-4 text-emerald-600" />
-                          <span>Dinheiro (Caixa Físico)</span>
-                        </span>
-                        <span className="block text-[11px] text-emerald-700 font-medium mt-0.5">R$ 9,00/L (Entrada física de cédulas na marina)</span>
-                      </div>
-                      <span className="text-xs font-mono font-bold text-emerald-800">R$ 9,00/L</span>
-                    </div>
-                  </label>
+              
+{/* Formas de Pagamento */}
+<div className="space-y-2">
+  <label className="font-semibold text-slate-700 text-xs block tracking-tight">Forma de Pagamento *</label>
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    {[
+      { id: 'dinheiro', icon: Banknote, label: 'Dinheiro', desc: 'Caixa físico', color: 'emerald', price: getFuelPrice('dinheiro') },
+      { id: 'pix', icon: QrCode, label: 'PIX', desc: 'Transferência imediata', color: 'cyan', price: getFuelPrice('pix') },
+      { id: 'debit', icon: CreditCard, label: 'Débito', desc: 'Maquininha', color: 'blue', price: getFuelPrice('debit') },
+      { id: 'credit', icon: CreditCard, label: 'Crédito', desc: 'Maquininha', color: 'indigo', price: getFuelPrice('credit') },
+      ...(saleMode === 'embarcacao' ? [{ id: 'admin', icon: Building2, label: 'Administradora', desc: 'Faturamento Mensal', color: 'purple', price: getFuelPrice('admin') }] : [])
+    ].map(opt => {
+      const Icon = opt.icon;
+      const isSelected = paymentType === opt.id;
 
-                  {/* PIX */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'pix' ? 'border-cyan-600 bg-cyan-50 ring-1 ring-cyan-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="payment" value="pix" checked={paymentType === 'pix'} onChange={() => setPaymentType('pix')} className="sr-only" />
-                    <div className="flex-1 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-sm text-cyan-950 flex items-center gap-1.5">
-                          <QrCode className="w-4 h-4 text-cyan-600" />
-                          <span>PIX (Conta Bancária)</span>
-                        </span>
-                        <span className="block text-[11px] text-cyan-700 font-medium mt-0.5">R$ 9,00/L (Transferência digital imediata)</span>
-                      </div>
-                      <span className="text-xs font-mono font-bold text-cyan-800">R$ 9,00/L</span>
-                    </div>
-                  </label>
+      const colorMap: Record<string, string> = {
+        emerald: isSelected ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        cyan: isSelected ? 'border-cyan-500 bg-cyan-50/50 ring-1 ring-cyan-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        blue: isSelected ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        indigo: isSelected ? 'border-indigo-500 bg-indigo-50/50 ring-1 ring-indigo-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        purple: isSelected ? 'border-purple-500 bg-purple-50/50 ring-1 ring-purple-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+      };
 
-                  {/* Cartão de Débito */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'debit' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="payment" value="debit" checked={paymentType === 'debit'} onChange={() => setPaymentType('debit')} className="sr-only" />
-                    <div className="flex-1 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-blue-600" />
-                          <span>Cartão de Débito</span>
-                        </span>
-                        <span className="block text-[11px] text-slate-500 font-medium mt-0.5">R$ 9,00/L (Recebido na maquininha)</span>
-                      </div>
-                      <span className="text-xs font-mono font-bold text-slate-700">R$ 9,00/L</span>
-                    </div>
-                  </label>
+      const textMap: Record<string, string> = {
+        emerald: isSelected ? 'text-emerald-900' : 'text-slate-700',
+        cyan: isSelected ? 'text-cyan-900' : 'text-slate-700',
+        blue: isSelected ? 'text-blue-900' : 'text-slate-700',
+        indigo: isSelected ? 'text-indigo-900' : 'text-slate-700',
+        purple: isSelected ? 'text-purple-900' : 'text-slate-700',
+      };
 
-                  {/* Cartão de Crédito */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'credit' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
-                    <div className="flex-1 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-blue-600" />
-                          <span>Cartão de Crédito</span>
-                        </span>
-                        <span className="block text-[11px] text-slate-500 font-medium mt-0.5">R$ 10,00/L (Recebido na maquininha)</span>
-                      </div>
-                      <span className="text-xs font-mono font-bold text-blue-800">R$ 10,00/L</span>
-                    </div>
-                  </label>
+      const iconMap: Record<string, string> = {
+        emerald: isSelected ? 'text-emerald-600' : 'text-slate-400',
+        cyan: isSelected ? 'text-cyan-600' : 'text-slate-400',
+        blue: isSelected ? 'text-blue-600' : 'text-slate-400',
+        indigo: isSelected ? 'text-indigo-600' : 'text-slate-400',
+        purple: isSelected ? 'text-purple-600' : 'text-slate-400',
+      };
 
-                  {/* Administradora - apenas para embarcação da marina */}
-                  {saleMode === 'embarcacao' && (
-                    <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${paymentType === 'admin' ? 'border-purple-600 bg-purple-50 ring-1 ring-purple-600' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
-                      <div className="flex-1 flex items-center justify-between">
-                        <div>
-                          <span className="font-bold text-sm text-purple-950 flex items-center gap-1.5">
-                            <Building2 className="w-4 h-4 text-purple-600" />
-                            <span>Enviar para a Administradora</span>
-                          </span>
-                          <span className="block text-[11px] text-purple-700 font-medium mt-0.5">R$ 13,00/L (Cobrança Mensal Pendente)</span>
-                        </div>
-                        <span className="text-xs font-mono font-bold text-purple-800">R$ 13,00/L</span>
-                      </div>
-                    </label>
-                  )}
-                </div>
-              </div>
+      return (
+        <label key={opt.id} className={`flex items-center p-3 rounded-2xl border transition-all cursor-pointer ${colorMap[opt.color]}`}>
+          <input type="radio" name="payment" value={opt.id} checked={isSelected} onChange={() => setPaymentType(opt.id as any)} className="sr-only" />
+          <div className="flex-1 flex flex-col">
+            <span className={`font-semibold text-[13px] flex items-center gap-1.5 transition-colors ${textMap[opt.color]}`}>
+              <Icon className={`w-4 h-4 ${iconMap[opt.color]}`} />
+              {opt.label}
+            </span>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[10px] text-slate-500 font-medium">{opt.desc}</span>
+              <span className="text-[11px] font-mono font-semibold text-slate-700">
+                R$ {opt.price.toFixed(2)}/L
+              </span>
+            </div>
+          </div>
+        </label>
+      );
+    })}
+  </div>
+</div>
 
-              {/* Total Calculation Display */}
-              {(() => {
-                const l = parseFloat(liters.replace(',', '.') || '0');
-                let p = 9.0;
-                if (paymentType === 'credit') p = 10.0;
-                if (paymentType === 'admin' && saleMode === 'embarcacao') p = 13.0;
-                const tot = l * p;
-                return (
-                  <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${
-                    saleMode === 'avulso' ? 'bg-emerald-50/70 border-emerald-200' : 'bg-blue-50/70 border-blue-200'
-                  }`}>
-                    <div className="text-xs">
-                      <span className="text-slate-500 font-bold uppercase block text-[10px]">Valor Total:</span>
-                      <span className="text-[11px] font-bold text-slate-700">
-                        {l > 0 ? `${l.toFixed(1)}L x R$ ${p.toFixed(2)}/L` : 'Informe os litros'}
-                      </span>
-                    </div>
-                    <span className={`text-xl font-black font-mono ${saleMode === 'avulso' ? 'text-emerald-950' : 'text-blue-950'}`}>
-                      {tot.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    </span>
-                  </div>
-                );
-              })()}
+{/* Total Calculation Display */}
+{(() => {
+  const l = parseFloat(liters.replace(',', '.') || '0');
+  const p = (paymentType === 'admin' && saleMode === 'embarcacao') ? getFuelPrice('admin') : getFuelPrice(paymentType);
+  const tot = l * p;
+  return (
+    <div className={`p-4 rounded-3xl border flex items-center justify-between transition-all mt-4 mb-4 ${
+      saleMode === 'avulso' ? 'bg-gradient-to-r from-emerald-50/50 to-teal-50/50 border-emerald-200/60' : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-blue-200/60'
+    }`}>
+      <div className="text-xs">
+        <span className="text-slate-500 font-semibold uppercase tracking-widest text-[9px]">Valor Total Estimado</span>
+        <span className="text-[11px] font-semibold text-slate-700 block mt-0.5">
+          {l > 0 ? `${l.toFixed(1)}L x R$ ${p.toFixed(2)}/L` : 'Informe os litros'}
+        </span>
+      </div>
+      <span className={`text-xl tracking-tight font-black font-mono shadow-sm ${saleMode === 'avulso' ? 'text-emerald-950' : 'text-blue-950'}`}>
+        {tot.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+      </span>
+    </div>
+  );
+})()}
 
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 text-xs block">Comprovante (Opcional)</label>
+<div className="space-y-1.5">
+
+                <label className="font-medium text-slate-600 text-xs tracking-tight block">Comprovante (Opcional)</label>
                 <div className="flex items-center justify-center w-full">
-                  <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                  <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 active:scale-95 transition-all transition-colors">
                     <div className="flex flex-col items-center justify-center pt-2 pb-2">
                       {isUploadingComprovante ? (
                         <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
                       ) : comprovanteUrl ? (
-                        <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-xs">
+                        <div className="flex items-center gap-1.5 text-emerald-600 font-semibold text-xs">
                           <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                           <span>Comprovante Anexado</span>
                         </div>
@@ -2725,14 +2390,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 <button
                   type="button"
                   onClick={() => setIsFuelModalOpen(false)}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || (saleMode === 'embarcacao' ? (!selectedBoatId || !liters) : (!liters || parseFloat(liters.replace(',', '.') || '0') <= 0))}
-                  className={`px-5 py-2.5 text-white font-bold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                  className={`px-5 py-2.5 text-white font-semibold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
                     saleMode === 'avulso' ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/20' : 'bg-[#2563EB] hover:bg-[#1d4ed8] active:bg-blue-800 shadow-blue-600/20'
                   }`}
                 >
@@ -2759,16 +2424,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         const boat = getEmbarcacao(t.embarcacaoId);
         const client = getCliente(t.clienteId);
 
-        let preco = 9.0;
-        if (chargePaymentType === 'credit') preco = 10.0;
-        if (chargePaymentType === 'admin') preco = 13.0;
+        const preco = chargePaymentType === 'admin' ? 13.0 : getFuelPrice(chargePaymentType);
         const totalCalc = litrosNum * preco;
 
         return (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
+          <div className="fixed inset-0 z-[60] bg-slate-950/40 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-t-[32px] sm:rounded-[32px] border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
               <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto my-2 shrink-0 sm:hidden"></div>
-              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="p-4 sm:p-5 border-b border-slate-900/5 flex items-center justify-between bg-white/40">
                 <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
                   <Droplets className="w-5 h-5 text-blue-600" />
                   <span>Cobrança de Combustível</span>
@@ -2780,7 +2443,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
               <form onSubmit={handleConfirmChargeItem} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 subtle-scrollbar">
                 <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-1">
-                  <div className="flex justify-between items-center text-xs font-bold text-blue-900">
+                  <div className="flex justify-between items-center text-xs font-semibold text-blue-900">
                     <span>Embarcação: {boat?.nome || 'M99'}</span>
                     <span className="font-mono text-sm font-black">{litrosNum} Litros</span>
                   </div>
@@ -2790,103 +2453,87 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 </div>
 
                 <div className="space-y-2">
-                  <label className="font-bold text-slate-700 text-xs block">Selecione a Modalidade de Cobrança *</label>
-                  
-                  {/* Dinheiro */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'dinheiro' ? 'border-emerald-600 bg-emerald-50/60 ring-1 ring-emerald-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="chargePayment" value="dinheiro" checked={chargePaymentType === 'dinheiro'} onChange={() => setChargePaymentType('dinheiro')} className="sr-only" />
-                    <div className="flex-1 flex justify-between items-center">
-                      <div>
-                        <span className="font-extrabold text-sm text-emerald-950 flex items-center gap-1.5">
-                          <Banknote className="w-4 h-4 text-emerald-600" />
-                          <span>Dinheiro (Caixa Físico)</span>
-                        </span>
-                        <span className="block text-[11px] text-emerald-700 font-medium">R$ 9,00 / Litro (Entrada no caixa do píer)</span>
-                      </div>
-                      <span className="font-mono font-black text-sm text-emerald-900">
-                        {(litrosNum * 9).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </span>
-                    </div>
-                  </label>
+  <label className="font-semibold text-slate-700 text-xs block tracking-tight">Selecione a Modalidade de Cobrança *</label>
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    {[
+      { id: 'dinheiro', icon: Banknote, label: 'Dinheiro', desc: 'Caixa físico', color: 'emerald', price: getFuelPrice('dinheiro') },
+      { id: 'pix', icon: QrCode, label: 'PIX', desc: 'Transferência imediata', color: 'cyan', price: getFuelPrice('pix') },
+      { id: 'debit', icon: CreditCard, label: 'Débito', desc: 'Maquininha', color: 'blue', price: getFuelPrice('debit') },
+      { id: 'credit', icon: CreditCard, label: 'Crédito', desc: 'Maquininha', color: 'indigo', price: getFuelPrice('credit') },
+      ...(chargeTargetItem?.isAvulso ? [] : [{ id: 'admin', icon: Building2, label: 'Administradora', desc: 'Faturamento Mensal', color: 'purple', price: getFuelPrice('admin') }])
+    ].map(opt => {
+      const Icon = opt.icon;
+      const isSelected = chargePaymentType === opt.id;
 
-                  {/* PIX */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'pix' ? 'border-cyan-600 bg-cyan-50/60 ring-1 ring-cyan-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="chargePayment" value="pix" checked={chargePaymentType === 'pix'} onChange={() => setChargePaymentType('pix')} className="sr-only" />
-                    <div className="flex-1 flex justify-between items-center">
-                      <div>
-                        <span className="font-extrabold text-sm text-cyan-950 flex items-center gap-1.5">
-                          <QrCode className="w-4 h-4 text-cyan-600" />
-                          <span>PIX (Conta Bancária)</span>
-                        </span>
-                        <span className="block text-[11px] text-cyan-700 font-medium">R$ 9,00 / Litro (Transferência digital)</span>
-                      </div>
-                      <span className="font-mono font-black text-sm text-cyan-900">
-                        {(litrosNum * 9).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </span>
-                    </div>
-                  </label>
+      const colorMap = {
+        emerald: isSelected ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        cyan: isSelected ? 'border-cyan-500 bg-cyan-50/50 ring-1 ring-cyan-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        blue: isSelected ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        indigo: isSelected ? 'border-indigo-500 bg-indigo-50/50 ring-1 ring-indigo-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        purple: isSelected ? 'border-purple-500 bg-purple-50/50 ring-1 ring-purple-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+      };
 
-                  {/* Cartão de Crédito */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'credit' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="chargePayment" value="credit" checked={chargePaymentType === 'credit'} onChange={() => setChargePaymentType('credit')} className="sr-only" />
-                    <div className="flex-1 flex justify-between items-center">
-                      <div>
-                        <span className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-blue-600" />
-                          <span>Cartão de Crédito</span>
-                        </span>
-                        <span className="block text-[11px] text-slate-500 font-medium">R$ 10,00 / Litro (Maquininha)</span>
-                      </div>
-                      <span className="font-mono font-black text-sm text-blue-900">
-                        {(litrosNum * 10).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </span>
-                    </div>
-                  </label>
+      const textMap = {
+        emerald: isSelected ? 'text-emerald-900' : 'text-slate-700',
+        cyan: isSelected ? 'text-cyan-900' : 'text-slate-700',
+        blue: isSelected ? 'text-blue-900' : 'text-slate-700',
+        indigo: isSelected ? 'text-indigo-900' : 'text-slate-700',
+        purple: isSelected ? 'text-purple-900' : 'text-slate-700',
+      };
 
-                  {/* Cartão de Débito */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'debit' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="chargePayment" value="debit" checked={chargePaymentType === 'debit'} onChange={() => setChargePaymentType('debit')} className="sr-only" />
-                    <div className="flex-1 flex justify-between items-center">
-                      <div>
-                        <span className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-blue-600" />
-                          <span>Cartão de Débito</span>
-                        </span>
-                        <span className="block text-[11px] text-slate-500 font-medium">R$ 9,00 / Litro (Maquininha)</span>
-                      </div>
-                      <span className="font-mono font-black text-sm text-blue-900">
-                        {(litrosNum * 9).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </span>
-                    </div>
-                  </label>
+      const iconMap = {
+        emerald: isSelected ? 'text-emerald-600' : 'text-slate-400',
+        cyan: isSelected ? 'text-cyan-600' : 'text-slate-400',
+        blue: isSelected ? 'text-blue-600' : 'text-slate-400',
+        indigo: isSelected ? 'text-indigo-600' : 'text-slate-400',
+        purple: isSelected ? 'text-purple-600' : 'text-slate-400',
+      };
 
-                  {/* Administradora */}
-                  <label className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${chargePaymentType === 'admin' ? 'border-purple-600 bg-purple-50/50 ring-1 ring-purple-600' : 'border-slate-200 bg-white'}`}>
-                    <input type="radio" name="chargePayment" value="admin" checked={chargePaymentType === 'admin'} onChange={() => setChargePaymentType('admin')} className="sr-only" />
-                    <div className="flex-1 flex justify-between items-center">
-                      <div>
-                        <span className="font-extrabold text-sm text-purple-950 flex items-center gap-1.5">
-                          <Building2 className="w-4 h-4 text-purple-600" />
-                          <span>Enviar para a Administradora</span>
-                        </span>
-                        <span className="block text-[11px] text-purple-700 font-bold">Faturado Pós-pago (R$ 13,00 / Litro)</span>
-                      </div>
-                      <span className="font-mono font-black text-sm text-purple-900">
-                        {(litrosNum * 13).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </span>
-                    </div>
-                  </label>
-                </div>
+      return (
+        <label key={opt.id} className={`flex items-center p-3 rounded-2xl border transition-all cursor-pointer ${colorMap[opt.color]}`}>
+          <input type="radio" name="chargePayment" value={opt.id} checked={isSelected} onChange={() => setChargePaymentType(opt.id as any)} className="sr-only" />
+          <div className="flex-1 flex flex-col">
+            <span className={`font-semibold text-[13px] flex items-center gap-1.5 transition-colors ${textMap[opt.color]}`}>
+              <Icon className={`w-4 h-4 ${iconMap[opt.color]}`} />
+              {opt.label}
+            </span>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[10px] text-slate-500 font-medium">{opt.desc}</span>
+              <span className="text-[11px] font-mono font-semibold text-slate-700">
+                R$ {opt.price.toFixed(2)}/L
+              </span>
+            </div>
+          </div>
+        </label>
+      );
+    })}
+  </div>
+</div>
 
-                <div className="space-y-1.5">
-                  <label className="font-bold text-slate-700 text-xs block">Anexar Comprovante / Recibo (Imagem ou PDF - Opcional)</label>
+
+{/* Total Calculation Display for Cobrar */}
+<div className="p-4 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border border-blue-200/60 rounded-3xl flex items-center justify-between transition-all mt-4 mb-4">
+  <div className="text-xs">
+    <span className="text-slate-500 font-semibold uppercase tracking-widest text-[9px]">Valor do Abastecimento</span>
+    <span className="text-[11px] font-semibold text-slate-700 block mt-0.5">
+      {litrosNum.toFixed(1)}L x R$ {preco.toFixed(2)}/L
+    </span>
+  </div>
+  <span className="text-xl tracking-tight font-black font-mono text-blue-950">
+    {totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+  </span>
+</div>
+
+<div className="space-y-1.5">
+
+                  <label className="font-medium text-slate-600 text-xs tracking-tight block">Anexar Comprovante / Recibo (Imagem ou PDF - Opcional)</label>
                   <div className="flex items-center justify-center w-full">
-                    <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 active:scale-95 transition-all transition-colors">
                       <div className="flex flex-col items-center justify-center pt-2 pb-2">
                         {isUploadingChargeComprovante ? (
                           <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
                         ) : chargeComprovanteUrl ? (
-                          <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-xs">
+                          <div className="flex items-center gap-1.5 text-emerald-600 font-semibold text-xs">
                             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                             <span>Comprovante Anexado com Sucesso!</span>
                           </div>
@@ -2909,7 +2556,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 </div>
 
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-600 uppercase">Valor Total a Lançar:</span>
+                  <span className="text-xs font-semibold text-slate-600 uppercase">Valor Total a Lançar:</span>
                   <span className="text-lg font-black text-slate-900 font-mono">
                     {totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </span>
@@ -2934,16 +2581,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         const isAvulsoItem = editingItem?.isAvulso || !editingItem?.embarcacaoId || (editingItem?.descricao && editingItem.descricao.toLowerCase().includes('avulso'));
         const boat = isAvulsoItem ? null : getEmbarcacao(editBoatId);
         const litrosNum = parseFloat(editLiters.replace(',', '.') || '0');
-        let preco = 9.0;
-        if (editPaymentType === 'credit') preco = 10.0;
-        if (editPaymentType === 'admin') preco = 13.0;
+        const preco = editPaymentType === 'admin' ? 13.0 : getFuelPrice(editPaymentType);
         const totalCalc = litrosNum * preco;
 
         return (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
+          <div className="fixed inset-0 z-[60] bg-slate-950/40 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-t-[32px] sm:rounded-[32px] border border-slate-200/90 w-full max-w-md overflow-hidden shadow-2xl max-h-[92vh] flex flex-col animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
               <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto my-2 shrink-0 sm:hidden"></div>
-              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="p-4 sm:p-5 border-b border-slate-900/5 flex items-center justify-between bg-white/40">
                 <h3 className="font-black text-base sm:text-lg text-slate-900 flex items-center gap-2">
                   <SquarePen className="w-5 h-5 text-amber-600" />
                   <span>Editar Lançamento {isAvulsoItem ? '(Avulso)' : ''}</span>
@@ -2967,7 +2612,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   <>
                     {/* Embarcação */}
                     <div className="space-y-1.5">
-                      <label className="font-bold text-slate-700 text-xs">Embarcação *</label>
+                      <label className="font-semibold text-slate-700 text-xs">Embarcação *</label>
                       <SearchableSelect
                         options={[
                           { value: '', label: 'Selecione a embarcação...' },
@@ -2990,7 +2635,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
                     {/* Cliente */}
                     <div className="space-y-1.5">
-                      <label className="font-bold text-slate-700 text-xs">Cliente / Proprietário</label>
+                      <label className="font-semibold text-slate-700 text-xs">Cliente / Proprietário</label>
                       <SearchableSelect
                         options={[
                           { value: '', label: 'Selecione o cliente...' },
@@ -3012,20 +2657,20 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 <div className="grid grid-cols-2 gap-3">
                   {/* Litros */}
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 text-xs">Litros (L) *</label>
+                    <label className="font-semibold text-slate-700 text-xs">Litros (L) *</label>
                     <input
                       type="text"
                       inputMode="decimal"
                       value={editLiters}
                       onChange={(e) => setEditLiters(e.target.value.replace(',', '.'))}
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-mono text-sm font-bold text-slate-900 focus:ring-amber-500"
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl font-mono text-sm font-semibold text-slate-900 focus:ring-amber-500"
                       placeholder="0.0"
                     />
                   </div>
 
                   {/* Data */}
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 text-xs">Data do Lançamento</label>
+                    <label className="font-semibold text-slate-700 text-xs">Data do Lançamento</label>
                     <input
                       type="date"
                       value={editDate}
@@ -3038,7 +2683,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 {/* Status & Forma de Pagamento */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 text-xs">Status</label>
+                    <label className="font-semibold text-slate-700 text-xs">Status</label>
                     <select
                       value={editStatus}
                       onChange={(e) => setEditStatus(e.target.value as any)}
@@ -3050,7 +2695,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-700 text-xs">Forma de Pagamento</label>
+                    <label className="font-semibold text-slate-700 text-xs">Forma de Pagamento</label>
                     <select
                       value={editPaymentType}
                       onChange={(e) => setEditPaymentType(e.target.value as any)}
@@ -3066,7 +2711,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 </div>
 
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-900 uppercase">Valor Total Calculado:</span>
+                  <span className="text-xs font-semibold text-amber-900 uppercase">Valor Total Calculado:</span>
                   <span className="text-base font-black text-amber-950 font-mono">
                     {totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </span>
@@ -3076,14 +2721,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   <button
                     type="button"
                     onClick={() => setEditingItem(null)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting || !editBoatId || !editLiters}
-                    className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     <span>Salvar Alterações</span>
@@ -3142,7 +2787,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               </button>
             )}
 
-            <div className="my-1 border-t border-slate-100"></div>
+            <div className="my-1 border-t border-slate-900/5"></div>
 
             <button
               onClick={() => {
@@ -3152,7 +2797,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 setActiveActionTargetItem(null);
                 handleDeleteFuel(item);
               }}
-              className="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
+              className="w-full text-left px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-600" />
               <span>Apagar</span>

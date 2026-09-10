@@ -112,6 +112,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
 
       try {
         localStorage.setItem('client_token', data.token);
+        localStorage.setItem('last_user_type', 'client');
         localStorage.setItem('client_last_cpf', identifier);
       } catch (err) {}
       onLoginSuccess(data.token);
@@ -164,6 +165,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
       if (loginResponse.ok && loginData.token) {
         try {
           localStorage.setItem('client_token', loginData.token);
+          localStorage.setItem('last_user_type', 'client');
         } catch (err) {}
         onLoginSuccess(loginData.token);
       } else {

@@ -1,4 +1,4 @@
-import mysql from "mysql2/promise";
+﻿import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -446,7 +446,14 @@ export async function initializeDatabase() {
         comprovante VARCHAR(255),
         createdAt VARCHAR(50) NOT NULL,
         asaasPaymentId VARCHAR(100),
-        asaasPaymentUrl VARCHAR(255)
+        asaasPaymentUrl VARCHAR(255),
+        empresa VARCHAR(50) NOT NULL DEFAULT 'Marina',
+        contaBancariaId VARCHAR(50),
+        planoContasId VARCHAR(50),
+        fornecedorId VARCHAR(50),
+        grupoParcelamentoId VARCHAR(50),
+        numeroParcela INT DEFAULT 1,
+        totalParcelas INT DEFAULT 1
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -478,6 +485,74 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN metadata JSON NULL;`);
     } catch (e) {}
+
+    // Multi-empresa Finance additions:
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN empresa VARCHAR(50) NOT NULL DEFAULT 'Marina';`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN contaBancariaId VARCHAR(50) NULL;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN planoContasId VARCHAR(50) NULL;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN fornecedorId VARCHAR(50) NULL;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN grupoParcelamentoId VARCHAR(50) NULL;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN numeroParcela INT DEFAULT 1;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN totalParcelas INT DEFAULT 1;`);
+    } catch (e) {}
+
+    // 8a. ContasBancarias Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS ContasBancarias (
+        id VARCHAR(50) PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        empresa VARCHAR(50) NOT NULL,
+        banco VARCHAR(100),
+        agencia VARCHAR(50),
+        conta VARCHAR(50),
+        saldoInicial DECIMAL(10, 2) DEFAULT 0,
+        status VARCHAR(20) DEFAULT 'ativo',
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 8b. PlanosDeContas Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS PlanosDeContas (
+        id VARCHAR(50) PRIMARY KEY,
+        codigoContabil VARCHAR(50),
+        descricao VARCHAR(255) NOT NULL,
+        tipo VARCHAR(20) NOT NULL,
+        empresa VARCHAR(50) DEFAULT 'Todos',
+        status VARCHAR(20) DEFAULT 'ativo',
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 8c. Fornecedores Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS Fornecedores (
+        id VARCHAR(50) PRIMARY KEY,
+        nomeFantasia VARCHAR(255) NOT NULL,
+        razaoSocial VARCHAR(255),
+        cnpjCpf VARCHAR(50),
+        empresaId VARCHAR(50),
+        dadosBancarios TEXT,
+        status VARCHAR(20) DEFAULT 'ativo',
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
 
     // 9. AtividadesFinanceiras Table (Kanban)
     await connection.query(`
@@ -676,6 +751,21 @@ export async function initializeDatabase() {
         motivo TEXT,
         observacao TEXT,
         createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 18. Leads Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS Leads (
+        id VARCHAR(50) PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        telefone VARCHAR(50) NOT NULL,
+        email VARCHAR(100),
+        pontuacao INT DEFAULT 0,
+        detalhes TEXT,
+        status VARCHAR(50) DEFAULT 'novo',
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -1856,22 +1946,35 @@ export async function upsertClientAuth(clienteId: string, passwordHash: string) 
 
 // ---------------- Transacoes Financeiras ----------------
 
-export async function getAllTransacoes() {
+export async function getAllTransacoes(empresa?: string) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
-  
+
   // Auto-update overdue transactions before fetching
   const todayStr = new Date().toISOString().split('T')[0];
-  await currentPool.query(`
-    UPDATE TransacoesFinanceiras 
-    SET status = 'vencido' 
-    WHERE status = 'lancado' 
-      AND dataVencimento < ? 
-      AND dataVencimento != '' 
+  let updateQuery = `
+    UPDATE TransacoesFinanceiras
+    SET status = 'vencido'
+    WHERE status = 'lancado'
+      AND dataVencimento < ?
+      AND dataVencimento != ''
       AND dataVencimento IS NOT NULL
-  `, [todayStr]);
+  `;
+  const updateParams: any[] = [todayStr];
+  if (empresa) {
+    updateQuery += ` AND empresa = ?`;
+    updateParams.push(empresa);
+  }
+  await currentPool.query(updateQuery, updateParams);
 
-  const [rows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC");
+  let selectQuery = "SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC";
+  let selectParams: any[] = [];
+  if (empresa) {
+    selectQuery = "SELECT * FROM TransacoesFinanceiras WHERE (empresa = ? OR ? IS NULL) ORDER BY dataVencimento DESC";
+    selectParams = [empresa, empresa];
+  }
+
+  const [rows] = await currentPool.query(selectQuery, selectParams);
   return rows;
 }
 
@@ -1887,8 +1990,13 @@ export async function upsertTransacao(t: any, connection?: any) {
   }
 
   await dbConfig.query(
-    `INSERT INTO TransacoesFinanceiras (id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl, reservaId, metodoPagamento, operador, metadata)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO TransacoesFinanceiras (
+      id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao,
+      clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl,
+      reservaId, metodoPagamento, operador, metadata, empresa, contaBancariaId,
+      planoContasId, fornecedorId, grupoParcelamentoId, numeroParcela, totalParcelas
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        tipo=VALUES(tipo), categoria=VALUES(categoria), valor=VALUES(valor),
        dataVencimento=VALUES(dataVencimento), dataPagamento=VALUES(dataPagamento),
@@ -1897,12 +2005,18 @@ export async function upsertTransacao(t: any, connection?: any) {
        comprovante=VALUES(comprovante),
        asaasPaymentId=VALUES(asaasPaymentId), asaasPaymentUrl=VALUES(asaasPaymentUrl),
        reservaId=VALUES(reservaId), metodoPagamento=VALUES(metodoPagamento),
-       operador=VALUES(operador), metadata=VALUES(metadata)`,
+       operador=VALUES(operador), metadata=VALUES(metadata),
+       empresa=VALUES(empresa), contaBancariaId=VALUES(contaBancariaId),
+       planoContasId=VALUES(planoContasId), fornecedorId=VALUES(fornecedorId),
+       grupoParcelamentoId=VALUES(grupoParcelamentoId), numeroParcela=VALUES(numeroParcela),
+       totalParcelas=VALUES(totalParcelas)`,
     [
       t.id, t.tipo, t.categoria, t.valor, t.dataVencimento, t.dataPagamento || null,
       t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || t.comprovanteUrl || null, t.createdAt,
       t.asaasPaymentId || null, t.asaasPaymentUrl || null, t.reservaId || null, t.metodoPagamento || null,
-      t.operador || null, t.metadata ? JSON.stringify(t.metadata) : null
+      t.operador || null, t.metadata ? JSON.stringify(t.metadata) : null,
+      t.empresa || 'Marina', t.contaBancariaId || null, t.planoContasId || null, t.fornecedorId || null,
+      t.grupoParcelamentoId || null, t.numeroParcela || null, t.totalParcelas || null
     ]
   );
 
@@ -2059,7 +2173,14 @@ export async function deleteFeedback(id: string) {
 
 async function updateBoatMaintenanceStatus(pool: any, boatId: string) {
   const [rows] = await pool.query(
-    "SELECT COUNT(*) as activeCount FROM Manutencoes WHERE embarcacaoId = ? AND status = 'em_andamento'",
+    `SELECT COUNT(*) as activeCount
+     FROM Manutencoes
+     WHERE embarcacaoId = ?
+       AND status NOT IN ('concluido', 'cancelado')
+       AND (
+         urgencia IN ('alta', 'critica')
+         OR status IN ('em_andamento', 'na_oficina', 'aguardando_pecas')
+       )`,
     [boatId]
   );
   const activeCount = (rows as any[])[0]?.activeCount || 0;
@@ -2335,6 +2456,43 @@ export async function deleteFolga(id: string) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query("DELETE FROM Folgas WHERE id = ?", [id]);
+}
+
+// ---------------- Leads (Quiz Captura) ----------------
+export async function getAllLeads() {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  const [rows] = await currentPool.query("SELECT * FROM Leads ORDER BY createdAt DESC");
+  return rows as any[];
+}
+
+export async function upsertLead(l: any) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query(`
+    INSERT INTO Leads (id, nome, telefone, email, pontuacao, detalhes, status, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      nome = VALUES(nome),
+      telefone = VALUES(telefone),
+      email = VALUES(email),
+      pontuacao = VALUES(pontuacao),
+      detalhes = VALUES(detalhes),
+      status = VALUES(status),
+      updatedAt = VALUES(updatedAt)
+  `, [
+    l.id, l.nome, l.telefone, l.email || '', l.pontuacao || 0,
+    l.detalhes || '', l.status || 'novo',
+    l.createdAt || new Date().toISOString(),
+    l.updatedAt || new Date().toISOString()
+  ]);
+  return l;
+}
+
+export async function deleteLead(id: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM Leads WHERE id = ?", [id]);
 }
 
 export async function upsertCatalogoEPI(item: any) {
@@ -2799,3 +2957,115 @@ export async function getAbastecimentosPendentesCaixa(): Promise<any[]> {
 }
 
 
+
+// ──────────── Contas Bancárias ────────────
+
+export async function getAllContasBancarias(empresa?: string): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  if (empresa) {
+    const [rows] = await currentPool.query("SELECT * FROM ContasBancarias WHERE empresa = ? ORDER BY nome ASC", [empresa]);
+    return rows as any[];
+  }
+  const [rows] = await currentPool.query("SELECT * FROM ContasBancarias ORDER BY nome ASC");
+  return rows as any[];
+}
+
+export async function upsertContaBancaria(c: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  await currentPool.query(
+    `INSERT INTO ContasBancarias (id, nome, empresa, banco, agencia, conta, saldoInicial, status, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       nome=VALUES(nome), empresa=VALUES(empresa), banco=VALUES(banco),
+       agencia=VALUES(agencia), conta=VALUES(conta), saldoInicial=VALUES(saldoInicial),
+       status=VALUES(status), updatedAt=VALUES(updatedAt)`,
+    [
+      c.id, c.nome, c.empresa || null, c.banco || null, c.agencia || null, c.conta || null,
+      c.saldoInicial || 0, c.status || 'ativo', c.createdAt || new Date().toISOString(),
+      c.updatedAt || new Date().toISOString()
+    ]
+  );
+}
+
+export async function deleteContaBancaria(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM ContasBancarias WHERE id = ?", [id]);
+}
+
+// ──────────── Planos de Contas ────────────
+
+export async function getAllPlanosDeContas(empresa?: string): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  if (empresa) {
+    const [rows] = await currentPool.query("SELECT * FROM PlanosDeContas WHERE empresa = ? ORDER BY descricao ASC", [empresa]);
+    return rows as any[];
+  }
+  const [rows] = await currentPool.query("SELECT * FROM PlanosDeContas ORDER BY descricao ASC");
+  return rows as any[];
+}
+
+export async function upsertPlanoDeConta(p: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  await currentPool.query(
+    `INSERT INTO PlanosDeContas (id, codigoContabil, descricao, tipo, empresa, status, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       codigoContabil=VALUES(codigoContabil), descricao=VALUES(descricao), tipo=VALUES(tipo),
+       empresa=VALUES(empresa), status=VALUES(status), updatedAt=VALUES(updatedAt)`,
+    [
+      p.id, p.codigoContabil || null, p.descricao, p.tipo, p.empresa || null, p.status || 'ativo',
+      p.createdAt || new Date().toISOString(), p.updatedAt || new Date().toISOString()
+    ]
+  );
+}
+
+export async function deletePlanoDeConta(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM PlanosDeContas WHERE id = ?", [id]);
+}
+
+// ──────────── Fornecedores ────────────
+
+export async function getAllFornecedores(empresa?: string): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  if (empresa) {
+    const [rows] = await currentPool.query("SELECT * FROM Fornecedores WHERE empresaId = ? ORDER BY nomeFantasia ASC", [empresa]);
+    return rows as any[];
+  }
+  const [rows] = await currentPool.query("SELECT * FROM Fornecedores ORDER BY nomeFantasia ASC");
+  return rows as any[];
+}
+
+export async function upsertFornecedor(f: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  await currentPool.query(
+    `INSERT INTO Fornecedores (id, nomeFantasia, razaoSocial, cnpjCpf, empresaId, dadosBancarios, status, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       nomeFantasia=VALUES(nomeFantasia), razaoSocial=VALUES(razaoSocial), cnpjCpf=VALUES(cnpjCpf),
+       empresaId=VALUES(empresaId), dadosBancarios=VALUES(dadosBancarios), status=VALUES(status),
+       updatedAt=VALUES(updatedAt)`,
+    [
+      f.id, f.nomeFantasia, f.razaoSocial || null, f.cnpjCpf || null, f.empresaId || null,
+      f.dadosBancarios ? JSON.stringify(f.dadosBancarios) : null, f.status || 'ativo',
+      f.createdAt || new Date().toISOString(), f.updatedAt || new Date().toISOString()
+    ]
+  );
+}
+
+export async function deleteFornecedor(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM Fornecedores WHERE id = ?", [id]);
+}

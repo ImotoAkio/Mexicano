@@ -34,6 +34,17 @@ export const getFuelPrice = (method: string): number => {
   return FUEL_PRICES[method as FuelPaymentMethod] || 9;
 };
 
+export const getFuelPaymentLabel = (method: string): string => {
+  switch (method) {
+    case 'dinheiro': return 'Dinheiro (Caixa Físico)';
+    case 'credit': return 'Cartão de Crédito';
+    case 'debit': return 'Cartão de Débito';
+    case 'admin': return 'Faturado / Administradora';
+    case 'pix':
+    default: return 'PIX (Digital)';
+  }
+};
+
 // ─── Configurações de UI ───────────────────────────────────────────────────
 export const UI = {
   /** Duração padrão dos toasts em ms */

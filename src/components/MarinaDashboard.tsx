@@ -113,6 +113,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [liters, setLiters] = useState('');
   const [paymentType, setPaymentType] = useState('pix');
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
+  const [fuelAction, setFuelAction] = useState<'only_fuel' | 'fuel_and_pay'>('only_fuel');
   const [isUploadingComprovante, setIsUploadingComprovante] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
@@ -120,13 +121,23 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [lightbox, setLightbox] = useState<{ urls: string[]; currentIndex: number; title: string } | null>(null);
 
   const parseFotos = (fotos: any): string[] => {
+    let result: any[] = [];
     if (!fotos) return [];
-    if (Array.isArray(fotos)) return fotos;
-    try {
-      return JSON.parse(fotos);
-    } catch {
-      return [];
+    if (Array.isArray(fotos)) {
+      result = fotos;
+    } else {
+      try {
+        result = JSON.parse(fotos);
+        if (!Array.isArray(result) && typeof result === 'object') {
+           result = Object.values(result);
+        }
+      } catch {
+        if (typeof fotos === 'string') result = [fotos];
+      }
     }
+
+    // Filter out invalid or corrupted local blob strings saved by mistake
+    return result.filter(url => typeof url === 'string' && !url.startsWith('blob:'));
   };
 
   useEffect(() => {
@@ -331,6 +342,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     setLiters(reserva.abastecimentoLitros || reserva.litrosAbastecidos || '');
     setPaymentType('pix');
     setComprovanteUrl(null);
+    setFuelAction('only_fuel');
     setFuelModalOpen(true);
   };
 
@@ -584,9 +596,9 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       abastecimentoOperador: currentOperator,
       litrosAbastecidos: litersNum > 0 ? litersNum.toString() : (selectedReserva.litrosAbastecidos || '0'),
       abastecimentoLitros: litersNum > 0 ? litersNum : (selectedReserva.abastecimentoLitros || 0),
-      abastecimentoFormaPagamento: paymentType,
+      abastecimentoFormaPagamento: fuelAction === 'fuel_and_pay' ? paymentType : null,
       abastecimentoComprovanteUrl: comprovanteUrl || selectedReserva.abastecimentoComprovanteUrl || null,
-      abastecimentoStatusCobranca: litersNum > 0 ? 'pendente' : (selectedReserva.abastecimentoStatusCobranca || 'sem_abastecimento'),
+      abastecimentoStatusCobranca: litersNum > 0 ? (fuelAction === 'fuel_and_pay' ? 'cobrado' : 'pendente') : (selectedReserva.abastecimentoStatusCobranca || 'sem_abastecimento'),
       abastecimentoDataHora: selectedReserva.abastecimentoDataHora || new Date().toISOString()
     };
 
@@ -611,7 +623,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         reservations: prev.reservations.map((r: any) => r.id === updatedReserva.id ? updatedReserva : r)
       }));
       
-      await logAction('Chegada', `Marcou chegada e abastecimento de ${litersNum}L (Pendente de cobrança pelo gerente)`, updatedReserva.embarcacaoId, currentOperator);
+      const statusLog = litersNum > 0
+        ? (fuelAction === 'fuel_and_pay' ? 'Cobrado imediatamente' : 'Pendente de cobrança')
+        : 'Sem abastecimento';
+      await logAction('Chegada', `Marcou chegada e abastecimento de ${litersNum}L (${statusLog})`, updatedReserva.embarcacaoId, currentOperator);
 
       setFuelModalOpen(false);
       showToast('Chegada e abastecimento salvos com sucesso!', 'success');
@@ -2463,15 +2478,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         </div>
       )}
 
-      {/* Fuel Bottom Sheet Modal */}
+      {/* Fuel Responsive Modal */}
       {fuelModalOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setFuelModalOpen(false)}></div>
-          
-          <div className="bg-white w-full rounded-t-3xl shadow-2xl relative z-10 animate-slide-up-fast pb-8">
-            <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mt-3 mb-1"></div>
-            
-            <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100">
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-end md:justify-center p-0 md:p-4">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity" onClick={() => setFuelModalOpen(false)}></div>
+
+          <div className="bg-white w-full max-w-2xl rounded-t-3xl md:rounded-3xl shadow-2xl relative z-10 animate-slide-up-fast md:animate-scale-in flex flex-col max-h-[90vh]">
+            <div className="md:hidden w-12 h-1.5 bg-slate-300 rounded-full mx-auto mt-3 mb-1 shrink-0"></div>
+
+            <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
                   <Droplets className="w-5 h-5" />
@@ -2481,185 +2496,216 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   <p className="text-xs text-slate-500 font-medium mt-1">Registrar combustível e retorno</p>
                 </div>
               </div>
-              <button onClick={() => setFuelModalOpen(false)} className="p-2 bg-slate-100 text-slate-500 rounded-full active:bg-slate-200">
+              <button type="button" onClick={() => setFuelModalOpen(false)} className="p-2 bg-slate-100 text-slate-500 rounded-full hover:bg-slate-200 active:bg-slate-300 transition-colors">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
               </button>
             </div>
 
-            <form onSubmit={handleConfirmFuelAndRegisterArrival} className="p-5 space-y-6">
-              
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700 block">Litros Abastecidos (L)</label>
-                <div className="relative">
-                  <input 
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9]*[.,]?[0-9]*"
-                    required
-                    value={liters}
-                    onChange={(e) => setLiters(e.target.value.replace(',', '.'))}
-                    className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                    placeholder="0.0"
-                    autoFocus
-                  />
-                  <span className="absolute right-5 top-4 text-slate-400 font-bold text-xl">L</span>
-                </div>
-                
-                <div className="grid grid-cols-4 gap-2 mt-2">
-                  {[0, 50, 100, 150].map(val => (
-                    <button 
-                      type="button"
-                      key={val}
-                      onClick={() => setLiters(val.toString())}
-                      className="py-3 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition-colors flex items-center justify-center"
-                    >
-                      {val === 0 ? 'Zero' : `+${val}L`}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-slate-500 font-medium">Toque nos botões ou digite os litros manualmente.</p>
-              </div>
+            <div className="overflow-y-auto subtle-scrollbar">
+              <form onSubmit={handleConfirmFuelAndRegisterArrival} className="p-5 space-y-6">
 
-              {Number(liters) > 0 && (
-                <div className="space-y-3">
-                  <label className="text-sm font-bold text-slate-700 block">Forma de Cobrança *</label>
-                  <div className="grid grid-cols-1 gap-2">
-                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'dinheiro' ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="dinheiro" checked={paymentType === 'dinheiro'} onChange={() => setPaymentType('dinheiro')} className="sr-only" />
-                      <div className="flex-1">
-                        <span className="block font-bold text-sm text-emerald-950 flex items-center gap-1.5">
-                          <Banknote className="w-4 h-4 text-emerald-600" />
-                          <span>Dinheiro (Caixa Físico)</span>
-                        </span>
-                        <span className="block text-xs text-emerald-700 font-medium mt-0.5">R$ 9,00/L (Entrada de cédulas físicas no caixa da marina)</span>
-                      </div>
-                    </label>
-                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'pix' ? 'border-cyan-500 bg-cyan-50 ring-1 ring-cyan-500' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="pix" checked={paymentType === 'pix'} onChange={() => setPaymentType('pix')} className="sr-only" />
-                      <div className="flex-1">
-                        <span className="block font-bold text-sm text-cyan-950 flex items-center gap-1.5">
-                          <QrCode className="w-4 h-4 text-cyan-600" />
-                          <span>PIX (Conta Bancária)</span>
-                        </span>
-                        <span className="block text-xs text-cyan-700 font-medium mt-0.5">R$ 9,00/L (Transferência / QR Code da marina)</span>
-                      </div>
-                    </label>
-                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'credit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
-                      <div className="flex-1">
-                        <span className="block font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-blue-600" />
-                          <span>Cartão de Crédito</span>
-                        </span>
-                        <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 10,00/L (Maquininha de Cartão)</span>
-                      </div>
-                    </label>
-                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'debit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="debit" checked={paymentType === 'debit'} onChange={() => setPaymentType('debit')} className="sr-only" />
-                      <div className="flex-1">
-                        <span className="block font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-blue-600" />
-                          <span>Cartão de Débito</span>
-                        </span>
-                        <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 9,00/L (Maquininha de Cartão)</span>
-                      </div>
-                    </label>
-                    <label className={`flex items-center p-3 border rounded-2xl cursor-pointer transition-all active:scale-[0.98] ${paymentType === 'admin' ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500' : 'border-slate-200 bg-white'}`}>
-                      <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
-                      <div className="flex-1">
-                        <span className="block font-bold text-sm text-purple-950 flex items-center gap-1.5">
-                          <Building2 className="w-4 h-4 text-purple-600" />
-                          <span>Enviar para a Administradora</span>
-                        </span>
-                        <span className="block text-xs text-purple-700 font-medium mt-0.5">R$ 13,00/L (Faturado Pós-pago)</span>
-                      </div>
-                    </label>
-                  </div>
-                  
-                  <div className="mt-2 p-4 bg-slate-900 rounded-2xl text-white flex justify-between items-center shadow-inner">
-                    <span className="text-sm font-bold text-slate-300">Total a lançar:</span>
-                    <span className="font-black text-2xl font-mono text-[#B69D74]">
-                      R$ {(Number(liters) * (paymentType === 'credit' ? 10 : paymentType === 'admin' ? 13 : 9)).toFixed(2).replace('.', ',')}
-                    </span>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 block">Litros Abastecidos (L)</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
+                      required
+                      value={liters}
+                      onChange={(e) => setLiters(e.target.value.replace(',', '.'))}
+                      className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+                      placeholder="0.0"
+                      autoFocus
+                    />
+                    <span className="absolute right-5 top-4 text-slate-400 font-bold text-xl">L</span>
                   </div>
 
-                  {(paymentType === 'pix' || paymentType === 'credit' || paymentType === 'debit') && (
-                    <div className="mt-4 p-4 border border-slate-200 rounded-2xl bg-white space-y-3">
-                      <label className="text-sm font-bold text-slate-700 block">Comprovante de Pagamento *</label>
-                      
-                      {comprovanteUrl ? (
-                        <div className="relative rounded-xl overflow-hidden border border-slate-200">
-                          {comprovanteUrl.endsWith('.pdf') ? (
-                            <div className="flex items-center justify-center p-6 bg-slate-50">
-                              <span className="text-sm font-medium text-slate-500">PDF Anexado</span>
+                  <div className="grid grid-cols-4 gap-2 mt-2">
+                    {[0, 50, 100, 150].map(val => (
+                      <button
+                        type="button"
+                        key={val}
+                        onClick={() => setLiters(val.toString())}
+                        className="py-3 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition-colors flex items-center justify-center"
+                      >
+                        {val === 0 ? 'Zero' : '+' + val + 'L'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">Toque nos botões ou digite os litros manualmente.</p>
+                </div>
+
+                {Number(liters) > 0 && (
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <label className="text-sm font-bold text-slate-700 block">Ação do Combustível *</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all " + (fuelAction === 'only_fuel' ? 'border-sky-500 bg-sky-50 ring-1 ring-sky-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                          <input type="radio" value="only_fuel" checked={fuelAction === 'only_fuel'} onChange={() => setFuelAction('only_fuel')} className="sr-only" />
+                          <div className="flex-1">
+                            <span className="font-bold text-sm text-sky-900 block">Apenas Lançar Consumo</span>
+                            <span className="block text-xs text-sky-700 font-medium mt-0.5">Cobrança pendente/posterior</span>
+                          </div>
+                        </label>
+                        <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all " + (fuelAction === 'fuel_and_pay' ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                          <input type="radio" value="fuel_and_pay" checked={fuelAction === 'fuel_and_pay'} onChange={() => setFuelAction('fuel_and_pay')} className="sr-only" />
+                          <div className="flex-1">
+                            <span className="font-bold text-sm text-emerald-900 block">Receber Agora</span>
+                            <span className="block text-xs text-emerald-700 font-medium mt-0.5">Lançar e registrar pagamento</span>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    {fuelAction === 'fuel_and_pay' && (
+                      <div className="space-y-4 animate-fade-in border-t border-slate-100 pt-5">
+                        <label className="text-sm font-bold text-slate-700 block">Forma de Pagamento *</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'dinheiro' ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                            <input type="radio" name="payment" value="dinheiro" checked={paymentType === 'dinheiro'} onChange={() => setPaymentType('dinheiro')} className="sr-only" />
+                            <div className="flex-1 text-left">
+                              <span className="font-bold text-sm text-emerald-950 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5"><Banknote className="w-4 h-4 text-emerald-600" /> Dinheiro</span>
+                              </span>
+                              <span className="block text-xs text-emerald-700 font-medium mt-0.5">R$ 9,00/L (Caixa Físico)</span>
                             </div>
-                          ) : (
-                            <img src={comprovanteUrl} alt="Comprovante" className="w-full h-32 object-cover" />
-                          )}
-                          <button 
-                            type="button"
-                            onClick={() => setComprovanteUrl(null)}
-                            className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-full text-red-500 shadow-sm"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            </svg>
-                          </button>
-                        </div>
-                      ) : (
-                        <div>
-                          <input 
-                            type="file" 
-                            accept="image/*,application/pdf"
-                            capture="environment"
-                            onChange={handleUploadComprovante}
-                            className="hidden"
-                            id="comprovante-upload"
-                          />
-                          <label 
-                            htmlFor="comprovante-upload"
-                            className="w-full py-4 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-slate-700 hover:border-slate-400 cursor-pointer transition-colors active:bg-slate-50"
-                          >
-                            {isUploadingComprovante ? (
-                              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-                            ) : (
-                              <>
-                                <Camera className="w-6 h-6" />
-                                <span className="text-xs font-bold uppercase tracking-wider">Tirar Foto ou Anexar</span>
-                              </>
-                            )}
+                          </label>
+                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'pix' ? 'border-cyan-500 bg-cyan-50 ring-1 ring-cyan-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                            <input type="radio" name="payment" value="pix" checked={paymentType === 'pix'} onChange={() => setPaymentType('pix')} className="sr-only" />
+                            <div className="flex-1 text-left">
+                              <span className="font-bold text-sm text-cyan-950 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5"><QrCode className="w-4 h-4 text-cyan-600" /> PIX</span>
+                              </span>
+                              <span className="block text-xs text-cyan-700 font-medium mt-0.5">R$ 9,00/L (Conta Bancária)</span>
+                            </div>
+                          </label>
+                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'credit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                            <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
+                            <div className="flex-1 text-left">
+                              <span className="font-bold text-sm text-slate-900 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5"><CreditCard className="w-4 h-4 text-blue-600" /> Cartão Crédito</span>
+                              </span>
+                              <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 10,00/L (Maquininha)</span>
+                            </div>
+                          </label>
+                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'debit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                            <input type="radio" name="payment" value="debit" checked={paymentType === 'debit'} onChange={() => setPaymentType('debit')} className="sr-only" />
+                            <div className="flex-1 text-left">
+                              <span className="font-bold text-sm text-slate-900 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5"><CreditCard className="w-4 h-4 text-blue-600" /> Cartão Débito</span>
+                              </span>
+                              <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 9,00/L (Maquininha)</span>
+                            </div>
+                          </label>
+                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] sm:col-span-2 " + (paymentType === 'admin' ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                            <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
+                            <div className="flex-1 text-left">
+                              <span className="font-bold text-sm text-purple-950 flex items-center gap-1.5">
+                                <Building2 className="w-4 h-4 text-purple-600" />
+                                <span>Administradora (Pós-pago)</span>
+                              </span>
+                              <span className="block text-xs text-purple-700 font-medium mt-0.5">R$ 13,00/L</span>
+                            </div>
                           </label>
                         </div>
-                      )}
-                    </div>
+
+                        <div className="mt-2 p-4 bg-slate-900 rounded-2xl text-white flex justify-between items-center shadow-inner">
+                          <span className="text-sm font-bold text-slate-300">Total a lançar:</span>
+                          <span className="font-black text-2xl font-mono text-[#B69D74]">
+                            R$ {(Number(liters) * (paymentType === 'credit' ? 10 : paymentType === 'admin' ? 13 : 9)).toFixed(2).replace('.', ',')}
+                          </span>
+                        </div>
+
+                        {(paymentType === 'pix' || paymentType === 'credit' || paymentType === 'debit') && (
+                          <div className="mt-4 p-4 border border-slate-200 rounded-2xl bg-white space-y-3">
+                            <label className="text-sm font-bold text-slate-700 block">Comprovante de Pagamento *</label>
+
+                            {comprovanteUrl ? (
+                              <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                                {comprovanteUrl.endsWith('.pdf') ? (
+                                  <div className="flex items-center justify-center p-6 bg-slate-100">
+                                    <span className="text-sm font-medium text-slate-500">PDF Anexado</span>
+                                  </div>
+                                ) : (
+                                  <img src={comprovanteUrl} alt="Comprovante" className="w-full h-32 object-cover" />
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setComprovanteUrl(null)}
+                                  className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-full text-red-500 shadow-sm"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            ) : (
+                              <div>
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  capture="environment"
+                                  onChange={handleUploadComprovante}
+                                  className="hidden"
+                                  id="comprovante-upload"
+                                />
+                                <label
+                                  htmlFor="comprovante-upload"
+                                  className="w-full py-4 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-slate-700 hover:border-slate-400 cursor-pointer transition-colors active:bg-slate-100"
+                                >
+                                  {isUploadingComprovante ? (
+                                    <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                                  ) : (
+                                    <>
+                                      <Camera className="w-6 h-6" />
+                                      <span className="text-xs font-bold uppercase tracking-wider">Tirar Foto ou Anexar</span>
+                                    </>
+                                  )}
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="pt-4 mt-2 border-t border-slate-100 sticky bottom-0 bg-white pb-2 flex-shrink-0">
+                  {Number(liters) === 0 ? (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-slate-800 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
+                    >
+                      <ArrowRight className="w-5 h-5" />
+                      Confirmar Chegada (Sem Abastecimento)
+                    </button>
+                  ) : fuelAction === 'only_fuel' ? (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-4 bg-sky-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-sky-700 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
+                    >
+                      <Check className="w-5 h-5" />
+                      Lançar Consumo e Chegada
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || ((paymentType === 'pix' || paymentType === 'credit' || paymentType === 'debit') && (!comprovanteUrl && !selectedReserva?.abastecimentoComprovanteUrl))}
+                      className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-emerald-700 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
+                    >
+                      <Check className="w-5 h-5" />
+                      Confirmar Chegada & Pagamento
+                    </button>
                   )}
                 </div>
-              )}
-
-              <div className="pt-2">
-                {Number(liters) === 0 ? (
-                  <button 
-                    type="submit" 
-                    disabled={isSubmitting}
-                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-slate-800 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
-                  >
-                    <ArrowRight className="w-5 h-5" />
-                    Confirmar Chegada (Sem Abastecimento)
-                  </button>
-                ) : (
-                  <button 
-                    type="submit" 
-                    disabled={isSubmitting}
-                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 active:bg-blue-700 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
-                  >
-                    <Check className="w-5 h-5" />
-                    Confirmar Chegada & Abastecimento
-                  </button>
-                )}
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}

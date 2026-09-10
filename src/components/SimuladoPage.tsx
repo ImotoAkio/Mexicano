@@ -1,10 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Info, Play, Plus, Bookmark, Home, CheckCircle2, List, LayoutGrid, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Info, Play, Plus, Bookmark, Home, CheckCircle2, List, LayoutGrid, ArrowLeft, TrendingUp, Target, Award, Clock } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { QUESTION_BANK, Question } from '../data/quizQuestions';
 
 import LogoMexicano from '../../logos/logo_mexicano.svg';
 
 const QUIZ_SIZE = 10;
+
+interface SessionRecord {
+  id: string;
+  date: string;          // ISO string
+  score: number;
+  total: number;
+  percentage: number;
+  durationSeconds: number;
+}
 
 // Função para embaralhar um array (Fisher-Yates)
 function shuffleArray<T>(array: T[]): T[] {
@@ -31,10 +41,24 @@ export default function SimuladoPage() {
   const [showExplanation, setShowExplanation] = useState(false);
   const [score, setScore] = useState(0);
   const [savedQuestions, setSavedQuestions] = useState<string[]>([]);
+  const [modalQuestionId, setModalQuestionId] = useState<string | null>(null);
+  const [revealAnswerInModal, setRevealAnswerInModal] = useState(false);
   const [leadId, setLeadId] = useState('');
+
+  // History
+  const [history, setHistory] = useState<SessionRecord[]>([]);
+  const quizStartTime = React.useRef<number>(0);
 
   // Load from local storage effect (on mount only)
   useEffect(() => {
+    // Load history
+    try {
+      const savedHistory = localStorage.getItem('@Simulado:history');
+      if (savedHistory) setHistory(JSON.parse(savedHistory));
+    } catch (e) {
+      console.error('Error parsing history', e);
+    }
+
     const saved = localStorage.getItem('@Simulado:progress');
     if (saved) {
       try {
@@ -129,6 +153,7 @@ export default function SimuladoPage() {
     setShowExplanation(false);
     setAnswers([]);
     setScore(0);
+    quizStartTime.current = Date.now();
     setStep('simulado');
   };
 
@@ -155,6 +180,25 @@ export default function SimuladoPage() {
     } else {
       setStep('finished');
       const finalScore = score + (selectedOption === questions[currentIndex].respostaCorreta ? 1 : 0);
+
+      // Record session to history
+      const durationSeconds = quizStartTime.current > 0
+        ? Math.round((Date.now() - quizStartTime.current) / 1000)
+        : 0;
+      const record: SessionRecord = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        date: new Date().toISOString(),
+        score: finalScore,
+        total: questions.length,
+        percentage: Math.round((finalScore / questions.length) * 100),
+        durationSeconds
+      };
+      setHistory(prev => {
+        const updated = [record, ...prev];
+        localStorage.setItem('@Simulado:history', JSON.stringify(updated));
+        return updated;
+      });
+
       if (leadId) {
         fetch(`/api/leads/finish/${leadId}`, {
           method: 'PUT',
@@ -185,6 +229,29 @@ export default function SimuladoPage() {
   };
 
   const currentQuestion = questions[currentIndex];
+
+  // History metrics
+  const historyMetrics = useMemo(() => {
+    if (history.length === 0) {
+      return { totalSessions: 0, avgPercentage: 0, lastThreeAvg: 0, bestScore: 0, chartData: [] };
+    }
+    const totalSessions = history.length;
+    const avgPercentage = Math.round(history.reduce((sum, s) => sum + s.percentage, 0) / totalSessions);
+    const lastThree = history.slice(0, 3);
+    const lastThreeAvg = Math.round(lastThree.reduce((sum, s) => sum + s.percentage, 0) / lastThree.length);
+    const bestScore = Math.max(...history.map(s => s.percentage));
+
+    // Chart data — chronological order (oldest first), last 10 sessions
+    const chartData = [...history]
+      .reverse()
+      .slice(-10)
+      .map((s, i) => ({
+        name: `#${i + 1}`,
+        percentual: s.percentage,
+      }));
+
+    return { totalSessions, avgPercentage, lastThreeAvg, bestScore, chartData };
+  }, [history]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans flex flex-col items-center">
@@ -305,15 +372,12 @@ export default function SimuladoPage() {
                      </div>
                  </button>
 
-                 <button className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between opacity-60">
+                 <button onClick={() => setStep('history')} className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-[#FFCE33] transition-colors">
                      <div className="flex-1">
-                         <div className="flex items-center gap-2">
-                           <h3 className="font-bold text-gray-900 text-left">Meu Histórico</h3>
-                           <span className="text-[10px] font-bold text-white bg-gray-400 px-2 rounded-full uppercase tracking-wider">Em breve</span>
-                         </div>
+                         <h3 className="font-bold text-gray-900 text-left">Meu Histórico</h3>
                          <p className="text-sm text-gray-500 text-left">Estatísticas de desempenho</p>
                      </div>
-                     <div className="bg-gray-100 text-gray-500 p-2.5 rounded-full">
+                     <div className="bg-purple-50 text-purple-600 p-2.5 rounded-full">
                          <List size={20} />
                      </div>
                  </button>
@@ -324,7 +388,7 @@ export default function SimuladoPage() {
 
         {/* ===================== TELA QUESTÕES SALVAS ===================== */}
         {step === 'saved_questions' && (
-          <div className="flex flex-col flex-1 animate-in fade-in duration-300 py-4">
+          <div className="flex flex-col flex-1 animate-in fade-in duration-300 py-4 px-5">
              <div className="flex items-center gap-3 mb-6 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
                 <button onClick={() => setStep('home')} className="text-gray-500 hover:text-gray-900 p-1">
                    <ArrowLeft size={24} />
@@ -332,7 +396,7 @@ export default function SimuladoPage() {
                 <h1 className="text-xl font-extrabold text-gray-900">Questões Salvas</h1>
              </div>
 
-             <div className="space-y-4 pb-10">
+             <div className="space-y-4 pb-20">
                {savedQuestions.length === 0 ? (
                  <div className="text-center py-10 bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
                     <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -346,26 +410,106 @@ export default function SimuladoPage() {
                    const q = QUESTION_BANK.find(q => q.id === id);
                    if (!q) return null;
                    return (
-                     <div key={id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-all">
-                        <div className="flex justify-between items-start gap-4 mb-3">
-                           <h3 className="font-bold text-gray-900 text-[15px] leading-snug">{q.pergunta}</h3>
-                           <button onClick={() => toggleBookmark(id)} className="text-[#FFCE33] shrink-0 p-1 hover:scale-110 transition-transform">
+                     <div
+                       key={id}
+                       onClick={() => { setModalQuestionId(id); setRevealAnswerInModal(false); }}
+                       className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-all hover:border-[#FFCE33] cursor-pointer"
+                     >
+                        <div className="flex justify-between items-start gap-4">
+                           <h3 className="font-bold text-gray-900 text-[15px] leading-snug line-clamp-3">{q.pergunta}</h3>
+                           <button
+                             onClick={(e) => { e.stopPropagation(); toggleBookmark(id); }}
+                             className="text-[#FFCE33] shrink-0 p-1 hover:scale-110 transition-transform"
+                             title="Remover das salvas"
+                           >
                               <Bookmark size={22} fill="currentColor" />
                            </button>
                         </div>
-                        <div className="bg-green-50/50 border border-green-100 rounded-xl p-3 mt-3">
-                           <p className="text-[12px] font-bold text-green-700 mb-1 uppercase tracking-wider">Resposta correta:</p>
-                           <p className="text-[14px] font-medium text-gray-800">{q.opcoes[q.respostaCorreta]}</p>
+                        <div className="mt-4 flex items-center justify-between">
+                           <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md">
+                             Tocar para revisar
+                           </span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-3 flex items-start gap-1.5">
-                           <Info size={14} className="shrink-0 text-gray-400 mt-0.5" />
-                           <span className="leading-relaxed">{q.explicacao}</span>
-                        </p>
                      </div>
                    );
                  })
                )}
              </div>
+
+             {/* MODAL DE REVISÃO */}
+             {modalQuestionId && (
+               <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+                 <div className="bg-white w-full max-w-md rounded-[20px] shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+
+                    {/* Modal Header */}
+                    <div className="flex justify-between items-center p-5 border-b border-gray-100">
+                       <h2 className="font-bold text-gray-900">Revisão de Questão</h2>
+                       <button
+                         onClick={() => setModalQuestionId(null)}
+                         className="p-2 text-gray-400 hover:text-gray-900 bg-gray-50 rounded-full transition-colors"
+                       >
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                       </button>
+                    </div>
+
+                    {/* Modal Content */}
+                    <div className="p-6 overflow-y-auto">
+                       {(() => {
+                         const q = QUESTION_BANK.find(q => q.id === modalQuestionId);
+                         if (!q) return null;
+
+                         return (
+                           <>
+                             <h3 className="text-[18px] font-extrabold text-[#111] leading-snug mb-6">
+                               {q.pergunta}
+                             </h3>
+
+                             <div className="space-y-3 mb-6">
+                               {q.opcoes.map((opcao, idx) => {
+                                 const isCorrect = idx === q.respostaCorreta;
+                                 let baseStyle = 'bg-white border-gray-200 text-gray-700 opacity-90';
+
+                                 if (revealAnswerInModal) {
+                                   if (isCorrect) {
+                                     baseStyle = 'bg-[#22c55e] border-[#22c55e] text-white font-bold opacity-100 shadow-sm';
+                                   } else {
+                                      baseStyle = 'bg-gray-50 border-gray-200 text-gray-400 opacity-60';
+                                   }
+                                 }
+
+                                 return (
+                                   <div
+                                     key={idx}
+                                     className={`w-full p-4 rounded-xl border text-[14px] leading-[1.3] transition-all ${baseStyle}`}
+                                   >
+                                     {opcao}
+                                   </div>
+                                 );
+                               })}
+                             </div>
+
+                             {!revealAnswerInModal ? (
+                               <button
+                                 onClick={() => setRevealAnswerInModal(true)}
+                                 className="w-full py-4 bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[16px] rounded-[14px] transition-all active:scale-[0.98]"
+                               >
+                                 Visualizar Resposta Correta
+                               </button>
+                             ) : (
+                               <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-4 animate-in fade-in">
+                                 <p className="text-amber-800 text-[13px] font-medium leading-relaxed flex items-start gap-2">
+                                   <Info className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                                   {q.explicacao}
+                                 </p>
+                               </div>
+                             )}
+                           </>
+                         )
+                       })()}
+                    </div>
+                 </div>
+               </div>
+             )}
           </div>
         )}
 
@@ -380,10 +524,17 @@ export default function SimuladoPage() {
 
               {/* Front Card */}
               <div className="bg-white rounded-[16px] px-6 py-6 border border-gray-100 flex flex-col shadow-sm relative z-10 min-h-[220px]">
-                <div className="flex items-center mb-2">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-[13px] font-medium text-gray-500 tracking-wide">
                     Questão {currentIndex + 1} de {questions.length}
                   </span>
+                  <button
+                    onClick={() => toggleBookmark(currentQuestion.id)}
+                    className={`p-1.5 transition-colors active:scale-95 ${savedQuestions.includes(currentQuestion.id) ? 'text-[#FFCE33]' : 'text-gray-300 hover:text-gray-400'}`}
+                    title="Salvar Questão"
+                  >
+                    <Bookmark size={22} fill={savedQuestions.includes(currentQuestion.id) ? 'currentColor' : 'none'} />
+                  </button>
                 </div>
                 <h2 className="text-[22px] sm:text-[24px] font-extrabold text-[#111] leading-[1.25] tracking-tight mb-8">
                   {currentQuestion.pergunta}
@@ -446,61 +597,165 @@ export default function SimuladoPage() {
               </div>
             )}
 
-            {/* STICKY BOTTOM BUTTON */}
-            <div className="fixed bottom-0 left-0 right-0 p-5 bg-gray-50 z-50 flex border-t border-gray-200 justify-center w-full">
-              <div className="w-full max-w-md relative h-14">
+            
 
-                {/* 5 Icons Header State - visible only when NO option selected and NOT checked */}
-                <div
-                  className={`absolute inset-0 flex items-center justify-between px-4 transition-opacity duration-200 ${
-                    (selectedOption !== null || isAnswerChecked) ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                  }`}
-                >
-                  <button onClick={() => setStep('home')} title="Página Inicial" className="text-gray-400 hover:text-gray-900 transition-colors p-2">
-                    <Home size={24} strokeWidth={2.5} />
-                  </button>
+          </div>
+        )}
 
+        {/* ===================== TELA HISTÓRICO ===================== */}
+        {step === 'history' && (
+          <div className="flex flex-col flex-1 animate-in fade-in duration-300 py-4 px-5 pb-28">
+             <div className="flex items-center gap-3 mb-6 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                <button onClick={() => setStep('home')} className="text-gray-500 hover:text-gray-900 p-1">
+                   <ArrowLeft size={24} />
+                </button>
+                <h1 className="text-xl font-extrabold text-gray-900">Meu Histórico</h1>
+             </div>
+
+             {history.length === 0 ? (
+               <div className="text-center py-10 bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
+                  <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <TrendingUp size={28} className="text-gray-400" />
+                  </div>
+                  <p className="text-gray-900 font-bold mb-1">Nenhum simulado concluído</p>
+                  <p className="text-sm text-gray-500 max-w-[250px] mx-auto">Complete seu primeiro simulado para começar a acompanhar sua evolução.</p>
                   <button
-                    title="Salvar Questão"
-                    onClick={() => toggleBookmark(currentQuestion.id)}
-                    className={`transition-colors p-2 ${savedQuestions.includes(currentQuestion.id) ? 'text-[#FFCE33] drop-shadow-sm' : 'text-gray-400 hover:text-gray-900'}`}
+                    onClick={handleStartExam}
+                    className="mt-6 bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[15px] py-3 px-8 rounded-[14px] transition-all active:scale-[0.98]"
                   >
-                    <Bookmark size={24} strokeWidth={2.5} fill={savedQuestions.includes(currentQuestion.id) ? 'currentColor' : 'none'} />
+                    Iniciar Simulado
                   </button>
+               </div>
+             ) : (
+               <>
+                 {/* KPI Cards */}
+                 <div className="grid grid-cols-2 gap-3 mb-6">
+                   <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                     <div className="flex items-center gap-2 mb-2">
+                       <div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg">
+                         <Target size={16} />
+                       </div>
+                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Simulados</span>
+                     </div>
+                     <p className="text-2xl font-extrabold text-gray-900">{historyMetrics.totalSessions}</p>
+                   </div>
 
-                  <button className="rounded-full bg-gray-200 p-[2px] shadow-sm relative -top-1 opacity-50 cursor-not-allowed">
-                    <div className="bg-[#FFCE33] text-black rounded-full p-2.5">
-                      <CheckCircle2 size={22} strokeWidth={3} />
-                    </div>
-                  </button>
+                   <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                     <div className="flex items-center gap-2 mb-2">
+                       <div className="bg-green-50 text-green-600 p-1.5 rounded-lg">
+                         <TrendingUp size={16} />
+                       </div>
+                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Média Geral</span>
+                     </div>
+                     <p className="text-2xl font-extrabold text-gray-900">{historyMetrics.avgPercentage}%</p>
+                   </div>
 
-                  <button title="Histórico" className="text-gray-400 hover:text-gray-900 transition-colors p-2 cursor-not-allowed opacity-50">
-                    <List size={24} strokeWidth={2.5} />
-                  </button>
+                   <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                     <div className="flex items-center gap-2 mb-2">
+                       <div className="bg-amber-50 text-amber-600 p-1.5 rounded-lg">
+                         <Clock size={16} />
+                       </div>
+                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ultimos 3</span>
+                     </div>
+                     <p className="text-2xl font-extrabold text-gray-900">{historyMetrics.lastThreeAvg}%</p>
+                   </div>
 
-                  <button title="Opções" className="text-gray-400 hover:text-gray-900 transition-colors p-2 cursor-not-allowed opacity-50">
-                    <LayoutGrid size={24} strokeWidth={2.5} />
-                  </button>
-                </div>
+                   <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                     <div className="flex items-center gap-2 mb-2">
+                       <div className="bg-purple-50 text-purple-600 p-1.5 rounded-lg">
+                         <Award size={16} />
+                       </div>
+                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Recorde</span>
+                     </div>
+                     <p className="text-2xl font-extrabold text-gray-900">{historyMetrics.bestScore}%</p>
+                   </div>
+                 </div>
 
-                {/* Big Yellow Button - visible when selected or checked */}
-                <div
-                  className={`absolute inset-0 w-full transition-opacity duration-200 ${
-                    (selectedOption !== null || isAnswerChecked) ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none'
-                  }`}
-                >
-                  <button
-                    onClick={isAnswerChecked ? handleNextQuestion : handleCheckAnswer}
-                    className="w-full h-full bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[16px] rounded-[16px] transition-all flex items-center justify-center active:scale-[0.98]"
-                  >
-                    {isAnswerChecked
-                      ? (currentIndex + 1 === questions.length ? 'Finalizar Teste' : 'Próxima Questão')
-                      : 'Verificar Resposta'}
-                  </button>
-                </div>
-              </div>
-            </div>
+                 {/* Evolution Chart */}
+                 {historyMetrics.chartData.length >= 2 && (
+                   <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm mb-6">
+                     <h2 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wide">Evolução de Desempenho</h2>
+                     <div className="h-[200px]">
+                       <ResponsiveContainer width="100%" height="100%">
+                         <LineChart data={historyMetrics.chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                           <XAxis
+                             dataKey="name"
+                             tick={{ fontSize: 12, fill: '#9ca3af' }}
+                             axisLine={{ stroke: '#e5e7eb' }}
+                             tickLine={false}
+                           />
+                           <YAxis
+                             domain={[0, 100]}
+                             tick={{ fontSize: 12, fill: '#9ca3af' }}
+                             axisLine={{ stroke: '#e5e7eb' }}
+                             tickLine={false}
+                             tickFormatter={(v: number) => `${v}%`}
+                           />
+                           <Tooltip
+                             formatter={(value: number) => [`${value}%`, 'Acerto']}
+                             contentStyle={{
+                               background: '#fff',
+                               border: '1px solid #e5e7eb',
+                               borderRadius: '12px',
+                               fontSize: '13px',
+                               fontWeight: 600,
+                             }}
+                           />
+                           <Line
+                             type="monotone"
+                             dataKey="percentual"
+                             stroke="#FFCE33"
+                             strokeWidth={3}
+                             dot={{ fill: '#FFCE33', strokeWidth: 2, stroke: '#fff', r: 5 }}
+                             activeDot={{ fill: '#ffbe1a', strokeWidth: 2, stroke: '#fff', r: 7 }}
+                           />
+                         </LineChart>
+                       </ResponsiveContainer>
+                     </div>
+                   </div>
+                 )}
 
+                 {/* Session List */}
+                 <div className="space-y-3">
+                   <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide px-1">Sessões Anteriores</h2>
+                   {history.map(session => {
+                     const d = new Date(session.date);
+                     const dateStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+                     const timeStr = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                     const minutes = Math.floor(session.durationSeconds / 60);
+                     const seconds = session.durationSeconds % 60;
+                     const durationStr = minutes > 0 ? `${minutes}min ${seconds}s` : `${seconds}s`;
+
+                     let performanceColor = 'text-red-600 bg-red-50';
+                     if (session.percentage >= 70) performanceColor = 'text-green-600 bg-green-50';
+                     else if (session.percentage >= 50) performanceColor = 'text-amber-600 bg-amber-50';
+
+                     return (
+                       <div key={session.id} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                         <div className="flex items-center justify-between mb-2">
+                           <div className="flex items-center gap-2">
+                             <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${performanceColor}`}>
+                               {session.percentage}%
+                             </span>
+                             <span className="text-sm font-bold text-gray-900">{session.score}/{session.total} acertos</span>
+                           </div>
+                         </div>
+                         <div className="flex items-center gap-3 text-xs text-gray-500">
+                           <span>{dateStr} às {timeStr}</span>
+                           {session.durationSeconds > 0 && (
+                             <>
+                               <span className="text-gray-300">|</span>
+                               <span>{durationStr}</span>
+                             </>
+                           )}
+                         </div>
+                       </div>
+                     );
+                   })}
+                 </div>
+               </>
+             )}
           </div>
         )}
 
@@ -537,6 +792,75 @@ export default function SimuladoPage() {
                   </button>
                </div>
              </div>
+          </div>
+        )}
+
+      
+        {/* STICKY BOTTOM NAV BAR - Visible on all pages except lead */}
+        {step !== 'lead' && (
+          <div className="fixed bottom-0 left-0 right-0 p-5 bg-gray-50 z-50 flex border-t border-gray-200 justify-center w-full">
+            <div className="w-full max-w-md relative h-14">
+
+              {/* 5 Icons Header State - visible when NO option selected/checked, or when NOT in simulado */}
+              <div
+                className={`absolute inset-0 flex items-center justify-between px-4 transition-opacity duration-200 ${
+                  (step === 'simulado' && (selectedOption !== null || isAnswerChecked)) ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                }`}
+              >
+                <button
+                  onClick={() => setStep('home')}
+                  title="Página Inicial"
+                  className={`transition-colors p-2 ${step === 'home' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-900'}`}
+                >
+                  <Home size={24} strokeWidth={2.5} />
+                </button>
+
+                <button
+                  title="Questões Salvas"
+                  onClick={() => setStep('saved_questions')}
+                  className={`transition-colors p-2 ${step === 'saved_questions' ? 'text-[#FFCE33] drop-shadow-sm' : 'text-gray-400 hover:text-gray-900'}`}
+                >
+                  <Bookmark size={24} strokeWidth={2.5} />
+                </button>
+
+                <button
+                  onClick={() => { if (step !== 'simulado') setStep('simulado'); }}
+                  className={`rounded-full bg-gray-200 p-[2px] shadow-sm relative -top-1 ${step === 'simulado' ? 'cursor-default' : 'hover:scale-105 transition-transform'}`}
+                >
+                  <div className="bg-[#FFCE33] text-black rounded-full p-2.5">
+                    {step === 'simulado' ? <Play size={22} strokeWidth={3} fill="currentColor" className="opacity-50" /> : <Play size={22} strokeWidth={3} fill="currentColor" />}
+                  </div>
+                </button>
+
+                <button
+                  title="Histórico"
+                  onClick={() => setStep('history')}
+                  className={`transition-colors p-2 ${step === 'history' ? 'text-gray-900 drop-shadow-sm' : 'text-gray-400 hover:text-gray-900'}`}
+                >
+                  <List size={24} strokeWidth={2.5} />
+                </button>
+
+                <button title="Opções" className="text-gray-400 hover:text-gray-900 transition-colors p-2 cursor-not-allowed opacity-50">
+                  <LayoutGrid size={24} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              {/* Big Yellow Button - visible ONLY in simulado when selected or checked */}
+              <div
+                className={`absolute inset-0 w-full transition-opacity duration-200 ${
+                  (step === 'simulado' && (selectedOption !== null || isAnswerChecked)) ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none'
+                }`}
+              >
+                <button
+                  onClick={isAnswerChecked ? handleNextQuestion : handleCheckAnswer}
+                  className="w-full h-full bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[16px] rounded-[16px] transition-all flex items-center justify-center active:scale-[0.98]"
+                >
+                  {isAnswerChecked
+                    ? (currentIndex + 1 === questions.length ? 'Finalizar Teste' : 'Próxima Questão')
+                    : 'Verificar Resposta'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

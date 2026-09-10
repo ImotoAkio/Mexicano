@@ -3,7 +3,7 @@ import {
   LogOut, Settings, FileText, Users, Search, 
   X, CheckCircle, FileSignature, Home, Bell, 
   MoreHorizontal, Plus, Edit2, Trash2, ChevronRight,
-  Filter, Download, Upload, Menu, Printer, Anchor, Save, Check, User, Eye, EyeOff, UserPlus, Key, Lock
+  Filter, Download, Upload, Menu, Printer, Anchor, Save, Check, User, Eye, EyeOff, UserPlus, Key, Lock, Target
 } from 'lucide-react';
 import { clientDB, boatDB } from '../db';
 import { generateContract } from './ContractGenerator';
@@ -19,7 +19,7 @@ interface ComercialDashboardProps {
   onLogout: () => void;
 }
 
-type TabType = 'home' | 'clientes' | 'embarcacoes' | 'contratos' | 'settings';
+type TabType = 'home' | 'clientes' | 'embarcacoes' | 'contratos' | 'settings' | 'leads';
 
 interface SearchableClientSelectProps {
   clients: any[];
@@ -444,6 +444,8 @@ export default function ComercialDashboard({ onLogout }: ComercialDashboardProps
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [boats, setBoats] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
+  const [leads, setLeads] = useState<any[]>([]);
+  const [loadingLeads, setLoadingLeads] = useState(false);
   
   // Embarcações Tab State
   const [boatSearchTerm, setBoatSearchTerm] = useState('');
@@ -730,13 +732,31 @@ b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.va
   useEffect(() => {
     fetchPreferences();
     loadData();
-    const interval = setInterval(loadData, 5000);
+    fetchLeads();
+    const interval = setInterval(() => {
+      loadData();
+      fetchLeads();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
   const loadData = () => {
     setBoats(boatDB.getAll());
     setClients(clientDB.getAll());
+  };
+
+  const fetchLeads = async () => {
+    try {
+      const res = await fetch('/api/leads', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLeads(data);
+      }
+    } catch (err) {
+      console.error("Error fetching leads", err);
+    }
   };
 
   const fetchPreferences = async () => {
@@ -930,13 +950,22 @@ b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.va
                 {isSidebarOpen && <span>Embarcações</span>}
               </button>
               
-              <button 
+              <button
                 title="Emitir Contratos"
                 onClick={() => setActiveTab('contratos')}
                 className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-colors text-sm font-medium ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'contratos' ? 'bg-slate-50 text-slate-900' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
               >
                 <FileSignature className="w-5 h-5 min-w-[1.25rem]" />
                 {isSidebarOpen && <span>Emitir Contratos</span>}
+              </button>
+
+              <button
+                title="Captura de Leads"
+                onClick={() => setActiveTab('leads')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-colors text-sm font-medium ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'leads' ? 'bg-slate-50 text-slate-900' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+              >
+                <Target className="w-5 h-5 min-w-[1.25rem]" />
+                {isSidebarOpen && <span>Captura de Leads</span>}
               </button>
             </nav>
           </div>
@@ -1723,6 +1752,77 @@ b) Saldo remanescente de R$ ${contractData.valorRemanescente} (${contractData.va
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: LEADS */}
+          {activeTab === 'leads' && (
+            <div className="max-w-7xl mx-auto space-y-6">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800">Captura de Leads</h2>
+                  <p className="text-sm text-slate-500 mt-1">Leads gerados pelo Simulado Arrais Amador</p>
+                </div>
+                <button onClick={fetchLeads} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors">
+                  Atualizar Lista
+                </button>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                        <th className="p-4 font-semibold">Data</th>
+                        <th className="p-4 font-semibold">Nome</th>
+                        <th className="p-4 font-semibold">Contato</th>
+                        <th className="p-4 font-semibold">Pontos</th>
+                        <th className="p-4 font-semibold">Status/Detalhes</th>
+                        <th className="p-4 font-semibold text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm text-slate-700 divide-y divide-slate-100">
+                      {leads.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-slate-500">Nenhum lead encontrado.</td>
+                        </tr>
+                      ) : (
+                        leads.map((lead: any) => (
+                          <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 whitespace-nowrap">
+                              {new Date(lead.createdAt).toLocaleDateString('pt-BR')} <br/>
+                              <span className="text-xs text-slate-400">{new Date(lead.createdAt).toLocaleTimeString('pt-BR')}</span>
+                            </td>
+                            <td className="p-4 font-medium text-slate-900">{lead.nome}</td>
+                            <td className="p-4">
+                              <div>{lead.telefone}</div>
+                              {lead.email && <div className="text-xs text-slate-500">{lead.email}</div>}
+                            </td>
+                            <td className="p-4">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-bold ${lead.pontuacao >= 3 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {lead.pontuacao} / 5
+                              </span>
+                            </td>
+                            <td className="p-4 text-xs text-slate-600 max-w-xs truncate" title={lead.detalhes}>
+                              {lead.detalhes}
+                            </td>
+                            <td className="p-4 text-right">
+                              <a
+                                href={`https://wa.me/55${lead.telefone.replace(/\D/g, '')}?text=Olá ${encodeURIComponent(lead.nome)}, vi que você realizou nosso Simulado para Arrais Amador!`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-xs font-bold transition-colors"
+                              >
+                                WhatsApp
+                              </a>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

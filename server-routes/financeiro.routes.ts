@@ -12,7 +12,16 @@ import {
   upsertAtividade,
   getConfigValue,
   syncMultipleClientsFinancialStatus,
-  syncClientFinancialStatus
+  syncClientFinancialStatus,
+  getAllContasBancarias,
+  upsertContaBancaria,
+  deleteContaBancaria,
+  getAllPlanosDeContas,
+  upsertPlanoDeConta,
+  deletePlanoDeConta,
+  getAllFornecedores,
+  upsertFornecedor,
+  deleteFornecedor
 } from "../server-db";
 
 import {
@@ -23,13 +32,27 @@ import {
 } from "../server-asaas";
 import { getDbPool } from "../server-db";
 
+function getGlobalEmpresaFromRole(role: string): string | null {
+  const r = role.toLowerCase().trim();
+  if (['admin', 'financeiro'].includes(r)) return null; // global
+  if (['pecas_servicos'].includes(r)) return 'Vale Administradora';
+  if (['comercial'].includes(r)) return 'Mexicano';
+  return 'Marina'; // fallback for all others (marina_gerente, marinheiro operador, etc)
+}
+
 const router = Router();
 
 router.get("/transacoes", requireAdminAuth, async (req, res) => {
   try {
-    const transacoes = await getAllTransacoes();
+    let transacoes = await getAllTransacoes();
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    if (allowedEmpresa) {
+      transacoes = transacoes.filter((t: any) => t.empresa === allowedEmpresa);
+    } else if (req.query.empresa) {
+      transacoes = transacoes.filter((t: any) => t.empresa === req.query.empresa);
+    }
     if (req.query.clienteId) {
-      return res.json(transacoes.filter((t: any) => t.clienteId === req.query.clienteId));
+      transacoes = transacoes.filter((t: any) => t.clienteId === req.query.clienteId);
     }
     res.json(transacoes);
   } catch (err: any) {
@@ -41,6 +64,7 @@ router.get("/transacoes", requireAdminAuth, async (req, res) => {
 router.post("/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   const { action, data } = req.body;
   try {
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
     if (action === 'delete') {
       await deleteTransacao(data.id || data);
     } else if (action === 'delete_all') {
@@ -50,9 +74,11 @@ router.post("/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, 
     } else if (action === 'upsert') {
       if (Array.isArray(data)) {
         for (const item of data) {
+          if (allowedEmpresa) item.empresa = allowedEmpresa;
           await upsertTransacao(item);
         }
       } else {
+        if (allowedEmpresa) data.empresa = allowedEmpresa;
         await upsertTransacao(data);
       }
     } else {
@@ -63,6 +89,138 @@ router.post("/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, 
   } catch (err: any) {
     console.error("[Transacao Save Error]", err);
     res.status(500).json({ error: true, message: err.message || "Failed to save transacao" });
+  }
+});
+
+// ----------------------------------------------------------------------
+// CONTAS BANCARIAS
+// ----------------------------------------------------------------------
+router.get("/contas-bancarias", requireAdminAuth, async (req, res) => {
+  try {
+    let contas = await getAllContasBancarias();
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    if (allowedEmpresa) {
+      contas = contas.filter((c: any) => c.empresa === allowedEmpresa);
+    } else if (req.query.empresa) {
+      contas = contas.filter((c: any) => c.empresa === req.query.empresa);
+    }
+    res.json(contas);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch contas bancarias" });
+  }
+});
+
+router.post("/contas-bancarias/save", requireAdminAuth, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    if (action === 'delete') {
+      await deleteContaBancaria(data.id || data);
+    } else if (action === 'upsert') {
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          if (allowedEmpresa) item.empresa = allowedEmpresa;
+          await upsertContaBancaria(item);
+        }
+      } else {
+        if (allowedEmpresa) data.empresa = allowedEmpresa;
+        await upsertContaBancaria(data);
+      }
+    } else {
+      return res.status(400).json({ error: true, message: `Unsupported action: ${action}` });
+    }
+    invalidateDbCache();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save conta bancaria" });
+  }
+});
+
+// ----------------------------------------------------------------------
+// PLANOS DE CONTAS
+// ----------------------------------------------------------------------
+router.get("/planos-contas", requireAdminAuth, async (req, res) => {
+  try {
+    let contas = await getAllPlanosDeContas();
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    if (allowedEmpresa) {
+      contas = contas.filter((c: any) => c.empresa === allowedEmpresa || c.empresa === 'Todos');
+    } else if (req.query.empresa) {
+      contas = contas.filter((c: any) => c.empresa === req.query.empresa || c.empresa === 'Todos');
+    }
+    res.json(contas);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch planos de contas" });
+  }
+});
+
+router.post("/planos-contas/save", requireAdminAuth, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    if (action === 'delete') {
+      await deletePlanoDeConta(data.id || data);
+    } else if (action === 'upsert') {
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          if (allowedEmpresa && item.empresa !== 'Todos') item.empresa = allowedEmpresa;
+          await upsertPlanoDeConta(item);
+        }
+      } else {
+        if (allowedEmpresa && data.empresa !== 'Todos') data.empresa = allowedEmpresa;
+        await upsertPlanoDeConta(data);
+      }
+    } else {
+      return res.status(400).json({ error: true, message: `Unsupported action: ${action}` });
+    }
+    invalidateDbCache();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save plano de conta" });
+  }
+});
+
+// ----------------------------------------------------------------------
+// FORNECEDORES
+// ----------------------------------------------------------------------
+router.get("/fornecedores", requireAdminAuth, async (req, res) => {
+  try {
+    let fornecedores = await getAllFornecedores();
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    if (allowedEmpresa) {
+      fornecedores = fornecedores.filter((f: any) => f.empresa === allowedEmpresa);
+    } else if (req.query.empresa) {
+      fornecedores = fornecedores.filter((f: any) => f.empresa === req.query.empresa);
+    }
+    res.json(fornecedores);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch fornecedores" });
+  }
+});
+
+router.post("/fornecedores/save", requireAdminAuth, async (req, res) => {
+  const { action, data } = req.body;
+  try {
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    if (action === 'delete') {
+      await deleteFornecedor(data.id || data);
+    } else if (action === 'upsert') {
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          if (allowedEmpresa) item.empresa = allowedEmpresa;
+          await upsertFornecedor(item);
+        }
+      } else {
+        if (allowedEmpresa) data.empresa = allowedEmpresa;
+        await upsertFornecedor(data);
+      }
+    } else {
+      return res.status(400).json({ error: true, message: `Unsupported action: ${action}` });
+    }
+    invalidateDbCache();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to save fornecedor" });
   }
 });
 

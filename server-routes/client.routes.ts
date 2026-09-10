@@ -24,8 +24,9 @@ clientRoutes.get("/me", requireClientAuth, async (req, res) => {
     const boats = dbData.boats.filter((b: any) => clientBoatsList.includes(b.id));
     const reservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
     const transacoes = dbData.transacoes.filter((t: any) => t.clienteId === client.id);
+    const chamados = dbData.chamados ? dbData.chamados.filter((c: any) => c.clienteId === client.id || clientBoatsList.includes(c.embarcacaoId)) : [];
     writeAuditLog(client.nome, "client", "FETCH_DATA", req.ip, `ID: ${client.id}`);
-    res.json({ client, boats, reservations, transacoes });
+    res.json({ client, boats, reservations, transacoes, chamados });
   } catch (err: any) {
     console.error("Client data fetch error:", err);
     res.status(500).json({ error: true, message: "Erro ao carregar dados do cliente." });

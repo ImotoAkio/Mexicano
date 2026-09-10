@@ -11,7 +11,11 @@ const ClientPage = lazy(() => import('./components/ClientPage'));
 const BoatPage = lazy(() => import('./components/BoatPage'));
 const IntegrationsPage = lazy(() => import('./components/IntegrationsPage'));
 const SoundControlsPage = lazy(() => import('./components/SoundControlsPage'));
-const FinancePage = lazy(() => import('./components/FinancePage'));
+const FinanceDashboardPage = lazy(() => import('./components/finance/FinanceDashboardPage'));
+const FinanceFluxoCaixa = lazy(() => import('./components/finance/FinanceFluxoCaixa'));
+const FinanceParcelasFixas = lazy(() => import('./components/finance/FinanceParcelasFixas'));
+const FinanceCadastroConfigs = lazy(() => import('./components/finance/FinanceCadastroConfigs'));
+const FinanceRelatorios = lazy(() => import('./components/finance/FinanceRelatorios'));
 import LoginPage from './components/LoginPage';
 import ClientLoginPage from './components/ClientLoginPage';
 const ClientDashboardPage = lazy(() => import('./components/ClientDashboardPage'));
@@ -43,6 +47,7 @@ const RetroativoPage = lazy(() => import('./components/RetroativoPage').then(m =
 const AuditLogsPage = lazy(() => import('./components/AuditLogsPage'));
 const SharedChecklistPage = lazy(() => import('./components/SharedChecklistPage'));
 const ContractGeneratorPage = lazy(() => import('./components/ContractGeneratorPage'));
+const SimuladoPage = lazy(() => import('./components/SimuladoPage'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
 import { 
   Compass, 
@@ -65,7 +70,7 @@ import {
   MessageSquare,
   CheckCircle,
   Wrench,
-  Droplet, Droplets, Clock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package
+  Droplet, Droplets, Clock, CalendarClock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package, PieChart
 } from 'lucide-react';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -168,6 +173,29 @@ export default function App() {
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
+
+
+  useEffect(() => {
+    // Lógica inteligente de roteamento inicial da PWA
+    if (currentPath === '/' || currentPath === '/portal') {
+      const lastUserType = localStorage.getItem('last_user_type');
+      
+      // 1. Se tem admin_token mas não tem client_token, joga pro admin
+      if (isAuthenticated && !clientToken) {
+        window.history.replaceState(null, '', '/admin');
+        setCurrentPath('/admin');
+        return;
+      }
+      
+      // 2. Se NÃO está logado de nenhuma das formas, mas o último login foi como admin
+      // Isso evita que o funcionário veja a tela do cliente após o token expirar.
+      if (!isAuthenticated && !clientToken && lastUserType === 'admin') {
+        window.history.replaceState(null, '', '/admin');
+        setCurrentPath('/admin');
+      }
+    }
+  }, [currentPath, isAuthenticated, clientToken]);
+
 
   // Fetch admin role
   useEffect(() => {
@@ -293,12 +321,13 @@ export default function App() {
     {
       group: 'Financeiro',
       items: [
-        { id: 'finance-lancamentos' as TabType, label: 'Lançamentos', icon: Wallet },
+        { id: 'finance-dashboard' as TabType, label: 'Visão Geral (Dashboard)', icon: PieChart },
+        { id: 'finance-fluxo' as TabType, label: 'Fluxo de Caixa', icon: Wallet },
+        { id: 'finance-recorrencia' as TabType, label: 'Gestão de Parcelas', icon: CalendarClock },
+        { id: 'finance-cadastros' as TabType, label: 'Cadastros Financeiros', icon: Settings },
+        { id: 'finance-relatorios' as TabType, label: 'Relatórios & DRE', icon: FileSearch },
         { id: 'finance-fuel' as TabType, label: 'Lançamento de Combustível', icon: Droplets },
-        { id: 'finance-atividades' as TabType, label: 'Atividades', icon: ClipboardList },
-        { id: 'finance-cobranca' as TabType, label: 'Débitos & Cobrança', icon: FileText },
         { id: 'finance-boletos' as TabType, label: 'Envio de Boletos', icon: Receipt },
-        { id: 'finance-schedules' as TabType, label: 'Consulta de Agendas', icon: CalendarIcon },
         { id: 'finance-whatsapp' as TabType, label: 'WhatsApp', icon: MessageSquare },
       ]
     },
@@ -324,7 +353,7 @@ export default function App() {
     ...group,
     items: group.items.filter(item => {
       if (isFinanceiro) {
-        return ['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(item.id);
+        return ['finance-dashboard', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno'].includes(item.id);
       } else if (isPecasServicos) {
         return ['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(item.id);
       } else if (isComercial) {
@@ -335,8 +364,8 @@ export default function App() {
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
-    if (isFinanceiro && !['finance-lancamentos', 'finance-fuel', 'finance-atividades', 'finance-cobranca', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules'].includes(activeTab)) {
-      setActiveTab('finance-lancamentos');
+    if (isFinanceiro && !['finance-dashboard', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno'].includes(activeTab)) {
+      setActiveTab('finance-dashboard');
     } else if (isPecasServicos && !['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(activeTab)) {
       setActiveTab('manutencoes');
     } else if (isComercial && !['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(activeTab)) {
@@ -372,11 +401,21 @@ export default function App() {
   }, []);
 
   const isFeedbackRoute = currentPath === '/feedback' || currentPath.startsWith('/feedback');
+  const isQuizRoute = currentPath === '/simulado' || currentPath.startsWith('/simulado/');
   const isAdminRoute = currentPath.startsWith('/admin');
   const isSimuladorRoute = currentPath === '/simulador-epi';
   const isSharedChecklistRoute = currentPath.startsWith('/checklist/share/');
   const isPierTvRoute = currentPath === '/tv-pier' || currentPath.startsWith('/tv-pier');
-  const isClientRoute = !isAdminRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute && !isPierTvRoute;
+  const isClientRoute = !isAdminRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute && !isPierTvRoute && !isQuizRoute;
+
+  // ═══════════ SIMULADO PUBLIC PAGE (/simulado) ═══════════
+  if (isQuizRoute) {
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div></div>}>
+        <SimuladoPage />
+      </Suspense>
+    );
+  }
 
   // ═══════════ FEEDBACK PUBLIC PAGE (/feedback) ═══════════
   if (isFeedbackRoute) {
@@ -417,11 +456,12 @@ export default function App() {
         </div>
       }>
         {clientData ? (
-          <ClientDashboardPage 
+          <ClientDashboardPage
             client={clientData.client}
             boats={clientData.boats || []}
             reservations={clientData.reservations || []}
             transacoes={clientData.transacoes || []}
+            chamados={clientData.chamados || []}
             onLogout={() => {
               localStorage.removeItem('client_token');
               localStorage.removeItem('client_data_cache');
@@ -651,12 +691,13 @@ export default function App() {
                 {activeTab === 'pecas-acessorios' && <PecasAcessoriosPage />}
                 {activeTab === 'pecas-whatsapp' && <PecasWhatsAppPage />}
                 {activeTab === 'pecas-atividades' && <PecasAtividadesPage />}
-                {activeTab === 'finance-lancamentos' && <FinancePage initialTab="lancamentos" />}
-                {activeTab === 'finance-atividades' && <FinancePage initialTab="atividades" />}
-                {activeTab === 'finance-cobranca' && <FinancePage initialTab="cobranca" />}
+                {activeTab === 'finance-dashboard' && <FinanceDashboardPage />}
+                {activeTab === 'finance-fluxo' && <FinanceFluxoCaixa />}
+                {activeTab === 'finance-recorrencia' && <FinanceParcelasFixas />}
+                {activeTab === 'finance-cadastros' && <FinanceCadastroConfigs />}
+                {activeTab === 'finance-relatorios' && <FinanceRelatorios />}
                 {activeTab === 'finance-boletos' && <BoletosPage />}
                 {activeTab === 'finance-whatsapp' && <FinanceWhatsAppPage />}
-                {activeTab === 'finance-schedules' && <FinanceSchedulesPage />}
                 {activeTab === 'users' && <UsersPage />}
                 {activeTab === 'feedback' && <FeedbackAdmin />}
                 {activeTab === 'integrations' && <IntegrationsPage />}
