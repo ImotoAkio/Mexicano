@@ -25,11 +25,39 @@ export default function AvisosSaidaPage() {
   const [previsaoChegada, setPrevisaoChegada] = useState('');
   const [observacao, setObservacao] = useState('');
 
+  
+  const userRole = (localStorage.getItem('admin_role') || '').toLowerCase().trim();
+  const isGerente = userRole === 'marina_gerente' || userRole === 'gerente';
+
   // Logo and Header options
-  const [logoOption, setLogoOption] = useState<'default' | 'empty' | 'custom'>('default');
-  const [customLogoBase64, setCustomLogoBase64] = useState<string>('');
-  const [customLogoName, setCustomLogoName] = useState<string>('');
-  const [bannerText, setBannerText] = useState('VILA NÁUTICA');
+  const [logoOption, setLogoOption] = useState<'default' | 'empty' | 'custom'>(() => {
+    return (isGerente && localStorage.getItem('avisos_saida_logoOption')) 
+      ? (localStorage.getItem('avisos_saida_logoOption') as 'default' | 'empty' | 'custom') 
+      : 'default';
+  });
+  const [customLogoBase64, setCustomLogoBase64] = useState<string>(() => {
+    return (isGerente && localStorage.getItem('avisos_saida_customLogo')) || '';
+  });
+  const [customLogoName, setCustomLogoName] = useState<string>(() => {
+    return (isGerente && localStorage.getItem('avisos_saida_customLogoName')) || '';
+  });
+  const [bannerText, setBannerText] = useState(() => {
+    if (isGerente) {
+      const saved = localStorage.getItem('avisos_saida_bannerText');
+      return saved !== null ? saved : 'Marina Club Velho Chico';
+    }
+    return 'VILA NÁUTICA';
+  });
+
+  // Save preferences for Gerente Marina
+  React.useEffect(() => {
+    if (isGerente) {
+      localStorage.setItem('avisos_saida_logoOption', logoOption);
+      localStorage.setItem('avisos_saida_customLogo', customLogoBase64);
+      localStorage.setItem('avisos_saida_customLogoName', customLogoName);
+      localStorage.setItem('avisos_saida_bannerText', bannerText);
+    }
+  }, [isGerente, logoOption, customLogoBase64, customLogoName, bannerText]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,7 +142,7 @@ export default function AvisosSaidaPage() {
         autoPrint: action === 'print',
         download: action === 'download',
         logoUrl,
-        bannerText: bannerText || 'VILA NÁUTICA'
+        bannerText: bannerText || (isGerente ? 'MARINA CLUB VELHO CHICO' : 'VILA NÁUTICA')
       });
     } catch (err) {
       console.error('Erro ao gerar o PDF:', err);
@@ -173,7 +201,7 @@ export default function AvisosSaidaPage() {
                 type="text"
                 value={bannerText}
                 onChange={(e) => setBannerText(e.target.value)}
-                placeholder="Ex: VILA NÁUTICA"
+                placeholder={isGerente ? 'Ex: MARINA CLUB VELHO CHICO' : 'Ex: VILA NÁUTICA'}
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74]"
               />
             </div>
@@ -471,7 +499,7 @@ export default function AvisosSaidaPage() {
                     <span className="text-[10px]">{data}</span>
                   </div>
                   <div className="col-span-6 p-2 font-bold text-[10px] text-left truncate bg-slate-50/50">
-                    {bannerText ? bannerText.toUpperCase() : 'VILA NÁUTICA'}
+                    {bannerText ? bannerText.toUpperCase() : (isGerente ? 'MARINA CLUB VELHO CHICO' : 'VILA NÁUTICA')}
                   </div>
                 </div>
 
