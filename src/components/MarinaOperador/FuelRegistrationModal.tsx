@@ -20,7 +20,7 @@ import { getFuelPrice } from '../../utils/constants';
 export interface FuelRegistrationData {
   liters: number;
   statusCobranca: 'cobrado' | 'pendente';
-  paymentType: 'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin';
+  paymentType: 'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin' | null;
   comprovanteUrl: string | null;
 }
 
@@ -47,7 +47,7 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
 }) => {
   const [liters, setLiters] = useState<string>('');
   const [statusCobranca, setStatusCobranca] = useState<'cobrado' | 'pendente'>('pendente');
-  const [paymentType, setPaymentType] = useState<'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin'>('pix');
+  const [paymentType, setPaymentType] = useState<'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin' | null>('pix');
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -60,7 +60,7 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
       if (reservaTarget && (reservaTarget.abastecimentoLitros || reservaTarget.litrosAbastecidos)) {
         setLiters((reservaTarget.abastecimentoLitros || reservaTarget.litrosAbastecidos).toString());
         setStatusCobranca(reservaTarget.abastecimentoStatusCobranca === 'cobrado' ? 'cobrado' : 'pendente');
-        setPaymentType(reservaTarget.abastecimentoFormaPagamento || 'pix');
+        setPaymentType(reservaTarget.abastecimentoFormaPagamento || (reservaTarget.abastecimentoStatusCobranca === 'pendente' ? null : 'pix'));
         setComprovanteUrl(reservaTarget.abastecimentoComprovanteUrl || null);
       } else {
         setLiters('');
@@ -76,7 +76,7 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
   const embarcacao = embarcacaoTarget || reservaTarget?.embarcacao;
   const cliente = standaloneClient || reservaTarget?.cliente || (embarcacaoTarget as any)?.cliente;
 
-  const totalValue = Number(liters || 0) * getFuelPrice(paymentType);
+  const totalValue = Number(liters || 0) * getFuelPrice(paymentType || 'pix');
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

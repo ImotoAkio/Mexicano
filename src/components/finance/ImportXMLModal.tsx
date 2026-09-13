@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { UploadCloud, CheckCircle, XCircle, ArrowRight, AlertTriangle, ChevronLeft, ChevronRight, AlertCircle, EyeOff, Eye, FileSpreadsheet } from 'lucide-react';
-import { TransacaoFinanceira, Cliente, Embarcacao } from '../../types';
+import { TransacaoFinanceira, Cliente, Embarcacao, ContaBancaria, PlanoConta } from '../../types';
 import Select from 'react-select';
 
 interface ImportXMLModalProps {
@@ -50,6 +50,23 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
   type FilterMode = 'all' | 'pending' | 'ready' | 'missing_client' | 'missing_category' | 'ignored';
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [importMode, setImportMode] = useState<'append' | 'overwrite_clients' | 'overwrite_all'>('overwrite_clients');
+  
+  const [contasBancarias, setContasBancarias] = useState<ContaBancaria[]>([]);
+  const [importEmpresa, setImportEmpresa] = useState('Marina');
+  const [importContaBancaria, setImportContaBancaria] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      const token = localStorage.getItem('admin_token') || localStorage.getItem('token');
+      if (token) {
+        fetch('/api/financeiro/contas-bancarias', { headers: { 'Authorization': `Bearer ${token}` } })
+          .then(res => res.json())
+          .then(data => setContasBancarias(data))
+          .catch(console.error);
+      }
+    }
+  }, [isOpen]);
+
 
   // Load saved mapping on mount
   useEffect(() => {
@@ -367,7 +384,9 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
         dataVencimento: row.dataVencimento,
         status: row.status,
         descricao: row.descricao || '',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        empresa: importEmpresa,
+        contaBancariaId: importContaBancaria || null
       };
     });
 
@@ -777,17 +796,44 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
         {/* Footer */}
         <div className="p-3 border-t border-slate-100 bg-white flex justify-between gap-3 shrink-0 items-center">
           {step === 'review' ? (
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-slate-700">Modo de Importação:</label>
-              <select 
-                value={importMode} 
-                onChange={e => setImportMode(e.target.value as any)}
-                className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
-              >
-                <option value="append">Adicionar / Atualizar (Padrão)</option>
-                <option value="overwrite_clients">Sobrescrever clientes desta planilha (Recomendado)</option>
-                <option value="overwrite_all">Sobrescrever TODOS os registros (Atenção!)</option>
-              </select>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-700">Empresa:</label>
+                <select 
+                  value={importEmpresa}
+                  onChange={e => setImportEmpresa(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
+                >
+                  <option value="Marina">Marina</option>
+                  <option value="Vale Administradora">Vale Administradora</option>
+                  <option value="Mexicano">Mexicano</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-700">Conta Bancária:</label>
+                <select 
+                  value={importContaBancaria}
+                  onChange={e => setImportContaBancaria(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
+                >
+                  <option value="">-- Padrão --</option>
+                  {contasBancarias.map(c => (
+                    <option key={c.id} value={c.id}>{c.nomeBanco} - {c.nomeConta}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-700">Modo:</label>
+                <select 
+                  value={importMode} 
+                  onChange={e => setImportMode(e.target.value as any)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium max-w-[180px]"
+                >
+                  <option value="append">Adicionar</option>
+                  <option value="overwrite_clients">Sobrescrever Clientes</option>
+                  <option value="overwrite_all">Substituir Total</option>
+                </select>
+              </div>
             </div>
           ) : <div />}
           <div className="flex gap-3">

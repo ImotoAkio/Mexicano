@@ -66,10 +66,11 @@ router.post("/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
               categoria: 'Serviços/Manutenção',
               valor: baseValor,
               dataVencimento: data.dataSaida || data.prazoEntrega || data.dataChamado || new Date().toISOString().split('T')[0],
-              status: 'pendente',
+              status: 'lancado',
               descricao: data.descricaoServico || `Manutenção Embarcação`,
               embarcacaoId: data.embarcacaoId,
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
+              empresa: 'Marina'
             };
 
             const dbData = await pullDatabase();
@@ -91,7 +92,9 @@ router.post("/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
                 clientsToSync.add(donoId);
               }
             } else {
-              await upsertTransacao(transacaoBase, connection);
+              // Adicionando tentativa de vincular cliente caso faltem donos na embarcacao
+              const fbClienteId = boat ? (boat.clienteId || null) : null;
+              await upsertTransacao({ ...transacaoBase, clienteId: fbClienteId }, connection);
             }
 
             await connection.commit();

@@ -392,7 +392,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         const updatedReserva = {
           ...fuelReservaTarget,
           abastecimentoLitros: fuelData.liters,
-          abastecimentoFormaPagamento: fuelData.paymentType,
+          abastecimentoFormaPagamento: fuelData.statusCobranca === 'pendente' ? null : fuelData.paymentType,
           abastecimentoStatusCobranca: fuelData.statusCobranca,
           abastecimentoValorTotal: (fuelData.liters * price).toString(),
           abastecimentoComprovanteUrl: fuelData.comprovanteUrl || null,
@@ -414,7 +414,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
               dataVencimento: new Date().toISOString().split('T')[0],
               dataPagamento: new Date().toISOString().split('T')[0],
               status: 'pago',
-              metodoPagamento: fuelData.paymentType,
+              metodoPagamento: fuelData.statusCobranca === 'pendente' ? null : fuelData.paymentType,
               descricao: `Abastecimento Marina: ${fuelData.liters}L a R$${price.toFixed(2)}/L - ${boat?.nome || 'Desc'}`,
               clienteId: fuelReservaTarget.clienteId,
               embarcacaoId: fuelReservaTarget.embarcacaoId,

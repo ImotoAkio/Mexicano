@@ -1714,10 +1714,11 @@ export default function FinanceFluxoCaixa() {
                     onChange={(e) => {
                       if (e.target.value === 'Outro') {
                         setIsCustomCategoria(true);
-                        setFormData({...formData, categoria: ''});
+                        setFormData({...formData, categoria: '', planoContasId: ''});
                       } else {
                         setIsCustomCategoria(false);
-                        setFormData({...formData, categoria: e.target.value});
+                        const selectedPlan = planosContas.find(p => p.descricao === e.target.value);
+                        setFormData({...formData, categoria: e.target.value, planoContasId: selectedPlan?.id || ''});
                       }
                     }}
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 font-semibold text-sm"
@@ -1746,8 +1747,7 @@ export default function FinanceFluxoCaixa() {
                 <div className="grid grid-cols-1 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Empresa</label>
-                    <select
-                      value={formData.empresa || ''}
+                    <select required value={formData.empresa || ''}
                       onChange={(e) => setFormData({...formData, empresa: e.target.value})}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
                     >
@@ -1763,8 +1763,7 @@ export default function FinanceFluxoCaixa() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Conta Bancária</label>
-                  <select
-                      value={formData.contaBancariaId || ''}
+                  <select required value={formData.contaBancariaId || ''}
                       onChange={(e) => setFormData({...formData, contaBancariaId: e.target.value})}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
                   >
@@ -1777,8 +1776,7 @@ export default function FinanceFluxoCaixa() {
                 {formData.tipo === 'despesa' && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Fornecedor</label>
-                    <select
-                        value={formData.fornecedorId || ''}
+                    <select required value={formData.fornecedorId || ''}
                         onChange={(e) => setFormData({...formData, fornecedorId: e.target.value})}
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
                     >

@@ -35,7 +35,7 @@ export default function BulkImportPage({ onClose, onSuccess, clientes, embarcaco
       "categoria": "Mensalidade",
       "valor": 450.00,
       "dataVencimento": "2026-07-10",
-      "status": "pendente",
+      "status": "lancado",
       "descricao": "Mensalidade de Cotista - Julho/2026",
       "clienteId": clientes[0]?.id || "id-do-cliente",
       "embarcacaoId": embarcacoes[0]?.id || "id-da-embarcacao"
@@ -114,13 +114,13 @@ export default function BulkImportPage({ onClose, onSuccess, clientes, embarcaco
 
         // Validate status
         let status = item.status;
-        const validStatuses = ['pendente', 'pago', 'atrasado', 'cancelado', 'aguardando_aprovacao'];
+        const validStatuses = ['lancado', 'pago', 'vencido', 'cancelado'];
         if (!status) {
-          status = 'pendente';
-          warnings.push('Status ausente. Definido como "pendente".');
+          status = 'lancado';
+          warnings.push('Status ausente. Definido como "lancado".');
         } else if (!validStatuses.includes(status)) {
-          warnings.push(`Status incomum/inválido: "${status}". Definido como "pendente".`);
-          status = 'pendente';
+          warnings.push(`Status incomum/inválido: "${status}". Definido como "lancado".`);
+          status = 'lancado';
         }
 
         // Resolve clienteId
@@ -146,6 +146,9 @@ export default function BulkImportPage({ onClose, onSuccess, clientes, embarcaco
         }
 
         const validItem: Partial<TransacaoFinanceira> = {
+          empresa: item.empresa || 'Marina',
+          contaBancariaId: item.contaBancariaId || undefined,
+          planoContasId: item.planoContasId || undefined,
           id: item.id || `fin_${Date.now()}_import_${index}_${Math.random().toString(36).substring(2, 7)}`,
           tipo: tipo as 'receita' | 'despesa',
           categoria: item.categoria || 'Importação JSON',

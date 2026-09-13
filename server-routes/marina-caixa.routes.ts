@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireMarinaManagerOrAdminAuth, sensitiveLimiter } from "./middlewares";
 import {
   getCaixaMarinaTransacoes,
+  upsertTransacao,
   upsertCaixaMarinaTransacao,
   deleteCaixaMarinaTransacao,
   devolverColetesCaixaMarina,
@@ -164,6 +165,28 @@ router.post("/abastecimentos-baixar", requireMarinaManagerOrAdminAuth, sensitive
     };
 
     await upsertCaixaMarinaTransacao(caixaTransacao);
+
+    // 3. Se for faturado, gerar recebível no Fluxo de Caixa Principal (TransacoesFinanceiras)
+    if (finalFormaPagamento === 'faturado') {
+      const dbData = await (currentPool as any).query("SELECT nome FROM Embarcacoes WHERE id = ?", [reserva.embarcacaoId]);
+      const boatName = (dbData[0] as any[])[0]?.nome || 'Embarcação Local';
+
+      const tf = {
+        id: `tf_fuel_${reservaId}_${Date.now()}`,
+        tipo: 'receita',
+        categoria: 'Combustível',
+        valor: finalValor,
+        dataVencimento: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0], // vencimento default = dia 10 do prox mes
+        status: 'lancado',
+        descricao: `Abastecimento faturado de ${litros}L (Reserva ${reservaId} - ${boatName})`,
+        clienteId: reserva.clienteId || null,
+        embarcacaoId: reserva.embarcacaoId || null,
+        empresa: 'Marina', // ou Mexicano se for comb mexicano
+        createdAt: new Date().toISOString()
+      };
+      
+      await upsertTransacao(tf, currentPool);
+    }
 
     const io = (req.app as any).locals.io;
     if (io) {

@@ -50,7 +50,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   const [selectedBoatId, setSelectedBoatId] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [liters, setLiters] = useState('');
-  const [paymentType, setPaymentType] = useState<'pix' | 'dinheiro' | 'credit' | 'debit' | 'admin'>('pix');
+  const [paymentType, setPaymentType] = useState<'pix' | 'dinheiro' | 'credit' | 'debit' | 'admin' | null>('pix');
+  const [statusCobranca, setStatusCobranca] = useState<'cobrado' | 'pendente'>('cobrado');
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
   const [isUploadingComprovante, setIsUploadingComprovante] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -453,10 +454,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     setIsSubmitting(true);
 
     const litrosNum = parseFloat(liters.replace(',', '.'));
+    if (statusCobranca === 'cobrado' && !paymentType) {
+      alert('Selecione uma forma de pagamento para cobrança imediata.');
+      return;
+    }
     const isAvulso = saleMode === 'avulso';
-    const usingAdmin = paymentType === 'admin' && !isAvulso;
-    const precoPorLitro = usingAdmin ? 13.0 : getFuelPrice(paymentType);
-    const paymentLabel = usingAdmin ? 'Enviar p/ Administradora' : getFuelPaymentLabel(paymentType);
+    const usingAdmin = (paymentType === 'admin' || statusCobranca === 'pendente') && !isAvulso;
+    const precoPorLitro = usingAdmin ? 13.0 : getFuelPrice(paymentType || 'pix');
+    const paymentLabel = statusCobranca === 'pendente' ? 'Pendente' : getFuelPaymentLabel(paymentType || 'pix');
     const valorTotal = litrosNum * precoPorLitro;
 
     const boat = isAvulso ? null : getEmbarcacao(selectedBoatId);
@@ -473,11 +478,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       categoria: 'receita_combustivel',
       descricao,
       valor: valorTotal,
-      status: (paymentType === 'admin' && !isAvulso) ? 'pendente' : 'pago',
-      metodoPagamento: paymentType,
+      status: statusCobranca === 'pendente' ? 'pendente' : 'pago',
+      metodoPagamento: statusCobranca === 'pendente' ? null : paymentType,
       data: getTodayStr(),
       dataVencimento: getTodayStr(),
-      dataPagamento: (paymentType === 'admin' && !isAvulso) ? null : getTodayStr(),
+      dataPagamento: statusCobranca === 'pendente' ? null : getTodayStr(),
       clienteId: clientId,
       embarcacaoId: isAvulso ? '' : selectedBoatId,
       isAvulso,
@@ -551,11 +556,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       reservaId: t.reservaId || t.reservationRef?.id || null,
       tipo: 'receita',
       categoria: 'Combustível',
+      empresa: 'Marina',
+      contaBancariaId: undefined,
+      planoContasId: undefined,
       valor: totalValue,
       data: t.data || getTodayStr(),
       dataVencimento: t.data || getTodayStr(),
       dataPagamento: null,
-      status: 'pendente',
+      status: 'lancado',
       metodoPagamento: 'admin',
       descricao: `Abastecimento Faturado Administradora: ${litrosNum}L a R$13,00/L`,
       clienteId: t.clienteId,
@@ -623,6 +631,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       reservaId: t.reservaId || t.reservationRef?.id || null,
       tipo: 'receita',
       categoria: 'Combustível',
+      empresa: 'Marina',
+      contaBancariaId: undefined,
+      planoContasId: undefined,
       valor: totalValue,
       data: t.data || getTodayStr(),
       dataVencimento: t.data || getTodayStr(),
@@ -2280,9 +2291,28 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               </div>
 
               
+{/* Status da Cobrança */}
+<div className="space-y-3 mb-4">
+  <label className="font-semibold text-slate-700 text-xs block tracking-tight">Status da Cobrança *</label>
+  <div className="flex gap-4">
+    <label className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+      statusCobranca === 'cobrado' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+    }`}>
+      <input type="radio" className="sr-only" checked={statusCobranca === 'cobrado'} onChange={() => { setStatusCobranca('cobrado'); if(!paymentType) setPaymentType('pix'); }} />
+      <span className="font-semibold text-sm">Fechado / Imediato</span>
+    </label>
+    <label className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+      statusCobranca === 'pendente' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+    }`}>
+      <input type="radio" className="sr-only" checked={statusCobranca === 'pendente'} onChange={() => { setStatusCobranca('pendente'); setPaymentType(null); }} />
+      <span className="font-semibold text-sm">Deixar Pendente</span>
+    </label>
+  </div>
+</div>
+
 {/* Formas de Pagamento */}
 <div className="space-y-2">
-  <label className="font-semibold text-slate-700 text-xs block tracking-tight">Forma de Pagamento *</label>
+  <label className="font-semibold text-slate-700 text-xs block tracking-tight">Forma de Pagamento (Opcional se pendente) *</label>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
     {[
       { id: 'dinheiro', icon: Banknote, label: 'Dinheiro', desc: 'Caixa físico', color: 'emerald', price: getFuelPrice('dinheiro') },
@@ -2319,8 +2349,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       };
 
       return (
-        <label key={opt.id} className={`flex items-center p-3 rounded-2xl border transition-all cursor-pointer ${colorMap[opt.color]}`}>
-          <input type="radio" name="payment" value={opt.id} checked={isSelected} onChange={() => setPaymentType(opt.id as any)} className="sr-only" />
+        <label key={opt.id} className={`flex items-center p-3 rounded-2xl border transition-all cursor-pointer ${colorMap[opt.color]} ${statusCobranca === 'pendente' ? 'opacity-50 grayscale' : ''}`}>
+          <input type="radio" name="payment" value={opt.id} checked={isSelected} onChange={() => { if(statusCobranca !== 'pendente') { setPaymentType(opt.id as any); } }} className="sr-only" />
           <div className="flex-1 flex flex-col">
             <span className={`font-semibold text-[13px] flex items-center gap-1.5 transition-colors ${textMap[opt.color]}`}>
               <Icon className={`w-4 h-4 ${iconMap[opt.color]}`} />
@@ -2342,7 +2372,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 {/* Total Calculation Display */}
 {(() => {
   const l = parseFloat(liters.replace(',', '.') || '0');
-  const p = (paymentType === 'admin' && saleMode === 'embarcacao') ? getFuelPrice('admin') : getFuelPrice(paymentType);
+  const p = ((paymentType === 'admin' || statusCobranca === 'pendente') && saleMode === 'embarcacao') ? 13.0 : getFuelPrice(paymentType || 'pix');
   const tot = l * p;
   return (
     <div className={`p-4 rounded-3xl border flex items-center justify-between transition-all mt-4 mb-4 ${
