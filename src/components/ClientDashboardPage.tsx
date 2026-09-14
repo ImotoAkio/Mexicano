@@ -1238,7 +1238,26 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start mb-0.5">
-                      <span className="text-sm font-medium text-white truncate pr-2">{t.descricao || t.categoria}</span>
+                      {(() => {
+                        let desc = t.descricao || t.categoria || '';
+                        
+                        // Transform "Ref: 09/2026 (1/4)" or "Mensalidade | Ref: 09/2026 (1/4)" into something friendly
+                        if (desc.toLowerCase().includes('ref:')) {
+                           desc = desc
+                             .replace(/|?s*Ref:s*/i, ' - ')
+                             .replace(/((d+)/(d+))/, ' (Parcela $1/$2)');
+                             
+                           const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+                           desc = desc.replace(/(d{2})/(d{4})/g, (match, m, y) => {
+                             const monthName = months[parseInt(m) - 1];
+                             return monthName ? `${monthName}/${y}` : match;
+                           });
+                        }
+                        
+                        return (
+                          <span className="text-sm font-medium text-white truncate pr-2" title={desc}>{desc}</span>
+                        );
+                      })()}
                       <span className="text-sm font-semibold whitespace-nowrap text-white">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.valor)}
                       </span>

@@ -265,13 +265,13 @@ export default function FinanceFluxoCaixa() {
         const dueDate = generateDueDateForMonth(periodStartMonth, periodDueDay, i);
         const [yearPart, monthPart] = dueDate.split('-').map(Number);
         const refMonth = String(monthPart).padStart(2, '0') + '/' + yearPart;
-        const indexStr = `${i + 1}/${periodMonths}`;
+        
 
         generated.push({
           ...formData,
           id: `fin_${Date.now()}_${i}`,
           dataVencimento: dueDate,
-          descricao: `${formData.descricao ? formData.descricao + ' | ' : ''}Ref: ${refMonth} (${indexStr})`,
+          descricao: `${formData.descricao ? formData.descricao + ' - ' : 'Mensalidade - '}${['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][monthPart - 1]}/${yearPart} (Parcela ${i + 1} de ${periodMonths})`,
           createdAt: nowStr
         });
       }
@@ -299,7 +299,7 @@ export default function FinanceFluxoCaixa() {
           grupoParcelamentoId: grupoId,
           numeroParcela: i + 1,
           totalParcelas: totalParcelas,
-          descricao: `${formData.descricao ? formData.descricao + ' | ' : ''}Parcela ${i + 1}/${totalParcelas}`,
+          descricao: `${formData.descricao ? formData.descricao + ' - ' : ''}Parcela ${i + 1} de ${totalParcelas}`,
           createdAt: nowStr
         });
       }
