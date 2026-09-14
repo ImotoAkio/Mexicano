@@ -133,7 +133,7 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
     if (!dashboardRef.current) return;
     setIsExporting(true);
     try {
-      const canvas = await toPng(dashboardRef.current, { backgroundColor: '#1A1C23', pixelRatio: 2 });
+      const canvas = await toPng(dashboardRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 });
       const doc = new jsPDF('l', 'mm', 'a4'); // landscape
       const pdfWidth = doc.internal.pageSize.getWidth();
       const pdfHeight = doc.internal.pageSize.getHeight();
@@ -175,46 +175,46 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
         </button>
       </div>
 
-      <div ref={dashboardRef} className="space-y-6 pt-2 pb-4 px-2 rounded-xl" style={{ backgroundColor: isExporting ? '#1A1C23' : 'transparent' }}>
+      <div ref={dashboardRef} className="space-y-6 pt-2 pb-4 px-2 rounded-xl" style={{ backgroundColor: isExporting ? '#ffffff' : 'transparent' }}>
         {isExporting && (
-           <div className="text-center pb-4 text-white font-bold text-xl">
+           <div className="text-center pb-4 text-slate-800 font-bold text-xl">
              Relatório Consolidado - Dashboard Financeiro
            </div>
         )}
 
         {/* Cards de Resumo */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-[#2A2D35] p-6 rounded-xl border border-white/5 shadow-lg relative overflow-hidden group">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm shadow-lg relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-gray-400 font-medium text-sm">Transações (Pagas)</h3>
+                <h3 className="text-slate-500 font-medium text-sm">Transações (Pagas)</h3>
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
                   <TrendingUp className="w-5 h-5 text-emerald-400" />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-white">{formatCurrency(totalReceitas)}</p>
+              <p className="text-2xl font-bold text-slate-800">{formatCurrency(totalReceitas)}</p>
             </div>
           </div>
 
-          <div className="bg-[#2A2D35] p-6 rounded-xl border border-white/5 shadow-lg relative overflow-hidden group">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm shadow-lg relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-gray-400 font-medium text-sm">Despesas (Pagas)</h3>
+                <h3 className="text-slate-500 font-medium text-sm">Despesas (Pagas)</h3>
                 <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center">
                   <TrendingDown className="w-5 h-5 text-red-400" />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-white">{formatCurrency(totalDespesas)}</p>
+              <p className="text-2xl font-bold text-slate-800">{formatCurrency(totalDespesas)}</p>
             </div>
           </div>
 
-          <div className="bg-[#2A2D35] p-6 rounded-xl border border-white/5 shadow-lg relative overflow-hidden group">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm shadow-lg relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-gray-400 font-medium text-sm">Saldo Atual</h3>
+                <h3 className="text-slate-500 font-medium text-sm">Saldo Atual</h3>
                 <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
                   <DollarSign className="w-5 h-5 text-amber-400" />
                 </div>
@@ -225,11 +225,11 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
             </div>
           </div>
 
-          <div className="bg-[#2A2D35] p-6 rounded-xl border border-white/5 shadow-lg relative overflow-hidden group">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm shadow-lg relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-gray-400 font-medium text-sm">Inadimplência</h3>
+                <h3 className="text-slate-500 font-medium text-sm">Inadimplência</h3>
                 <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
                   <AlertCircle className="w-5 h-5 text-rose-400" />
                 </div>
@@ -238,11 +238,11 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
             </div>
           </div>
 
-          <div className="bg-[#2A2D35] p-6 rounded-xl border border-white/5 shadow-lg relative overflow-hidden group">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm shadow-lg relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-gray-400 font-medium text-sm">Provisão Futura</h3>
+                <h3 className="text-slate-500 font-medium text-sm">Provisão Futura</h3>
                 <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
                   <CalendarClock className="w-5 h-5 text-cyan-400" />
                 </div>
@@ -254,8 +254,8 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
 
         {/* Gráficos */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-[#2A2D35] p-6 rounded-xl border border-white/5 shadow-lg lg:col-span-1">
-            <h3 className="text-lg font-medium text-white mb-6">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm shadow-lg lg:col-span-1">
+            <h3 className="text-lg font-medium text-slate-800 mb-6">
               {showComparatives ? 'Receitas por Empresa' : 'Receitas vs Despesas'}
             </h3>
             <div className="h-64 w-full" style={{ minWidth: 0 }}>
@@ -276,7 +276,7 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
                   </Pie>
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{ backgroundColor: '#1A1C23', borderColor: '#374151', color: '#fff' }}
+                    contentStyle={{ backgroundColor: '#fff', borderColor: '#e2e8f0', color: '#0f172a' }}
                   />
                   <Legend verticalAlign="bottom" height={36} />
                 </PieChart>
@@ -284,20 +284,20 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
             </div>
           </div>
 
-          <div className="bg-[#2A2D35] p-6 rounded-xl border border-white/5 shadow-lg lg:col-span-2">
-            <h3 className="text-lg font-medium text-white mb-6">Fluxo de Caixa Realizado (Últimos 6 meses)</h3>
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm shadow-lg lg:col-span-2">
+            <h3 className="text-lg font-medium text-slate-800 mb-6">Fluxo de Caixa Realizado (Últimos 6 meses)</h3>
             <div className="h-64 w-full" style={{ minWidth: 0 }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={barData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                  <XAxis dataKey="name" stroke="#9CA3AF" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="name" stroke="#64748B" />
                   <YAxis
-                    stroke="#9CA3AF"
+                    stroke="#64748B"
                     tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000) + 'k' : value}`}
                   />
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{ backgroundColor: '#1A1C23', borderColor: '#374151', color: '#fff' }}
+                    contentStyle={{ backgroundColor: '#fff', borderColor: '#e2e8f0', color: '#0f172a' }}
                     cursor={{ fill: '#374151', opacity: 0.4 }}
                   />
                   <Legend />
@@ -309,20 +309,20 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
           </div>
 
           {/* New row for Provisão Futura */}
-          <div className="bg-[#2A2D35] p-6 rounded-xl border border-white/5 shadow-lg lg:col-span-3">
-            <h3 className="text-lg font-medium text-white mb-6">Previsão e Provisão Futura de Parcelas (Próximos 6 meses)</h3>
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm shadow-lg lg:col-span-3">
+            <h3 className="text-lg font-medium text-slate-800 mb-6">Previsão e Provisão Futura de Parcelas (Próximos 6 meses)</h3>
             <div className="h-64 w-full" style={{ minWidth: 0 }}>
                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={futureBarData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                  <XAxis dataKey="name" stroke="#9CA3AF" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="name" stroke="#64748B" />
                   <YAxis
-                    stroke="#9CA3AF"
+                    stroke="#64748B"
                     tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000) + 'k' : value}`}
                   />
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{ backgroundColor: '#1A1C23', borderColor: '#374151', color: '#fff' }}
+                    contentStyle={{ backgroundColor: '#fff', borderColor: '#e2e8f0', color: '#0f172a' }}
                     cursor={{ fill: '#374151', opacity: 0.4 }}
                   />
                   <Legend />

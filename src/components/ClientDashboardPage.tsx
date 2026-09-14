@@ -1244,11 +1244,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                         // Transform "Ref: 09/2026 (1/4)" or "Mensalidade | Ref: 09/2026 (1/4)" into something friendly
                         if (desc.toLowerCase().includes('ref:')) {
                            desc = desc
-                             .replace(/|?s*Ref:s*/i, ' - ')
-                             .replace(/((d+)/(d+))/, ' (Parcela $1/$2)');
-                             
+                             .replace(/\|?\s*Ref:\s*/i, ' - ')
+                             .replace(/\((\d+)\/(\d+)\)/, ' (Parcela $1/$2)');
+
                            const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-                           desc = desc.replace(/(d{2})/(d{4})/g, (match, m, y) => {
+                           desc = desc.replace(/(\d{2})\/(\d{4})/g, (match, m, y) => {
                              const monthName = months[parseInt(m) - 1];
                              return monthName ? `${monthName}/${y}` : match;
                            });

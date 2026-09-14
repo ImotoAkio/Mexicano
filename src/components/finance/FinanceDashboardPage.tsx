@@ -16,7 +16,7 @@ export default function FinanceDashboardPage() {
   const fetchTransacoes = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('admin_token') || localStorage.getItem(STORAGE_KEYS.TOKEN);
+      const token = localStorage.getItem('admin_token') || localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
       if (!token) return;
       
       const res = await fetch('/api/financeiro/transacoes', {
@@ -37,20 +37,20 @@ export default function FinanceDashboardPage() {
     <div className="p-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-2">Visão Geral (Dashboard)</h1>
-          <p className="text-gray-400">Acompanhamento consolidado e indicadores financeiros</p>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">Visão Geral (Dashboard)</h1>
+          <p className="text-slate-500">Acompanhamento consolidado e indicadores financeiros</p>
         </div>
         
         {/* Filtro Global da Página */}
-        <div className="flex flex-wrap bg-[#2A2D35] rounded-lg p-1 border border-white/5 gap-1">
+        <div className="flex flex-wrap bg-white rounded-lg p-1 border border-slate-200 shadow-sm gap-1">
           {['Todos', 'Marina', 'Vale Administradora', 'Mexicano'].map(empresa => (
             <button
               key={empresa}
               onClick={() => setEmpresaFiltro(empresa)}
               className={`px-4 py-2 ${
                 empresaFiltro === empresa 
-                ? 'bg-[#E3A833] text-black font-semibold shadow-sm' 
-                : 'text-gray-400 hover:text-white'
+                ? 'bg-slate-100/80 text-slate-900 font-semibold shadow-sm border border-slate-200/50' 
+                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50/50'
               } rounded-md transition-all text-sm`}
             >
               {empresa}
