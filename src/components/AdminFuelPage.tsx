@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { Cliente, Embarcacao } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
+import { getFuelPrice, getFuelPaymentLabel } from '../utils/constants';
 
 interface AdminFuelPageProps {
   data: {
@@ -39,7 +40,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
   const [clientFilter, setClientFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<string>('all'); // all, pix, credit, debit, dinheiro, admin
-  const [statusFilter, setStatusFilter] = useState<string>('all'); // all, cobrado, pendente
+  const [statusFilter, setStatusFilter] = useState<string>('all'); // all, pago, pendente
   const [originFilter, setOriginFilter] = useState<string>('all'); // all, marina, direto
 
   const activeFilterCount = (boatFilter !== 'all' ? 1 : 0) + 
@@ -65,8 +66,8 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
   // Modal de Edição Geral
   const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
   const [liters, setLiters] = useState('');
-  const [paymentType, setPaymentType] = useState<'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin'>('pix');
-  const [statusCobrancaModal, setStatusCobrancaModal] = useState<'cobrado' | 'pendente'>('cobrado');
+  const [paymentType, setPaymentType] = useState<'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'faturado'>('pix');
+  const [statusCobrancaModal, setStatusCobrancaModal] = useState<'pago' | 'pendente'>('pago');
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingComprovante, setIsUploadingComprovante] = useState(false);
@@ -75,7 +76,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
   // Modal de Baixa de Cobrança (Pendente -> Cobrado)
   const [isBaixaModalOpen, setIsBaixaModalOpen] = useState(false);
   const [baixaTransaction, setBaixaTransaction] = useState<any>(null);
-  const [baixaPaymentType, setBaixaPaymentType] = useState<'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin'>('pix');
+  const [baixaPaymentType, setBaixaPaymentType] = useState<'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'faturado'>('pix');
   const [baixaComprovanteUrl, setBaixaComprovanteUrl] = useState<string | null>(null);
 
   // Upload de Comprovante generico
@@ -111,8 +112,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
     // 1. Transações financeiras diretas de combustível
     const directTrx = (data?.transacoes || []).filter(t => {
       const isFuelCategory = 
-        t.categoria === 'receita_combustivel' || 
-        t.categoria === 'Combustível' || 
+        t.categoria === 'combustivel' || 
+        t.categoria === 'combustivel' || 
+        t.categoria === 'combustivel' || 
         t.categoria === 'combustivel' || 
         (t.descricao && (t.descricao.toLowerCase().includes('abastecimento') || t.descricao.toLowerCase().includes('litros')));
       
@@ -124,10 +126,10 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
       
       return true;
     }).map(t => {
-      const isCobrado = t.status === 'pago' || t.status === 'cobrado';
+      const isPago = t.status === 'pago';
       return {
         ...t,
-        statusCobranca: isCobrado ? 'cobrado' : 'pendente',
+        statusCobranca: isPago ? 'pago' : 'pendente',
         isFromReservation: false
       };
     });
@@ -135,7 +137,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
     // 2. Registros de abastecimento realizados nas reservas da marina (píer)
     const reservationTrx = (data?.reservations || [])
       .filter((r: any) => {
-        const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
+        const litros = Number(r.abastecimentoLitros) || 0;
         if (litros <= 0) return false;
         const rDate = r.data || r.abastecimentoDataHora?.split('T')[0] || r.horaChegada;
         if (!rDate) return false;
@@ -143,13 +145,11 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
         return true;
       })
       .map((r: any) => {
-        const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
-        const isCobrado = r.abastecimentoStatusCobranca === 'cobrado';
-        const formaPagto = r.abastecimentoFormaPagamento || (isCobrado ? 'pix' : 'pendente');
+        const litros = Number(r.abastecimentoLitros) || 0;
+        const isPago = r.abastecimentoStatusCobranca === 'pago';
+        const formaPagto = r.abastecimentoFormaPagamento || (isPago ? 'pix' : 'pendente');
         
-        let precoLitro = 9;
-        if (formaPagto === 'credit') precoLitro = 10;
-        if (formaPagto === 'admin') precoLitro = 13;
+        let precoLitro = getFuelPrice(formaPagto);
         
         const valorTotal = r.abastecimentoValorTotal || (litros * precoLitro);
 
@@ -157,12 +157,12 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
           id: `res_fuel_${r.id}`,
           reservaId: r.id,
           tipo: 'receita',
-          categoria: 'receita_combustivel',
+          categoria: 'Combustível',
           descricao: `Abastecimento Marina (Píer): ${litros}L a R$${precoLitro.toFixed(2)}/L`,
           valor: valorTotal,
-          litrosAbastecidos: litros,
-          status: isCobrado ? 'pago' : 'pendente',
-          statusCobranca: isCobrado ? 'cobrado' : 'pendente',
+          abastecimentoLitros: litros,
+          status: isPago ? 'pago' : 'pendente',
+          statusCobranca: isPago ? 'pago' : 'pendente',
           metodoPagamento: formaPagto,
           data: r.data || startDate,
           clienteId: r.clienteId,
@@ -210,9 +210,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
       if (!matchesSearch) return false;
       
       // Filtro de Status de Cobrança
-      const isCobrado = t.statusCobranca === 'cobrado' || t.status === 'pago';
-      if (statusFilter === 'cobrado' && !isCobrado) return false;
-      if (statusFilter === 'pendente' && isCobrado) return false;
+      const isPago = t.statusCobranca === 'pago' || t.status === 'pago';
+      if (statusFilter === 'pago' && !isPago) return false;
+      if (statusFilter === 'pendente' && isPago) return false;
 
       // Filtro de Forma de Pagamento
       if (paymentFilter !== 'all') {
@@ -220,9 +220,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
         const desc = (t.descricao || '').toLowerCase();
         if (paymentFilter === 'dinheiro' && !(pMethod === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa'))) return false;
         if (paymentFilter === 'pix' && !((pMethod === 'pix' || desc.includes('pix')) && pMethod !== 'dinheiro' && !desc.includes('dinheiro') && !desc.includes('caixa'))) return false;
-        if (paymentFilter === 'credit' && !(pMethod === 'credit' || desc.includes('cartão de crédito') || desc.includes('credito') || desc.includes('credit'))) return false;
-        if (paymentFilter === 'debit' && !(pMethod === 'debit' || desc.includes('débito') || desc.includes('debito'))) return false;
-        if (paymentFilter === 'admin' && !(pMethod === 'admin' || desc.includes('admin') || desc.includes('faturado'))) return false;
+        if (paymentFilter === 'cartao_credito' && !(pMethod === 'cartao_credito' || desc.includes('cartão de crédito') || desc.includes('credito') || desc.includes('credit'))) return false;
+        if (paymentFilter === 'cartao_debito' && !(pMethod === 'cartao_debito' || desc.includes('débito') || desc.includes('debito'))) return false;
+        if (paymentFilter === 'faturado' && !(pMethod === 'faturado' || desc.includes('admin') || desc.includes('faturado'))) return false;
       }
 
       // Filtro de Origem
@@ -238,10 +238,10 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
   }, [data, startDate, endDate, searchTerm, boatFilter, clientFilter, statusFilter, paymentFilter, originFilter]);
 
   // KPIs Financeiros e Gráficos
-  const { totalLiters, totalRevenue, cobradoRevenue, pendenteRevenue, chartData } = useMemo(() => {
+  const { totalLiters, totalRevenue, pagoRevenue, pendenteRevenue, chartData } = useMemo(() => {
     let liters = 0;
     let revenue = 0;
-    let cobradoRev = 0;
+    let pagoRev = 0;
     let pendenteRev = 0;
     
     const dailyData: Record<string, number> = {};
@@ -250,14 +250,14 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
       const val = Number(t.valor || 0);
       revenue += val;
 
-      const isCobrado = t.statusCobranca === 'cobrado' || t.status === 'pago';
-      if (isCobrado) {
-        cobradoRev += val;
+      const isPago = t.statusCobranca === 'pago' || t.status === 'pago';
+      if (isPago) {
+        pagoRev += val;
       } else {
         pendenteRev += val;
       }
 
-      let tLiters = Number(t.litrosAbastecidos) || 0;
+      let tLiters = Number(t.reservationRef?.abastecimentoLitros || 0) || 0;
       if (tLiters <= 0 && t.descricao) {
         const match = t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i);
         if (match) {
@@ -281,7 +281,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
     return { 
       totalLiters: liters, 
       totalRevenue: revenue, 
-      cobradoRevenue: cobradoRev, 
+      pagoRevenue: pagoRev, 
       pendenteRevenue: pendenteRev, 
       chartData: chart 
     };
@@ -303,12 +303,10 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
     setIsSubmitting(true);
     const t = baixaTransaction;
 
-    let pricePerLiter = 9;
-    if (baixaPaymentType === 'credit') pricePerLiter = 10;
-    if (baixaPaymentType === 'admin') pricePerLiter = 13;
+    const pricePerLiter = getFuelPrice(baixaPaymentType);
 
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.litrosAbastecidos || t.reservationRef?.abastecimentoLitros || 0);
+    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
     const calculatedValue = litrosNum > 0 ? (litrosNum * pricePerLiter) : t.valor;
 
     const boat = data?.boats?.find(b => b.id === t.embarcacaoId);
@@ -347,11 +345,11 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
         body: JSON.stringify({ action: 'upsert', data: transacaoAtualizada })
       });
 
-      // 2. Se veio de uma reserva, atualiza também a reserva para status cobrado
+      // 2. Se veio de uma reserva, atualiza também a reserva para status pago
       if (t.reservationRef) {
         const updatedReserva = {
           ...t.reservationRef,
-          abastecimentoStatusCobranca: 'cobrado',
+          abastecimentoStatusCobranca: 'pago',
           abastecimentoFormaPagamento: baixaPaymentType,
           abastecimentoComprovanteUrl: baixaComprovanteUrl || t.reservationRef.abastecimentoComprovanteUrl,
           abastecimentoValorTotal: calculatedValue
@@ -379,11 +377,11 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
   // Enviar Lançamento para a Administradora (Faturado a R$ 13/L)
   const handleSendToAdmin = async (t: any) => {
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.litrosAbastecidos || t.reservationRef?.abastecimentoLitros || 0);
+    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
 
     if (litrosNum <= 0) return alert('Quantidade de litros inválida.');
 
-    const pricePerLiter = 13.0;
+    const pricePerLiter = getFuelPrice('faturado');
     const totalValue = litrosNum * pricePerLiter;
     const boat = data?.boats?.find(b => b.id === t.embarcacaoId);
     const boatName = getBoatCode(boat);
@@ -407,7 +405,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
       dataVencimento: dateStr,
       dataPagamento: null,
       status: 'lancado',
-      metodoPagamento: 'admin',
+      metodoPagamento: 'faturado',
       descricao: `Abastecimento Faturado Administradora: ${litrosNum}L a R$13,00/L`,
       clienteId: t.clienteId,
       embarcacaoId: t.embarcacaoId,
@@ -428,8 +426,8 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
       if (t.reservationRef) {
         const updatedReserva = {
           ...t.reservationRef,
-          abastecimentoStatusCobranca: 'cobrado',
-          abastecimentoFormaPagamento: 'admin',
+          abastecimentoStatusCobranca: 'pago',
+          abastecimentoFormaPagamento: 'faturado',
           abastecimentoValorTotal: totalValue
         };
         await fetch('/api/db/save', {
@@ -455,16 +453,16 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
   const handleEditFuel = (t: any) => {
     setSelectedTransaction(t);
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-    setLiters(match ? match[1].replace(',', '.') : (t.litrosAbastecidos ? t.litrosAbastecidos.toString() : ''));
+    setLiters(match ? match[1].replace(',', '.') : (t.reservationRef?.abastecimentoLitros ? t.reservationRef?.abastecimentoLitros.toString() : ''));
     
     const pMethod = (t.metodoPagamento || '').toLowerCase();
-    if (pMethod === 'credit') setPaymentType('credit');
-    else if (pMethod === 'debit') setPaymentType('debit');
+    if (pMethod === 'cartao_credito') setPaymentType('cartao_credito');
+    else if (pMethod === 'cartao_debito') setPaymentType('cartao_debito');
     else if (pMethod === 'dinheiro') setPaymentType('dinheiro');
-    else if (pMethod === 'admin') setPaymentType('admin');
+    else if (pMethod === 'faturado') setPaymentType('faturado');
     else setPaymentType('pix');
 
-    setStatusCobrancaModal(t.statusCobranca === 'cobrado' || t.status === 'pago' ? 'cobrado' : 'pendente');
+    setStatusCobrancaModal(t.statusCobranca === 'pago' || t.status === 'pago' ? 'pago' : 'pendente');
     setComprovanteUrl(t.comprovanteUrl || null);
     setIsFuelModalOpen(true);
   };
@@ -476,11 +474,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
     
     setIsSubmitting(true);
     const litersNum = Number(liters);
-    let pricePerLiter = 9;
-    if (paymentType === 'credit') pricePerLiter = 10;
-    if (paymentType === 'admin') pricePerLiter = 13;
+    const pricePerLiter = getFuelPrice(paymentType);
 
-    const isPago = statusCobrancaModal === 'cobrado';
+    const isPago = statusCobrancaModal === 'pago';
     const calculatedValue = litersNum * pricePerLiter;
 
     const transacao = {
@@ -564,7 +560,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
       const boat = getBoatCode(data?.boats?.find(b => b.id === t.embarcacaoId));
       const client = data?.clients?.find(c => c.id === t.clienteId)?.nome || 'N/A';
       const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-      const litersVal = match ? match[1] : (t.litrosAbastecidos || '0');
+      const litersVal = match ? match[1] : (t.reservationRef?.abastecimentoLitros || '0');
       
       return [
         t.data || t.dataVencimento, 
@@ -749,7 +745,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
                   >
                     <option value="all">Todos os Status</option>
-                    <option value="cobrado">✓ Cobrados / Pagos</option>
+                    <option value="pago">✓ Pagos</option>
                     <option value="pendente">⏳ Pendentes de Cobrança</option>
                   </select>
                 </div>
@@ -765,9 +761,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                     <option value="all">Todas as Formas</option>
                     <option value="dinheiro">💵 Dinheiro (Caixa Físico)</option>
                     <option value="pix">📱 PIX (Conta Digital)</option>
-                    <option value="credit">💳 Cartão de Crédito</option>
-                    <option value="debit">💳 Cartão de Débito</option>
-                    <option value="admin">🏢 Administradora (Faturado)</option>
+                    <option value="cartao_credito">💳 Cartão de Crédito</option>
+                    <option value="cartao_debito">💳 Cartão de Débito</option>
+                    <option value="faturado">🏢 Administradora (Faturado)</option>
                   </select>
                 </div>
 
@@ -874,15 +870,15 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                 <span className="w-2 h-2 rounded-full bg-blue-600"></span>
               </div>
               <span className="text-2xl font-black font-mono tracking-tight text-blue-600 block">
-                R$ {cobradoRevenue.toFixed(2).replace('.', ',')}
+                R$ {pagoRevenue.toFixed(2).replace('.', ',')}
               </span>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100">
               <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-1">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: `${totalRevenue > 0 ? (cobradoRevenue / totalRevenue) * 100 : 0}%` }}></div>
+                <div className="h-full bg-blue-600 rounded-full" style={{ width: `${totalRevenue > 0 ? (pagoRevenue / totalRevenue) * 100 : 0}%` }}></div>
               </div>
               <span className="text-[10px] font-bold text-slate-400 block text-right">
-                {totalRevenue > 0 ? ((cobradoRevenue / totalRevenue) * 100).toFixed(0) : 0}% do faturamento
+                {totalRevenue > 0 ? ((pagoRevenue / totalRevenue) * 100).toFixed(0) : 0}% do faturamento
               </span>
             </div>
           </div>
@@ -979,9 +975,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                     const client = data?.clients?.find(c => c.id === t.clienteId);
                     
                     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-                    const litersVal = match ? match[1] : (t.litrosAbastecidos ? t.litrosAbastecidos.toString() : '?');
+                    const litersVal = match ? match[1] : (t.reservationRef?.abastecimentoLitros ? t.reservationRef?.abastecimentoLitros.toString() : '?');
                     
-                    const isCobrado = t.statusCobranca === 'cobrado' || t.status === 'pago';
+                    const isPago = t.statusCobranca === 'pago' || t.status === 'pago';
                     const dateObj = t.data || t.dataVencimento || t.createdAt?.split('T')[0];
                     const dateStr = dateObj ? new Date(dateObj.includes('T') ? dateObj : dateObj + 'T12:00:00').toLocaleDateString('pt-BR') : '-';
 
@@ -990,7 +986,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                         key={t.id} 
                         onClick={() => setDetailsModal(t)} 
                         className={`transition-colors cursor-pointer ${
-                          isCobrado ? 'hover:bg-slate-50/80' : 'bg-amber-50/30 hover:bg-amber-50/60'
+                          isPago ? 'hover:bg-slate-50/80' : 'bg-amber-50/30 hover:bg-amber-50/60'
                         }`}
                       >
                         {/* Data */}
@@ -1037,11 +1033,11 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                         {/* Forma de Pagamento */}
                         <td className="px-4 py-3.5 text-center whitespace-nowrap">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                            t.metodoPagamento === 'admin' 
+                            t.metodoPagamento === 'faturado' 
                               ? 'bg-purple-50 text-purple-700 border-purple-200'
-                              : t.metodoPagamento === 'credit'
+                              : t.metodoPagamento === 'cartao_credito'
                               ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : t.metodoPagamento === 'debit'
+                              : t.metodoPagamento === 'cartao_debito'
                               ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                               : t.metodoPagamento === 'dinheiro'
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -1049,13 +1045,13 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                               ? 'bg-teal-50 text-teal-700 border-teal-200'
                               : 'bg-slate-100 text-slate-600 border-slate-200'
                           }`}>
-                            {t.metodoPagamento === 'admin' ? 'Faturado Admin' : (t.metodoPagamento || 'Pendente').toUpperCase()}
+                            {t.metodoPagamento === 'faturado' ? 'Faturado Admin' : (t.metodoPagamento || 'Pendente').toUpperCase()}
                           </span>
                         </td>
 
                         {/* Status Cobrança */}
                         <td className="px-4 py-3.5 text-center whitespace-nowrap">
-                          {isCobrado ? (
+                          {isPago ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-800 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full">
                               <CheckCircle2 className="w-3 h-3 text-blue-600" /> COBRADO
                             </span>
@@ -1085,7 +1081,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                         {/* Ações Financeiras */}
                         <td className="px-4 py-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1.5">
-                            {!isCobrado && (
+                            {!isPago && (
                               <button
                                 type="button"
                                 onClick={() => handleOpenBaixaModal(t)}
@@ -1096,7 +1092,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                               </button>
                             )}
 
-                            {t.metodoPagamento !== 'admin' && (
+                            {t.metodoPagamento !== 'faturado' && (
                               <button
                                 type="button"
                                 onClick={() => handleSendToAdmin(t)}
@@ -1166,7 +1162,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                 <div className="text-right">
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Volume</span>
                   <span className="font-mono font-bold text-blue-600 text-sm block">
-                    {baixaTransaction.litrosAbastecidos || '?'} Litros
+                    {baixaTransaction.reservationRef?.abastecimentoLitros || '?'} Litros
                   </span>
                 </div>
               </div>
@@ -1176,11 +1172,11 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                 <label className="text-xs font-bold text-slate-700 block">Selecione a Forma de Pagamento Realizada *</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { id: 'pix', label: 'PIX', price: 'R$ 9,00/L', icon: QrCode },
-                    { id: 'credit', label: 'Crédito', price: 'R$ 10,00/L', icon: CreditCard },
-                    { id: 'debit', label: 'Débito', price: 'R$ 9,00/L', icon: CreditCard },
-                    { id: 'dinheiro', label: 'Dinheiro', price: 'R$ 9,00/L', icon: Banknote },
-                    { id: 'admin', label: 'Administradora', price: 'R$ 13,00/L', icon: Building2 },
+                    { id: 'pix', label: 'PIX', price: `R$ ${getFuelPrice('pix').toFixed(2)}/L`, icon: QrCode },
+                    { id: 'cartao_credito', label: 'Crédito', price: `R$ ${getFuelPrice('cartao_credito').toFixed(2)}/L`, icon: CreditCard },
+                    { id: 'cartao_debito', label: 'Débito', price: `R$ ${getFuelPrice('cartao_debito').toFixed(2)}/L`, icon: CreditCard },
+                    { id: 'dinheiro', label: 'Dinheiro', price: `R$ ${getFuelPrice('dinheiro').toFixed(2)}/L`, icon: Banknote },
+                    { id: 'faturado', label: 'Administradora', price: `R$ ${getFuelPrice('faturado').toFixed(2)}/L`, icon: Building2 },
                   ].map(item => {
                     const IconComp = item.icon;
                     const isSel = baixaPaymentType === item.id;
@@ -1212,7 +1208,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
               <div className="bg-slate-900 text-white p-3.5 rounded-xl flex items-center justify-between">
                 <span className="text-xs text-slate-300 font-medium">Total a Receber</span>
                 <span className="text-lg font-black text-emerald-400 font-mono">
-                  R$ {((Number(baixaTransaction.litrosAbastecidos || 0) || 1) * (baixaPaymentType === 'credit' ? 10 : baixaPaymentType === 'admin' ? 13 : 9)).toFixed(2).replace('.', ',')}
+                  R$ {((Number(baixaTransaction.reservationRef?.abastecimentoLitros || 0) || 1) * getFuelPrice(baixaPaymentType)).toFixed(2).replace('.', ',')}
                 </span>
               </div>
 
@@ -1323,9 +1319,9 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setStatusCobrancaModal('cobrado')}
+                    onClick={() => setStatusCobrancaModal('pago')}
                     className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      statusCobrancaModal === 'cobrado' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 border-slate-200 text-slate-600'
+                      statusCobrancaModal === 'pago' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 border-slate-200 text-slate-600'
                     }`}
                   >
                     <CheckCircle2 className="w-4 h-4" /> Cobrado
@@ -1350,10 +1346,10 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
                 >
                   <option value="pix">Pix (R$ 9,00/L)</option>
-                  <option value="credit">Cartão de Crédito (R$ 10,00/L)</option>
-                  <option value="debit">Cartão de Débito (R$ 9,00/L)</option>
+                  <option value="cartao_credito">Cartão de Crédito (R$ 10,00/L)</option>
+                  <option value="cartao_debito">Cartão de Débito (R$ 9,00/L)</option>
                   <option value="dinheiro">Dinheiro (R$ 9,00/L)</option>
-                  <option value="admin">Administradora (R$ 13,00/L)</option>
+                  <option value="faturado">Administradora (R$ 13,00/L)</option>
                 </select>
               </div>
 
@@ -1424,8 +1420,8 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                   dataStr = d.toLocaleDateString('pt-BR');
                 }
                 const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-                const litersVal = match ? match[1] : (t.litrosAbastecidos || '?');
-                const isCobrado = t.statusCobranca === 'cobrado' || t.status === 'pago';
+                const litersVal = match ? match[1] : (t.reservationRef?.abastecimentoLitros || '?');
+                const isPago = t.statusCobranca === 'pago' || t.status === 'pago';
 
                 return (
                   <>
@@ -1462,7 +1458,7 @@ export default function AdminFuelPage({ data, setData, reloadData }: AdminFuelPa
                       <div>
                         <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Status da Cobrança</span>
                         <div className="flex items-center gap-2">
-                          {isCobrado ? (
+                          {isPago ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full">
                               <CheckCircle2 className="w-3 h-3 text-blue-600" /> COBRADO
                             </span>

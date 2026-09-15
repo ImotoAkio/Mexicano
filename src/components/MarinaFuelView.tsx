@@ -50,15 +50,15 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   const [selectedBoatId, setSelectedBoatId] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [liters, setLiters] = useState('');
-  const [paymentType, setPaymentType] = useState<'pix' | 'dinheiro' | 'credit' | 'debit' | 'admin' | null>('pix');
-  const [statusCobranca, setStatusCobranca] = useState<'cobrado' | 'pendente'>('cobrado');
+  const [paymentType, setPaymentType] = useState<'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'faturado' | null>('pix');
+  const [statusCobranca, setStatusCobranca] = useState<'pago' | 'pendente'>('pago');
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
   const [isUploadingComprovante, setIsUploadingComprovante] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Charge Item Modal state
   const [chargeTargetItem, setChargeTargetItem] = useState<any | null>(null);
-  const [chargePaymentType, setChargePaymentType] = useState<'pix' | 'dinheiro' | 'credit' | 'debit' | 'admin'>('pix');
+  const [chargePaymentType, setChargePaymentType] = useState<'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'faturado'>('pix');
   const [chargeComprovanteUrl, setChargeComprovanteUrl] = useState<string | null>(null);
   const [isUploadingChargeComprovante, setIsUploadingChargeComprovante] = useState(false);
 
@@ -67,7 +67,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   const [editBoatId, setEditBoatId] = useState('');
   const [editClientId, setEditClientId] = useState('');
   const [editLiters, setEditLiters] = useState('');
-  const [editPaymentType, setEditPaymentType] = useState<'pix' | 'dinheiro' | 'credit' | 'debit' | 'admin'>('pix');
+  const [editPaymentType, setEditPaymentType] = useState<'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'faturado'>('pix');
   const [editStatus, setEditStatus] = useState<'pago' | 'pendente'>('pago');
   const [editDate, setEditDate] = useState('');
 
@@ -195,7 +195,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   const directTransactions = (data?.transacoes || [])
     .filter(t => {
       const isFuelCategory = 
-        t.categoria === 'receita_combustivel' || 
+        t.categoria === 'combustivel' || 
         t.categoria === 'Combustível' || 
         t.categoria === 'combustivel' || 
         (t.descricao && (t.descricao.toLowerCase().includes('abastecimento') || t.descricao.toLowerCase().includes('litros')));
@@ -212,13 +212,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
       if (!pm || pm === 'Pendente' || pm === 'pendente') {
         if (descLower.includes('faturado') || descLower.includes('administradora') || descLower.includes('admin')) {
-          pm = 'admin';
+          pm = 'faturado';
           if (!st || st === 'pendente') st = 'lancado';
         } else if (descLower.includes('crédito') || descLower.includes('credito') || descLower.includes('credit')) {
-          pm = 'credit';
+          pm = 'cartao_credito';
           if (!st || st === 'pendente') st = 'pago';
         } else if (descLower.includes('débito') || descLower.includes('debito')) {
-          pm = 'debit';
+          pm = 'cartao_debito';
           if (!st || st === 'pendente') st = 'pago';
         } else if (descLower.includes('dinheiro') || descLower.includes('caixa')) {
           pm = 'dinheiro';
@@ -239,14 +239,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   // Include fuel recorded in reservations for period date range
   const reservationFuelTransactions = (data?.reservations || [])
     .filter((r: any) => {
-      const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
+      const litros = Number(r.abastecimentoLitros) || 0;
       if (litros <= 0) return false;
       const rDate = r.data || r.abastecimentoDataHora || r.horaChegada;
       return isDateInRange(rDate, startDate, endDate);
     })
     .map((r: any) => {
-      const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
-      const isCobrado = r.abastecimentoStatusCobranca === 'cobrado';
+      const litros = Number(r.abastecimentoLitros) || 0;
+      const isCobrado = r.abastecimentoStatusCobranca === 'pago';
       const pm = (r.abastecimentoFormaPagamento || 'pix').toLowerCase();
       const unitPrice = getFuelPrice(pm);
       const valorTotal = r.abastecimentoValorTotal || (litros * unitPrice);
@@ -255,7 +255,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         reservaId: r.id,
         tipo: 'receita',
         categoria: 'receita_combustivel',
-        descricao: `Abastecimento Marina (${pm === 'dinheiro' ? 'Dinheiro (Caixa)' : pm === 'credit' ? 'Crédito' : pm === 'debit' ? 'Débito' : pm === 'admin' ? 'Faturado Admin' : 'PIX'}): ${litros}L`,
+        descricao: `Abastecimento Marina (${pm === 'dinheiro' ? 'Dinheiro (Caixa)' : pm === 'cartao_credito' ? 'Crédito' : pm === 'cartao_debito' ? 'Débito' : pm === 'faturado' ? 'Faturado Admin' : 'PIX'}): ${litros}L`,
         valor: valorTotal,
         status: isCobrado ? 'pago' : 'pendente',
         metodoPagamento: r.abastecimentoFormaPagamento || 'Pendente',
@@ -274,7 +274,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     ...reservationFuelTransactions.filter(rf => {
       const isAlreadySaved = directTransactions.some(dt => {
         if (dt.reservaId && (dt.reservaId === rf.reservaId || dt.reservaId === rf.reservationRef?.id)) return true;
-        if (dt.embarcacaoId === rf.embarcacaoId && dt.data === rf.data && (dt.metodoPagamento === 'admin' || dt.status === 'pago' || dt.status === 'lancado' || (dt.descricao && dt.descricao.toLowerCase().includes('abastecimento')))) return true;
+        if (dt.embarcacaoId === rf.embarcacaoId && dt.data === rf.data && (dt.metodoPagamento === 'faturado' || dt.status === 'pago' || dt.status === 'lancado' || (dt.descricao && dt.descricao.toLowerCase().includes('abastecimento')))) return true;
         return false;
       });
       return !isAlreadySaved;
@@ -306,17 +306,17 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       } else if (paymentFilter === 'pix') {
         if (pm === 'dinheiro' || desc.includes('dinheiro')) return false;
         if (pm !== 'pix' && !desc.includes('pix') && pm !== 'pendente') return false;
-      } else if (paymentFilter === 'credit') {
-        if (pm !== 'credit' && !desc.includes('crédito') && !desc.includes('credito') && !desc.includes('credit')) return false;
-      } else if (paymentFilter === 'debit') {
-        if (pm !== 'debit' && !desc.includes('débito') && !desc.includes('debito')) return false;
-      } else if (paymentFilter === 'admin') {
-        if (pm !== 'admin' && !desc.includes('admin') && !desc.includes('faturado') && !desc.includes('administradora')) return false;
+      } else if (paymentFilter === 'cartao_credito') {
+        if (pm !== 'cartao_credito' && !desc.includes('crédito') && !desc.includes('credito') && !desc.includes('credit')) return false;
+      } else if (paymentFilter === 'cartao_debito') {
+        if (pm !== 'cartao_debito' && !desc.includes('débito') && !desc.includes('debito')) return false;
+      } else if (paymentFilter === 'faturado') {
+        if (pm !== 'faturado' && !desc.includes('admin') && !desc.includes('faturado') && !desc.includes('administradora')) return false;
       }
     }
 
     // Status filter match
-    const isCobradoItem = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
+    const isCobradoItem = t.status === 'pago' || t.status === 'lancado' || t.metodoPagamento === 'faturado' || t.reservationRef?.abastecimentoStatusCobranca === 'pago';
     if (statusFilter === 'pago' && !isCobradoItem) return false;
     if (statusFilter === 'pendente' && isCobradoItem) return false;
 
@@ -367,7 +367,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   let totalAdmin = 0;
 
   fuelTransactions.forEach(t => {
-    const isCobradoItem = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
+    const isCobradoItem = t.status === 'pago' || t.status === 'lancado' || t.metodoPagamento === 'faturado' || t.reservationRef?.abastecimentoStatusCobranca === 'pago';
     const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
     const desc = (t.descricao || '').toLowerCase();
     const valor = Number(t.valor || 0);
@@ -376,11 +376,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       totalValue += valor;
       if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
         totalDinheiro += valor;
-      } else if (pm === 'admin' || desc.includes('faturado') || desc.includes('administradora')) {
+      } else if (pm === 'faturado' || desc.includes('faturado') || desc.includes('administradora')) {
         totalAdmin += valor;
-      } else if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
+      } else if (pm === 'cartao_credito' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
         totalCredito += valor;
-      } else if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
+      } else if (pm === 'cartao_debito' || desc.includes('débito') || desc.includes('debito')) {
         totalDebito += valor;
       } else if (desc.includes('cartão') || desc.includes('cartao') || desc.includes('maquininha')) {
         totalDebito += valor;
@@ -394,8 +394,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
     if (match) {
       totalLiters += parseFloat(match[1].replace(',', '.'));
-    } else if (t.litrosAbastecidos || t.reservationRef?.abastecimentoLitros) {
-      totalLiters += Number(t.litrosAbastecidos || t.reservationRef?.abastecimentoLitros || 0);
+    } else if (t.reservationRef?.abastecimentoLitros) {
+      totalLiters += Number(t.reservationRef?.abastecimentoLitros || 0);
     }
   });
 
@@ -454,13 +454,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     setIsSubmitting(true);
 
     const litrosNum = parseFloat(liters.replace(',', '.'));
-    if (statusCobranca === 'cobrado' && !paymentType) {
+    if (statusCobranca === 'pago' && !paymentType) {
       alert('Selecione uma forma de pagamento para cobrança imediata.');
       return;
     }
     const isAvulso = saleMode === 'avulso';
-    const usingAdmin = (paymentType === 'admin' || statusCobranca === 'pendente') && !isAvulso;
-    const precoPorLitro = usingAdmin ? 13.0 : getFuelPrice(paymentType || 'pix');
+    const usingAdmin = (paymentType === 'faturado' || statusCobranca === 'pendente') && !isAvulso;
+    const precoPorLitro = usingAdmin ? getFuelPrice('faturado') : getFuelPrice(paymentType || 'pix');
     const paymentLabel = statusCobranca === 'pendente' ? 'Pendente' : getFuelPaymentLabel(paymentType || 'pix');
     const valorTotal = litrosNum * precoPorLitro;
 
@@ -534,7 +534,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
   const handleSendToAdmin = async (t: any) => {
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
 
     if (litrosNum <= 0) {
       alert('Quantidade de litros inválida.');
@@ -564,7 +564,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       dataVencimento: t.data || getTodayStr(),
       dataPagamento: null,
       status: 'lancado',
-      metodoPagamento: 'admin',
+      metodoPagamento: 'faturado',
       descricao: `Abastecimento Faturado Administradora: ${litrosNum}L a R$13,00/L`,
       clienteId: t.clienteId,
       embarcacaoId: t.embarcacaoId,
@@ -585,8 +585,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       if (t.reservationRef) {
         const updatedReserva = {
           ...t.reservationRef,
-          abastecimentoStatusCobranca: 'cobrado',
-          abastecimentoFormaPagamento: 'admin',
+          abastecimentoStatusCobranca: 'pago',
+          abastecimentoFormaPagamento: 'faturado',
           abastecimentoValorTotal: totalValue
         };
         await fetch('/api/db/save', {
@@ -616,11 +616,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     setIsSubmitting(true);
     const t = chargeTargetItem;
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+    const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
 
-    const pricePerLiter = chargePaymentType === 'admin' ? 13.0 : getFuelPrice(chargePaymentType);
-    const paymentLabel = chargePaymentType === 'admin' ? 'Enviar para a Administradora' : getFuelPaymentLabel(chargePaymentType);
-    const txStatus = chargePaymentType === 'admin' ? 'pendente' : 'pago';
+    const pricePerLiter = chargePaymentType === 'faturado' ? getFuelPrice('faturado') : getFuelPrice(chargePaymentType);
+    const paymentLabel = chargePaymentType === 'faturado' ? 'Enviar para a Administradora' : getFuelPaymentLabel(chargePaymentType);
+    const txStatus = chargePaymentType === 'faturado' ? 'pendente' : 'pago';
 
     const totalValue = litrosNum * pricePerLiter;
     const boat = getEmbarcacao(t.embarcacaoId);
@@ -661,7 +661,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       if (t.reservationRef) {
         const updatedReserva = {
           ...t.reservationRef,
-          abastecimentoStatusCobranca: 'cobrado',
+          abastecimentoStatusCobranca: 'pago',
           abastecimentoFormaPagamento: chargePaymentType,
           abastecimentoValorTotal: totalValue,
           abastecimentoComprovanteUrl: chargeComprovanteUrl || t.reservationRef.abastecimentoComprovanteUrl
@@ -684,7 +684,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
           const updatedRes = t.reservationRef 
             ? currentRes.map((r: any) => r.id === t.reservationRef.id ? { 
                 ...r, 
-                abastecimentoStatusCobranca: 'cobrado', 
+                abastecimentoStatusCobranca: 'pago', 
                 abastecimentoFormaPagamento: chargePaymentType, 
                 abastecimentoValorTotal: totalValue,
                 abastecimentoComprovanteUrl: chargeComprovanteUrl || t.reservationRef.abastecimentoComprovanteUrl
@@ -763,7 +763,6 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         const updatedReserva = {
           ...t.reservationRef,
           abastecimentoLitros: 0,
-          litrosAbastecidos: 0,
           abastecimentoStatusCobranca: null,
           abastecimentoValorTotal: 0
         };
@@ -786,7 +785,6 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               return {
                 ...r,
                 abastecimentoLitros: 0,
-                litrosAbastecidos: 0,
                 abastecimentoStatusCobranca: null,
                 abastecimentoValorTotal: 0
               };
@@ -829,7 +827,6 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             const updatedReserva = {
               ...target.reservationRef,
               abastecimentoLitros: 0,
-              litrosAbastecidos: 0,
               abastecimentoStatusCobranca: null,
               abastecimentoValorTotal: 0
             };
@@ -861,14 +858,14 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     setEditClientId(t.clienteId || '');
     
     const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-    const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+    const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
     setEditLiters(String(litersVal || ''));
     
     const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
     if (pm === 'dinheiro') setEditPaymentType('dinheiro');
-    else if (pm === 'credit') setEditPaymentType('credit');
-    else if (pm === 'debit') setEditPaymentType('debit');
-    else if (pm === 'admin') setEditPaymentType('admin');
+    else if (pm === 'cartao_credito') setEditPaymentType('cartao_credito');
+    else if (pm === 'cartao_debito') setEditPaymentType('cartao_debito');
+    else if (pm === 'faturado') setEditPaymentType('faturado');
     else setEditPaymentType('pix');
 
     setEditStatus(t.status === 'pago' ? 'pago' : 'pendente');
@@ -887,8 +884,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     setIsSubmitting(true);
     const litrosNum = parseFloat(editLiters.replace(',', '.'));
 
-    const pricePerLiter = editPaymentType === 'admin' ? 13.0 : getFuelPrice(editPaymentType);
-    const paymentLabel = editPaymentType === 'admin' ? 'Faturado / Administradora' : getFuelPaymentLabel(editPaymentType);
+    const pricePerLiter = editPaymentType === 'faturado' ? getFuelPrice('faturado') : getFuelPrice(editPaymentType);
+    const paymentLabel = editPaymentType === 'faturado' ? 'Faturado / Administradora' : getFuelPaymentLabel(editPaymentType);
 
     const valorTotal = litrosNum * pricePerLiter;
     const boat = isAvulsoItem ? null : getEmbarcacao(editBoatId);
@@ -933,8 +930,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         const updatedReserva = {
           ...editingItem.reservationRef,
           abastecimentoLitros: litrosNum,
-          litrosAbastecidos: litrosNum,
-          abastecimentoStatusCobranca: editStatus === 'pago' ? 'cobrado' : 'pendente',
+          abastecimentoStatusCobranca: editStatus === 'pago' ? 'pago' : 'pendente',
           abastecimentoFormaPagamento: editPaymentType,
           abastecimentoValorTotal: valorTotal
         };
@@ -998,13 +994,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
         totalDinheiroValue += val;
         totalDinheiroLiters += litersVal;
-      } else if (pm === 'admin' || desc.includes('faturado') || desc.includes('administradora')) {
+      } else if (pm === 'faturado' || desc.includes('faturado') || desc.includes('administradora')) {
         totalAdminValue += val;
         totalAdminLiters += litersVal;
-      } else if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
+      } else if (pm === 'cartao_credito' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
         totalCreditValue += val;
         totalCreditLiters += litersVal;
-      } else if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
+      } else if (pm === 'cartao_debito' || desc.includes('débito') || desc.includes('debito')) {
         totalDebitValue += val;
         totalDebitLiters += litersVal;
       } else {
@@ -1177,8 +1173,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             border-radius: 4px;
           }
           .bg-pix { background: #2563eb; }
-          .bg-credit { background: #0284c7; }
-          .bg-admin { background: #d97706; }
+          .bg-cartao_credito { background: #0284c7; }
+          .bg-faturado { background: #d97706; }
 
           /* Table Styling */
           table {
@@ -1323,7 +1319,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 <span>${totalCreditValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalCreditValue / totalRevenue) * 100) : 0}%)</span>
               </div>
               <div class="bar-bg">
-                <div class="bar-fill bg-credit" style="width: ${totalRevenue > 0 ? (totalCreditValue / totalRevenue) * 100 : 0}%"></div>
+                <div class="bar-fill bg-cartao_credito" style="width: ${totalRevenue > 0 ? (totalCreditValue / totalRevenue) * 100 : 0}%"></div>
               </div>
             </div>
 
@@ -1333,7 +1329,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 <span>${totalDebitValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalDebitValue / totalRevenue) * 100) : 0}%)</span>
               </div>
               <div class="bar-bg">
-                <div class="bar-fill bg-credit" style="width: ${totalRevenue > 0 ? (totalDebitValue / totalRevenue) * 100 : 0}%"></div>
+                <div class="bar-fill bg-cartao_credito" style="width: ${totalRevenue > 0 ? (totalDebitValue / totalRevenue) * 100 : 0}%"></div>
               </div>
             </div>
 
@@ -1343,7 +1339,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                 <span>${totalAdminValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalAdminValue / totalRevenue) * 100) : 0}%)</span>
               </div>
               <div class="bar-bg">
-                <div class="bar-fill bg-admin" style="width: ${totalRevenue > 0 ? (totalAdminValue / totalRevenue) * 100 : 0}%"></div>
+                <div class="bar-fill bg-faturado" style="width: ${totalRevenue > 0 ? (totalAdminValue / totalRevenue) * 100 : 0}%"></div>
               </div>
             </div>
           </div>
@@ -1386,19 +1382,19 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               const client = getCliente(t.clienteId);
               const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
               const litersVal = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
-              const isFaturado = (t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoFormaPagamento === 'admin');
-              const isPago = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado';
+              const isFaturado = (t.metodoPagamento === 'faturado' || t.reservationRef?.abastecimentoFormaPagamento === 'faturado');
+              const isPago = t.status === 'pago' || t.status === 'lancado';
               const pm = (t.metodoPagamento || t.reservationRef?.abastecimentoFormaPagamento || '').toLowerCase();
               const desc = (t.descricao || '').toLowerCase();
               
               let pmLabel = 'PIX';
-              if (isFaturado || pm === 'admin' || desc.includes('faturado') || desc.includes('admin')) {
+              if (isFaturado || pm === 'faturado' || desc.includes('faturado') || desc.includes('admin')) {
                 pmLabel = 'Enviar p/ Administradora';
               } else if (pm === 'dinheiro' || desc.includes('dinheiro') || desc.includes('caixa')) {
                 pmLabel = 'Dinheiro (Caixa)';
-              } else if (pm === 'credit' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
+              } else if (pm === 'cartao_credito' || desc.includes('crédito') || desc.includes('credito') || desc.includes('credit')) {
                 pmLabel = 'Cartão Crédito';
-              } else if (pm === 'debit' || desc.includes('débito') || desc.includes('debito')) {
+              } else if (pm === 'cartao_debito' || desc.includes('débito') || desc.includes('debito')) {
                 pmLabel = 'Cartão Débito';
               }
 
@@ -1744,9 +1740,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     <option value="all">Todas as Formas</option>
                     <option value="dinheiro">💵 Dinheiro (Caixa Físico)</option>
                     <option value="pix">📱 PIX (Conta Digital)</option>
-                    <option value="credit">💳 Cartão de Crédito</option>
-                    <option value="debit">💳 Cartão de Débito</option>
-                    <option value="admin">🏢 Administradora (Faturado)</option>
+                    <option value="cartao_credito">💳 Cartão de Crédito</option>
+                    <option value="cartao_debito">💳 Cartão de Débito</option>
+                    <option value="faturado">🏢 Administradora (Faturado)</option>
                   </select>
                 </div>
 
@@ -1822,9 +1818,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     Pagamento: {
                       paymentFilter === 'dinheiro' ? 'Caixa Físico' :
                       paymentFilter === 'pix' ? 'PIX' :
-                      paymentFilter === 'credit' ? 'Cartão Crédito' :
-                      paymentFilter === 'debit' ? 'Cartão Débito' :
-                      paymentFilter === 'admin' ? 'Administradora' :
+                      paymentFilter === 'cartao_credito' ? 'Cartão Crédito' :
+                      paymentFilter === 'cartao_debito' ? 'Cartão Débito' :
+                      paymentFilter === 'faturado' ? 'Administradora' :
                       paymentFilter
                     }
                   </span>
@@ -1906,8 +1902,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
                   const litersVal = match ? parseFloat(match[1].replace(',', '.')) : 0;
 
-                  const isItemCobrado = t.status === 'pago' || t.status === 'cobrado' || t.status === 'lancado' || t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoStatusCobranca === 'cobrado';
-                  const isFaturado = (t.metodoPagamento === 'admin' || t.reservationRef?.abastecimentoFormaPagamento === 'admin');
+                  const isItemCobrado = t.status === 'pago' || t.status === 'lancado' || t.metodoPagamento === 'faturado' || t.reservationRef?.abastecimentoStatusCobranca === 'pago';
+                  const isFaturado = (t.metodoPagamento === 'faturado' || t.reservationRef?.abastecimentoFormaPagamento === 'faturado');
 
                   const StatusBadge = () => (
                       isItemCobrado ? (
@@ -2021,7 +2017,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                                 <button
                                     onClick={() => {
                                         setChargeTargetItem(t);
-                                        setChargePaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+                                        setChargePaymentType(t.metodoPagamento === 'cartao_credito' ? 'cartao_credito' : t.metodoPagamento === 'faturado' ? 'faturado' : 'pix');
                                         setChargeComprovanteUrl(t.comprovanteUrl || null);
                                     }}
                                     className="flex-1 py-3 bg-blue-600/90 hover:bg-blue-600 border border-blue-500/50 text-white font-medium text-[13px] tracking-tight rounded-[14px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm"
@@ -2045,7 +2041,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                                 onClick={() => {
                                   if (!isItemCobrado) {
                                     setChargeTargetItem(t);
-                                    setChargePaymentType(t.metodoPagamento === 'credit' ? 'credit' : t.metodoPagamento === 'admin' ? 'admin' : 'pix');
+                                    setChargePaymentType(t.metodoPagamento === 'cartao_credito' ? 'cartao_credito' : t.metodoPagamento === 'faturado' ? 'faturado' : 'pix');
                                     setChargeComprovanteUrl(t.comprovanteUrl || null);
                                   }
                                 }}
@@ -2169,7 +2165,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   type="button"
                   onClick={() => {
                     setSaleMode('avulso');
-                    if (paymentType === 'admin') setPaymentType('pix');
+                    if (paymentType === 'faturado') setPaymentType('pix');
                   }}
                   className={`py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     saleMode === 'avulso'
@@ -2296,9 +2292,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
   <label className="font-semibold text-slate-700 text-xs block tracking-tight">Status da Cobrança *</label>
   <div className="flex gap-4">
     <label className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-      statusCobranca === 'cobrado' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+      statusCobranca === 'pago' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
     }`}>
-      <input type="radio" className="sr-only" checked={statusCobranca === 'cobrado'} onChange={() => { setStatusCobranca('cobrado'); if(!paymentType) setPaymentType('pix'); }} />
+      <input type="radio" className="sr-only" checked={statusCobranca === 'pago'} onChange={() => { setStatusCobranca('pago'); if(!paymentType) setPaymentType('pix'); }} />
       <span className="font-semibold text-sm">Fechado / Imediato</span>
     </label>
     <label className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 cursor-pointer transition-colors ${
@@ -2317,9 +2313,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     {[
       { id: 'dinheiro', icon: Banknote, label: 'Dinheiro', desc: 'Caixa físico', color: 'emerald', price: getFuelPrice('dinheiro') },
       { id: 'pix', icon: QrCode, label: 'PIX', desc: 'Transferência imediata', color: 'cyan', price: getFuelPrice('pix') },
-      { id: 'debit', icon: CreditCard, label: 'Débito', desc: 'Maquininha', color: 'blue', price: getFuelPrice('debit') },
-      { id: 'credit', icon: CreditCard, label: 'Crédito', desc: 'Maquininha', color: 'indigo', price: getFuelPrice('credit') },
-      ...(saleMode === 'embarcacao' ? [{ id: 'admin', icon: Building2, label: 'Administradora', desc: 'Faturamento Mensal', color: 'purple', price: getFuelPrice('admin') }] : [])
+      { id: 'cartao_debito', icon: CreditCard, label: 'Débito', desc: 'Maquininha', color: 'blue', price: getFuelPrice('cartao_debito') },
+      { id: 'cartao_credito', icon: CreditCard, label: 'Crédito', desc: 'Maquininha', color: 'indigo', price: getFuelPrice('cartao_credito') },
+      ...(saleMode === 'embarcacao' ? [{ id: 'faturado', icon: Building2, label: 'Administradora', desc: 'Faturamento Mensal', color: 'purple', price: getFuelPrice('faturado') }] : [])
     ].map(opt => {
       const Icon = opt.icon;
       const isSelected = paymentType === opt.id;
@@ -2372,7 +2368,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 {/* Total Calculation Display */}
 {(() => {
   const l = parseFloat(liters.replace(',', '.') || '0');
-  const p = ((paymentType === 'admin' || statusCobranca === 'pendente') && saleMode === 'embarcacao') ? 13.0 : getFuelPrice(paymentType || 'pix');
+  const p = ((paymentType === 'faturado' || statusCobranca === 'pendente') && saleMode === 'embarcacao') ? getFuelPrice('faturado') : getFuelPrice(paymentType || 'pix');
   const tot = l * p;
   return (
     <div className={`p-4 rounded-3xl border flex items-center justify-between transition-all mt-4 mb-4 ${
@@ -2450,11 +2446,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       {chargeTargetItem && (() => {
         const t = chargeTargetItem;
         const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
-        const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || t.reservationRef?.litrosAbastecidos || 0);
+        const litrosNum = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
         const boat = getEmbarcacao(t.embarcacaoId);
         const client = getCliente(t.clienteId);
 
-        const preco = chargePaymentType === 'admin' ? 13.0 : getFuelPrice(chargePaymentType);
+        const preco = chargePaymentType === 'faturado' ? getFuelPrice('faturado') : getFuelPrice(chargePaymentType);
         const totalCalc = litrosNum * preco;
 
         return (
@@ -2488,9 +2484,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     {[
       { id: 'dinheiro', icon: Banknote, label: 'Dinheiro', desc: 'Caixa físico', color: 'emerald', price: getFuelPrice('dinheiro') },
       { id: 'pix', icon: QrCode, label: 'PIX', desc: 'Transferência imediata', color: 'cyan', price: getFuelPrice('pix') },
-      { id: 'debit', icon: CreditCard, label: 'Débito', desc: 'Maquininha', color: 'blue', price: getFuelPrice('debit') },
-      { id: 'credit', icon: CreditCard, label: 'Crédito', desc: 'Maquininha', color: 'indigo', price: getFuelPrice('credit') },
-      ...(chargeTargetItem?.isAvulso ? [] : [{ id: 'admin', icon: Building2, label: 'Administradora', desc: 'Faturamento Mensal', color: 'purple', price: getFuelPrice('admin') }])
+      { id: 'cartao_debito', icon: CreditCard, label: 'Débito', desc: 'Maquininha', color: 'blue', price: getFuelPrice('cartao_debito') },
+      { id: 'cartao_credito', icon: CreditCard, label: 'Crédito', desc: 'Maquininha', color: 'indigo', price: getFuelPrice('cartao_credito') },
+      ...(chargeTargetItem?.isAvulso ? [] : [{ id: 'faturado', icon: Building2, label: 'Administradora', desc: 'Faturamento Mensal', color: 'purple', price: getFuelPrice('faturado') }])
     ].map(opt => {
       const Icon = opt.icon;
       const isSelected = chargePaymentType === opt.id;
@@ -2611,7 +2607,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
         const isAvulsoItem = editingItem?.isAvulso || !editingItem?.embarcacaoId || (editingItem?.descricao && editingItem.descricao.toLowerCase().includes('avulso'));
         const boat = isAvulsoItem ? null : getEmbarcacao(editBoatId);
         const litrosNum = parseFloat(editLiters.replace(',', '.') || '0');
-        const preco = editPaymentType === 'admin' ? 13.0 : getFuelPrice(editPaymentType);
+        const preco = editPaymentType === 'faturado' ? 13.0 : getFuelPrice(editPaymentType);
         const totalCalc = litrosNum * preco;
 
         return (
@@ -2733,9 +2729,9 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     >
                       <option value="dinheiro">💵 Dinheiro (Caixa Físico - R$9/L)</option>
                       <option value="pix">📱 PIX (Conta Bancária - R$9/L)</option>
-                      <option value="credit">💳 Cartão Crédito (R$10/L)</option>
-                      <option value="debit">💳 Cartão Débito (R$9/L)</option>
-                      <option value="admin">🏢 Administradora (R$13/L)</option>
+                      <option value="cartao_credito">💳 Cartão Crédito</option>
+                      <option value="cartao_debito">💳 Cartão Débito</option>
+                      <option value="faturado">🏢 Administradora (R$13/L)</option>
                     </select>
                   </div>
                 </div>

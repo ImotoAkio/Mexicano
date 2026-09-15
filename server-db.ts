@@ -47,6 +47,8 @@ export function getDbPool(): mysql.Pool | null {
   }
 }
 
+import { getFuelPrice } from "./src/utils/constants";
+
 // Check database status
 export async function getDbStatus() {
   const currentPool = getDbPool();
@@ -450,6 +452,7 @@ export async function initializeDatabase() {
         empresa VARCHAR(50) NOT NULL DEFAULT 'Marina',
         contaBancariaId VARCHAR(50),
         planoContasId VARCHAR(50),
+        centroCustoId VARCHAR(50),
         fornecedorId VARCHAR(50),
         grupoParcelamentoId VARCHAR(50),
         numeroParcela INT DEFAULT 1,
@@ -519,6 +522,20 @@ export async function initializeDatabase() {
         agencia VARCHAR(50),
         conta VARCHAR(50),
         saldoInicial DECIMAL(10, 2) DEFAULT 0,
+        status VARCHAR(20) DEFAULT 'ativo',
+        parentId VARCHAR(50),
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    
+    // 8.5 CentrosDeCusto Table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS CentrosDeCusto (
+        id VARCHAR(50) PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        empresa VARCHAR(50) NOT NULL,
         status VARCHAR(20) DEFAULT 'ativo',
         createdAt VARCHAR(50) NOT NULL,
         updatedAt VARCHAR(50) NOT NULL
@@ -1217,6 +1234,12 @@ export async function pullDatabase(forceFresh = false) {
     somRetirado: r.somRetirado === 1 || r.somRetirado === true,
   }));
 
+  
+  const [planosContas] = await currentPool.query("SELECT * FROM PlanosDeContas");
+  const [centrosCusto] = await currentPool.query("SELECT * FROM CentrosDeCusto");
+  const [fornecedores] = await currentPool.query("SELECT * FROM Fornecedores");
+  const [contasBancarias] = await currentPool.query("SELECT * FROM ContasBancarias");
+
   const [funcionariosEPIs] = await currentPool.query("SELECT * FROM FuncionariosEPIs ORDER BY geradoEm DESC");
   const [historicoEPIMensal] = await currentPool.query("SELECT * FROM HistoricoEPIMensal ORDER BY mesAno DESC");
 
@@ -1246,7 +1269,11 @@ export async function pullDatabase(forceFresh = false) {
       historicoTrocas: e.historicoTrocas ? (typeof e.historicoTrocas === 'string' ? JSON.parse(e.historicoTrocas) : e.historicoTrocas) : []
     })),
     historicoEpis: historicoEPIMensal as any[],
-    chamados: chamados as any[]
+    chamados: chamados as any[],
+    planosContas: planosContas as any[],
+    centrosCusto: centrosCusto as any[],
+    fornecedores: fornecedores as any[],
+    contasBancarias: contasBancarias as any[]
   };
 
   dbCache = {
@@ -1570,7 +1597,7 @@ export async function upsertReservation(reserva: any) {
     reserva.horaSubida || null,
     reserva.operadorSubida || null,
     fotosChecklistSubidaStr,
-    reserva.abastecimentoLitros || reserva.litrosAbastecidos || null,
+    reserva.abastecimentoLitros || null,
     reserva.abastecimentoStatusCobranca || null,
     reserva.abastecimentoFormaPagamento || null,
     reserva.abastecimentoValorTotal || null,
@@ -1994,9 +2021,9 @@ export async function upsertTransacao(t: any, connection?: any) {
       id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao,
       clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl,
       reservaId, metodoPagamento, operador, metadata, empresa, contaBancariaId,
-      planoContasId, fornecedorId, grupoParcelamentoId, numeroParcela, totalParcelas
+      planoContasId, centroCustoId, fornecedorId, grupoParcelamentoId, numeroParcela, totalParcelas
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        tipo=VALUES(tipo), categoria=VALUES(categoria), valor=VALUES(valor),
        dataVencimento=VALUES(dataVencimento), dataPagamento=VALUES(dataPagamento),
@@ -2007,7 +2034,7 @@ export async function upsertTransacao(t: any, connection?: any) {
        reservaId=VALUES(reservaId), metodoPagamento=VALUES(metodoPagamento),
        operador=VALUES(operador), metadata=VALUES(metadata),
        empresa=VALUES(empresa), contaBancariaId=VALUES(contaBancariaId),
-       planoContasId=VALUES(planoContasId), fornecedorId=VALUES(fornecedorId),
+       planoContasId=VALUES(planoContasId), centroCustoId=VALUES(centroCustoId), fornecedorId=VALUES(fornecedorId),
        grupoParcelamentoId=VALUES(grupoParcelamentoId), numeroParcela=VALUES(numeroParcela),
        totalParcelas=VALUES(totalParcelas)`,
     [
@@ -2015,7 +2042,7 @@ export async function upsertTransacao(t: any, connection?: any) {
       t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || t.comprovanteUrl || null, t.createdAt,
       t.asaasPaymentId || null, t.asaasPaymentUrl || null, t.reservaId || null, t.metodoPagamento || null,
       t.operador || null, t.metadata ? JSON.stringify(t.metadata) : null,
-      t.empresa || 'Marina', t.contaBancariaId || null, t.planoContasId || null, t.fornecedorId || null,
+      t.empresa || 'Marina', t.contaBancariaId || null, t.planoContasId || null, t.centroCustoId || null, t.fornecedorId || null,
       t.grupoParcelamentoId || null, t.numeroParcela || null, t.totalParcelas || null
     ]
   );
@@ -3033,7 +3060,7 @@ export async function getAbastecimentosPendentesCaixa(): Promise<any[]> {
   // Busca reservas que possuem abastecimento registrado mas ainda não foram baixadas no caixa
   const [rows] = await currentPool.query(`
     SELECT r.id as reservaId, r.data, r.embarcacaoId, r.clienteId,
-           r.abastecimentoLitros, r.litrosAbastecidos, r.abastecimentoValorTotal,
+           r.abastecimentoLitros, r.abastecimentoValorTotal,
            r.abastecimentoFormaPagamento, r.abastecimentoStatusCobranca,
            r.abastecimentoComprovanteUrl, r.abastecimentoOperador, r.operadorChegada,
            e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
@@ -3042,7 +3069,7 @@ export async function getAbastecimentosPendentesCaixa(): Promise<any[]> {
     LEFT JOIN Embarcacoes e ON r.embarcacaoId = e.id
     LEFT JOIN Clientes c ON r.clienteId = c.id
     WHERE (
-      (CAST(r.abastecimentoLitros AS DECIMAL(10,2)) > 0 OR CAST(r.litrosAbastecidos AS DECIMAL(10,2)) > 0)
+      CAST(r.abastecimentoLitros AS DECIMAL(10,2)) > 0
       AND (r.abastecimentoStatusCobranca = 'pendente' OR r.abastecimentoStatusCobranca IS NULL OR r.abastecimentoStatusCobranca = '' OR r.abastecimentoFormaPagamento = 'dinheiro')
       AND r.id NOT IN (SELECT reservaId FROM CaixaMarinaTransacoes WHERE reservaId IS NOT NULL AND status = 'confirmado')
     )
@@ -3050,8 +3077,9 @@ export async function getAbastecimentosPendentesCaixa(): Promise<any[]> {
   `);
 
   return (rows as any[]).map(r => {
-    const litros = Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0;
-    const valorUnitario = 9.00; // Valor padrão do litro
+    const litros = Number(r.abastecimentoLitros) || 0;
+    const formaPagamentoSugerida = r.abastecimentoFormaPagamento || 'pix';
+    const valorUnitario = getFuelPrice(formaPagamentoSugerida);
     const valorTotal = Number(r.abastecimentoValorTotal) || (litros * valorUnitario);
 
     return {
@@ -3064,7 +3092,7 @@ export async function getAbastecimentosPendentesCaixa(): Promise<any[]> {
       clienteTelefone: r.clienteTelefone,
       litros,
       valorTotal,
-      formaPagamentoSugerida: r.abastecimentoFormaPagamento || 'pix',
+      formaPagamentoSugerida,
       operador: r.abastecimentoOperador || r.operadorChegada || 'Marinheiro',
       comprovanteUrl: r.abastecimentoComprovanteUrl
     };
@@ -3129,14 +3157,13 @@ export async function upsertPlanoDeConta(p: any): Promise<void> {
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
   await currentPool.query(
-    `INSERT INTO PlanosDeContas (id, codigoContabil, descricao, tipo, empresa, status, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO PlanosDeContas (id, codigoContabil, descricao, tipo, empresa, status, parentId, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        codigoContabil=VALUES(codigoContabil), descricao=VALUES(descricao), tipo=VALUES(tipo),
-       empresa=VALUES(empresa), status=VALUES(status), updatedAt=VALUES(updatedAt)`,
+       empresa=VALUES(empresa), status=VALUES(status), parentId=VALUES(parentId), updatedAt=VALUES(updatedAt)`,
     [
-      p.id, p.codigoContabil || null, p.descricao, p.tipo, p.empresa || null, p.status || 'ativo',
-      p.createdAt || new Date().toISOString(), p.updatedAt || new Date().toISOString()
+      p.id, p.codigoContabil, p.descricao, p.tipo, p.empresa, p.status, p.parentId || null, p.createdAt, p.updatedAt
     ]
   );
 }
@@ -3145,6 +3172,35 @@ export async function deletePlanoDeConta(id: string): Promise<void> {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query("DELETE FROM PlanosDeContas WHERE id = ?", [id]);
+}
+
+export async function getAllCentrosDeCusto(empresa?: string): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  if (empresa && empresa !== 'Todos') {
+    const [rows] = await currentPool.query("SELECT * FROM CentrosDeCusto WHERE empresa = ? ORDER BY nome ASC", [empresa]);
+    return rows as any[];
+  }
+  const [rows] = await currentPool.query("SELECT * FROM CentrosDeCusto ORDER BY nome ASC");
+  return rows as any[];
+}
+
+export async function upsertCentroDeCusto(p: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query(
+    `INSERT INTO CentrosDeCusto (id, nome, empresa, status, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       nome=VALUES(nome), empresa=VALUES(empresa), status=VALUES(status), updatedAt=VALUES(updatedAt)`,
+    [p.id, p.nome, p.empresa, p.status, p.createdAt, p.updatedAt]
+  );
+}
+
+export async function deleteCentroDeCusto(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM CentrosDeCusto WHERE id = ?", [id]);
 }
 
 // ──────────── Fornecedores ────────────

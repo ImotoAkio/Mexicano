@@ -70,7 +70,7 @@ export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
 
             const hasDescidaFotos = Object.keys(fotosChecklistDescida).length > 0;
             const hasSubidaFotos = Object.keys(fotosChecklistSubida).length > 0;
-            const litrosAbastecidos = Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) || 0;
+            const litrosAbastecidos = Number(reserva.abastecimentoLitros) || 0;
 
             return (
               <div
