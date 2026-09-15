@@ -8,6 +8,7 @@ import {
 import { TransacaoFinanceira } from '../../types';
 import FinanceLancamentoDrawer from './FinanceLancamentoDrawer';
 import { generateFinanceReportPDF } from '../../utils/pdfGenerator';
+import Select from 'react-select';
 import { clientDB } from '../../db';
 
 // Tooltip/3-dot Menu Component
@@ -107,10 +108,22 @@ function RowActions({
 function FilterDrawer({
   open, onClose,
   clienteFilter, setClienteFilter,
+  embarcacaoFilter, setEmbarcacaoFilter,
   planoContasFilter, setPlanoContasFilter,
+  centroCustoFilter, setCentroCustoFilter,
+  planosList, centrosList,
+  clientesList, embarcacoesList,
   dataInicio, setDataInicio,
   dataFim, setDataFim
 }: any) {
+
+  const reactSelectStyles = {
+    control: (base: any) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: 'transparent', backgroundColor: '#white', boxShadow: 'none', '&:hover': { borderColor: 'transparent' } }),
+    menu: (base: any) => ({ ...base, borderRadius: '0.75rem', overflow: 'hidden', zIndex: 9999 }),
+    option: (base: any, { isFocused }: any) => ({ ...base, backgroundColor: isFocused ? '#f0f0f5' : 'white', color: '#1d1d1f' }),
+    menuPortal: (base: any) => ({ ...base, zIndex: 9999 })
+  };
+
   return (
     <AnimatePresence>
       {open && (
@@ -157,13 +170,62 @@ function FilterDrawer({
                 <div>
                   <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-2 uppercase tracking-wide">Busca Específica</label>
                   <div className="space-y-3">
-                    <input type="text" placeholder="Cliente ou Fornecedor" value={clienteFilter} onChange={e=>setClienteFilter(e.target.value)} className="w-full bg-white border border-transparent rounded-xl px-4 py-3 text-[14px] font-medium text-[#1d1d1f] focus:outline-none focus:border-[#0071e3] transition-all" />
+                    <Select
+                      options={[
+                        { value: 'todos', label: 'Todos Clientes/Fornecedores' },
+                        ...(clientesList || []).map((c: any) => ({ value: c.id, label: c.nome }))
+                      ]}
+                      value={{ value: clienteFilter, label: !clienteFilter || clienteFilter === 'todos' ? 'Todos Clientes/Fornecedores' : (clientesList || []).find((c: any) => c.id === clienteFilter)?.nome || 'Desconhecido' }}
+                      onChange={(opt: any) => setClienteFilter(opt?.value === 'todos' ? '' : opt?.value)}
+                      placeholder="Cliente ou Fornecedor..."
+                      isClearable={false}
+                      styles={reactSelectStyles}
+                      menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                      classNamePrefix="react-select"
+                    />
 
-                    <select value={planoContasFilter} onChange={e=>setPlanoContasFilter(e.target.value)} className="w-full bg-white border border-transparent rounded-xl px-4 py-3 text-[14px] font-medium text-[#1d1d1f] focus:outline-none focus:border-[#0071e3] transition-all appearance-none">
-                      <option value="todos">Todos Planos de Contas</option>
-                      <option value="Mensalidade">Mensalidades</option>
-                      <option value="Combustível">Combustível</option>
-                    </select>
+                    <Select
+                      options={[
+                        { value: 'todos', label: 'Todas Embarcações' },
+                        ...(embarcacoesList || []).map((e: any) => ({ value: e.id, label: e.nome }))
+                      ]}
+                      value={{ value: embarcacaoFilter, label: !embarcacaoFilter || embarcacaoFilter === 'todos' ? 'Todas Embarcações' : (embarcacoesList || []).find((e: any) => e.id === embarcacaoFilter)?.nome || 'Desconhecida' }}
+                      onChange={(opt: any) => setEmbarcacaoFilter(opt?.value === 'todos' ? '' : opt?.value)}
+                      placeholder="Embarcação..."
+                      isClearable={false}
+                      styles={reactSelectStyles}
+                      menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                      classNamePrefix="react-select"
+                    />
+
+                    <Select
+                      options={[
+                        { value: 'todos', label: 'Todos Planos de Contas' },
+                        ...(planosList || []).map((p: any) => ({ value: p.id, label: p.descricao }))
+                      ]}
+                      value={{ value: planoContasFilter, label: planoContasFilter === 'todos' ? 'Todos Planos de Contas' : (planosList || []).find((p: any) => p.id === planoContasFilter)?.descricao || 'Desconhecido' }}
+                      onChange={(opt: any) => setPlanoContasFilter(opt?.value || 'todos')}
+                      placeholder="Selecione..."
+                      isClearable={false}
+                      styles={reactSelectStyles}
+                      menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                      classNamePrefix="react-select"
+                    />
+
+                    <Select
+                      options={[
+                        { value: 'todos', label: 'Todos Centros de Custo' },
+                        ...(centrosList || []).map((c: any) => ({ value: c.id, label: c.nome }))
+                      ]}
+                      value={{ value: centroCustoFilter, label: centroCustoFilter === 'todos' ? 'Todos Centros de Custo' : (centrosList || []).find((c: any) => c.id === centroCustoFilter)?.nome || 'Desconhecido' }}
+                      onChange={(opt: any) => setCentroCustoFilter(opt?.value || 'todos')}
+                      placeholder="Selecione..."
+                      isClearable={false}
+                      styles={reactSelectStyles}
+                      menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                      classNamePrefix="react-select"
+                    />
+
                   </div>
                 </div>
              </div>
@@ -188,6 +250,14 @@ export default function FinanceFluxoCaixa() {
   const [transacoes, setTransacoes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Dictionaries for relations
+  const [mapPlanos, setMapPlanos] = useState<Record<string, string>>({});
+  const [mapCentros, setMapCentros] = useState<Record<string, string>>({});
+  const [planosList, setPlanosList] = useState<any[]>([]);
+  const [centrosList, setCentrosList] = useState<any[]>([]);
+  const [clientesList, setClientesList] = useState<any[]>([]);
+  const [embarcacoesList, setEmbarcacoesList] = useState<any[]>([]);
+
   // Lancamento Form State
   const [isLancamentoDrawerOpen, setIsLancamentoDrawerOpen] = useState(false);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
@@ -195,7 +265,9 @@ export default function FinanceFluxoCaixa() {
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [clienteFilter, setClienteFilter] = useState('');
+  const [embarcacaoFilter, setEmbarcacaoFilter] = useState('');
   const [planoContasFilter, setPlanoContasFilter] = useState('todos');
+  const [centroCustoFilter, setCentroCustoFilter] = useState('todos');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
 
@@ -206,6 +278,23 @@ export default function FinanceFluxoCaixa() {
       const res = await fetch('/api/db/pull', { headers: { 'Authorization': `Bearer ${token}` }});
       if(res.ok) {
         const dbData = await res.json();
+        if (dbData.planosContas) {
+          const map = dbData.planosContas.reduce((acc: any, p: any) => { acc[p.id] = p.descricao; return acc; }, {});
+          setMapPlanos(map);
+          setPlanosList(dbData.planosContas);
+        }
+        if (dbData.clientes || dbData.clients || dbData.fornecedores) {
+          const cls = dbData.clientes || dbData.clients || []; const forns = dbData.fornecedores || []; setClientesList([...cls, ...forns]);
+        }
+        if (dbData.embarcacoes || dbData.boats) {
+          setEmbarcacoesList(dbData.embarcacoes || dbData.boats || []);
+        }
+        if (dbData.centrosCusto) {
+          const map = dbData.centrosCusto.reduce((acc: any, c: any) => { acc[c.id] = c.nome; return acc; }, {});
+          setMapCentros(map);
+          setCentrosList(dbData.centrosCusto);
+        }
+
         if(Array.isArray(dbData.transacoes)) {
           // Normalize legacy shapes
           const mapped = dbData.transacoes.map((t: any) => ({
@@ -272,13 +361,14 @@ export default function FinanceFluxoCaixa() {
     // 3. Search text
     if (searchTerm) {
        const search = searchTerm.toLowerCase();
-       if (!t.descricao?.toLowerCase().includes(search) &&
-           !t.categoria?.toLowerCase().includes(search)) return false;
+       if (!t.descricao?.toLowerCase().includes(search)) return false;
     }
 
     // 4. Extended Filters
-    if (clienteFilter && t.clienteId !== clienteFilter) return false; // Mocking exact match for demo
-    if (planoContasFilter !== 'todos' && t.categoria !== planoContasFilter) return false;
+    if (clienteFilter && t.clienteId !== clienteFilter && t.fornecedorId !== clienteFilter) return false;
+    if (embarcacaoFilter && t.embarcacaoId !== embarcacaoFilter) return false;
+    if (planoContasFilter !== 'todos' && t.planoContasId !== planoContasFilter) return false;
+    if (centroCustoFilter !== 'todos' && t.centroCustoId !== centroCustoFilter) return false;
 
     if (dataInicio && new Date(t.dataVencimento) < new Date(dataInicio)) return false;
     if (dataFim && new Date(t.dataVencimento) > new Date(dataFim)) return false;
@@ -470,7 +560,7 @@ export default function FinanceFluxoCaixa() {
                     <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] w-32 border-b border-black/[0.04]">Data/Venc.</th>
                     <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] border-b border-black/[0.04]">Descrição</th>
                     <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] border-b border-black/[0.04]">Cliente/Fornec.</th>
-                    <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] border-b border-black/[0.04]">Categoria</th>
+                    <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] border-b border-black/[0.04]">Classificação</th>
                     <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] border-b border-black/[0.04]">Valor</th>
                     <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] border-b border-black/[0.04] text-center">Status</th>
                     <th className="px-4 py-3 border-b border-black/[0.04] w-16"></th>
@@ -571,6 +661,8 @@ export default function FinanceFluxoCaixa() {
         onClose={() => setIsLancamentoDrawerOpen(false)}
         onSave={handleSaveLancamentos}
         defaultEmpresa={empresaFiltro}
+        planosContas={planosList}
+        centrosCusto={centrosList}
       />
 
       <FilterDrawer
@@ -578,8 +670,16 @@ export default function FinanceFluxoCaixa() {
         onClose={() => setIsFilterDrawerOpen(false)}
         clienteFilter={clienteFilter}
         setClienteFilter={setClienteFilter}
+        embarcacaoFilter={embarcacaoFilter}
+        setEmbarcacaoFilter={setEmbarcacaoFilter}
         planoContasFilter={planoContasFilter}
         setPlanoContasFilter={setPlanoContasFilter}
+          centroCustoFilter={centroCustoFilter}
+          setCentroCustoFilter={setCentroCustoFilter}
+          planosList={planosList}
+          centrosList={centrosList}
+          clientesList={clientesList}
+          embarcacoesList={embarcacoesList}
         dataInicio={dataInicio}
         setDataInicio={setDataInicio}
         dataFim={dataFim}
