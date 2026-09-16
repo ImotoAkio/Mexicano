@@ -96,6 +96,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
     const todayStr = new Date().toISOString().split('T')[0];
     return reservationDB.getAll().filter(
       r => r.clienteId === selectedClientId &&
+      r.embarcacaoId === selectedBoatId &&
       r.status !== 'cancelado' &&
       r.data >= todayStr
     );

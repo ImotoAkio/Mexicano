@@ -79,7 +79,7 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
       const reqYear = reqDateObj.getUTCFullYear();
       
       const sameDayTypeReservations = dbData.reservations.filter((r: any) => {
-        if (r.clienteId !== userId || r.status === 'cancelado') return false;
+        if (r.clienteId !== userId || r.embarcacaoId !== embarcacaoId || r.status === 'cancelado') return false;
         const rDateObj = new Date(r.data + "T12:00:00Z");
         return rDateObj.getUTCMonth() === reqMonth && 
                rDateObj.getUTCFullYear() === reqYear && 
@@ -88,15 +88,15 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
       
       if (sameDayTypeReservations.length >= 1) {
         const dayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
-        return res.status(400).json({ error: true, message: `Você já possui um agendamento para um ${dayName} neste mês.` });
+        return res.status(400).json({ error: true, message: `Você já possui um agendamento para um ${dayName} neste mês com esta embarcação.` });
       }
     }
 
     const activeReservations = dbData.reservations.filter((r: any) => 
-      r.clienteId === userId && r.status !== 'cancelado' && r.data >= todayStr
+      r.clienteId === userId && r.embarcacaoId === embarcacaoId && r.status !== 'cancelado' && r.data >= todayStr
     );
     if (activeReservations.length >= 2) {
-      return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas." });
+      return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas para esta embarcação." });
     }
 
     const newRes = {
