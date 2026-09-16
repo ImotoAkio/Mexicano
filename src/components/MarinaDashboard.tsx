@@ -16,6 +16,7 @@ import ControleFolgasPage from './ControleFolgasPage';
 import AvisosSaidaPage from './AvisosSaidaPage';
 import SettingsPage from './SettingsPage';
 import { getFuelInventory, consumeFuelForEmbarcacao } from '../utils/fuelInventory';
+import { getFuelPrice } from '../utils/constants';
 import refFrente from '../assets/images/checklist/frente.svg';
 import refTras from '../assets/images/checklist/tras.svg';
 import refEsquerda from '../assets/images/checklist/esquerda.svg';
@@ -339,7 +340,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
   const openFuelForChegada = (reserva: any) => {
     setSelectedReserva(reserva);
-    setLiters(reserva.abastecimentoLitros || reserva.litrosAbastecidos || '');
+    setLiters(reserva.abastecimentoLitros || '');
     setPaymentType('pix');
     setComprovanteUrl(null);
     setFuelAction('only_fuel');
@@ -594,11 +595,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       statusMarina: selectedReserva.statusMarina || 'chegada',
       operadorChegada: selectedReserva.operadorChegada || currentOperator,
       abastecimentoOperador: currentOperator,
-      litrosAbastecidos: litersNum > 0 ? litersNum.toString() : (selectedReserva.litrosAbastecidos || '0'),
       abastecimentoLitros: litersNum > 0 ? litersNum : (selectedReserva.abastecimentoLitros || 0),
       abastecimentoFormaPagamento: fuelAction === 'fuel_and_pay' ? paymentType : null,
       abastecimentoComprovanteUrl: comprovanteUrl || selectedReserva.abastecimentoComprovanteUrl || null,
-      abastecimentoStatusCobranca: litersNum > 0 ? (fuelAction === 'fuel_and_pay' ? 'cobrado' : 'pendente') : (selectedReserva.abastecimentoStatusCobranca || 'sem_abastecimento'),
+      abastecimentoStatusCobranca: litersNum > 0 ? (fuelAction === 'fuel_and_pay' ? 'pago' : 'pendente') : (selectedReserva.abastecimentoStatusCobranca || 'sem_abastecimento'),
       abastecimentoDataHora: selectedReserva.abastecimentoDataHora || new Date().toISOString()
     };
 
@@ -615,7 +615,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       if (litersNum > 0) {
         const { consumeFuelForEmbarcacao } = await import('../utils/fuelInventory');
         const boatName = selectedReserva.barcoNome || getEmbarcacao(selectedReserva.embarcacaoId)?.nome || 'Embarcação';
-        consumeFuelForEmbarcacao(litersNum, boatName, currentOperator);
+        await consumeFuelForEmbarcacao(litersNum, boatName, currentOperator);
       }
 
       setData((prev: any) => ({
@@ -1927,7 +1927,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       kanbanRetornaram.map((reserva: any) => {
                         const barco = getEmbarcacao(reserva.embarcacaoId);
                         const cliente = getCliente(reserva.clienteId);
-                        const litros = reserva.abastecimentoLitros || reserva.litrosAbastecidos;
+                        const litros = reserva.abastecimentoLitros;
                         return (
                           <div
                             key={reserva.id}
@@ -2151,10 +2151,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             {/* Retornaram */}
                             {reserva.status !== 'cancelado' && (reserva.horaChegada || reserva.statusMarina === 'chegada') && !reserva.horaSubida && (
                               <>
-                                {Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) > 0 && (
+                                {Number(reserva.abastecimentoLitros) > 0 && (
                                   <span className="px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200/80 rounded-lg text-xs font-bold flex items-center gap-1">
                                     <Droplets className="w-3 h-3 text-amber-600" />
-                                    <span>{reserva.abastecimentoLitros || reserva.litrosAbastecidos}L</span>
+                                    <span>{reserva.abastecimentoLitros}L</span>
                                   </span>
                                 )}
                                 <button 
@@ -2570,7 +2570,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                               <span className="font-bold text-sm text-emerald-950 flex items-center justify-between">
                                 <span className="flex items-center gap-1.5"><Banknote className="w-4 h-4 text-emerald-600" /> Dinheiro</span>
                               </span>
-                              <span className="block text-xs text-emerald-700 font-medium mt-0.5">R$ 9,00/L (Caixa Físico)</span>
+                              <span className="block text-xs text-emerald-700 font-medium mt-0.5">R$ {getFuelPrice('dinheiro').toFixed(2).replace('.', ',')}/L (Caixa Físico)</span>
                             </div>
                           </label>
                           <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'pix' ? 'border-cyan-500 bg-cyan-50 ring-1 ring-cyan-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
@@ -2579,29 +2579,29 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                               <span className="font-bold text-sm text-cyan-950 flex items-center justify-between">
                                 <span className="flex items-center gap-1.5"><QrCode className="w-4 h-4 text-cyan-600" /> PIX</span>
                               </span>
-                              <span className="block text-xs text-cyan-700 font-medium mt-0.5">R$ 9,00/L (Conta Bancária)</span>
+                              <span className="block text-xs text-cyan-700 font-medium mt-0.5">R$ {getFuelPrice('pix').toFixed(2).replace('.', ',')}/L (Conta Bancária)</span>
                             </div>
                           </label>
-                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'credit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
-                            <input type="radio" name="payment" value="credit" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} className="sr-only" />
+                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'cartao_credito' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                            <input type="radio" name="payment" value="cartao_credito" checked={paymentType === 'cartao_credito'} onChange={() => setPaymentType('cartao_credito')} className="sr-only" />
                             <div className="flex-1 text-left">
                               <span className="font-bold text-sm text-slate-900 flex items-center justify-between">
                                 <span className="flex items-center gap-1.5"><CreditCard className="w-4 h-4 text-blue-600" /> Cartão Crédito</span>
                               </span>
-                              <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 10,00/L (Maquininha)</span>
+                              <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ {getFuelPrice('cartao_credito').toFixed(2).replace('.', ',')}/L (Maquininha)</span>
                             </div>
                           </label>
-                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'debit' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
-                            <input type="radio" name="payment" value="debit" checked={paymentType === 'debit'} onChange={() => setPaymentType('debit')} className="sr-only" />
+                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] " + (paymentType === 'cartao_debito' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                            <input type="radio" name="payment" value="cartao_debito" checked={paymentType === 'cartao_debito'} onChange={() => setPaymentType('cartao_debito')} className="sr-only" />
                             <div className="flex-1 text-left">
                               <span className="font-bold text-sm text-slate-900 flex items-center justify-between">
                                 <span className="flex items-center gap-1.5"><CreditCard className="w-4 h-4 text-blue-600" /> Cartão Débito</span>
                               </span>
-                              <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ 9,00/L (Maquininha)</span>
+                              <span className="block text-xs text-slate-500 font-medium mt-0.5">R$ {getFuelPrice('cartao_debito').toFixed(2).replace('.', ',')}/L (Maquininha)</span>
                             </div>
                           </label>
-                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] sm:col-span-2 " + (paymentType === 'admin' ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
-                            <input type="radio" name="payment" value="admin" checked={paymentType === 'admin'} onChange={() => setPaymentType('admin')} className="sr-only" />
+                          <label className={"flex items-center p-3 border rounded-xl cursor-pointer transition-all active:scale-[0.98] sm:col-span-2 " + (paymentType === 'faturado' ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                            <input type="radio" name="payment" value="faturado" checked={paymentType === 'faturado'} onChange={() => setPaymentType('faturado')} className="sr-only" />
                             <div className="flex-1 text-left">
                               <span className="font-bold text-sm text-purple-950 flex items-center gap-1.5">
                                 <Building2 className="w-4 h-4 text-purple-600" />
@@ -2615,11 +2615,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         <div className="mt-2 p-4 bg-slate-900 rounded-2xl text-white flex justify-between items-center shadow-inner">
                           <span className="text-sm font-bold text-slate-300">Total a lançar:</span>
                           <span className="font-black text-2xl font-mono text-[#B69D74]">
-                            R$ {(Number(liters) * (paymentType === 'credit' ? 10 : paymentType === 'admin' ? 13 : 9)).toFixed(2).replace('.', ',')}
+                            R$ {(Number(liters) * getFuelPrice(paymentType)).toFixed(2).replace('.', ',')}
                           </span>
                         </div>
 
-                        {(paymentType === 'pix' || paymentType === 'credit' || paymentType === 'debit') && (
+                        {['pix', 'cartao_credito', 'cartao_debito'].includes(paymentType) && (
                           <div className="mt-4 p-4 border border-slate-200 rounded-2xl bg-white space-y-3">
                             <label className="text-sm font-bold text-slate-700 block">Comprovante de Pagamento *</label>
 
@@ -2696,7 +2696,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   ) : (
                     <button
                       type="submit"
-                      disabled={isSubmitting || ((paymentType === 'pix' || paymentType === 'credit' || paymentType === 'debit') && (!comprovanteUrl && !selectedReserva?.abastecimentoComprovanteUrl))}
+                      disabled={isSubmitting || (['pix', 'cartao_credito', 'cartao_debito'].includes(paymentType) && (!comprovanteUrl && !selectedReserva?.abastecimentoComprovanteUrl))}
                       className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-emerald-700 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
                     >
                       <Check className="w-5 h-5" />
@@ -2847,11 +2847,17 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   : ((detailsReserva as any)?.embarcacaoTipo === 'jet' || ((detailsReserva as any)?.barcoNome || (detailsReserva as any)?.embarcacaoNome || '').toLowerCase().includes('jet'));
 
                 if (isJet) {
-                  return detailsReserva.checklistObservacoes ? (
+                  const allObs = [
+                    detailsReserva.checklistObservacoes,
+                    detailsReserva.observacoesChecklistDescida ? `Descida: ${detailsReserva.observacoesChecklistDescida}` : '',
+                    detailsReserva.observacoesChecklistSubida ? `Subida: ${detailsReserva.observacoesChecklistSubida}` : ''
+                  ].filter(Boolean).join('\n');
+
+                  return allObs ? (
                     <div className="pt-2 border-t border-slate-100 space-y-2">
                       <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium">
                         <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
-                        <p>{detailsReserva.checklistObservacoes}</p>
+                        <p className="whitespace-pre-wrap">{allObs}</p>
                       </div>
                     </div>
                   ) : null;
@@ -2889,12 +2895,20 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         <span>{detailsReserva.checklistEquipamentos?.extintor !== false ? '✓ OK' : '⚠️ Avaria'}</span>
                       </div>
                     </div>
-                    {detailsReserva.checklistObservacoes && (
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium mt-1">
-                        <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
-                        <p>{detailsReserva.checklistObservacoes}</p>
-                      </div>
-                    )}
+                    {(() => {
+                      const allObs = [
+                        detailsReserva.checklistObservacoes,
+                        detailsReserva.observacoesChecklistDescida ? `Descida: ${detailsReserva.observacoesChecklistDescida}` : '',
+                        detailsReserva.observacoesChecklistSubida ? `Subida: ${detailsReserva.observacoesChecklistSubida}` : ''
+                      ].filter(Boolean).join('\n');
+                      
+                      return allObs ? (
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 font-medium mt-1">
+                          <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
+                          <p className="whitespace-pre-wrap">{allObs}</p>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 );
               })()}

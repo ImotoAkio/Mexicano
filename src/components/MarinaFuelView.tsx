@@ -503,7 +503,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       });
       
       const { consumeFuelForEmbarcacao } = await import('../utils/fuelInventory');
-      consumeFuelForEmbarcacao(
+      await consumeFuelForEmbarcacao(
         litrosNum, 
         isAvulso ? `Avulso (${identificacao})` : (boat?.nome || 'Embarcação'), 
         operadorNome || 'Gerente'
@@ -748,6 +748,23 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
     setIsSubmitting(true);
     try {
+      const match = t.descricao ? (t.descricao.match(/:\s*([0-9.,]+)\s*L/i) || t.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+      const litrosARestaurar = match ? parseFloat(match[1].replace(',', '.')) : (t.reservationRef?.abastecimentoLitros || 0);
+
+      if (litrosARestaurar > 0) {
+        await fetch('/api/fuel/restore', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token') || localStorage.getItem('marina_token')}`
+          },
+          body: JSON.stringify({
+            litros: litrosARestaurar,
+            motivo: `Cancelamento de abastecimento de ${boatName}`
+          })
+        }).catch(err => console.error("Erro ao estornar combustível:", err));
+      }
+
       if (t.id && !t.id.startsWith('res_fuel_')) {
         await fetch('/api/financeiro/transacoes/save', {
           method: 'POST',
@@ -813,6 +830,24 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       for (const id of selectedIds) {
         const target = fuelTransactions.find(t => t.id === id);
         if (target) {
+          const match = target.descricao ? (target.descricao.match(/:\s*([0-9.,]+)\s*L/i) || target.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+          const litrosARestaurar = match ? parseFloat(match[1].replace(',', '.')) : (target.reservationRef?.abastecimentoLitros || 0);
+
+          if (litrosARestaurar > 0) {
+            const b = getEmbarcacao(target.embarcacaoId);
+            await fetch('/api/fuel/restore', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token') || localStorage.getItem('marina_token')}`
+              },
+              body: JSON.stringify({
+                litros: litrosARestaurar,
+                motivo: `Cancelamento em massa de abastecimento de ${getBoatCode(b)}`
+              })
+            }).catch(err => console.error("Erro ao estornar:", err));
+          }
+
           if (target.id && !target.id.startsWith('res_fuel_')) {
             await fetch('/api/financeiro/transacoes/save', {
               method: 'POST',
@@ -890,6 +925,27 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
     const valorTotal = litrosNum * pricePerLiter;
     const boat = isAvulsoItem ? null : getEmbarcacao(editBoatId);
     const boatName = isAvulsoItem ? 'Venda Avulsa' : getBoatCode(boat);
+
+    const oldMatch = editingItem.descricao ? (editingItem.descricao.match(/:\s*([0-9.,]+)\s*L/i) || editingItem.descricao.match(/([0-9.,]+)\s*L/i)) : null;
+    const oldLiters = oldMatch ? parseFloat(oldMatch[1].replace(',', '.')) : (editingItem.reservationRef?.abastecimentoLitros || 0);
+    const diff = litrosNum - oldLiters;
+
+    if (diff !== 0) {
+      const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+      if (diff > 0) {
+        await fetch('/api/fuel/consume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ litros: diff, barcoNome: boatName, operador: operadorNome, detalhes: 'Ajuste de abastecimento (+)' })
+        }).catch(err => console.error(err));
+      } else {
+        await fetch('/api/fuel/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ litros: Math.abs(diff), motivo: `Ajuste de abastecimento (-) ${boatName}` })
+        }).catch(err => console.error(err));
+      }
+    }
 
     const descricao = isAvulsoItem
       ? `Abastecimento Avulso (${editingItem.identificacaoAvulso || 'Visitante Externo'}): ${litrosNum}L a R$${pricePerLiter.toFixed(2)}/L (${paymentLabel})`
@@ -1295,7 +1351,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
             
             <div class="bar-item">
               <div class="bar-label">
-                <span>Caixa Físico / Dinheiro (R$ 9,00/L)</span>
+                <span>Caixa Físico / Dinheiro (R$ ${getFuelPrice("dinheiro").toFixed(2).replace(".", ",")}/L)</span>
                 <span>${totalDinheiroValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalDinheiroValue / totalRevenue) * 100) : 0}%)</span>
               </div>
               <div class="bar-bg">
@@ -1305,7 +1361,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
             <div class="bar-item">
               <div class="bar-label">
-                <span>PIX Digital (R$ 9,00/L)</span>
+                <span>PIX Digital (R$ ${getFuelPrice("pix").toFixed(2).replace(".", ",")}/L)</span>
                 <span>${totalPixValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalPixValue / totalRevenue) * 100) : 0}%)</span>
               </div>
               <div class="bar-bg">
@@ -1315,7 +1371,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
             <div class="bar-item">
               <div class="bar-label">
-                <span>Cartão de Crédito (R$ 10,00/L)</span>
+                <span>Cartão de Crédito (R$ ${getFuelPrice("cartao_credito").toFixed(2).replace(".", ",")}/L)</span>
                 <span>${totalCreditValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalCreditValue / totalRevenue) * 100) : 0}%)</span>
               </div>
               <div class="bar-bg">
@@ -1325,7 +1381,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
 
             <div class="bar-item">
               <div class="bar-label">
-                <span>Cartão de Débito (R$ 9,00/L)</span>
+                <span>Cartão de Débito (R$ ${getFuelPrice("cartao_debito").toFixed(2).replace(".", ",")}/L)</span>
                 <span>${totalDebitValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${totalRevenue > 0 ? Math.round((totalDebitValue / totalRevenue) * 100) : 0}%)</span>
               </div>
               <div class="bar-bg">
