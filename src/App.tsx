@@ -355,7 +355,7 @@ export default function App() {
     ...group,
     items: group.items.filter(item => {
       if (isFinanceiro) {
-        return ['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno'].includes(item.id);
+        return ['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'schedules', 'clients', 'boats'].includes(item.id);
       } else if (isPecasServicos) {
         return ['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(item.id);
       } else if (isComercial) {
@@ -366,7 +366,7 @@ export default function App() {
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
-    if (isFinanceiro && !['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno'].includes(activeTab)) {
+    if (isFinanceiro && !['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'schedules', 'clients', 'boats'].includes(activeTab)) {
       setActiveTab('finance-dashboard');
     } else if (isPecasServicos && !['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(activeTab)) {
       setActiveTab('manutencoes');
