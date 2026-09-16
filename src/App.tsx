@@ -71,7 +71,7 @@ import {
   MessageSquare,
   CheckCircle,
   Wrench,
-  Droplet, Droplets, Clock, CalendarClock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package, PieChart
+  Droplet, Droplets, Clock, CalendarClock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package, PieChart, CalendarDays
 } from 'lucide-react';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -287,6 +287,7 @@ export default function App() {
       items: [
         { id: 'dashboard' as TabType, label: 'Painel Geral', icon: Compass },
         { id: 'schedules' as TabType, label: 'Agendamentos', icon: CalendarIcon },
+        { id: 'finance-schedules' as TabType, label: 'Consulta de Agendamentos', icon: CalendarDays },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
       ]
     },
@@ -355,7 +356,7 @@ export default function App() {
     ...group,
     items: group.items.filter(item => {
       if (isFinanceiro) {
-        return ['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'schedules', 'clients', 'boats'].includes(item.id);
+        return ['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(item.id);
       } else if (isPecasServicos) {
         return ['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(item.id);
       } else if (isComercial) {
@@ -366,7 +367,7 @@ export default function App() {
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
-    if (isFinanceiro && !['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'schedules', 'clients', 'boats'].includes(activeTab)) {
+    if (isFinanceiro && !['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(activeTab)) {
       setActiveTab('finance-dashboard');
     } else if (isPecasServicos && !['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(activeTab)) {
       setActiveTab('manutencoes');
@@ -679,6 +680,7 @@ export default function App() {
               <Suspense fallback={<div className="h-full w-full min-h-[400px] flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
                 {activeTab === 'dashboard' && adminRole !== 'financeiro' && adminRole !== 'pecas_servicos' && <Dashboard onNavigate={handleTabChange} />}
                 {activeTab === 'schedules' && <SchedulesPage />}
+                {activeTab === 'finance-schedules' && <FinanceSchedulesPage />}
                 {activeTab === 'whatsapp' && <WhatsAppPage />}
                 {activeTab === 'checklists' && <AdminChecklistsWrapper />}
                 {(activeTab === 'fuel' || activeTab === 'finance-fuel') && <AdminFuelWrapper />}
