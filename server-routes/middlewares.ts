@@ -57,10 +57,7 @@ export function requireAdminAuth(req: express.Request, res: express.Response, ne
     }
 
     const validAdminRoles = [
-      "admin", "marina", "marina_operador", "marina_gerente", "financeiro", 
-      "pecas_servicos", "comercial", "operador", "gerente", "marinheiro", 
-      "marinheiros", "marinheiro_operador", "operador_marina", "operador_pier", 
-      "pier", "funcionario", "colaborador", "user", "staff"
+      "admin", "marina_gerente", "marina_operador", "financeiro", "pecas_servicos", "comercial"
     ];
 
     if (userRole && !validAdminRoles.includes(userRole)) {
@@ -80,7 +77,7 @@ export function requireMarinaManagerOrAdminAuth(req: express.Request, res: expre
   requireAdminAuth(req, res, () => {
     const user = (req as any).user;
     const role = (user?.role || "").toLowerCase().trim();
-    const isAllowed = role === "admin" || role === "gerente" || role === "marina_gerente" || role === "marina";
+    const isAllowed = role === "admin" || role === "marina_gerente";
     if (!isAllowed) {
       return res.status(403).json({ error: true, message: "Acesso restrito ao Gerente da Marina e Administradores." });
     }

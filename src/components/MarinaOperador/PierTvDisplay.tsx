@@ -229,13 +229,13 @@ export default function PierTvDisplay() {
       opacity: 1,
       y: 0,
       scale: 1,
-      transition: { type: 'spring', bounce: 0, duration: 0.35 } // Mais rápido e com menos deslocamento (`y: 15` em vez de 30)
+      transition: { type: 'spring' as const, bounce: 0, duration: 0.35 } // Mais rápido e com menos deslocamento (`y: 15` em vez de 30)
     },
     exit: {
       opacity: 0,
       y: -10,
       scale: 0.99,
-      transition: { type: 'spring', bounce: 0, duration: 0.25 }
+      transition: { type: 'spring' as const, bounce: 0, duration: 0.25 }
     }
   };
 
@@ -301,7 +301,7 @@ export default function PierTvDisplay() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'spring', damping: 1.0, duration: 0.5 }}
+            transition={{ type: 'spring' as const, damping: 1.0, duration: 0.5 }}
             className="flex-1 flex flex-col items-center justify-center opacity-80"
           >
             <div className="w-24 h-24 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm border border-[#d2d2d7]/50 mb-6">

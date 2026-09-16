@@ -120,10 +120,12 @@ Equipe Financeira — Villa Nautica 🚢`,
   },
 ] as const;
 
+const FINANCE_INSTANCE = 'financeiro';
+
 export default function FinanceWhatsAppPage() {
   const cancelSendingRef = useRef<boolean>(false);
-  // Connection state
-  const [instanceName, setInstanceName] = useState<string | null>(() => localStorage.getItem('finance_whatsapp_instance'));
+  // Connection state — single fixed instance, no random names
+  const [instanceName, setInstanceName] = useState<string>(FINANCE_INSTANCE);
   const [waStatus, setWaStatus] = useState<string>('loading');
   const [waQrCode, setWaQrCode] = useState<string | null>(null);
   const [isFetchingWaStatus, setIsFetchingWaStatus] = useState(false);
@@ -147,17 +149,7 @@ export default function FinanceWhatsAppPage() {
   };
 
   const handleReconnectInstance = (inst: string) => {
-    localStorage.setItem('finance_whatsapp_instance', inst);
     setInstanceName(inst);
-    // sync in DB
-    const adminToken = getAdminToken();
-    if (adminToken) {
-      fetch('/api/config', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` }, 
-        body: JSON.stringify({ configs: { finance_whatsapp_instance: inst } }) 
-      }).catch(console.warn);
-    }
     showToast(`Instância ${inst} vinculada!`);
   };
   // Debug State
@@ -168,7 +160,7 @@ export default function FinanceWhatsAppPage() {
   const handleRunDebug = async () => {
     setIsRunningDebug(true);
     try {
-      const inst = instanceName || 'financeiro_199998';
+      const inst = instanceName;
       const token = getAdminToken();
       const res = await fetch(`/api/whatsapp/debug?instance=${inst}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -279,8 +271,6 @@ export default function FinanceWhatsAppPage() {
       const state = data?.instance?.state || 'close';
       
       if (state === 'not_created') {
-        setInstanceName(null);
-        localStorage.removeItem('finance_whatsapp_instance');
         setWaStatus('not_created');
         return;
       }
@@ -314,8 +304,7 @@ export default function FinanceWhatsAppPage() {
   };
 
   useEffect(() => {
-    if (instanceName) fetchWaStatus(instanceName);
-    else setWaStatus('not_created');
+    fetchWaStatus(instanceName);
   }, [instanceName]);
 
   useEffect(() => { 
@@ -325,17 +314,11 @@ export default function FinanceWhatsAppPage() {
     const headers: Record<string, string> = {};
     if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
     
-    fetch('/api/config?chaves=finance_whatsapp_instance,finance_whatsapp_custom_lists,finance_whatsapp_custom_templates', { headers })
+    fetch('/api/config?chaves=finance_whatsapp_custom_lists,finance_whatsapp_custom_templates', { headers })
       .then(res => res.json())
       .then(data => {
         const configs = data.configs || {};
-        
-        const serverInstance = configs.finance_whatsapp_instance;
-        if (serverInstance !== undefined && serverInstance !== null) {
-          localStorage.setItem('finance_whatsapp_instance', serverInstance);
-          setInstanceName(serverInstance || null);
-        }
-        
+
         const serverLists = configs.finance_whatsapp_custom_lists;
         if (serverLists) {
           let parsedLists = serverLists;
@@ -363,24 +346,17 @@ export default function FinanceWhatsAppPage() {
 
   const handleCreateInstance = async () => {
     setIsCreating(true);
-    const newInstance = `financeiro_${Math.floor(Math.random() * 1_000_000)}`;
     try {
       const res = await fetch('/api/whatsapp/instance/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ instanceName: newInstance }),
+        body: JSON.stringify({ instanceName: FINANCE_INSTANCE }),
       });
       const text = await res.text();
       let data: any = {};
       try { data = text ? JSON.parse(text) : {}; } catch (_) {}
       if (!res.ok) throw new Error(data.message || data.error || text || 'Erro ao criar instância');
-      localStorage.setItem('finance_whatsapp_instance', newInstance);
-      setInstanceName(newInstance);
-      // Persist to centralized database
-      const adminToken = getAdminToken();
-      const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
-      fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_instance: newInstance } }) }).catch(console.warn);
+      setInstanceName(FINANCE_INSTANCE);
       showToast('Instância criada! Escaneie o QR Code.');
     } catch (err: any) {
       showToast(err.message || 'Erro ao criar instância', 'error');
@@ -390,7 +366,6 @@ export default function FinanceWhatsAppPage() {
   };
 
   const handleWaLogout = async () => {
-    if (!instanceName) return;
     if (!window.confirm('Desconectar e excluir esta instância do servidor?')) return;
     try {
       await fetch(`/api/whatsapp/instance/delete/${instanceName}`, {
@@ -398,13 +373,6 @@ export default function FinanceWhatsAppPage() {
         headers: getAuthHeaders(),
       });
     } catch (_) {}
-    localStorage.removeItem('finance_whatsapp_instance');
-    setInstanceName(null);
-    // Clear in centralized database
-    const adminToken = getAdminToken();
-    const hdr: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (adminToken) hdr['Authorization'] = `Bearer ${adminToken}`;
-    fetch('/api/config', { method: 'POST', headers: hdr, body: JSON.stringify({ configs: { finance_whatsapp_instance: '' } }) }).catch(console.warn);
     setWaStatus('not_created');
     setWaQrCode(null);
     showToast('WhatsApp desconectado!');
@@ -668,7 +636,7 @@ export default function FinanceWhatsAppPage() {
 
   // Status badge helper
   const StatusButton = () => {
-    if (!instanceName || waStatus === 'not_created') {
+    if (waStatus === 'not_created') {
       return (
         <button
           onClick={() => setShowConnectionModal(true)}
@@ -740,7 +708,7 @@ export default function FinanceWhatsAppPage() {
             </div>
             
             <div className="p-8">
-              {(!instanceName || waStatus === 'not_created') ? (
+              {(waStatus === 'not_created') ? (
                 <div className="text-center py-6">
                   <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
                     <Smartphone className="w-10 h-10 text-slate-300" />
@@ -803,7 +771,7 @@ export default function FinanceWhatsAppPage() {
                     <code className="text-sm font-bold text-slate-700">{instanceName}</code>
                   </div>
                   <div className="flex gap-3 justify-center">
-                    <button onClick={() => fetchWaStatus(instanceName!)}
+                    <button onClick={() => fetchWaStatus(instanceName)}
                       className="inline-flex items-center gap-2 border border-slate-200 hover:bg-slate-50 text-slate-600 px-6 py-2.5 rounded-xl font-semibold text-sm transition-colors cursor-pointer">
                       <RefreshCw className="w-4 h-4" /> Atualizar
                     </button>
@@ -824,7 +792,7 @@ export default function FinanceWhatsAppPage() {
                           className="w-60 h-60 object-contain" 
                         />
                         <button 
-                          onClick={() => fetchWaQrCode(instanceName!)} 
+                          onClick={() => fetchWaQrCode(instanceName)} 
                           className="text-xs text-emerald-600 font-bold hover:underline flex items-center gap-1 mt-1 cursor-pointer"
                         >
                           <RefreshCw className="w-3.5 h-3.5" /> Atualizar QR Code
@@ -837,7 +805,7 @@ export default function FinanceWhatsAppPage() {
                           {isFetchingWaStatus ? 'Buscando status...' : 'Obtendo QR Code...'}
                         </span>
                         <button 
-                          onClick={() => { fetchWaStatus(instanceName!); fetchWaQrCode(instanceName!); }} 
+                          onClick={() => { fetchWaStatus(instanceName); fetchWaQrCode(instanceName); }} 
                           className="mt-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                         >
                           <RefreshCw className="w-3.5 h-3.5" /> Gerar / Buscar QR
@@ -863,7 +831,7 @@ export default function FinanceWhatsAppPage() {
                       ))}
                     </ol>
                     <div className="flex gap-2 justify-center lg:justify-start">
-                      <button onClick={() => fetchWaStatus(instanceName!)} className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-colors cursor-pointer">
+                      <button onClick={() => fetchWaStatus(instanceName)} className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-colors cursor-pointer">
                         <RefreshCw className="w-4 h-4" /> Já conectei, atualizar
                       </button>
                       <button onClick={handleWaLogout} className="inline-flex items-center gap-2 border border-slate-200 hover:bg-rose-50 text-slate-500 hover:text-rose-600 px-4 py-2.5 rounded-xl font-semibold text-xs transition-colors cursor-pointer">

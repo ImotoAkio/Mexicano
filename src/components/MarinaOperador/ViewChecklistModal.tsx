@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Shield, FileText, Anchor, Activity, Pocket } from 'lucide-react';
+import { X, Shield, Activity, FileText, Pocket, Anchor, CheckCircle, Clock, LifeBuoy, Flame } from 'lucide-react';
 import { getBoatCode } from '../../utils/boatUtils';
 
 export interface ViewChecklistModalProps {

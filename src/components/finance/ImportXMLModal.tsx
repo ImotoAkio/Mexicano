@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { UploadCloud, CheckCircle, XCircle, ArrowRight, AlertTriangle, ChevronLeft, ChevronRight, AlertCircle, EyeOff, Eye, FileSpreadsheet } from 'lucide-react';
-import { TransacaoFinanceira, Cliente, Embarcacao, ContaBancaria, PlanoConta } from '../../types';
+import { TransacaoFinanceira, Cliente, Embarcacao} from '../../types';
 import Select from 'react-select';
 
 interface ImportXMLModalProps {
@@ -51,9 +51,9 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [importMode, setImportMode] = useState<'append' | 'overwrite_clients' | 'overwrite_all'>('overwrite_clients');
   
-  const [contasBancarias, setContasBancarias] = useState<ContaBancaria[]>([]);
+  const [contasBancarias, setContasBancarias] = useState<any[]>([]);
   const [importEmpresa, setImportEmpresa] = useState('Marina');
-  const [importContaBancaria, setImportContaBancaria] = useState('');
+  const [importany, setImportany] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -386,7 +386,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
         descricao: row.descricao || '',
         createdAt: new Date().toISOString(),
         empresa: importEmpresa,
-        contaBancariaId: importContaBancaria || null
+        contaBancariaId: importany || null
       };
     });
 
@@ -812,8 +812,8 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
               <div className="flex items-center gap-2">
                 <label className="text-xs font-bold text-slate-700">Conta Bancária:</label>
                 <select 
-                  value={importContaBancaria}
-                  onChange={e => setImportContaBancaria(e.target.value)}
+                  value={importany}
+                  onChange={e => setImportany(e.target.value)}
                   className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
                 >
                   <option value="">-- Padrão --</option>

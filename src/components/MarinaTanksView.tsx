@@ -32,7 +32,8 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
   };
 
   useEffect(() => {
-    fetch('/api/fuel/inventory')
+    const token = localStorage.getItem('marina_token') || localStorage.getItem('admin_token');
+    fetch("/api/fuel/inventory", { headers: { "Authorization": `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
         if (data && typeof data === 'object') {
@@ -51,7 +52,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
       })
       .catch(() => {});
 
-    fetch('/api/fuel/history')
+    fetch("/api/fuel/history", { headers: { "Authorization": `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {

@@ -12,6 +12,7 @@ import {
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
 // @ts-ignore
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
+import logoMarinaSrc from '../../logos/logo_marina.svg';
 
 export default function AvisosSaidaPage() {
   // Form fields
@@ -27,7 +28,7 @@ export default function AvisosSaidaPage() {
 
   
   const userRole = (localStorage.getItem('admin_role') || '').toLowerCase().trim();
-  const isGerente = userRole === 'marina_gerente' || userRole === 'gerente';
+  const isGerente = userRole === 'marina_gerente';
 
   // Logo and Header options
   const [logoOption, setLogoOption] = useState<'default' | 'empty' | 'custom'>(() => {
@@ -44,7 +45,8 @@ export default function AvisosSaidaPage() {
   const [bannerText, setBannerText] = useState(() => {
     if (isGerente) {
       const saved = localStorage.getItem('avisos_saida_bannerText');
-      return saved !== null ? saved : 'Marina Club Velho Chico';
+      if (saved && saved !== 'VILA NÁUTICA') return saved;
+      return 'MARINA CLUB VELHO CHICO';
     }
     return 'VILA NÁUTICA';
   });
@@ -123,6 +125,8 @@ export default function AvisosSaidaPage() {
       logoUrl = 'empty';
     } else if (logoOption === 'custom') {
       logoUrl = customLogoBase64;
+    } else if (isGerente && logoOption === 'default') {
+      logoUrl = logoMarinaSrc;
     }
 
     const pdfData = {
@@ -327,13 +331,13 @@ export default function AvisosSaidaPage() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-500 uppercase">
-                  Nome / Modelo
+                  Pessoas a Bordo
                 </label>
                 <input
                   type="text"
-                  value={nomeEmbarcacao}
-                  onChange={(e) => setNomeEmbarcacao(e.target.value)}
-                  placeholder="Ex: M44 / F30"
+                  value={pessoasABordo}
+                  onChange={(e) => setPessoasABordo(e.target.value)}
+                  placeholder="Ex: 06"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74]"
                 />
               </div>
@@ -353,13 +357,13 @@ export default function AvisosSaidaPage() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-500 uppercase">
-                  Pessoas a Bordo
+                  Nome / Modelo
                 </label>
                 <input
                   type="text"
-                  value={pessoasABordo}
-                  onChange={(e) => setPessoasABordo(e.target.value)}
-                  placeholder="Ex: 06"
+                  value={nomeEmbarcacao}
+                  onChange={(e) => setNomeEmbarcacao(e.target.value)}
+                  placeholder="Ex: M44 / F30"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74]"
                 />
               </div>
@@ -466,9 +470,9 @@ export default function AvisosSaidaPage() {
                       className="max-w-full max-h-full object-contain p-1"
                     />
                   ) : (
-                    <img 
-                      src={logoSrc} 
-                      alt="Logo padrão" 
+                    <img
+                      src={isGerente ? logoMarinaSrc : logoSrc}
+                      alt="Logo padrão"
                       className="max-w-full max-h-full object-contain p-1"
                     />
                   )}
@@ -516,15 +520,15 @@ export default function AvisosSaidaPage() {
                     <span className="text-[10px] uppercase">{tipo}</span>
                   </div>
                   <div className="col-span-6 p-2 flex gap-1 items-baseline">
-                    <span className="font-bold text-[10px]">NOME DA EMBARCAÇÃO:</span>
-                    <span className="text-[10px] uppercase">{nomeEmbarcacao}</span>
+                    <span className="font-bold text-[10px]">NÚMERO DE PESSOAS A BORDO:</span>
+                    <span className="text-[10px]">{pessoasABordo}</span>
                   </div>
                 </div>
 
                 {/* Row 4 */}
                 <div className="p-2 border-b border-black flex gap-1 items-baseline">
-                  <span className="font-bold text-[10px]">NÚMERO DE PESSOAS A BORDO:</span>
-                  <span className="text-[10px]">{pessoasABordo}</span>
+                  <span className="font-bold text-[10px]">NOME DA EMBARCAÇÃO:</span>
+                  <span className="text-[10px] uppercase">{nomeEmbarcacao}</span>
                 </div>
 
                 {/* Row 5 */}

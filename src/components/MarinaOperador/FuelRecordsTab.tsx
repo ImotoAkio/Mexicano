@@ -28,8 +28,8 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
   handleOpenFuelModal,
   onOpenAvulsoFuel
 }) => {
-  const dayFuelReservations = totalDayReservations.filter((r: any) => Number(r.abastecimentoLitros || r.litrosAbastecidos) > 0);
-  const totalLitersDay = totalDayReservations.reduce((sum: number, r: any) => sum + (Number(r.abastecimentoLitros || r.litrosAbastecidos) || 0), 0);
+  const dayFuelReservations = totalDayReservations.filter((r: any) => Number(r.abastecimentoLitros) > 0);
+  const totalLitersDay = totalDayReservations.reduce((sum: number, r: any) => sum + (Number(r.abastecimentoLitros) || 0), 0);
 
   return (
     <main className="flex-1 p-4 max-w-7xl mx-auto w-full pb-24 space-y-4">
@@ -78,9 +78,9 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
               const boat = getEmbarcacao(reserva.embarcacaoId);
               const client = getCliente(reserva.clienteId);
               const boatNumber = boat?.numero || boat?.nome?.match(/\d+/)?.[0] || '99';
-              const litros = Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) || 0;
+              const litros = Number(reserva.abastecimentoLitros) || 0;
 
-              const isCobrado = reserva.abastecimentoStatusCobranca === 'cobrado';
+              const isCobrado = reserva.abastecimentoStatusCobranca === 'pago';
               const pm = (reserva.abastecimentoFormaPagamento || 'pix').toLowerCase();
               const unitPrice = getFuelPrice(pm);
               const valor = reserva.abastecimentoValorTotal || (litros * unitPrice);
@@ -138,19 +138,19 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
                               <span>📱 PIX (Conta)</span>
                             </span>
                           )}
-                          {pm === 'credit' && (
+                          {pm === 'cartao_credito' && (
                             <span className="bg-blue-100/80 border border-blue-300 px-2 py-0.5 rounded-lg font-black text-blue-900 flex items-center gap-1">
                               <CreditCard className="w-3 h-3 text-blue-700" />
                               <span>💳 Cartão Crédito</span>
                             </span>
                           )}
-                          {pm === 'debit' && (
+                          {pm === 'cartao_debito' && (
                             <span className="bg-blue-100/80 border border-blue-300 px-2 py-0.5 rounded-lg font-black text-blue-900 flex items-center gap-1">
                               <CreditCard className="w-3 h-3 text-blue-700" />
                               <span>💳 Cartão Débito</span>
                             </span>
                           )}
-                          {pm === 'admin' && (
+                          {pm === 'faturado' && (
                             <span className="bg-purple-100/80 border border-purple-300 px-2 py-0.5 rounded-lg font-black text-purple-900 flex items-center gap-1">
                               <Building2 className="w-3 h-3 text-purple-700" />
                               <span>🏢 Faturado Admin</span>

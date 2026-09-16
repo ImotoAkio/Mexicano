@@ -134,6 +134,8 @@ export interface Reserva {
   destino?: string;
   pessoasABordo?: number | string;
   horaDescida?: string;
+  fotosExtrasDescida?: string[];
+  fotosExtrasSubida?: string[];
   fotosChecklistDescida?: string[];
   fotosChecklistSaida?: string[];
   fotosChecklistChegada?: string[];
@@ -203,6 +205,8 @@ export interface TransacaoFinanceira {
   embarcacaoId?: string; // Optional linkage to boat
   fornecedorId?: string;
   contaBancariaId?: string;
+  planoContasId?: string;
+  centroCustoId?: string;
   empresa?: string;
   grupoParcelamentoId?: string;
   numeroParcela?: number;
@@ -492,4 +496,13 @@ export interface FechamentoCaixaMarina {
   fechadoEm?: string | null;
   observacoesFechamento?: string | null;
   createdAt: string;
+}
+
+export interface CentroDeCusto {
+  id: string;
+  nome: string;
+  empresaId: string;
+  status: 'ativo' | 'inativo';
+  createdAt?: string;
+  updatedAt?: string;
 }

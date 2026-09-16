@@ -11,6 +11,51 @@ import {
   getAbastecimentosPendentesCaixa
 } from "../server-db";
 import { getDbPool } from "../server-db";
+import { getFuelPrice } from "../src/utils/constants";
+
+async function handleUpsert(item: any) {
+  await upsertCaixaMarinaTransacao(item);
+
+  const currentPool = getDbPool();
+  if (!currentPool) return;
+
+  const tfId = `tf_cx_${item.id}`;
+  const tfStatus = item.formaPagamento === 'faturado' ? 'lancado' : 'realizado';
+  const tfDataPagamento = item.formaPagamento === 'faturado' ? null : (item.data || new Date().toISOString().split('T')[0]);
+  const tfTipo = item.tipo === 'entrada' ? 'receita' : 'despesa';
+  
+  let desc = item.descricao || 'Operação de Caixa Marina';
+  if (item.formaPagamento === 'faturado') {
+      desc += ' (Pendurado)';
+  } else {
+      desc += ` (${item.formaPagamento})`;
+  }
+
+  const categoriaStr = item.categoria || 'Caixa Marina';
+  const vencimento = item.dataVencimento || item.data || new Date().toISOString().split('T')[0];
+  const createdAt = new Date().toISOString();
+
+  await (currentPool as any).query(
+    `INSERT INTO TransacoesFinanceiras (
+      id, tipo, categoria, descricao, valor, dataVencimento, dataPagamento, status, clienteId, embarcacaoId, empresa, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Marina', ?)
+    ON DUPLICATE KEY UPDATE
+      descricao = VALUES(descricao),
+      valor = VALUES(valor),
+      clienteId = VALUES(clienteId),
+      embarcacaoId = VALUES(embarcacaoId),
+      dataPagamento = VALUES(dataPagamento),
+      status = VALUES(status),
+      tipo = VALUES(tipo)`,
+    [
+      tfId, tfTipo, categoriaStr, desc, item.valor, 
+      vencimento, tfDataPagamento, tfStatus, 
+      item.clienteId || null, 
+      item.embarcacaoId || null, 
+      createdAt
+    ]
+  );
+}
 
 const router = Router();
 
@@ -37,14 +82,19 @@ router.post("/transacoes/save", requireMarinaManagerOrAdminAuth, sensitiveLimite
   const { action, data } = req.body;
   try {
     if (action === 'delete') {
-      await deleteCaixaMarinaTransacao(data.id || data);
+      const idToDelete = data.id || data;
+      await deleteCaixaMarinaTransacao(idToDelete);
+      const currentPool = getDbPool();
+      if (currentPool) {
+         await (currentPool as any).query("DELETE FROM TransacoesFinanceiras WHERE id = ?", [`tf_cx_${idToDelete}`]);
+      }
     } else if (action === 'upsert') {
       if (Array.isArray(data)) {
         for (const item of data) {
-          await upsertCaixaMarinaTransacao(item);
+          await handleUpsert(item);
         }
       } else {
-        await upsertCaixaMarinaTransacao(data);
+        await handleUpsert(data);
       }
     } else {
       return res.status(400).json({ error: true, message: `Ação inválida: ${action}` });
@@ -125,16 +175,16 @@ router.post("/abastecimentos-baixar", requireMarinaManagerOrAdminAuth, sensitive
     const reserva = (rows as any[])[0];
     if (!reserva) return res.status(404).json({ error: true, message: "Reserva não encontrada." });
 
-    const litros = Number(reserva.abastecimentoLitros || reserva.litrosAbastecidos) || 0;
-    const finalValor = Number(valorTotal) || Number(reserva.abastecimentoValorTotal) || (litros * 9.00);
+    const litros = Number(reserva.abastecimentoLitros) || 0;
     const finalFormaPagamento = formaPagamento || reserva.abastecimentoFormaPagamento || 'pix';
+    const finalValor = Number(valorTotal) || Number(reserva.abastecimentoValorTotal) || (litros * getFuelPrice(finalFormaPagamento));
     const finalOperador = operadorNome || 'Gerente';
     const finalComprovante = comprovanteUrl || reserva.abastecimentoComprovanteUrl || null;
 
     // 1. Atualizar a reserva
     await currentPool.query(
       `UPDATE Reservas SET
-        abastecimentoStatusCobranca = 'cobrado',
+        abastecimentoStatusCobranca = 'pago',
         abastecimentoFormaPagamento = ?,
         abastecimentoValorTotal = ?,
         abastecimentoComprovanteUrl = ?
@@ -164,33 +214,19 @@ router.post("/abastecimentos-baixar", requireMarinaManagerOrAdminAuth, sensitive
       createdAt: new Date().toISOString()
     };
 
-    await upsertCaixaMarinaTransacao(caixaTransacao);
-
-    // 3. Se for faturado, gerar recebível no Fluxo de Caixa Principal (TransacoesFinanceiras)
+    
     if (finalFormaPagamento === 'faturado') {
       const dbData = await (currentPool as any).query("SELECT nome FROM Embarcacoes WHERE id = ?", [reserva.embarcacaoId]);
       const boatName = (dbData[0] as any[])[0]?.nome || 'Embarcação Local';
-
-      const tf = {
-        id: `tf_fuel_${reservaId}_${Date.now()}`,
-        tipo: 'receita',
-        categoria: 'Combustível',
-        valor: finalValor,
-        dataVencimento: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0], // vencimento default = dia 10 do prox mes
-        status: 'lancado',
-        descricao: `Abastecimento faturado de ${litros}L (Reserva ${reservaId} - ${boatName})`,
-        clienteId: reserva.clienteId || null,
-        embarcacaoId: reserva.embarcacaoId || null,
-        empresa: 'Marina', // ou Mexicano se for comb mexicano
-        createdAt: new Date().toISOString()
-      };
-      
-      await upsertTransacao(tf, currentPool);
+      (caixaTransacao as any).descricao = `Abastecimento faturado de ${litros}L (Reserva ${reservaId} - ${boatName})`;
+      (caixaTransacao as any).dataVencimento = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0];
     }
-
+    
+    await handleUpsert(caixaTransacao);
+    
     const io = (req.app as any).locals.io;
     if (io) {
-      io.emit('marina_update', { action: 'update', reservation: { id: reservaId, abastecimentoStatusCobranca: 'cobrado' } });
+      io.emit('marina_update', { action: 'update', reservation: { id: reservaId, abastecimentoStatusCobranca: 'pago' } });
       io.emit('marina_caixa_update', { action: 'upsert', data: caixaTransacao });
     }
 

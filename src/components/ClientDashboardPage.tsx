@@ -1334,7 +1334,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         titulo: maintenanceFormData.titulo,
         descricaoAvaria: maintenanceFormData.descricaoAvaria,
         urgencia: maintenanceFormData.urgencia,
-        status: 'pendente'
+        status: 'pendente',
+        dataAbertura: new Date().toISOString()
       });
 
       showToast('Sucesso', 'Seu chamado foi aberto com sucesso.', 'success');

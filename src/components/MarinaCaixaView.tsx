@@ -220,7 +220,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
       } else if (t.tipo === 'saida') {
         totalSaidas += val;
         if (fp === 'dinheiro') {
-          if (t.categoria === 'sangria') {
+          if (t.categoria === 'saida') {
             sangriasDinheiro += val;
           } else {
             saidasDinheiro += val;
@@ -303,6 +303,14 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
       setModalFormaPagto('pix');
       setModalClienteTipo('cotista');
       setIsModalOpen(true);
+    } else if (presetKey === 'taxa_limpeza') {
+      setModalType('entrada');
+      setModalCategoria('taxa_limpeza');
+      setModalDescricao('Taxa de Limpeza de Embarcação');
+      setModalValor('');
+      setModalFormaPagto('pix');
+      setModalClienteTipo('cotista');
+      setIsModalOpen(true);
     } else if (presetKey === 'diarista') {
       setModalType('saida');
       setModalCategoria('diarista');
@@ -319,7 +327,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
       setModalValor('');
       setModalFormaPagto('dinheiro');
       setIsModalOpen(true);
-    } else if (presetKey === 'sangria') {
+    } else if (presetKey === 'saida') {
       setModalType('saida');
       setModalCategoria('sangria');
       setModalDescricao('Sangria de Caixa (Retirada de Dinheiro da Gaveta)');
@@ -410,6 +418,10 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
     }
     if (!modalDescricao.trim()) {
       alert('Por favor, preencha a descrição do lançamento.');
+      return;
+    }
+    if (modalFormaPagto === 'faturado' && !modalClienteId) {
+      alert('Para lançamentos "Faturados (Pendurar)" é obrigatório selecionar um cliente.');
       return;
     }
 
@@ -676,10 +688,12 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
   // Helper para categoria formatada
   const getCategoryLabel = (cat: string) => {
     switch (cat) {
-      case 'combustivel': return 'Combustível';
+      case 'combustivel':
+        return 'Combustível';
       case 'descida_avulsa_jet': return 'Descida Jet (Rampa)';
       case 'descida_avulsa_lancha': return 'Descida Lancha (Rampa)';
       case 'aluguel_coletes': return 'Aluguel de Coletes';
+      case 'taxa_limpeza': return 'Taxa de Limpeza';
       case 'diarista': return 'Diarista';
       case 'compra_operacional': return 'Compra Operacional';
       case 'manutencao_equipamentos': return 'Manutenção / Trator';
@@ -835,6 +849,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
               { key: 'descida_lancha', icon: Ship, color: 'bg-teal-500', title: 'Descida Lancha', sub: 'R$ 150' },
               { key: 'aluguel_coletes', icon: LifeBuoy, color: 'bg-blue-500', title: 'Colete', sub: 'R$ 100' },
               { key: 'combustivel', icon: QrCode, color: 'bg-indigo-500', title: 'Combustível', sub: 'Entrada' },
+              { key: 'taxa_limpeza', icon: FileText, color: 'bg-sky-500', title: 'Limpeza', sub: 'Avulso' },
               { key: 'diarista', icon: Minus, color: 'bg-rose-500', title: 'Diarista', sub: 'Saída' },
               { key: 'compra_operacional', icon: FileText, color: 'bg-amber-500', title: 'Compras', sub: 'Saída' },
               { key: 'sangria', icon: Banknote, color: 'bg-purple-500', title: 'Sangria', sub: 'Retirada' },
@@ -865,7 +880,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
                   <AlertTriangle className="w-5 h-5 text-amber-600" />
                   <h3 className="text-[15px] font-semibold text-amber-900 tracking-tight">{abastecimentosPendentes.length} Pendente(s) de Baixa</h3>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                   {abastecimentosPendentes.map(item => (
                     <div key={item.reservaId} className="bg-white/80 backdrop-blur-md p-3.5 rounded-[20px] shadow-sm flex items-center justify-between">
                       <div>
@@ -898,7 +913,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
                   <LifeBuoy className="w-5 h-5 text-blue-600" />
                   <h3 className="text-[15px] font-semibold text-blue-900 tracking-tight">{coletesEmUso.length} Colete(s) em Uso</h3>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                   {coletesEmUso.map(c => (
                     <div key={c.id} className="bg-white/80 backdrop-blur-md p-3.5 rounded-[20px] shadow-sm flex items-center justify-between">
                       <div>
@@ -1046,7 +1061,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
           ) : (
             <div className="divide-y divide-black/[0.04]">
               {transacoes.map((t) => {
-                const isEntrada = t.tipo === 'entrada' || t.tipo === 'abertura';
+                const isEntrada = t.tipo === 'entrada';
 
                 return (
                   <div
@@ -1055,14 +1070,14 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
                   >
                     <div className="flex items-center gap-3.5">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                        t.tipo === 'abertura' ? 'bg-emerald-500/10 text-emerald-600' :
-                        t.tipo === 'sangria' ? 'bg-purple-500/10 text-purple-600' :
+                        t.tipo === 'entrada' ? 'bg-emerald-500/10 text-emerald-600' :
+                        t.tipo === 'saida' ? 'bg-purple-500/10 text-purple-600' :
                         isEntrada ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'
                       }`}>
                         {t.categoria === 'descida_avulsa_jet' || t.categoria === 'descida_avulsa_lancha' ? <Ship className="w-5 h-5"/> :
                          t.categoria === 'aluguel_coletes' ? <LifeBuoy className="w-5 h-5"/> :
-                         t.categoria === 'combustivel' ? <QrCode className="w-5 h-5"/> :
-                         t.categoria === 'sangria' ? <Banknote className="w-5 h-5"/> :
+                         (t.categoria === 'combustivel') ? <QrCode className="w-5 h-5"/> :
+                         t.categoria === 'saida' ? <Banknote className="w-5 h-5"/> :
                          isEntrada ? <ArrowUpRight className="w-5 h-5"/> : <ArrowDownRight className="w-5 h-5"/>}
                       </div>
 
@@ -1102,7 +1117,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
                     <div className="flex items-center gap-4">
                       <div className="text-right">
                         <div className={`text-[14px] font-semibold tracking-tight ${
-                          t.tipo === 'abertura' ? 'text-emerald-600' :
+                          t.tipo === 'entrada' ? 'text-emerald-600' :
                           isEntrada ? 'text-emerald-600' : 'text-rose-600'
                         }`}>
                           {isEntrada ? '+' : '-'}{formatCurrency(t.valor)}
@@ -1303,7 +1318,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
                   { key: 'dinheiro', label: 'Dinheiro' },
                   { key: 'pix', label: 'PIX' },
                   { key: 'debito', label: 'Débito' },
-                  { key: 'credito', label: 'Crédito' }
+                  { key: 'credito', label: 'Crédito' }, { key: 'faturado', label: 'Faturado (Pendurar)' }
                 ].map(f => (
                   <button
                     key={f.key}
@@ -1438,7 +1453,7 @@ export default function MarinaCaixaView({ operadorNome, clients = [], boats = []
                   { key: 'dinheiro', label: 'Dinheiro' },
                   { key: 'pix', label: 'PIX' },
                   { key: 'debito', label: 'Débito' },
-                  { key: 'credito', label: 'Crédito' }
+                  { key: 'credito', label: 'Crédito' }, { key: 'faturado', label: 'Faturado (Pendurar)' }
                 ].map(f => (
                   <button
                     key={f.key}

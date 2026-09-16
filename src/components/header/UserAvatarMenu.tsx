@@ -75,10 +75,8 @@ export default function UserAvatarMenu({
       case 'admin':
         return 'Administrador Geral';
       case 'marina_gerente':
-      case 'gerente':
         return 'Gerente da Marina';
       case 'marina_operador':
-      case 'operador':
         return 'Operador de Pátio';
       case 'pecas_servicos':
         return 'Peças & Serviços';

@@ -148,7 +148,7 @@ export default function BulkImportPage({ onClose, onSuccess, clientes, embarcaco
         const validItem: Partial<TransacaoFinanceira> = {
           empresa: item.empresa || 'Marina',
           contaBancariaId: item.contaBancariaId || undefined,
-          planoContasId: item.planoContasId || undefined,
+          // planoContasId: item.planoContasId || undefined,
           id: item.id || `fin_${Date.now()}_import_${index}_${Math.random().toString(36).substring(2, 7)}`,
           tipo: tipo as 'receita' | 'despesa',
           categoria: item.categoria || 'Importação JSON',

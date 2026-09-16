@@ -8,6 +8,40 @@ import {
 
 const diasDaSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
+const getFolgaColor = (tipo: string, status: string, context: 'badge' | 'calendar' | 'icon') => {
+  if (status === 'rejeitada') {
+    if (context === 'badge') return 'bg-rose-100 text-rose-700';
+    if (context === 'icon') return 'bg-rose-50 border-rose-200 text-rose-600';
+    return 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'; // calendar
+  }
+  if (status === 'pendente') {
+    if (context === 'badge') return 'bg-amber-100 text-amber-700';
+    if (context === 'icon') return 'bg-amber-50 border-amber-200 text-amber-600';
+    return 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100';
+  }
+
+  // Aprovada
+  switch(tipo) {
+    case 'domingo':
+      if (context === 'badge') return 'bg-indigo-100 text-indigo-700';
+      if (context === 'icon') return 'bg-indigo-50 border-indigo-200 text-indigo-600';
+      return 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100';
+    case 'compensacao_feriado':
+      if (context === 'badge') return 'bg-orange-100 text-orange-700';
+      if (context === 'icon') return 'bg-orange-50 border-orange-200 text-orange-600';
+      return 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100';
+    case 'outro':
+      if (context === 'badge') return 'bg-slate-200 text-slate-700';
+      if (context === 'icon') return 'bg-slate-50 border-slate-200 text-slate-600';
+      return 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100';
+    case 'semana':
+    default:
+      if (context === 'badge') return 'bg-emerald-100 text-emerald-700';
+      if (context === 'icon') return 'bg-emerald-50 border-emerald-200 text-emerald-600';
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100';
+  }
+};
+
 export default function ControleFolgasPage() {
   // Removed activeTab state because it's only folgas now
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
@@ -208,18 +242,37 @@ export default function ControleFolgasPage() {
               <div className="flex items-center gap-4">
                 <h2 className="text-sm font-bold text-slate-700">Registros de Folgas</h2>
                 <div className="flex bg-white rounded-lg border border-slate-200 p-0.5">
-                  <button 
+                  <button
                     onClick={() => setViewMode('list')}
                     className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${viewMode === 'list' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Lista
                   </button>
-                  <button 
+                  <button
                     onClick={() => setViewMode('calendar')}
                     className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Calendário
                   </button>
+                </div>
+                {/* Legenda de Tipos e Cores */}
+                <div className="hidden lg:flex items-center gap-3 ml-4">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Semana</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Domingo</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Feriado</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Outro</span>
+                  </div>
                 </div>
               </div>
               <button
@@ -249,9 +302,7 @@ export default function ControleFolgasPage() {
                       <div key={folga.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-emerald-200 transition-colors bg-white gap-4">
                         <div className="flex items-center gap-4">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
-                            folga.status === 'aprovada' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' :
-                            folga.status === 'rejeitada' ? 'bg-rose-50 border-rose-200 text-rose-600' :
-                            'bg-amber-50 border-amber-200 text-amber-600'
+                            getFolgaColor(folga.tipo, folga.status, 'icon')
                           }`}>
                             {folga.status === 'aprovada' ? <CheckCircle className="w-5 h-5"/> : 
                              folga.status === 'rejeitada' ? <X className="w-5 h-5"/> : 
@@ -260,7 +311,7 @@ export default function ControleFolgasPage() {
                           <div>
                             <div className="flex items-center gap-2">
                               <h3 className="font-bold text-slate-800 text-sm">{func?.nome || 'Desconhecido'}</h3>
-                              <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold uppercase">
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase ${getFolgaColor(folga.tipo, folga.status, 'badge')}`}>
                                 {folga.tipo.replace('_', ' ')}
                               </span>
                             </div>
@@ -460,9 +511,7 @@ function CalendarView({
                   onEditFolga(f);
                 }}
                 className={`group/badge text-[10px] px-2 py-1 rounded cursor-pointer border shadow-xs transition-colors flex items-center justify-between gap-1 ${
-                  f.status === 'aprovada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' :
-                  f.status === 'rejeitada' ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' :
-                  'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                  getFolgaColor(f.tipo, f.status, 'calendar')
                 }`}
                 title={`${func?.nome || 'Desconhecido'} - ${f.tipo.replace('_', ' ')} (Clique para editar)`}
               >

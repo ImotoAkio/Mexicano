@@ -60,16 +60,25 @@ export function getFuelInventory(): FuelInventory {
   return { ...EMPTY_INVENTORY };
 }
 
-export function saveFuelInventory(inv: FuelInventory): void {
+export async function saveFuelInventory(inv: FuelInventory): Promise<void> {
   inv.ultimaAtualizacao = new Date().toLocaleDateString('pt-BR');
   localStorage.setItem('marina_fuel_inventory', JSON.stringify(inv));
 
   // Sync com o servidor / banco de dados
-  fetch('/api/fuel/inventory', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(inv)
-  }).catch(() => {});
+  try {
+    const token = localStorage.getItem('admin_token');
+    const res = await fetch('/api/fuel/inventory', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(inv)
+    });
+    if (!res.ok) throw new Error("Server error");
+  } catch (e) {
+    console.warn("Estoque salvo apenas offline (sem conexao com o banco). Sincronizara automaticamente no recarregamento.");
+  }
 }
 
 export function getFuelHistory(): FuelHistoryEntry[] {
@@ -84,15 +93,24 @@ export function getFuelHistory(): FuelHistoryEntry[] {
   return [];
 }
 
-export function saveFuelHistory(history: FuelHistoryEntry[]): void {
+export async function saveFuelHistory(history: FuelHistoryEntry[]): Promise<void> {
   localStorage.setItem('marina_fuel_history', JSON.stringify(history));
 
   // Sync com o servidor / banco de dados
-  fetch('/api/fuel/history', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(history)
-  }).catch(() => {});
+  try {
+    const token = localStorage.getItem('admin_token');
+    const res = await fetch('/api/fuel/history', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(history)
+    });
+    if (!res.ok) throw new Error("Server error");
+  } catch (e) {
+    console.warn("Historico salvo apenas offline (sem conexao com o banco). Sincronizara no proximo recarregamento.");
+  }
 }
 
 export function addFuelHistoryEntry(entry: Omit<FuelHistoryEntry, 'id' | 'dataHora'>): FuelHistoryEntry {
@@ -117,7 +135,14 @@ export async function resetFuelDataToZero(): Promise<void> {
   localStorage.removeItem('marina_tanks_history');
 
   try {
-    await fetch('/api/fuel/reset', { method: 'POST' });
+    const token = localStorage.getItem('admin_token');
+    await fetch('/api/fuel/reset', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
   } catch (e) {
     console.error('Erro ao resetar banco no servidor:', e);
   }
@@ -126,54 +151,31 @@ export async function resetFuelDataToZero(): Promise<void> {
 /**
  * Deduct liters when an embarcação is refueled at the pier
  */
-export function consumeFuelForEmbarcacao(litros: number, barcoNome: string, operador: string): boolean {
+export async function consumeFuelForEmbarcacao(litros: number, barcoNome: string, operador: string): Promise<boolean> {
   if (litros <= 0) return false;
   
-  const inv = getFuelInventory();
-  let remainingToDeduct = litros;
-  
-  // 1. Deduz do galão parcial aberto primeiro se houver
-  if (inv.galaoParcialLitros > 0) {
-    if (inv.galaoParcialLitros >= remainingToDeduct) {
-      inv.galaoParcialLitros -= remainingToDeduct;
-      remainingToDeduct = 0;
-    } else {
-      remainingToDeduct -= inv.galaoParcialLitros;
-      inv.galaoParcialLitros = 0;
+  try {
+    const token = localStorage.getItem('marina_token') || localStorage.getItem('admin_token');
+    const res = await fetch('/api/fuel/consume', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ litros, barcoNome, operador, detalhes: `Abastecimento de ${litros}L na embarcação ${barcoNome}` })
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      console.error("Erro na API de combustivel:", err);
+      return false;
     }
+    
+    return true;
+  } catch (e) {
+    console.error("Erro ao chamar API de combustivel:", e);
+    return false;
   }
-  
-  // 2. Se sobrou valor para deduzir, abre galões cheios de 20L
-  if (remainingToDeduct > 0) {
-    const galoesNecessarios = Math.ceil(remainingToDeduct / inv.galoesCapacidadeLitros);
-    if (inv.galoesPierQuantidade >= galoesNecessarios) {
-      inv.galoesPierQuantidade -= galoesNecessarios;
-      const litrosExtraidos = galoesNecessarios * inv.galoesCapacidadeLitros;
-      const sobraNoUltimoGalao = litrosExtraidos - remainingToDeduct;
-      inv.galaoParcialLitros = sobraNoUltimoGalao;
-      remainingToDeduct = 0;
-    } else {
-      // Caso limite: Consome todos os galões cheios disponíveis e deixa residual
-      const litrosDisponiveisNosGaloes = inv.galoesPierQuantidade * inv.galoesCapacidadeLitros;
-      remainingToDeduct -= litrosDisponiveisNosGaloes;
-      inv.galoesPierQuantidade = 0;
-      inv.galaoParcialLitros = 0;
-      
-      // Se não havia galões suficientes no píer, consome direto do Tanque Principal como fallback emergencial
-      inv.tanquePrincipalLitros = Math.max(0, inv.tanquePrincipalLitros - remainingToDeduct);
-    }
-  }
-  
-  saveFuelInventory(inv);
-  addFuelHistoryEntry({
-    tipo: 'abastecimento_embarcacao',
-    litros,
-    barcoNome,
-    operador,
-    detalhes: `Abastecimento de ${litros}L na embarcação ${barcoNome}`
-  });
-  
-  return true;
 }
 
 /**

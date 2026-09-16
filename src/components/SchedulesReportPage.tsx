@@ -64,7 +64,7 @@ export default function SchedulesReportPage() {
     clienteId: '',
     data: '',
     periodo: 'dia_inteiro' as 'dia_inteiro' | 'manha' | 'tarde',
-    observacoes: ''
+    observações: ''
   });
 
   const [statusModalEvent, setStatusModalEvent] = useState<Reserva | null>(null);
@@ -159,7 +159,7 @@ export default function SchedulesReportPage() {
       clienteId: res.clienteId,
       data: res.data,
       periodo: res.periodo,
-      observacoes: res.observações || ''
+      observações: res.observações || ''
     });
     setEditModalEvent(res);
   };
@@ -173,7 +173,7 @@ export default function SchedulesReportPage() {
         clienteId: editFormData.clienteId,
         data: editFormData.data,
         periodo: editFormData.periodo,
-        observações: editFormData.observacoes
+        observações: editFormData.observações
       };
       
       reservationDB.update(editModalEvent.id, updatedRes);
@@ -193,7 +193,7 @@ export default function SchedulesReportPage() {
           `Embarcação: ${boat ? boat.nome : 'N/A'}`,
           `Proprietário: ${ownerName}`,
           `Período: ${editFormData.periodo === 'dia_inteiro' ? 'Dia Inteiro' : editFormData.periodo === 'manha' ? 'Manhã' : 'Tarde'}`,
-          `Obs: ${editFormData.observacoes || 'Nenhuma'}`
+          `Obs: ${editFormData.observações || 'Nenhuma'}`
         ];
         
         const times = formatEventTimes(editFormData.data, editFormData.periodo);
@@ -302,7 +302,7 @@ export default function SchedulesReportPage() {
               somRetirado,
               somTesteSaida,
               somTesteRetorno,
-              observacoes: finalObs,
+              observações: finalObs,
               createdAt: new Date().toISOString()
             };
             const token = localStorage.getItem('admin_token');
@@ -432,7 +432,7 @@ export default function SchedulesReportPage() {
                 };
 
                 const boatName = boat ? `${boat.nome} ${boat.tipo === 'jet' ? '(Jet)' : '(Lancha)'}` : 'N/A';
-                const dest = res.destino ? `Destino: ${res.destino}${res.observacoes ? ' | ' + res.observacoes : ''}` : (res.observacoes || '-');
+                const dest = res.destino ? `Destino: ${res.destino}${res.observações ? ' | ' + res.observações : ''}` : (res.observações || '-');
 
                 return [
                   formattedDate,
@@ -956,8 +956,8 @@ export default function SchedulesReportPage() {
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Observações</label>
                 <textarea
-                  value={editFormData.observacoes}
-                  onChange={(e) => setEditFormData({ ...editFormData, observacoes: e.target.value })}
+                  value={editFormData.observações}
+                  onChange={(e) => setEditFormData({ ...editFormData, observações: e.target.value })}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm"
                   rows={3}
                 ></textarea>

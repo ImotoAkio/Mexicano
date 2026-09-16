@@ -304,7 +304,7 @@ export default function SimuladoPage() {
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
                   placeholder="Seu nome completo"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-5 py-3.5 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:border-[#FFCE33] focus:outline-none transition-colors"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-5 py-3.5 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:border-[#22c55e] focus:outline-none transition-colors"
                 />
                 <input
                   type="tel"
@@ -312,12 +312,12 @@ export default function SimuladoPage() {
                   value={telefone}
                   onChange={handlePhoneChange}
                   placeholder="Seu WhatsApp (00) 00000-0000"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-5 py-3.5 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:border-[#FFCE33] focus:outline-none transition-colors"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-5 py-3.5 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:border-[#22c55e] focus:outline-none transition-colors"
                 />
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full mt-2 bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[16px] py-4 rounded-[14px] transition-all active:scale-[0.98]"
+                  className="w-full mt-2 bg-[#22c55e] hover:bg-[#16a34a] text-white font-extrabold text-[16px] py-4 rounded-[14px] transition-all active:scale-[0.98]"
                 >
                   {loading ? 'Acessando...' : 'Acessar Plataforma'}
                 </button>
@@ -341,28 +341,28 @@ export default function SimuladoPage() {
               <div className="space-y-4 mt-8">
                  {/* Se tiver quiz em andamento */}
                  {questions.length > 0 && currentIndex < questions.length && (
-                    <button onClick={() => setStep('simulado')} className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-[#FFCE33] text-left transition-colors">
+                    <button onClick={() => setStep('simulado')} className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-[#22c55e] text-left transition-colors">
                         <div>
                             <h3 className="font-bold text-gray-900">Continuar Simulado</h3>
                             <p className="text-sm text-gray-500">Questão {currentIndex + 1} de {questions.length}</p>
                         </div>
-                        <div className="bg-[#FFCE33] bg-opacity-20 text-[#d4a81a] p-2.5 rounded-full">
+                        <div className="bg-[#22c55e] bg-opacity-20 text-[#16a34a] p-2.5 rounded-full">
                             <Play size={20} fill="currentColor" />
                         </div>
                     </button>
                  )}
 
-                 <button onClick={handleStartExam} className="w-full bg-[#FFCE33] hover:bg-[#ffbe1a] p-5 rounded-2xl border border-[#FFCE33] shadow-sm flex items-center justify-between cursor-pointer transition-all active:scale-[0.98]">
+                 <button onClick={handleStartExam} className="w-full bg-[#22c55e] hover:bg-[#16a34a] p-5 rounded-2xl border border-[#22c55e] shadow-sm flex items-center justify-between cursor-pointer transition-all active:scale-[0.98]">
                      <div>
-                         <h3 className="font-bold text-black text-left">Novo Simulado</h3>
-                         <p className="text-sm text-black/70 text-left">{QUIZ_SIZE} questões aleatórias oficiais</p>
+                         <h3 className="font-bold text-white text-left">Novo Simulado</h3>
+                         <p className="text-sm text-white/70 text-left">{QUIZ_SIZE} questões aleatórias oficiais</p>
                      </div>
-                     <div className="bg-black/10 text-black p-2.5 rounded-full">
+                     <div className="bg-white/20 text-white p-2.5 rounded-full">
                          <Plus size={20} className="stroke-[3]" />
                      </div>
                  </button>
 
-                 <button onClick={() => setStep('saved_questions')} className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-[#FFCE33] transition-colors">
+                 <button onClick={() => setStep('saved_questions')} className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-[#22c55e] transition-colors">
                      <div>
                          <h3 className="font-bold text-gray-900 text-left">Questões Salvas</h3>
                          <p className="text-sm text-gray-500 text-left">{savedQuestions.length} questões favoritadas</p>
@@ -372,7 +372,7 @@ export default function SimuladoPage() {
                      </div>
                  </button>
 
-                 <button onClick={() => setStep('history')} className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-[#FFCE33] transition-colors">
+                 <button onClick={() => setStep('history')} className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-[#22c55e] transition-colors">
                      <div className="flex-1">
                          <h3 className="font-bold text-gray-900 text-left">Meu Histórico</h3>
                          <p className="text-sm text-gray-500 text-left">Estatísticas de desempenho</p>
@@ -413,13 +413,13 @@ export default function SimuladoPage() {
                      <div
                        key={id}
                        onClick={() => { setModalQuestionId(id); setRevealAnswerInModal(false); }}
-                       className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-all hover:border-[#FFCE33] cursor-pointer"
+                       className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm transition-all hover:border-[#22c55e] cursor-pointer"
                      >
                         <div className="flex justify-between items-start gap-4">
                            <h3 className="font-bold text-gray-900 text-[15px] leading-snug line-clamp-3">{q.pergunta}</h3>
                            <button
                              onClick={(e) => { e.stopPropagation(); toggleBookmark(id); }}
-                             className="text-[#FFCE33] shrink-0 p-1 hover:scale-110 transition-transform"
+                             className="text-[#22c55e] shrink-0 p-1 hover:scale-110 transition-transform"
                              title="Remover das salvas"
                            >
                               <Bookmark size={22} fill="currentColor" />
@@ -491,7 +491,7 @@ export default function SimuladoPage() {
                              {!revealAnswerInModal ? (
                                <button
                                  onClick={() => setRevealAnswerInModal(true)}
-                                 className="w-full py-4 bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[16px] rounded-[14px] transition-all active:scale-[0.98]"
+                                 className="w-full py-4 bg-[#22c55e] hover:bg-[#16a34a] text-white font-extrabold text-[16px] rounded-[14px] transition-all active:scale-[0.98]"
                                >
                                  Visualizar Resposta Correta
                                </button>
@@ -530,7 +530,7 @@ export default function SimuladoPage() {
                   </span>
                   <button
                     onClick={() => toggleBookmark(currentQuestion.id)}
-                    className={`p-1.5 transition-colors active:scale-95 ${savedQuestions.includes(currentQuestion.id) ? 'text-[#FFCE33]' : 'text-gray-300 hover:text-gray-400'}`}
+                    className={`p-1.5 transition-colors active:scale-95 ${savedQuestions.includes(currentQuestion.id) ? 'text-[#22c55e]' : 'text-gray-300 hover:text-gray-400'}`}
                     title="Salvar Questão"
                   >
                     <Bookmark size={22} fill={savedQuestions.includes(currentQuestion.id) ? 'currentColor' : 'none'} />
@@ -562,7 +562,7 @@ export default function SimuladoPage() {
                   let baseStyle = 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 shadow-sm';
 
                   if (isSelected && !isAnswerChecked) {
-                    baseStyle = 'bg-[#FFCE33] border-[#FFCE33] text-black font-bold shadow-sm';
+                    baseStyle = 'bg-[#22c55e] border-[#22c55e] text-white font-bold shadow-sm';
                   } else if (isAnswerChecked) {
                     if (isCorrect) {
                       baseStyle = 'bg-[#22c55e] border-[#22c55e] text-white font-bold shadow-sm';
@@ -621,7 +621,7 @@ export default function SimuladoPage() {
                   <p className="text-sm text-gray-500 max-w-[250px] mx-auto">Complete seu primeiro simulado para começar a acompanhar sua evolução.</p>
                   <button
                     onClick={handleStartExam}
-                    className="mt-6 bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[15px] py-3 px-8 rounded-[14px] transition-all active:scale-[0.98]"
+                    className="mt-6 bg-[#22c55e] hover:bg-[#16a34a] text-white font-extrabold text-[15px] py-3 px-8 rounded-[14px] transition-all active:scale-[0.98]"
                   >
                     Iniciar Simulado
                   </button>
@@ -705,10 +705,10 @@ export default function SimuladoPage() {
                            <Line
                              type="monotone"
                              dataKey="percentual"
-                             stroke="#FFCE33"
+                             stroke="#22c55e"
                              strokeWidth={3}
-                             dot={{ fill: '#FFCE33', strokeWidth: 2, stroke: '#fff', r: 5 }}
-                             activeDot={{ fill: '#ffbe1a', strokeWidth: 2, stroke: '#fff', r: 7 }}
+                             dot={{ fill: '#22c55e', strokeWidth: 2, stroke: '#fff', r: 5 }}
+                             activeDot={{ fill: '#16a34a', strokeWidth: 2, stroke: '#fff', r: 7 }}
                            />
                          </LineChart>
                        </ResponsiveContainer>
@@ -777,7 +777,7 @@ export default function SimuladoPage() {
                </p>
 
                <div className="flex justify-center mb-8">
-                 <div className="text-[64px] font-extrabold text-[#FFCE33] leading-none tracking-tight">
+                 <div className="text-[64px] font-extrabold text-[#22c55e] leading-none tracking-tight">
                    {score}
                    <span className="text-[24px] text-gray-300 ml-1">/ {questions.length}</span>
                  </div>
@@ -786,7 +786,7 @@ export default function SimuladoPage() {
                <div className="space-y-3">
                  <button
                     onClick={handleRestart}
-                    className="w-full bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[16px] py-4 rounded-[14px] transition-all active:scale-[0.98]"
+                    className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-white font-extrabold text-[16px] py-4 rounded-[14px] transition-all active:scale-[0.98]"
                   >
                     Voltar para a Home
                   </button>
@@ -818,7 +818,7 @@ export default function SimuladoPage() {
                 <button
                   title="Questões Salvas"
                   onClick={() => setStep('saved_questions')}
-                  className={`transition-colors p-2 ${step === 'saved_questions' ? 'text-[#FFCE33] drop-shadow-sm' : 'text-gray-400 hover:text-gray-900'}`}
+                  className={`transition-colors p-2 ${step === 'saved_questions' ? 'text-[#22c55e] drop-shadow-sm' : 'text-gray-400 hover:text-gray-900'}`}
                 >
                   <Bookmark size={24} strokeWidth={2.5} />
                 </button>
@@ -827,7 +827,7 @@ export default function SimuladoPage() {
                   onClick={() => { if (step !== 'simulado') setStep('simulado'); }}
                   className={`rounded-full bg-gray-200 p-[2px] shadow-sm relative -top-1 ${step === 'simulado' ? 'cursor-default' : 'hover:scale-105 transition-transform'}`}
                 >
-                  <div className="bg-[#FFCE33] text-black rounded-full p-2.5">
+                  <div className="bg-[#22c55e] text-white rounded-full p-2.5">
                     {step === 'simulado' ? <Play size={22} strokeWidth={3} fill="currentColor" className="opacity-50" /> : <Play size={22} strokeWidth={3} fill="currentColor" />}
                   </div>
                 </button>
@@ -853,7 +853,7 @@ export default function SimuladoPage() {
               >
                 <button
                   onClick={isAnswerChecked ? handleNextQuestion : handleCheckAnswer}
-                  className="w-full h-full bg-[#FFCE33] hover:bg-[#ffbe1a] text-black font-extrabold text-[16px] rounded-[16px] transition-all flex items-center justify-center active:scale-[0.98]"
+                  className="w-full h-full bg-[#22c55e] hover:bg-[#16a34a] text-white font-extrabold text-[16px] rounded-[16px] transition-all flex items-center justify-center active:scale-[0.98]"
                 >
                   {isAnswerChecked
                     ? (currentIndex + 1 === questions.length ? 'Finalizar Teste' : 'Próxima Questão')

@@ -23,9 +23,9 @@ export const FINANCE = {
 export const FUEL_PRICES = {
   dinheiro: 9,
   pix: 9,
-  debit: 9,
-  credit: 10,
-  admin: 13,
+  cartao_debito: 9,
+  cartao_credito: 10,
+  faturado: 13,
 } as const;
 
 export type FuelPaymentMethod = keyof typeof FUEL_PRICES;
@@ -37,9 +37,9 @@ export const getFuelPrice = (method: string): number => {
 export const getFuelPaymentLabel = (method: string): string => {
   switch (method) {
     case 'dinheiro': return 'Dinheiro (Caixa Físico)';
-    case 'credit': return 'Cartão de Crédito';
-    case 'debit': return 'Cartão de Débito';
-    case 'admin': return 'Faturado / Administradora';
+    case 'cartao_credito': return 'Cartão de Crédito';
+    case 'cartao_debito': return 'Cartão de Débito';
+    case 'faturado': return 'Faturado / Administradora';
     case 'pix':
     default: return 'PIX (Digital)';
   }

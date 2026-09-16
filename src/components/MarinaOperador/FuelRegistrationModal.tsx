@@ -19,8 +19,8 @@ import { getFuelPrice } from '../../utils/constants';
 
 export interface FuelRegistrationData {
   liters: number;
-  statusCobranca: 'cobrado' | 'pendente';
-  paymentType: 'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin' | null;
+  statusCobranca: 'pago' | 'pendente';
+  paymentType: 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'faturado' | null;
   comprovanteUrl: string | null;
 }
 
@@ -46,8 +46,8 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
   standaloneClient
 }) => {
   const [liters, setLiters] = useState<string>('');
-  const [statusCobranca, setStatusCobranca] = useState<'cobrado' | 'pendente'>('pendente');
-  const [paymentType, setPaymentType] = useState<'pix' | 'credit' | 'debit' | 'dinheiro' | 'admin' | null>('pix');
+  const [statusCobranca, setStatusCobranca] = useState<'pago' | 'pendente'>('pendente');
+  const [paymentType, setPaymentType] = useState<'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'faturado' | null>('pix');
   const [comprovanteUrl, setComprovanteUrl] = useState<string | null>(null);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -57,9 +57,10 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      if (reservaTarget && (reservaTarget.abastecimentoLitros || reservaTarget.litrosAbastecidos)) {
-        setLiters((reservaTarget.abastecimentoLitros || reservaTarget.litrosAbastecidos).toString());
-        setStatusCobranca(reservaTarget.abastecimentoStatusCobranca === 'cobrado' ? 'cobrado' : 'pendente');
+      // Prioritize abastecimentoLitros; clear out fallback to avoid legacy overlap in UI state
+      if (reservaTarget && reservaTarget.abastecimentoLitros) {
+        setLiters((reservaTarget.abastecimentoLitros).toString());
+        setStatusCobranca(reservaTarget.abastecimentoStatusCobranca === 'pago' ? 'pago' : 'pendente');
         setPaymentType(reservaTarget.abastecimentoFormaPagamento || (reservaTarget.abastecimentoStatusCobranca === 'pendente' ? null : 'pix'));
         setComprovanteUrl(reservaTarget.abastecimentoComprovanteUrl || null);
       } else {
@@ -96,7 +97,7 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (Number(liters) > 0 && statusCobranca === 'cobrado' && !paymentType) {
+    if (Number(liters) > 0 && statusCobranca === 'pago' && !paymentType) {
       alert('Selecione uma forma de pagamento para cobrança imediata.');
       return;
     }
@@ -198,9 +199,9 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setStatusCobranca('cobrado')}
+                    onClick={() => setStatusCobranca('pago')}
                     className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
-                      statusCobranca === 'cobrado'
+                      statusCobranca === 'pago'
                         ? 'bg-cyan-600 text-white shadow-md'
                         : 'text-slate-500 hover:text-cyan-700 border border-transparent'
                     }`}
@@ -227,7 +228,7 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
               )}
 
               {/* Cobrado Mode */}
-              {statusCobranca === 'cobrado' && (
+              {statusCobranca === 'pago' && (
                 <div className="space-y-4 animate-in fade-in">
 
                   {/* Payment Type Grid */}
@@ -237,9 +238,9 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
                       {[
                         { id: 'dinheiro', label: 'Dinheiro (Caixa)', icon: Banknote },
                         { id: 'pix', label: 'PIX (Digital)', icon: QrCode },
-                        { id: 'credit', label: 'C. Crédito', icon: CreditCard },
-                        { id: 'debit', label: 'C. Débito', icon: CreditCard },
-                        { id: 'admin', label: 'Administradora', icon: Building2 },
+                        { id: 'cartao_credito', label: 'C. Crédito', icon: CreditCard },
+                        { id: 'cartao_debito', label: 'C. Débito', icon: CreditCard },
+                        { id: 'faturado', label: 'Administradora', icon: Building2 },
                       ].map((item) => {
                         const IconComponent = item.icon;
                         const isSelected = paymentType === item.id;
@@ -273,7 +274,7 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total (Imediato)</span>
                       <span className="text-xs text-slate-500 font-medium">
-                        {Number(liters)}L × R$ {getFuelPrice(paymentType).toFixed(2)}
+                        {Number(liters)}L × R$ {getFuelPrice(paymentType || 'pix').toFixed(2)}
                       </span>
                     </div>
                     <span className="font-black font-mono text-xl text-white">

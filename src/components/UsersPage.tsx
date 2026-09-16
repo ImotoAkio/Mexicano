@@ -23,7 +23,7 @@ export default function UsersPage() {
   
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'marina' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('all');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,7 +35,7 @@ export default function UsersPage() {
   const [formFuncionarioId, setFormFuncionarioId] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formConfirmPassword, setFormConfirmPassword] = useState('');
-  const [formRole, setFormRole] = useState<'admin' | 'marina' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('admin');
+  const [formRole, setFormRole] = useState<'admin' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('admin');
   const [formError, setFormError] = useState<string | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
 
@@ -278,7 +278,6 @@ export default function UsersPage() {
             <option value="admin">Administrador</option>
             <option value="marina_operador">Marina - Marinheiro / Operador</option>
             <option value="marina_gerente">Marina - Gerente / Supervisor</option>
-            <option value="marina">Marina (Geral)</option>
             <option value="financeiro">Financeiro</option>
             <option value="pecas_servicos">Peças e Serviços</option>
             <option value="comercial">Comercial</option>
@@ -337,7 +336,7 @@ export default function UsersPage() {
                       </td>
                       <td className="px-6 py-4 text-slate-600">
                         <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                          user.role === 'marina' || user.role === 'marina_gerente'
+                          user.role === 'marina_gerente'
                             ? 'bg-blue-100 text-blue-700 border border-blue-200' 
                             : user.role === 'marina_operador'
                             ? 'bg-cyan-100 text-cyan-700 border border-cyan-200'
@@ -351,7 +350,7 @@ export default function UsersPage() {
                         }`}>
                           {user.role === 'marina_operador' 
                             ? 'Marinheiro / Operador' 
-                            : user.role === 'marina_gerente' || user.role === 'marina'
+                            : user.role === 'marina_gerente'
                             ? 'Gerente de Marina' 
                             : user.role === 'financeiro' 
                             ? 'Financeiro' 
