@@ -368,6 +368,15 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN abastecimentoComprovanteUrl TEXT;`);
       await connection.query(`ALTER TABLE Reservas ADD COLUMN abastecimentoOperador VARCHAR(100);`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN tipoReserva VARCHAR(20) DEFAULT 'garantida';`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN contestadaPor VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN contestadaEm VARCHAR(50);`);
+    } catch (e) {}
 
     // 4. ControlesSom Table
     await connection.query(`
@@ -498,6 +507,9 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN planoContasId VARCHAR(50) NULL;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN centroCustoId VARCHAR(50) NULL;`);
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN fornecedorId VARCHAR(50) NULL;`);
@@ -1525,8 +1537,9 @@ export async function upsertReservation(reserva: any) {
       id, embarcacaoId, clienteId, data, periodo, observacoes, googleEventId, status, createdAt,
       somRetirado, somTesteSaida, somTesteRetorno, horaSaida, horaChegada, fotosChecklistSaida, fotosChecklistChegada,
       previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada, litrosAbastecidos, horaSubida, operadorSubida, fotosChecklistSubida,
-      abastecimentoLitros, abastecimentoStatusCobranca, abastecimentoFormaPagamento, abastecimentoValorTotal, abastecimentoComprovanteUrl, abastecimentoOperador
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      abastecimentoLitros, abastecimentoStatusCobranca, abastecimentoFormaPagamento, abastecimentoValorTotal, abastecimentoComprovanteUrl, abastecimentoOperador,
+      tipoReserva, contestadaPor, contestadaEm
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       embarcacaoId = VALUES(embarcacaoId),
       clienteId = VALUES(clienteId),
@@ -1562,7 +1575,10 @@ export async function upsertReservation(reserva: any) {
       abastecimentoFormaPagamento = VALUES(abastecimentoFormaPagamento),
       abastecimentoValorTotal = VALUES(abastecimentoValorTotal),
       abastecimentoComprovanteUrl = VALUES(abastecimentoComprovanteUrl),
-      abastecimentoOperador = VALUES(abastecimentoOperador)
+      abastecimentoOperador = VALUES(abastecimentoOperador),
+      tipoReserva = VALUES(tipoReserva),
+      contestadaPor = VALUES(contestadaPor),
+      contestadaEm = VALUES(contestadaEm)
   `;
 
   const values = [
@@ -1602,7 +1618,10 @@ export async function upsertReservation(reserva: any) {
     reserva.abastecimentoFormaPagamento || null,
     reserva.abastecimentoValorTotal || null,
     reserva.abastecimentoComprovanteUrl || null,
-    reserva.abastecimentoOperador || reserva.operadorChegada || null
+    reserva.abastecimentoOperador || reserva.operadorChegada || null,
+    reserva.tipoReserva || 'garantida',
+    reserva.contestadaPor || null,
+    reserva.contestadaEm || null
   ];
 
   await currentPool.query(query, values);
@@ -2010,6 +2029,9 @@ export async function upsertTransacao(t: any, connection?: any) {
   if (!currentPool && !connection) throw new Error("MySQL Connection pool is offline.");
   const dbConfig = connection || currentPool;
 
+  const idToUse = t.id || `trans_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+  const createdAtToUse = t.createdAt || new Date().toISOString();
+
   // Clean description: remove "[IMPORTADO]" or "[IMPORTADO] " prefix case-insensitively
   let cleanedDesc = t.descricao || '';
   if (typeof cleanedDesc === 'string') {
@@ -2038,8 +2060,8 @@ export async function upsertTransacao(t: any, connection?: any) {
        grupoParcelamentoId=VALUES(grupoParcelamentoId), numeroParcela=VALUES(numeroParcela),
        totalParcelas=VALUES(totalParcelas)`,
     [
-      t.id, t.tipo, t.categoria, t.valor, t.dataVencimento, t.dataPagamento || null,
-      t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || t.comprovanteUrl || null, t.createdAt,
+      idToUse, t.tipo, t.categoria, t.valor, t.dataVencimento, t.dataPagamento || null,
+      t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || t.comprovanteUrl || null, createdAtToUse,
       t.asaasPaymentId || null, t.asaasPaymentUrl || null, t.reservaId || null, t.metodoPagamento || null,
       t.operador || null, t.metadata ? JSON.stringify(t.metadata) : null,
       t.empresa || 'Marina', t.contaBancariaId || null, t.planoContasId || null, t.centroCustoId || null, t.fornecedorId || null,
@@ -3117,6 +3139,7 @@ export async function getAllContasBancarias(empresa?: string): Promise<any[]> {
 export async function upsertContaBancaria(c: any): Promise<void> {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  const idToUse = c.id || `conta_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
 
   await currentPool.query(
     `INSERT INTO ContasBancarias (id, nome, empresa, banco, agencia, conta, saldoInicial, status, createdAt, updatedAt)
@@ -3126,7 +3149,7 @@ export async function upsertContaBancaria(c: any): Promise<void> {
        agencia=VALUES(agencia), conta=VALUES(conta), saldoInicial=VALUES(saldoInicial),
        status=VALUES(status), updatedAt=VALUES(updatedAt)`,
     [
-      c.id, c.nome, c.empresa || null, c.banco || null, c.agencia || null, c.conta || null,
+      idToUse, c.nome, c.empresa || null, c.banco || null, c.agencia || null, c.conta || null,
       c.saldoInicial || 0, c.status || 'ativo', c.createdAt || new Date().toISOString(),
       c.updatedAt || new Date().toISOString()
     ]
@@ -3163,7 +3186,7 @@ export async function upsertPlanoDeConta(p: any): Promise<void> {
        codigoContabil=VALUES(codigoContabil), descricao=VALUES(descricao), tipo=VALUES(tipo),
        empresa=VALUES(empresa), status=VALUES(status), parentId=VALUES(parentId), updatedAt=VALUES(updatedAt)`,
     [
-      p.id, p.codigoContabil, p.descricao, p.tipo, p.empresa, p.status, p.parentId || null, p.createdAt, p.updatedAt
+      p.id || `plano_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, p.codigoContabil || null, p.descricao, p.tipo, p.empresa, p.status || 'ativo', p.parentId || null, p.createdAt || new Date().toISOString(), p.updatedAt || new Date().toISOString()
     ]
   );
 }
@@ -3193,7 +3216,7 @@ export async function upsertCentroDeCusto(p: any): Promise<void> {
      VALUES (?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        nome=VALUES(nome), empresa=VALUES(empresa), status=VALUES(status), updatedAt=VALUES(updatedAt)`,
-    [p.id, p.nome, p.empresa, p.status, p.createdAt, p.updatedAt]
+    [p.id || `centro_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, p.nome, p.empresa, p.status || 'ativo', p.createdAt || new Date().toISOString(), p.updatedAt || new Date().toISOString()]
   );
 }
 
@@ -3228,7 +3251,7 @@ export async function upsertFornecedor(f: any): Promise<void> {
        empresaId=VALUES(empresaId), dadosBancarios=VALUES(dadosBancarios), status=VALUES(status),
        updatedAt=VALUES(updatedAt)`,
     [
-      f.id, f.nomeFantasia, f.razaoSocial || null, f.cnpjCpf || null, f.empresaId || null,
+      f.id || `forn_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, f.nomeFantasia, f.razaoSocial || null, f.cnpjCpf || null, f.empresaId || null,
       f.dadosBancarios ? JSON.stringify(f.dadosBancarios) : null, f.status || 'ativo',
       f.createdAt || new Date().toISOString(), f.updatedAt || new Date().toISOString()
     ]

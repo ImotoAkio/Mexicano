@@ -43,6 +43,10 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     urgencia: 'baixa' as 'baixa' | 'media' | 'alta' | 'critica'
   });
 
+  const [isContestationModalOpen, setIsContestationModalOpen] = useState(false);
+  const [contestationTarget, setContestationTarget] = useState<any>(null);
+  const [isContesting, setIsContesting] = useState(false);
+
   // Real-time & Refresh states
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -771,7 +775,38 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
-  const openReservation = (dateObj: Date, isoStr: string, isOccupied: boolean, isClosed: boolean) => {
+  const handleContest = async () => {
+    if (!contestationTarget) return;
+    setIsContesting(true);
+    try {
+      const token = localStorage.getItem('client_token');
+      const res = await fetch('/api/client/contestar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          reservaId: contestationTarget.id,
+          embarcacaoId: contestationTarget.embarcacaoId
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Erro ao realizar contestação.');
+      }
+      showToast('Sucesso!', 'Reserva contestada e agendada para você com sucesso.', 'success');
+      setIsContestationModalOpen(false);
+      setContestationTarget(null);
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      showToast('Aviso', err.message, 'error');
+    } finally {
+      setIsContesting(false);
+    }
+  };
+
+  const openReservation = (dateObj: Date, isoStr: string, isOccupied: boolean, isClosed: boolean, contestableRes?: any) => {
     const _now = new Date();
     const todayStr = [
       _now.getFullYear(),
@@ -780,6 +815,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     ].join('-');
     if (isoStr < todayStr) {
       showToast('Aviso', 'Não é possível realizar agendamentos em datas passadas.', 'warning');
+      return;
+    }
+
+    if (contestableRes) {
+      setContestationTarget(contestableRes);
+      setIsContestationModalOpen(true);
       return;
     }
 
@@ -924,34 +965,64 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               // Verificar se o CLIENTE tem reserva nessa embarcação ou se está ocupada
               const hasMyReservation = myBoatReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
               const isOccupied = !hasMyReservation && occupiedBoatReservations.find(r => r.data === isoStr);
-              
+
               // Evitar clicar no passado, dias ocupados ou dias fechados
               const isToday = isoStr === todayStr;
               const past = isoStr < todayStr;
 
+              // Identificar possibilidade de contestação
+              let contestableRes = null;
+              if (isOccupied && !hasMyReservation && !past) {
+                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                if (isWeekend && isOccupied.tipoReserva === 'extra') {
+                  const rDateObj = new Date(isoStr + "T00:00:00");
+                  const hoursUntil = (rDateObj.getTime() - Date.now()) / (1000 * 60 * 60);
+
+                  if (hoursUntil > 48) {
+                    const theMonth = dateObj.getMonth();
+                    const theYear = dateObj.getFullYear();
+                    const usedMyQuota = myBoatReservations.some(r => {
+                      if (r.status === 'cancelado') return false;
+                      const rr = new Date(r.data + "T12:00:00Z");
+                      return rr.getUTCMonth() === theMonth &&
+                             rr.getUTCFullYear() === theYear &&
+                             rr.getUTCDay() === dayOfWeek;
+                    });
+                    if (!usedMyQuota) {
+                      contestableRes = isOccupied;
+                    }
+                  }
+                }
+              }
+
               return (
                 <button
                   key={idx}
-                  onClick={() => openReservation(dateObj, isoStr, !!isOccupied, isClosed)}
+                  onClick={() => openReservation(dateObj, isoStr, !!isOccupied, isClosed, contestableRes)}
                   className={`
                     relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all duration-300
-                    ${(past || isOccupied || isClosed) ? 'opacity-30' : 'hover:scale-105 cursor-pointer shadow-lg'}
-                    ${hasMyReservation 
-                      ? 'bg-[#B69D74]/20 border border-[#B69D74]/40 text-[#B69D74]' 
-                      : isOccupied
-                        ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
-                        : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
-                    ${isToday && !hasMyReservation && !isOccupied ? 'ring-1 ring-white/20 bg-white/10 text-white' : ''}
+                    ${(past || (isOccupied && !contestableRes) || isClosed) ? 'opacity-30' : 'hover:scale-105 cursor-pointer shadow-lg'}
+                    ${hasMyReservation
+                      ? 'bg-[#B69D74]/20 border border-[#B69D74]/40 text-[#B69D74]'
+                      : contestableRes
+                        ? 'bg-amber-500/10 border border-amber-500/30 text-amber-500 hover:bg-amber-500/20'
+                        : isOccupied
+                          ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                          : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
+                    ${isToday && !hasMyReservation && !isOccupied && !contestableRes ? 'ring-1 ring-white/20 bg-white/10 text-white' : ''}
                   `}
                 >
                   <span className={`text-sm ${hasMyReservation || isOccupied ? 'font-bold' : 'font-medium'}`}>
                     {dateObj.getDate()}
                   </span>
-                  
+
                   {hasMyReservation && (
                     <div className={`w-1.5 h-1.5 rounded-full bg-[#B69D74] mt-1 shadow-[0_0_8px_rgba(182,157,116,0.8)] ${hasMyReservation.id === lastAddedResId ? 'animate-[ping_2s_ease-out_1,pulse_2s_infinite]' : ''}`} />
                   )}
-                  {isOccupied && (
+                  {contestableRes && !hasMyReservation && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1 shadow-[0_0_8px_rgba(245,158,11,0.8)] animate-pulse" />
+                  )}
+                  {isOccupied && !contestableRes && !hasMyReservation && (
                     <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
                   )}
                   {!hasMyReservation && !isOccupied && !past && !isClosed && (
@@ -2534,6 +2605,50 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 className="text-xs text-white/40 hover:text-white transition-colors"
               >
                 Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Contestação */}
+      {isContestationModalOpen && contestationTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020202]/90 backdrop-blur-xl transition-all duration-300">
+          <div className="w-full max-w-sm bg-[#090909] rounded-[2rem] border border-amber-500/20 flex flex-col overflow-hidden shadow-[0_25px_60px_-15px_rgba(245,158,11,0.2)] animate-in zoom-in-95 duration-200">
+            <div className="p-6 pb-4 border-b border-white/[0.04] text-center">
+              <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 mx-auto mb-3">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h2 className="text-lg font-light text-white tracking-wide">Contestar Reserva</h2>
+              <p className="text-xs text-white/40 mt-1">Garantia de Final de Semana</p>
+            </div>
+
+            <div className="p-6 text-sm text-white/70 leading-relaxed text-center">
+              <p>
+                O dia <strong className="text-amber-500">{contestationTarget.data.split('-').reverse().join('/')}</strong> encontra-se ocupado por uma reserva que excede o limite garantido do final de semana de outro cotista.
+              </p>
+              <p className="mt-4">
+                Como você ainda não utilizou a sua garantia para este dia/mês, você tem direito a <strong>contestar esta data</strong>.
+              </p>
+            </div>
+
+            <div className="p-6 pt-4 flex flex-col gap-3 bg-[#070707] border-t border-white/[0.04]">
+              <button
+                onClick={handleContest}
+                disabled={isContesting}
+                className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-200 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.15)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isContesting ? 'Contestando...' : 'Confirmar Contestação'}
+              </button>
+              <button
+                onClick={() => {
+                  setIsContestationModalOpen(false);
+                  setContestationTarget(null);
+                }}
+                disabled={isContesting}
+                className="w-full py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-semibold text-xs tracking-wider uppercase transition-all duration-200 cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
               </button>
             </div>
           </div>

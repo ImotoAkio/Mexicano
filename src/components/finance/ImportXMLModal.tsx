@@ -10,6 +10,9 @@ interface ImportXMLModalProps {
   onImportSuccess: () => void;
   clientes: Cliente[];
   embarcacoes: Embarcacao[];
+  planosContas?: any[];
+  fornecedores?: any[];
+  centrosDeCusto?: any[];
 }
 
 type Step = 'upload' | 'mapping' | 'review';
@@ -29,12 +32,13 @@ interface PreviewRow {
   valor: number;
   dataVencimento: string;
   status: TransacaoFinanceira['status'];
+  tipo: 'receita' | 'despesa';
   categoria: string;
   descricao: string;
   ignored?: boolean;
 }
 
-export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clientes, embarcacoes }: ImportXMLModalProps) {
+export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clientes, embarcacoes, planosContas: planosContasProp, fornecedores: fornecedoresProp, centrosDeCusto: centrosDeCustoProp }: ImportXMLModalProps) {
   const [step, setStep] = useState<Step>('upload');
   const [fileData, setFileData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
@@ -52,20 +56,54 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
   const [importMode, setImportMode] = useState<'append' | 'overwrite_clients' | 'overwrite_all'>('overwrite_clients');
   
   const [contasBancarias, setContasBancarias] = useState<any[]>([]);
+  const [planosContas, setPlanosContas] = useState<any[]>([]);
+  const [fornecedores, setFornecedores] = useState<any[]>([]);
+  const [centrosDeCusto, setCentrosDeCusto] = useState<any[]>([]);
   const [importEmpresa, setImportEmpresa] = useState('Marina');
-  const [importany, setImportany] = useState('');
+  const [importContaBancariaId, setImportContaBancariaId] = useState('');
+  const [importTipo, setImportTipo] = useState<'receita' | 'despesa'>('receita');
+  const [importPlanoContasId, setImportPlanoContasId] = useState('');
+  const [importCentroCustoId, setImportCentroCustoId] = useState('');
+  const [importFornecedorId, setImportFornecedorId] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       const token = localStorage.getItem('admin_token') || localStorage.getItem('token');
       if (token) {
-        fetch('/api/financeiro/contas-bancarias', { headers: { 'Authorization': `Bearer ${token}` } })
+        const headers = { 'Authorization': `Bearer ${token}` };
+        fetch('/api/financeiro/contas-bancarias', { headers })
           .then(res => res.json())
           .then(data => setContasBancarias(data))
           .catch(console.error);
+
+        // Use props if available, otherwise fetch
+        if (planosContasProp && planosContasProp.length > 0) {
+          setPlanosContas(planosContasProp);
+        } else {
+          fetch('/api/financeiro/planos-contas', { headers })
+            .then(res => res.json())
+            .then(data => setPlanosContas(data))
+            .catch(console.error);
+        }
+        if (fornecedoresProp && fornecedoresProp.length > 0) {
+          setFornecedores(fornecedoresProp);
+        } else {
+          fetch('/api/financeiro/fornecedores', { headers })
+            .then(res => res.json())
+            .then(data => setFornecedores(data))
+            .catch(console.error);
+        }
+        if (centrosDeCustoProp && centrosDeCustoProp.length > 0) {
+          setCentrosDeCusto(centrosDeCustoProp);
+        } else {
+          fetch('/api/financeiro/centros-custo', { headers })
+            .then(res => res.json())
+            .then(data => setCentrosDeCusto(data))
+            .catch(console.error);
+        }
       }
     }
-  }, [isOpen]);
+  }, [isOpen, planosContasProp, fornecedoresProp, centrosDeCustoProp]);
 
 
   // Load saved mapping on mount
@@ -216,6 +254,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                   valor: parsedValor,
                   dataVencimento: parsedData,
                   status: statusDefault,
+                  tipo: importTipo,
                   categoria: categoriaDefault,
                   descricao: ''
                 });
@@ -377,7 +416,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
 
       return {
         id: uniqueId,
-        tipo: 'receita',
+        tipo: importTipo,
         clienteId: row.clienteIdEncontrado,
         categoria: row.categoria || 'Não Categorizado',
         valor: row.valor,
@@ -386,7 +425,11 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
         descricao: row.descricao || '',
         createdAt: new Date().toISOString(),
         empresa: importEmpresa,
-        contaBancariaId: importany || null
+        contaBancariaId: importContaBancariaId || null,
+        planoContasId: importPlanoContasId || null,
+        centroCustoId: importCentroCustoId || null,
+        fornecedorId: importFornecedorId || null,
+        embarcacaoId: row.clienteIdEncontrado ? clientes.find(c => c.id === row.clienteIdEncontrado)?.embarcacaoId || null : null
       };
     });
 
@@ -681,6 +724,12 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                             <option value="Mensalidade">Mensalidade</option>
                             <option value="Serviço">Serviço</option>
                             <option value="Parcela de Cota">Parcela de Cota</option>
+                            {planosContas
+                              .filter(p => !p.tipo || p.tipo === importTipo)
+                              .filter(p => !['Mensalidade', 'Serviço', 'Parcela de Cota'].includes(p.descricao))
+                              .map(p => (
+                                <option key={p.id || p.descricao} value={p.descricao}>{p.descricao}</option>
+                              ))}
                             <option value="Outro">Outro</option>
                           </select>
                           {!currentRow.categoria && (
@@ -810,15 +859,65 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-700">Conta Bancária:</label>
-                <select 
-                  value={importany}
-                  onChange={e => setImportany(e.target.value)}
+                <label className="text-xs font-bold text-slate-700">Tipo:</label>
+                <select
+                  value={importTipo}
+                  onChange={e => setImportTipo(e.target.value as 'receita' | 'despesa')}
                   className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
+                >
+                  <option value="receita">Receita</option>
+                  <option value="despesa">Despesa</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-700">Plano de Contas:</label>
+                <select
+                  value={importPlanoContasId}
+                  onChange={e => setImportPlanoContasId(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium w-32"
+                >
+                  <option value="">-- Padrão --</option>
+                  {planosContas.filter(p => !p.tipo || p.tipo === importTipo).map(p => (
+                    <option key={p.id} value={p.id}>{p.descricao}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-700">Centro de Custo:</label>
+                <select
+                  value={importCentroCustoId}
+                  onChange={e => setImportCentroCustoId(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium w-32"
+                >
+                  <option value="">-- Opcional --</option>
+                  {centrosDeCusto.filter(c => !c.empresa || c.empresa === importEmpresa || c.empresa === 'Ambas').map(c => (
+                    <option key={c.id} value={c.id}>{c.nome}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-700">Conta Bancária:</label>
+                <select
+                  value={importContaBancariaId}
+                  onChange={e => setImportContaBancariaId(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium max-w-40"
                 >
                   <option value="">-- Padrão --</option>
                   {contasBancarias.map(c => (
-                    <option key={c.id} value={c.id}>{c.nomeBanco} - {c.nomeConta}</option>
+                    <option key={c.id} value={c.id}>{c.nome} - {c.banco}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-700">Fornecedor:</label>
+                <select
+                  value={importFornecedorId}
+                  onChange={e => setImportFornecedorId(e.target.value)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium w-32"
+                >
+                  <option value="">-- Opcional --</option>
+                  {fornecedores.map(f => (
+                    <option key={f.id} value={f.id}>{f.nome}</option>
                   ))}
                 </select>
               </div>

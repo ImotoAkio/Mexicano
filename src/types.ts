@@ -123,6 +123,9 @@ export interface Reserva {
   observações?: string;
   googleEventId?: string;
   status: 'confirmado' | 'cancelado' | 'agendado';
+  tipoReserva?: 'garantida' | 'extra';
+  contestadaPor?: string; // clienteId de quem contestou
+  contestadaEm?: string; // ISO datetime da contestação
   createdAt: string;
   somRetirado?: boolean;
   somTesteSaida?: string;
@@ -501,7 +504,7 @@ export interface FechamentoCaixaMarina {
 export interface CentroDeCusto {
   id: string;
   nome: string;
-  empresaId: string;
+  empresa: string;
   status: 'ativo' | 'inativo';
   createdAt?: string;
   updatedAt?: string;

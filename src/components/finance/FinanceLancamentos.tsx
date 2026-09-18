@@ -1261,12 +1261,14 @@ export default function FinanceLancamentos() {
       )}
 
       {/* Modals */}
-      <ImportXMLModal 
-        isOpen={isImportModalOpen} 
-        onClose={() => setIsImportModalOpen(false)} 
-        onImportSuccess={() => fetchData()} 
-        clientes={clientes} 
+      <ImportXMLModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={() => fetchData()}
+        clientes={clientes}
         embarcacoes={embarcacoes}
+        planosContas={planosContas}
+        fornecedores={fornecedores}
       />
 
       {/* Modal de Lançamento */}

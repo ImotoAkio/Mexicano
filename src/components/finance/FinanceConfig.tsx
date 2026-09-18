@@ -75,7 +75,7 @@ export default function FinanceConfig({
 
   const [centroForm, setCentroForm] = useState<Partial<CentroDeCusto>>({
     nome: '',
-    empresaId: 'Todos',
+    empresa: 'Todos',
     status: 'ativo'
   });
 
@@ -109,7 +109,7 @@ export default function FinanceConfig({
         ...(editingCentro?.id ? { id: editingCentro.id } : {}),
         ...centroForm
       };
-      const res = await fetch('/api/financeiro/centros_custo/save', {
+      const res = await fetch('/api/financeiro/centros-custo/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -137,10 +137,11 @@ export default function FinanceConfig({
     try {
       const q = empresa && empresa !== 'Todos' ? `?empresa=${encodeURIComponent(empresa)}` : '';
 
-      const [resContas, resPlanos, resFornecedores] = await Promise.all([
+      const [resContas, resPlanos, resFornecedores, resCentros] = await Promise.all([
         fetch(`/api/financeiro/contas-bancarias${q}`, { credentials: 'include', headers: getAuthHeader() }),
         fetch(`/api/financeiro/planos-contas${q}`, { credentials: 'include', headers: getAuthHeader() }),
-        fetch(`/api/financeiro/fornecedores${q}`, { credentials: 'include', headers: getAuthHeader() })
+        fetch(`/api/financeiro/fornecedores${q}`, { credentials: 'include', headers: getAuthHeader() }),
+        fetch(`/api/financeiro/centros-custo${q}`, { credentials: 'include', headers: getAuthHeader() })
       ]);
 
       if (resContas.ok) {
@@ -154,6 +155,10 @@ export default function FinanceConfig({
       if (resFornecedores.ok) {
         const data = await resFornecedores.json();
         setFornecedores(data);
+      }
+      if (resCentros.ok) {
+        const data = await resCentros.json();
+        setCentrosCusto(data);
       }
     } catch (err) {
       console.error('Erro ao buscar dados das configurações:', err);
@@ -191,7 +196,7 @@ export default function FinanceConfig({
       setEditingCentro(null);
       setCentroForm({
         nome: '',
-        empresaId: empresa && empresa !== 'Todos' ? empresa : 'Marina',
+        empresa: empresa && empresa !== 'Todos' ? empresa : 'Marina',
         status: 'ativo'
       });
     } else {
@@ -233,7 +238,7 @@ export default function FinanceConfig({
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (type: 'contas-bancarias' | 'planos-contas' | 'centros_custo' | 'fornecedores', id: string) => {
+  const handleDelete = async (type: 'contas-bancarias' | 'planos-contas' | 'centros-custo' | 'fornecedores', id: string) => {
     if (!confirm('Deseja realmente excluir este registro?')) return;
     try {
       const res = await fetch(`/api/financeiro/${type}/save`, {
@@ -615,7 +620,7 @@ export default function FinanceConfig({
                           </td>
                           <td className="px-6 py-4">
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                              {centro.empresaId}
+                              {centro.empresa}
                             </span>
                           </td>
                           <td className="px-6 py-4 text-center">
@@ -635,7 +640,7 @@ export default function FinanceConfig({
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDelete('centros_custo', centro.id)}
+                                onClick={() => handleDelete('centros-custo', centro.id)}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                                 title="Excluir"
                               >
@@ -938,8 +943,8 @@ export default function FinanceConfig({
                       <label className="block mb-1.5">Empresa *</label>
                       <select
                         required
-                        value={centroForm.empresaId || 'Marina'}
-                        onChange={(e) => setCentroForm({ ...centroForm, empresaId: e.target.value })}
+                        value={centroForm.empresa || 'Marina'}
+                        onChange={(e) => setCentroForm({ ...centroForm, empresa: e.target.value })}
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-normal"
                       >
                         <option value="Marina">Marina</option>

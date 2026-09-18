@@ -55,7 +55,8 @@ export default function ClientReservationModal({
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
+  const [confirmExtraObj, setConfirmExtraObj] = useState<{ message: string } | null>(null);
+
   const [isSuccessState, setIsSuccessState] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<CalendarSyncResult | null>(null);
@@ -101,8 +102,8 @@ export default function ClientReservationModal({
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e: React.FormEvent, isConfirmedExtra = false) => {
+    e?.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
 
@@ -132,11 +133,19 @@ export default function ClientReservationModal({
           embarcacaoId: selectedBoatId,
           date: selectedDate,
           periodo: 'dia_inteiro',
-          observacoes
+          observacoes,
+          confirmExtra: isConfirmedExtra
         })
       });
 
       const dbData = await dbRes.json();
+
+      if (dbRes.status === 409 && dbData.requireConfirmation) {
+        setConfirmExtraObj({ message: dbData.message });
+        setIsSubmitting(false);
+        return;
+      }
+      setConfirmExtraObj(null); // limpa caso existisse
 
       if (!dbRes.ok) {
         throw new Error(dbData.message || 'Erro ao realizar o agendamento no sistema principal.');
@@ -362,20 +371,53 @@ export default function ClientReservationModal({
               </div>
             </div>
 
+            {/* Extras Confirmation */}
+            {confirmExtraObj && (
+              <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl space-y-3">
+                <div className="flex items-start gap-3 text-amber-500">
+                  <AlertTriangle className="w-5 h-5 shrink-0" />
+                  <p className="text-sm leading-relaxed">{confirmExtraObj.message}</p>
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmExtraObj(null)}
+                    className="px-4 py-2 text-sm font-semibold text-white/50 hover:text-white transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleSubmit(e, true)}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 text-sm font-bold bg-amber-500 text-slate-900 rounded-lg hover:bg-amber-400 transition-colors flex items-center"
+                  >
+                    {isSubmitting ? (
+                      <div className="w-4 h-4 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
+                    ) : (
+                      'Estou ciente, prosseguir'
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Footer / Button */}
-            <div className="pt-4">
-              <button
-                type="submit"
-                disabled={isSubmitting || !selectedBoatId}
-                className="w-full py-4 rounded-xl bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 font-bold tracking-wide transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(182,157,116,0.15)] flex justify-center items-center"
-              >
-                {isSubmitting ? (
-                  <div className="w-5 h-5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
-                ) : (
-                  'Confirmar Reserva'
-                )}
-              </button>
-            </div>
+            {!confirmExtraObj && (
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !selectedBoatId}
+                  className="w-full py-4 rounded-xl bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 font-bold tracking-wide transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(182,157,116,0.15)] flex justify-center items-center"
+                >
+                  {isSubmitting ? (
+                    <div className="w-5 h-5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
+                  ) : (
+                    'Confirmar Reserva'
+                  )}
+                </button>
+              </div>
+            )}
           </form>
         </div>
       </div>
