@@ -336,13 +336,13 @@ export default function FinanceFluxoCaixa() {
     try {
       const token = localStorage.getItem('admin_token');
       // POST the array of lancamentos (adjust url as in your backend)
-      await fetch('/api/financeiro/lancamentos/batch', {
+      await fetch('/api/financeiro/transacoes/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ lancamentos: withIds })
+        body: JSON.stringify({ action: 'upsert', data: withIds })
       });
       fetchTransacoes();
     } catch(e) {
