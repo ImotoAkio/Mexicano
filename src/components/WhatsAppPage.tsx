@@ -8,7 +8,7 @@ import { toPng } from 'html-to-image';
 import logoUrl from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { ShieldAlert, Smartphone, UserCheck, UserX, QrCode, LogOut, CheckCircle, MessageSquare, Calendar as CalendarIcon, Check, AlertTriangle, 
   RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet, Paperclip, FileText, Users, Plus, Trash2, Play, Pause, X, CheckSquare, Square, File, Image as ImageIcon, Sparkles, Filter
-} from 'lucide-react';
+, Download } from 'lucide-react';
 
 const formatFirstName = (fullName: string): string => {
   if (!fullName) return '';
@@ -96,7 +96,7 @@ const calculateTransactionInterest = (t: TransacaoFinanceira) => {
 };
 
 export default function WhatsAppPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'config'>('confirmations');
+  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'extratos' | 'config'>('confirmations');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -327,6 +327,39 @@ export default function WhatsAppPage() {
     }
     return true;
   });
+
+  const handleDownloadExtrato = async (clientId: string, clientName: string) => {
+    try {
+      const captureEl = document.getElementById(`extrato-invoice-capture-${clientId}`) || document.getElementById(`bloqueio-invoice-capture-${clientId}`);
+      if (captureEl) {
+        console.log("Gerando imagem do extrato para download...");
+        // Pequeno atraso para garantir fontes renderizadas
+        await new Promise(r => setTimeout(r, 200));
+
+        let base64Image = null;
+        try {
+          // @ts-ignore
+          base64Image = await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 2, skipFonts: true, cacheBust: true });
+        } catch(e) {
+          await new Promise(r => setTimeout(r, 600));
+          // @ts-ignore
+          base64Image = await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 1.5, skipFonts: true, cacheBust: true });
+        }
+
+        if (base64Image) {
+          const a = document.createElement('a');
+          a.href = base64Image;
+          a.download = `Extrato_Debitos_${clientName.replace(/\s+/g, '_')}.png`;
+          a.click();
+        }
+      } else {
+        alert("Erro: Não foi possível localizar o modelo de extrato na página. (ID: " + clientId + ")");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Falha ao gerar o extrato: " + err.message);
+    }
+  };
 
   const handleToggleSelectClient = (id: string) => {
     setCustomSelectedClientIds(prev => 
@@ -2259,6 +2292,114 @@ export default function WhatsAppPage() {
 
       
         {/* CONFIG TAB */}
+        {activeMainTab === 'extratos' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Extratos Financeiros</h2>
+                <p className="text-sm text-slate-500">Busque um cliente para visualizar ou baixar o extrato de débitos em aberto.</p>
+              </div>
+
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar cliente..."
+                  value={extratoSearchQuery}
+                  onChange={(e) => setExtratoSearchQuery(e.target.value)}
+                  className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm w-64 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="max-h-[600px] overflow-y-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                    <tr>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase">Cliente</th>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase text-center">Contato</th>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase text-right">Pendências</th>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase text-right">Valor Aberto</th>
+                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {clientDB.getAll()
+                      .filter(c =>
+                        (c.nome.toLowerCase().includes(extratoSearchQuery.toLowerCase()) ||
+                        (c.telefone && c.telefone.includes(extratoSearchQuery))) &&
+                        (!extratoSearchQuery ? transacoes.some(t => t.clienteId === c.id && t.status !== 'pago' && t.status !== 'cancelado') : true)
+                      )
+                      .slice(0, extratoSearchQuery ? 50 : 20)
+                      .map(client => {
+                        const unpaid = transacoes.filter(t => t.clienteId === client.id && t.status !== 'pago' && t.status !== 'cancelado');
+                        const totalDebt = unpaid.reduce((acc, t) => acc + (t.valorFinal || t.valorOriginal), 0);
+                        const hasPhone = !!client.telefone;
+
+                        return (
+                          <tr key={client.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="font-semibold text-sm text-slate-900">{client.nome}</div>
+                              <div className="text-xs text-slate-500">{client.email || 'Sem e-mail'}</div>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              {hasPhone ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
+                                  {client.telefone}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">Sem TV/Wpp</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {unpaid.length > 0 ? (
+                                <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full bg-rose-100 text-rose-700 text-xs font-bold font-mono">
+                                  {unpaid.length}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">0</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <span className={`font-mono text-sm font-bold ${totalDebt > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                                R$ {totalDebt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {totalDebt > 0 ? (
+                                <div className="flex justify-end items-center gap-2">
+                                  <button
+                                    onClick={() => handleDownloadExtrato(client.id, client.nome)}
+                                    className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                                    title="Baixar imagem PNG"
+                                  >
+                                    <Download className="w-3.5 h-3.5" /> Baixar PNG
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-xs font-semibold text-emerald-500 px-2 py-1 bg-emerald-50 border border-emerald-100 rounded-md">
+                                  Tudo Certo
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                    })}
+                    {clientDB.getAll().length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-500 text-sm">
+                          Nenhum cliente encontrado.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeMainTab === 'config' && (
           <div className="flex flex-col h-full overflow-y-auto subtle-scrollbar -mx-6">
             <div className="flex items-center border-b border-slate-100 bg-slate-50/50 px-4">
@@ -2484,9 +2625,8 @@ export default function WhatsAppPage() {
       )}
 
       {/* Hidden processing block for Bloqueio Debit Invoices */}
-      {bloqueioSelectedIds.length > 0 && (
-        <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none aria-hidden">
-          {bloqueioReservations.filter(res => bloqueioSelectedIds.includes(res.id)).map(res => {
+      <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none aria-hidden">
+          {bloqueioReservations.map(res => {
             const client = clientDB.getById(res.clienteId);
           if (!client) return null;
 
@@ -2576,9 +2716,8 @@ export default function WhatsAppPage() {
               </div>
             </div>
           );
-        })}
-      </div>
-      )}
+          })}
+        </div>
 
     </div>
   );
