@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 
 export default function FinanceDashboardPage() {
   const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
+  const [planosContas, setPlanosContas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [empresaFiltro, setEmpresaFiltro] = useState<string>('Todos');
   const companies = ['Todos', 'Marina Velho Chico', 'Vale Administradora', 'Mexicano'];
@@ -27,6 +28,13 @@ export default function FinanceDashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setTransacoes(data || []);
+      }
+      const resPlanos = await fetch('/api/financeiro/planos-contas', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resPlanos.ok) {
+        const dataPlanos = await resPlanos.json();
+        setPlanosContas(dataPlanos || []);
       }
     } catch (error) {
       console.error('Erro ao listar transações:', error);
@@ -87,6 +95,7 @@ export default function FinanceDashboardPage() {
             transacoes={transacoes}
             isAdmin={true}
             empresaFiltro={empresaFiltro}
+            planosContas={planosContas}
           />
         )}
       </div>

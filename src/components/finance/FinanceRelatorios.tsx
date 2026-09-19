@@ -6,6 +6,7 @@ import { toPng } from 'html-to-image';
 
 export default function FinanceRelatorios() {
   const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
+  const [planosContas, setPlanosContas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [dateStart, setDateStart] = useState('');
@@ -42,6 +43,13 @@ export default function FinanceRelatorios() {
       if (res.ok) {
         const data = await res.json();
         setTransacoes(data || []);
+      }
+      const resPlanos = await fetch('/api/financeiro/planos-contas', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resPlanos.ok) {
+        const dataPlanos = await resPlanos.json();
+        setPlanosContas(dataPlanos || []);
       }
     } catch (err) {
       console.error('Erro ao buscar transacoes:', err);
@@ -85,7 +93,8 @@ export default function FinanceRelatorios() {
     let totalDespesas = 0;
 
     filtered.forEach(t => {
-      const cat = t.categoria || 'Sem Categoria';
+      const plano = planosContas.find((p: any) => p.id === t.planoContasId);
+      const cat = plano ? plano.descricao : (t.categoria || 'Sem Categoria');
       const val = Number(t.valor);
 
       if (t.tipo === 'receita') {
@@ -104,7 +113,7 @@ export default function FinanceRelatorios() {
       totalDespesas,
       saldo: totalReceitas - totalDespesas
     };
-  }, [transacoes, dateStart, dateEnd, selectedEmpresas]);
+  }, [transacoes, dateStart, dateEnd, selectedEmpresas, planosContas]);
 
   const handleExport = async () => {
     if (!dreRef.current) return;

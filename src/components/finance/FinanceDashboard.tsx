@@ -10,9 +10,10 @@ interface FinanceDashboardProps {
   transacoes: TransacaoFinanceira[];
   isAdmin?: boolean;
   empresaFiltro?: string;
+  planosContas?: any[];
 }
 
-export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }: FinanceDashboardProps) {
+export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, planosContas = [] }: FinanceDashboardProps) {
   const [projectionDays, setProjectionDays] = useState<15 | 30>(15);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
@@ -63,7 +64,7 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
       aReceberMes: aReceberCalc,
       aPagarMes: aPagarCalc
     };
-  }, [filteredTransacoes]);
+  }, [filteredTransacoes, planosContas]);
 
   // Projection Chart Data
   const projectionData = useMemo(() => {
@@ -114,7 +115,8 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
     filteredTransacoes.forEach(t => {
       // Only include current month transactions
       if (t.dataVencimento.startsWith(currentMonthStr) && t.status !== 'cancelado') {
-        const catKey = t.categoria || 'Sem Categoria';
+        const plano = planosContas.find((p: any) => p.id === t.planoContasId);
+        const catKey = plano ? plano.descricao : (t.categoria || 'Sem Categoria');
         if (!groups[catKey]) {
           groups[catKey] = {
             category: catKey,
@@ -137,7 +139,7 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro }:
     const dreDespesas = parsedGroups.filter(g => g.type === 'despesa');
 
     return { dreReceitas, dreDespesas };
-  }, [filteredTransacoes]);
+  }, [filteredTransacoes, planosContas]);
 
   return (
     <div className="space-y-6 animate-fade-in relative max-w-7xl mx-auto w-full">
