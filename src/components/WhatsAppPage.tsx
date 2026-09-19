@@ -98,6 +98,7 @@ const calculateTransactionInterest = (t: TransacaoFinanceira) => {
 export default function WhatsAppPage() {
   const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'extratos' | 'config'>('confirmations');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [extratoSearchQuery, setExtratoSearchQuery] = useState('');
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const token = getAdminToken();
