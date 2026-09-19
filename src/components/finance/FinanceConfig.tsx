@@ -65,7 +65,7 @@ export default function FinanceConfig({
   // Form States
   const [contaForm, setContaForm] = useState<Partial<ContaBancaria>>({
     nome: '',
-    empresa: empresa && empresa !== 'Todos' ? empresa : 'Marina',
+    empresa: empresa && empresa !== 'Todos' ? empresa : 'Marina Velho Chico',
     banco: '',
     agencia: '',
     conta: '',
@@ -75,7 +75,7 @@ export default function FinanceConfig({
 
   const [centroForm, setCentroForm] = useState<Partial<CentroDeCusto>>({
     nome: '',
-    empresa: 'Todos',
+    empresa: empresa && empresa !== 'Todos' ? empresa : 'Marina Velho Chico',
     status: 'ativo'
   });
 
@@ -91,7 +91,7 @@ export default function FinanceConfig({
     nomeFantasia: '',
     razaoSocial: '',
     cnpjCpf: '',
-    empresaId: empresa && empresa !== 'Todos' ? empresa : 'Marina',
+    empresaId: empresa && empresa !== 'Todos' ? empresa : 'Marina Velho Chico',
     dadosBancarios: '',
     status: 'ativo'
   });
@@ -176,7 +176,7 @@ export default function FinanceConfig({
       setEditingConta(null);
       setContaForm({
         nome: '',
-        empresa: empresa && empresa !== 'Todos' ? empresa : 'Marina',
+        empresa: empresa && empresa !== 'Todos' ? empresa : 'Marina Velho Chico',
         banco: '',
         agencia: '',
         conta: '',
@@ -196,7 +196,7 @@ export default function FinanceConfig({
       setEditingCentro(null);
       setCentroForm({
         nome: '',
-        empresa: empresa && empresa !== 'Todos' ? empresa : 'Marina',
+        empresa: empresa && empresa !== 'Todos' ? empresa : 'Marina Velho Chico',
         status: 'ativo'
       });
     } else {
@@ -205,7 +205,7 @@ export default function FinanceConfig({
         nomeFantasia: '',
         razaoSocial: '',
         cnpjCpf: '',
-        empresaId: empresa && empresa !== 'Todos' ? empresa : 'Marina',
+        empresaId: empresa && empresa !== 'Todos' ? empresa : 'Marina Velho Chico',
         dadosBancarios: '',
         status: 'ativo'
       });
@@ -790,11 +790,11 @@ export default function FinanceConfig({
                     <div>
                       <label className="block mb-1.5">Empresa *</label>
                       <select
-                        value={contaForm.empresa || 'Marina'}
+                        value={contaForm.empresa || 'Marina Velho Chico'}
                         onChange={(e) => setContaForm({ ...contaForm, empresa: e.target.value })}
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-normal"
                       >
-                        <option value="Marina">Marina</option>
+                        <option value="Marina Velho Chico">Marina Velho Chico</option>
                         <option value="Vale Administradora">Vale Administradora</option>
                         <option value="Mexicano">Mexicano</option>
                       </select>
@@ -902,7 +902,7 @@ export default function FinanceConfig({
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-normal"
                       >
                         <option value="Todos">Todas as Empresas</option>
-                        <option value="Marina">Marina</option>
+                        <option value="Marina Velho Chico">Marina Velho Chico</option>
                         <option value="Vale Administradora">Vale Administradora</option>
                         <option value="Mexicano">Mexicano</option>
                       </select>
@@ -943,13 +943,13 @@ export default function FinanceConfig({
                       <label className="block mb-1.5">Empresa *</label>
                       <select
                         required
-                        value={centroForm.empresa || 'Marina'}
+                        value={centroForm.empresa || 'Marina Velho Chico'}
                         onChange={(e) => setCentroForm({ ...centroForm, empresa: e.target.value })}
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-normal"
                       >
-                        <option value="Marina">Marina</option>
-                        <option value="Pousada">Pousada</option>
-                        <option value="Restaurante">Restaurante</option>
+                        <option value="Marina Velho Chico">Marina Velho Chico</option>
+                        <option value="Vale Administradora">Vale Administradora</option>
+                        <option value="Mexicano">Mexicano</option>
                       </select>
                     </div>
                     <div>
@@ -1009,11 +1009,11 @@ export default function FinanceConfig({
                     <div>
                       <label className="block mb-1.5">Empresa *</label>
                       <select
-                        value={fornecedorForm.empresaId || 'Marina'}
+                        value={fornecedorForm.empresaId || 'Marina Velho Chico'}
                         onChange={(e) => setFornecedorForm({ ...fornecedorForm, empresaId: e.target.value })}
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-normal"
                       >
-                        <option value="Marina">Marina</option>
+                        <option value="Marina Velho Chico">Marina Velho Chico</option>
                         <option value="Vale Administradora">Vale Administradora</option>
                         <option value="Mexicano">Mexicano</option>
                       </select>

@@ -440,7 +440,7 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         const boat = fuelTargetMode === 'embarcacao' ? fuelEmbarcacaoTarget : null;
         const client = fuelTargetMode === 'embarcacao' ? fuelSelectedClient : null;
         const targetName = boat ? (boat.nome || getBoatCode(boat)) : fuelAvulsoName;
-        const isPaid = finalStatusCobranca === 'cobrado';
+        const isPaid = finalStatusCobranca === 'pago';
         const existingId = fuelReservaTarget?.isStandalone ? fuelReservaTarget.id : null;
 
         if (fuelData.liters > 0) {

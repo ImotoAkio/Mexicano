@@ -9,7 +9,7 @@ export default function FinanceDashboardPage() {
   const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
   const [loading, setLoading] = useState(true);
   const [empresaFiltro, setEmpresaFiltro] = useState<string>('Todos');
-  const companies = ['Todos', 'Marina', 'Vale Administradora', 'Mexicano'];
+  const companies = ['Todos', 'Marina Velho Chico', 'Vale Administradora', 'Mexicano'];
 
   useEffect(() => {
     fetchTransacoes();

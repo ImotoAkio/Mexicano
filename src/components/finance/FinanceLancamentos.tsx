@@ -857,7 +857,7 @@ export default function FinanceLancamentos() {
                 className="px-3 py-2 text-sm font-semibold rounded-xl text-slate-700 bg-white border border-slate-200/80 hover:bg-slate-50 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="Todos">Todas as Empresas</option>
-                <option value="Marina">Marina</option>
+                <option value="Marina Velho Chico">Marina Velho Chico</option>
                 <option value="Vale Administradora">Vale Administradora</option>
                 <option value="Mexicano">Mexicano</option>
               </select>

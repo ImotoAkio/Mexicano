@@ -112,7 +112,7 @@ function FilterDrawer({
   planoContasFilter, setPlanoContasFilter,
   centroCustoFilter, setCentroCustoFilter,
   planosList, centrosList,
-  clientesList, embarcacoesList,
+  clientesList, fornecedoresList, embarcacoesList,
   dataInicio, setDataInicio,
   dataFim, setDataFim
 }: any) {
@@ -173,9 +173,9 @@ function FilterDrawer({
                     <Select
                       options={[
                         { value: 'todos', label: 'Todos Clientes/Fornecedores' },
-                        ...(clientesList || []).map((c: any) => ({ value: c.id, label: c.nome }))
+                        ...(clientesList || []).map((c: any) => ({ value: c.id, label: c.nome })), ...(fornecedoresList || []).map((c: any) => ({ value: c.id, label: c.nomeFantasia || c.razaoSocial || c.nome }))
                       ]}
-                      value={{ value: clienteFilter, label: !clienteFilter || clienteFilter === 'todos' ? 'Todos Clientes/Fornecedores' : (clientesList || []).find((c: any) => c.id === clienteFilter)?.nome || 'Desconhecido' }}
+                      value={{ value: clienteFilter, label: !clienteFilter || clienteFilter === 'todos' ? 'Todos Clientes/Fornecedores' : ((clientesList || []).find((c: any) => c.id === clienteFilter)?.nome || (fornecedoresList || []).find((c: any) => c.id === clienteFilter)?.nomeFantasia || 'Desconhecido') }}
                       onChange={(opt: any) => setClienteFilter(opt?.value === 'todos' ? '' : opt?.value)}
                       placeholder="Cliente ou Fornecedor..."
                       isClearable={false}
@@ -256,7 +256,9 @@ export default function FinanceFluxoCaixa() {
   const [planosList, setPlanosList] = useState<any[]>([]);
   const [centrosList, setCentrosList] = useState<any[]>([]);
   const [clientesList, setClientesList] = useState<any[]>([]);
+  const [fornecedoresList, setFornecedoresList] = useState<any[]>([]);
   const [embarcacoesList, setEmbarcacoesList] = useState<any[]>([]);
+  const [contasBancariasList, setContasBancariasList] = useState<any[]>([]);
 
   // Lancamento Form State
   const [isLancamentoDrawerOpen, setIsLancamentoDrawerOpen] = useState(false);
@@ -284,10 +286,16 @@ export default function FinanceFluxoCaixa() {
           setPlanosList(dbData.planosContas);
         }
         if (dbData.clientes || dbData.clients || dbData.fornecedores) {
-          const cls = dbData.clientes || dbData.clients || []; const forns = dbData.fornecedores || []; setClientesList([...cls, ...forns]);
+          const cls = dbData.clientes || dbData.clients || [];
+          const forns = dbData.fornecedores || [];
+          setClientesList(cls);
+          setFornecedoresList(forns);
         }
         if (dbData.embarcacoes || dbData.boats) {
           setEmbarcacoesList(dbData.embarcacoes || dbData.boats || []);
+        }
+        if (dbData.contasBancarias) {
+          setContasBancariasList(dbData.contasBancarias);
         }
         if (dbData.centrosCusto) {
           const map = dbData.centrosCusto.reduce((acc: any, c: any) => { acc[c.id] = c.nome; return acc; }, {});
@@ -663,6 +671,10 @@ export default function FinanceFluxoCaixa() {
         defaultEmpresa={empresaFiltro}
         planosContas={planosList}
         centrosCusto={centrosList}
+        clientes={clientesList}
+        fornecedores={fornecedoresList}
+        contasBancarias={contasBancariasList}
+        embarcacoes={embarcacoesList}
       />
 
       <FilterDrawer
@@ -679,6 +691,7 @@ export default function FinanceFluxoCaixa() {
           planosList={planosList}
           centrosList={centrosList}
           clientesList={clientesList}
+          fornecedoresList={fornecedoresList}
           embarcacoesList={embarcacoesList}
         dataInicio={dataInicio}
         setDataInicio={setDataInicio}

@@ -65,19 +65,18 @@ export async function saveFuelInventory(inv: FuelInventory): Promise<void> {
   localStorage.setItem('marina_fuel_inventory', JSON.stringify(inv));
 
   // Sync com o servidor / banco de dados
-  try {
-    const token = localStorage.getItem('admin_token');
-    const res = await fetch('/api/fuel/inventory', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify(inv)
-    });
-    if (!res.ok) throw new Error("Server error");
-  } catch (e) {
-    console.warn("Estoque salvo apenas offline (sem conexao com o banco). Sincronizara automaticamente no recarregamento.");
+  const token = localStorage.getItem('marina_token') || localStorage.getItem('admin_token');
+  const res = await fetch('/api/fuel/inventory', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(inv)
+  });
+  if (!res.ok) {
+    console.warn("Estoque salvo apenas offline (sem conexao com o banco).");
+    throw new Error("Falha ao sincronizar inventário no banco de dados.");
   }
 }
 
@@ -97,23 +96,22 @@ export async function saveFuelHistory(history: FuelHistoryEntry[]): Promise<void
   localStorage.setItem('marina_fuel_history', JSON.stringify(history));
 
   // Sync com o servidor / banco de dados
-  try {
-    const token = localStorage.getItem('admin_token');
-    const res = await fetch('/api/fuel/history', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify(history)
-    });
-    if (!res.ok) throw new Error("Server error");
-  } catch (e) {
-    console.warn("Historico salvo apenas offline (sem conexao com o banco). Sincronizara no proximo recarregamento.");
+  const token = localStorage.getItem('marina_token') || localStorage.getItem('admin_token');
+  const res = await fetch('/api/fuel/history', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(history)
+  });
+  if (!res.ok) {
+    console.warn("Historico salvo apenas offline (sem conexao com o banco).");
+    throw new Error("Falha ao sincronizar histórico no banco de dados.");
   }
 }
 
-export function addFuelHistoryEntry(entry: Omit<FuelHistoryEntry, 'id' | 'dataHora'>): FuelHistoryEntry {
+export async function addFuelHistoryEntry(entry: Omit<FuelHistoryEntry, 'id' | 'dataHora'>): Promise<FuelHistoryEntry> {
   const history = getFuelHistory();
   const newEntry: FuelHistoryEntry = {
     ...entry,
@@ -121,7 +119,7 @@ export function addFuelHistoryEntry(entry: Omit<FuelHistoryEntry, 'id' | 'dataHo
     dataHora: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
   };
   const updatedHistory = [newEntry, ...history];
-  saveFuelHistory(updatedHistory);
+  await saveFuelHistory(updatedHistory);
   return newEntry;
 }
 
@@ -135,7 +133,7 @@ export async function resetFuelDataToZero(): Promise<void> {
   localStorage.removeItem('marina_tanks_history');
 
   try {
-    const token = localStorage.getItem('admin_token');
+    const token = localStorage.getItem('marina_token') || localStorage.getItem('admin_token');
     await fetch('/api/fuel/reset', {
       method: 'POST',
       headers: {

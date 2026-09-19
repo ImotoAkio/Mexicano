@@ -1045,6 +1045,55 @@ export async function initializeDatabase() {
 
     // ── 28. CaixaMarinaFechamentos Table ──
     await connection.query(`
+      CREATE TABLE IF NOT EXISTS CombustivelEstoque (
+        id INT PRIMARY KEY DEFAULT 1,
+        tanque_principal DECIMAL(10,2) DEFAULT 0,
+        tanque_capacidade DECIMAL(10,2) DEFAULT 1000,
+        alerta_minimo DECIMAL(10,2) DEFAULT 200,
+        galoes_qtd INT DEFAULT 0,
+        galoes_capacidade DECIMAL(10,2) DEFAULT 20,
+        galao_parcial DECIMAL(10,2) DEFAULT 0,
+        ultima_atualizacao VARCHAR(50)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // Ensure the default row exists
+    try {
+      await connection.query('INSERT IGNORE INTO CombustivelEstoque (id, ultima_atualizacao) VALUES (1, ?)', [new Date().toLocaleDateString('pt-BR')]);
+    } catch (e) {
+      console.error('Error inserting CombustivelEstoque default row', e);
+    }
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS CombustivelMovimentacoes (
+        id VARCHAR(50) PRIMARY KEY,
+        tipo VARCHAR(20) NOT NULL,
+        litros DECIMAL(10,2) DEFAULT 0,
+        galoes INT DEFAULT 0,
+        fornecedor VARCHAR(100),
+        nota_fiscal VARCHAR(50),
+        valor_total DECIMAL(10,2),
+        barco_nome VARCHAR(100),
+        operador VARCHAR(100),
+        data_hora DATETIME,
+        detalhes TEXT,
+        diferenca_litros DECIMAL(10,2) DEFAULT 0
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS CombustivelHistorico (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        data VARCHAR(20) NOT NULL,
+        operador VARCHAR(100),
+        barco VARCHAR(100),
+        litros DECIMAL(10,2),
+        detalhes TEXT,
+        tipo VARCHAR(20) DEFAULT 'consumo'
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS CaixaMarinaFechamentos (
         id VARCHAR(50) PRIMARY KEY,
         data VARCHAR(20) NOT NULL UNIQUE,

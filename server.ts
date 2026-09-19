@@ -625,7 +625,7 @@ app.get("/api/admin/users", requireAdminAuth, async (req, res) => {
 
 
 // Route: Check VPS database connection status
-app.get("/api/db/status", requireAdminAuth, async (req, res) => {
+app.get("/api/db/status", async (req, res) => {
   try {
     const status = await getDbStatus();
     res.json(status);

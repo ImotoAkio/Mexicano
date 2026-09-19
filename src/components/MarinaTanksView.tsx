@@ -46,7 +46,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
             galaoParcialLitros: Number(data.galaoParcialLitros ?? 0),
             ultimaAtualizacao: data.ultimaAtualizacao || new Date().toLocaleDateString('pt-BR')
           };
-          saveFuelInventory(merged);
+          saveFuelInventory(merged).catch(console.error);
           setInventory(merged);
         }
       })
@@ -567,11 +567,11 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
   };
 
   // 1. Registrar Compra
-  const handleRegisterPurchase = (e: React.FormEvent) => {
+  const handleRegisterPurchase = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    try {
       const inv = { ...inventory };
       let litrosNum = 0;
       let galoesNum = 0;
@@ -595,9 +595,9 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
         inv.galoesPierQuantidade += galoesNum;
       }
 
-      saveFuelInventory(inv);
+      await saveFuelInventory(inv);
 
-      addFuelHistoryEntry({
+      await addFuelHistoryEntry({
         tipo: purchaseDestino === 'tanque_principal' ? 'compra_tanque' : 'compra_galoes',
         litros: litrosNum,
         galoes: galoesNum || undefined,
@@ -605,7 +605,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
         notaFiscal: purchaseNotaFiscal || 'S/N',
         valorTotal: purchaseValorTotal ? Number(purchaseValorTotal) : undefined,
         operador: operadorNome || 'Gerente',
-        detalhes: purchaseDestino === 'tanque_principal' 
+        detalhes: purchaseDestino === 'tanque_principal'
           ? `Tanque Principal (+${litrosNum}L)`
           : `Galões no Píer (+${galoesNum} galões 20L)`
       });
@@ -617,14 +617,18 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
       setPurchaseNotaFiscal('');
       setPurchaseFornecedor('');
       setPurchaseValorTotal('');
-      setIsSubmitting(false);
 
       if (showToast) showToast('Compra de combustível registrada!', 'success');
-    }, 300);
+    } catch (err: any) {
+      alert("Erro ao registrar compra no banco de dados. " + (err.message || ''));
+      if (showToast) showToast('Ocorreu um erro. Compra registrada apenas offline.', 'warning');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // 2. Registrar Transferência (Encher Galões)
-  const handleRegisterTransfer = (e: React.FormEvent) => {
+  const handleRegisterTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     const litrosNum = Number(transferLitros);
     if (!litrosNum || litrosNum <= 0) {
@@ -639,7 +643,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    try {
       const inv = { ...inventory };
       const galoesGerados = Math.floor(litrosNum / inv.galoesCapacidadeLitros);
       const litrosEfetivosTransferidos = galoesGerados * inv.galoesCapacidadeLitros;
@@ -647,9 +651,9 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
       inv.tanquePrincipalLitros -= litrosEfetivosTransferidos;
       inv.galoesPierQuantidade += galoesGerados;
 
-      saveFuelInventory(inv);
+      await saveFuelInventory(inv);
 
-      addFuelHistoryEntry({
+      await addFuelHistoryEntry({
         tipo: 'transferencia_tanque_pier',
         litros: litrosEfetivosTransferidos,
         galoes: galoesGerados,
@@ -662,14 +666,18 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
       setTransferGaloes('2');
       setTransferLitros('40');
       setTransferObservacao('');
-      setIsSubmitting(false);
 
       if (showToast) showToast(`${galoesGerados} Galões de 20L enviados ao Píer!`, 'success');
-    }, 300);
+    } catch (err: any) {
+      alert("Erro ao registrar transferência no banco de dados. " + (err.message || ''));
+      if (showToast) showToast('Erro de sincronização. Dados salvos offline.', 'warning');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // 3. Registrar Fechamento
-  const handleRegisterClosure = (e: React.FormEvent) => {
+  const handleRegisterClosure = async (e: React.FormEvent) => {
     e.preventDefault();
     const galoesFisicos = Number(closureGaloesFisicosCheios);
     if (isNaN(galoesFisicos) || galoesFisicos < 0) {
@@ -679,16 +687,16 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    try {
       const inv = { ...inventory };
       const galoesEsperados = inv.galoesPierQuantidade;
       const diferencaGaloes = galoesFisicos - galoesEsperados;
       const diferencaLitros = diferencaGaloes * inv.galoesCapacidadeLitros;
 
       inv.galoesPierQuantidade = galoesFisicos;
-      saveFuelInventory(inv);
+      await saveFuelInventory(inv);
 
-      addFuelHistoryEntry({
+      await addFuelHistoryEntry({
         tipo: 'fechamento_turno',
         litros: galoesFisicos * inv.galoesCapacidadeLitros,
         galoes: galoesFisicos,
@@ -702,10 +710,14 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
       refreshData();
       setClosureModalOpen(false);
       setClosureGaloesFisicosCheios('');
-      setIsSubmitting(false);
 
       if (showToast) showToast('Fechamento de turno concluído!', 'success');
-    }, 300);
+    } catch (err: any) {
+      alert("Erro no fechamento do banco de dados. " + (err.message || ''));
+      if (showToast) showToast('Fechamento concluído (offline).', 'warning');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // 4. Controle Avançado - Abertura e Salvar Ajuste Manual
@@ -720,7 +732,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
     setAdvancedModalOpen(true);
   };
 
-  const handleSaveAdvancedAdjustment = (e: React.FormEvent) => {
+  const handleSaveAdvancedAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     const novoTanque = Math.max(0, Number(adjTanqueLitros || 0));
     const novaCapTanque = Math.max(100, Number(adjTanqueCapacidadeMaxima || 1000));
@@ -735,7 +747,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    try {
       const updatedInv: FuelInventory = {
         tanquePrincipalLitros: novoTanque,
         tanqueCapacidadeMaxima: novaCapTanque,
@@ -746,9 +758,9 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
         ultimaAtualizacao: new Date().toLocaleDateString('pt-BR')
       };
 
-      saveFuelInventory(updatedInv);
+      await saveFuelInventory(updatedInv);
 
-      addFuelHistoryEntry({
+      await addFuelHistoryEntry({
         tipo: 'ajuste_manual',
         litros: Math.abs(difTotal),
         galoes: novosGaloes,
@@ -759,10 +771,14 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
 
       refreshData();
       setAdvancedModalOpen(false);
-      setIsSubmitting(false);
 
       if (showToast) showToast('Estoque ajustado e sincronizado no banco de dados!', 'success');
-    }, 300);
+    } catch (err: any) {
+      alert("Erro ao salvar ajuste gerencial no banco de dados. " + (err.message || ''));
+      if (showToast) showToast('Ajuste salvo offline.', 'warning');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Filtro
@@ -777,19 +793,27 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
     );
   });
 
-  const handleDeleteHistoryEntry = (id: string) => {
+  const handleDeleteHistoryEntry = async (id: string) => {
     if (!window.confirm('Excluir este registro do histórico de combustível?')) return;
     const updated = history.filter(h => h.id !== id);
     setHistory(updated);
-    saveFuelHistory(updated);
-    if (showToast) showToast('Registro excluído!', 'info');
+    try {
+      await saveFuelHistory(updated);
+      if (showToast) showToast('Registro excluído do banco de dados!', 'info');
+    } catch (e: any) {
+      if (showToast) showToast('Registro excluído offline.', 'warning');
+    }
   };
 
-  const handleClearAllHistory = () => {
+  const handleClearAllHistory = async () => {
     if (!window.confirm('Tem certeza que deseja limpar todo o histórico de abastecimentos e movimentações?')) return;
     setHistory([]);
-    saveFuelHistory([]);
-    if (showToast) showToast('Histórico limpo com sucesso!', 'success');
+    try {
+      await saveFuelHistory([]);
+      if (showToast) showToast('Histórico limpo no banco de dados com sucesso!', 'success');
+    } catch (e: any) {
+      if (showToast) showToast('Histórico limpo offline.', 'warning');
+    }
   };
 
   const totalEstoqueLitros = getEstoqueTotalLitros(inventory);

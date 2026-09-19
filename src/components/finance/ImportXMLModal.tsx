@@ -59,7 +59,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
   const [planosContas, setPlanosContas] = useState<any[]>([]);
   const [fornecedores, setFornecedores] = useState<any[]>([]);
   const [centrosDeCusto, setCentrosDeCusto] = useState<any[]>([]);
-  const [importEmpresa, setImportEmpresa] = useState('Marina');
+  const [importEmpresa, setImportEmpresa] = useState('Marina Velho Chico');
   const [importContaBancariaId, setImportContaBancariaId] = useState('');
   const [importTipo, setImportTipo] = useState<'receita' | 'despesa'>('receita');
   const [importPlanoContasId, setImportPlanoContasId] = useState('');
@@ -366,7 +366,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
         valor: parsedValor,
         dataVencimento: parsedData,
         status: statusDefault,
-        categoria: categoriaDefault,
+        categoria: categoriaDefault, tipo: "receita",
         descricao: ''
       };
     });
@@ -853,7 +853,7 @@ export default function ImportXMLModal({ isOpen, onClose, onImportSuccess, clien
                   onChange={e => setImportEmpresa(e.target.value)}
                   className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
                 >
-                  <option value="Marina">Marina</option>
+                  <option value="Marina Velho Chico">Marina Velho Chico</option>
                   <option value="Vale Administradora">Vale Administradora</option>
                   <option value="Mexicano">Mexicano</option>
                 </select>

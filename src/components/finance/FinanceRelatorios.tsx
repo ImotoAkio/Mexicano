@@ -11,7 +11,7 @@ export default function FinanceRelatorios() {
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [selectedEmpresas, setSelectedEmpresas] = useState<Record<string, boolean>>({
-    'Marina': true,
+    'Marina Velho Chico': true,
     'Vale Administradora': true,
     'Mexicano': true
   });
@@ -190,7 +190,7 @@ export default function FinanceRelatorios() {
             <Building className="w-4 h-4" /> Empresas
           </h3>
           <div className="flex items-center gap-3">
-            {['Marina', 'Vale Administradora', 'Mexicano'].map(emp => (
+            {['Marina Velho Chico', 'Vale Administradora', 'Mexicano'].map(emp => (
               <label key={emp} className="flex items-center gap-2 text-slate-800 cursor-pointer select-none">
                 <input
                   type="checkbox"

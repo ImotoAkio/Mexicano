@@ -131,7 +131,7 @@ export default function FinanceParcelasFixas() {
           </div>
 
           <div className="flex bg-white rounded-lg p-1 border border-slate-200">
-            {['Todos', 'Marina', 'Vale Administradora', 'Mexicano'].map(emp => (
+            {['Todos', 'Marina Velho Chico', 'Vale Administradora', 'Mexicano'].map(emp => (
               <button
                 key={emp}
                 onClick={() => setEmpresaFiltro(emp)}

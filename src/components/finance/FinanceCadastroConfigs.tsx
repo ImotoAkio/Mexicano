@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 
 export default function FinanceCadastroConfigs() {
   const [empresaFiltro, setEmpresaFiltro] = useState<string>('Todos');
-  const companies = ['Todos', 'Marina', 'Vale Administradora', 'Mexicano'];
+  const companies = ['Todos', 'Marina Velho Chico', 'Vale Administradora', 'Mexicano'];
 
   return (
     <div className="w-full h-full bg-[#f5f5f7] flex flex-col pt-8">
