@@ -1304,7 +1304,15 @@ export default function WhatsAppPage() {
         >
           <Send className="w-4 h-4 text-emerald-600" /> Envio Avulso / Personalizado
         </button>
-        <button 
+        <button
+          onClick={() => setActiveMainTab('extratos')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+            activeMainTab === 'extratos' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-blue-600" /> Gerar Extrato
+        </button>
+        <button
           onClick={() => setActiveMainTab('config')}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
             activeMainTab === 'config' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
