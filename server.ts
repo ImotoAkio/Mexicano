@@ -915,7 +915,7 @@ app.post("/api/config", requireAdminAuth, sensitiveLimiter, async (req, res) => 
 
 
 // ---------------- Fuel Inventory & History Endpoints ----------------
-app.get("/api/fuel/inventory", requireAdminAuth, async (req, res) => {
+app.get("/api/fuel/inventory", requireMarinaManagerOrAdminAuth, async (req, res) => {
   try {
     const inv = await getFuelInventoryFromDb();
     res.json(inv || {
@@ -942,7 +942,7 @@ app.post("/api/fuel/inventory", requireMarinaManagerOrAdminAuth, async (req, res
   }
 });
 
-app.get("/api/fuel/history", requireAdminAuth, async (req, res) => {
+app.get("/api/fuel/history", requireMarinaManagerOrAdminAuth, async (req, res) => {
   try {
     const history = await getFuelHistoryFromDb();
     res.json(history || []);
@@ -961,7 +961,7 @@ app.post("/api/fuel/history", requireMarinaManagerOrAdminAuth, async (req, res) 
   }
 });
 
-app.post("/api/fuel/consume", requireAdminAuth, async (req: any, res: express.Response) => {
+app.post("/api/fuel/consume", requireMarinaManagerOrAdminAuth, async (req: any, res: express.Response) => {
   try {
     const { litros, barcoNome, detalhes } = req.body;
     const operador = req.user?.username || req.user?.nome || 'Operador';
@@ -982,7 +982,7 @@ app.post("/api/fuel/consume", requireAdminAuth, async (req: any, res: express.Re
   }
 });
 
-app.post("/api/fuel/restore", requireAdminAuth, async (req: any, res: express.Response) => {
+app.post("/api/fuel/restore", requireMarinaManagerOrAdminAuth, async (req: any, res: express.Response) => {
   try {
     const { litros, motivo } = req.body;
     const operador = req.user?.username || req.user?.nome || 'Operador';
@@ -1002,7 +1002,7 @@ app.post("/api/fuel/restore", requireAdminAuth, async (req: any, res: express.Re
   }
 });
 
-app.post("/api/fuel/reset", requireAdminAuth, async (req, res) => {
+app.post("/api/fuel/reset", requireMarinaManagerOrAdminAuth, async (req, res) => {
   try {
     await resetFuelDataInDb();
     res.json({ success: true });

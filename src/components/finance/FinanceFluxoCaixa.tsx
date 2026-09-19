@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Filter, MoreHorizontal, Edit2, Trash2, X, FileText,
@@ -28,78 +29,111 @@ function RowActions({
   isPago: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
+          buttonRef.current && !buttonRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
-    if (open) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+
+    function scrollHandler() {
+      // Opt to close on scroll to prevent detached floating behavior
+      setOpen(false);
+    }
+
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+      window.addEventListener('scroll', scrollHandler, true);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', scrollHandler, true);
+    };
   }, [open]);
 
+  const toggleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setMenuPos({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right
+      });
+    }
+    setOpen(!open);
+  };
+
   return (
-    <div className="relative inline-block text-left" ref={menuRef}>
-      
-
-
-<button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+    <div className="relative inline-block text-left">
+      <button
+        ref={buttonRef}
+        onClick={toggleOpen}
         className="p-2 rounded-full text-[#86868b] hover:text-[#1d1d1f] hover:bg-[#e5e5ea] transition-colors"
       >
         <MoreHorizontal className="w-5 h-5" />
       </button>
 
-      <AnimatePresence>
-        {open && (
-           <motion.div
-             initial={{ opacity: 0, scale: 0.95, y: -10 }}
-             animate={{ opacity: 1, scale: 1, y: 0 }}
-             exit={{ opacity: 0, scale: 0.95, y: -10 }}
-             transition={{ duration: 0.15 }}
-             className="absolute right-0 z-[60] mt-1 w-56 bg-white/80 backdrop-blur-3xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-2xl overflow-hidden p-1.5"
-           >
-             {!isPago && (
-               <>
-                 <button
-                    onClick={(e) => { e.stopPropagation(); setOpen(false); onBaixaManual(); }}
-                    className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#008f5d] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
-                 >
-                    <CheckCircle2 className="w-4 h-4" /> Dar Baixa Manual
-                 </button>
-                 <button
-                    onClick={(e) => { e.stopPropagation(); setOpen(false); onGerarLink(); }}
-                    className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#0071e3] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
-                 >
-                    <CreditCard className="w-4 h-4" /> Gerar Link Asaas
-                 </button>
-                 <button
-                    onClick={(e) => { e.stopPropagation(); setOpen(false); onEnviarWhatsApp(); }}
-                    className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#34c759] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
-                 >
-                    <Send className="w-4 h-4" /> Enviar WhatsApp
-                 </button>
-                 <div className="h-[1px] bg-black/[0.05] my-1 mx-2" />
-               </>
-             )}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {open && (
+            <div
+              ref={menuRef}
+              style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
+            >
+              <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+            transition={{ duration: 0.15 }}
+            className="w-56 bg-white/80 backdrop-blur-3xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-2xl overflow-hidden p-1.5 origin-top-right"
+          >
+            {!isPago && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpen(false); onBaixaManual(); }}
+                  className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#008f5d] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Dar Baixa Manual
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpen(false); onGerarLink(); }}
+                  className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#0071e3] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+                >
+                  <CreditCard className="w-4 h-4" /> Gerar Link Asaas
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpen(false); onEnviarWhatsApp(); }}
+                  className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#34c759] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" /> Enviar WhatsApp
+                </button>
+                <div className="h-[1px] bg-black/[0.05] my-1 mx-2" />
+              </>
+            )}
 
-             <button
-                onClick={(e) => { e.stopPropagation(); setOpen(false); onEdit(); }}
-                className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#0071e3] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
-             >
-                <Edit2 className="w-4 h-4" /> Editar Lançamento
-             </button>
-             <button
-                onClick={(e) => { e.stopPropagation(); setOpen(false); onDelete(); }}
-                className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#e30000] hover:bg-[#e30000] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
-             >
-                <Trash2 className="w-4 h-4" /> Excluir Lançamento
-             </button>
-           </motion.div>
-        )}
-      </AnimatePresence>
+            <button
+              onClick={(e) => { e.stopPropagation(); setOpen(false); onEdit(); }}
+              className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#0071e3] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+            >
+              <Edit2 className="w-4 h-4" /> Editar Lançamento
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setOpen(false); onDelete(); }}
+              className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#e30000] hover:bg-[#e30000] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" /> Excluir Lançamento
+            </button>
+          </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }
@@ -351,9 +385,94 @@ export default function FinanceFluxoCaixa() {
   };
 
   const handleBaixaManual = async (t: any) => {
-    alert(`Baixa manual confirmada para ${t.descricao}. O backend não está ativado.`);
-    // Real implementation: POST to /api/financeiro/baixa com { id: t.id }
+    if (!window.confirm(`Confirma a baixa manual de: ${t.descricao}?`)) return;
+
+    // YYYY-MM-DD format for dataPagamento usually expected
+    const dataPagamento = new Date().toISOString().split('T')[0];
+    const updated = { ...t, status: 'pago', dataPagamento };
+
+    // Optimistic UI update
+    setTransacoes(prev => prev.map(item => item.id === t.id ? updated : item));
+
+    try {
+      const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+      const res = await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ action: 'upsert', data: updated })
+      });
+      if (!res.ok) {
+        throw new Error("Erro ao salvar baixa manual");
+      } else {
+        fetchTransacoes();
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro ao realizar baixa manual no banco de dados.");
+      // Rollback on error
+      setTransacoes(prev => prev.map(item => item.id === t.id ? t : item));
+    }
   };
+
+  const handleGerarLink = async (t: any) => {
+    try {
+      const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+      const res = await fetch(`/api/financeiro/transacoes/${t.id}/gerar-asaas`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ billingType: 'PIX' }) // default to PIX
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert("Link gerado com sucesso! URL Copiada.");
+        navigator.clipboard.writeText(data.asaasPaymentUrl);
+        fetchTransacoes();
+      } else {
+        alert(data.message || "Erro ao gerar link Asaas.");
+      }
+    } catch(e: any) {
+      alert("Erro ao conectar com API.");
+    }
+  };
+
+  const handleEnviarWhatsApp = (t: any) => {
+    alert("Para enviar WhatsApp, certifique-se de que o sistema de mensagens está conectado (Chat Interno).");
+    // Expand later for full whatsapp integration similar to InternalChat / WhatsAppPage
+  };
+
+  const handleEdit = (t: any) => {
+    alert("Para editar um lançamento, exclua-o e crie novamente, ou abra na listagem (Lancamentos).");
+    // Not implemented fully inside FluxoCaixa due to lack of initialData in drawer props
+  };
+
+  const handleDelete = async (t: any) => {
+    if (!window.confirm("Deseja mesmo excluir este lançamento?")) return;
+    try {
+      const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+      const res = await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ action: 'delete', data: { id: t.id } })
+      });
+      if (res.ok) {
+        setTransacoes(prev => prev.filter(x => x.id !== t.id));
+      } else {
+        alert("Erro ao excluir lançamento.");
+      }
+    } catch(e) {
+      alert("Erro de conexão.");
+    }
+  };
+
 
   const filteredTransacoes = transacoes.filter(t => {
     // 1. Empresa
@@ -647,11 +766,11 @@ export default function FinanceFluxoCaixa() {
                         <td className="px-4 py-3 whitespace-nowrap text-right">
                           <RowActions
                             isPago={t.status === 'pago'}
-                            onEdit={() => console.log('Edit', t)}
-                            onDelete={() => console.log('Delete', t)}
+                            onEdit={() => handleEdit(t)}
+                            onDelete={() => handleDelete(t)}
                             onBaixaManual={() => handleBaixaManual(t)}
-                            onGerarLink={() => console.log('Link', t)}
-                            onEnviarWhatsApp={() => console.log('Wpp', t)}
+                            onGerarLink={() => handleGerarLink(t)}
+                            onEnviarWhatsApp={() => handleEnviarWhatsApp(t)}
                           />
                         </td>
                       </motion.tr>
