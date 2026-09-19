@@ -12,11 +12,12 @@ interface FinanceLancamentoDrawerProps {
   open: boolean;
   onClose: () => void;
   onSave: (lancamentos: Partial<TransacaoFinanceira>[]) => void;
+  editingItem?: Partial<TransacaoFinanceira> | null;
   defaultEmpresa?: string;
   clientes?: any[];
   fornecedores?: any[];
   planosContas?: any[];
-  
+
   centrosCusto?: any[];
   contasBancarias?: any[];
   embarcacoes?: any[];
@@ -26,11 +27,12 @@ export default function FinanceLancamentoDrawer({
   open,
   onClose,
   onSave,
+  editingItem = null,
   defaultEmpresa = 'Todos',
   clientes = [],
   fornecedores = [],
   planosContas = [],
-  
+
   centrosCusto = [],
   contasBancarias = [],
   embarcacoes = []
@@ -58,24 +60,47 @@ export default function FinanceLancamentoDrawer({
   // Reset form when drawer opens
   useEffect(() => {
     if (open) {
-      setTipo('receita');
-      setEmpresa(defaultEmpresa === 'Todos' ? 'Mexicano' : defaultEmpresa);
-      setValor('');
-      setVencimento(new Date().toISOString().split('T')[0]);
-      setCategoria('');
-      setPlanoContasId('');
-      setCentroCustoId('');
-      setDescricao('');
-      setClienteId('');
-      setFornecedorId('');
-      setEmbarcacaoId('');
-      setContaBancariaId('');
-      setIsRepetir(false);
-      setModoRepeticao('parcelado');
-      setQtdParcelas(2);
-      setFrequencia('mensal');
+      if (editingItem) {
+        setTipo(editingItem.tipo as 'receita' | 'despesa' || 'receita');
+        setEmpresa(editingItem.empresa || (defaultEmpresa === 'Todos' ? 'Mexicano' : defaultEmpresa));
+
+        let numFormat = (Number(editingItem.valor) || 0).toFixed(2).replace('.', ',');
+        numFormat = numFormat.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        setValor(numFormat);
+
+        setVencimento(editingItem.dataVencimento || new Date().toISOString().split('T')[0]);
+        setCategoria(editingItem.categoria || '');
+        setPlanoContasId(editingItem.planoContasId || '');
+        setCentroCustoId(editingItem.centroCustoId || '');
+        setDescricao(editingItem.descricao || '');
+        setClienteId(editingItem.clienteId || '');
+        setFornecedorId(editingItem.fornecedorId || '');
+        setEmbarcacaoId(editingItem.embarcacaoId || '');
+        setContaBancariaId(editingItem.contaBancariaId || '');
+        setIsRepetir(false);
+        setModoRepeticao('parcelado');
+        setQtdParcelas(2);
+        setFrequencia('mensal');
+      } else {
+        setTipo('receita');
+        setEmpresa(defaultEmpresa === 'Todos' ? 'Mexicano' : defaultEmpresa);
+        setValor('');
+        setVencimento(new Date().toISOString().split('T')[0]);
+        setCategoria('');
+        setPlanoContasId('');
+        setCentroCustoId('');
+        setDescricao('');
+        setClienteId('');
+        setFornecedorId('');
+        setEmbarcacaoId('');
+        setContaBancariaId('');
+        setIsRepetir(false);
+        setModoRepeticao('parcelado');
+        setQtdParcelas(2);
+        setFrequencia('mensal');
+      }
     }
-  }, [open, defaultEmpresa]);
+  }, [open, defaultEmpresa, editingItem]);
 
   const rawValue = parseFloat(valor.replace(/\./g,'').replace(',','.')) || 0;
 
@@ -116,7 +141,17 @@ export default function FinanceLancamentoDrawer({
       return;
     }
 
-    if (isRepetir && modoRepeticao === 'parcelado' && parcelas.length > 0) {
+    if (editingItem) {
+      onSave([{
+        ...editingItem,
+        tipo, empresa, valor: rawValue, dataVencimento: vencimento,
+        categoria: "", planoContasId, centroCustoId, descricao,
+        clienteId: tipo === 'receita' ? clienteId : undefined,
+        fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
+        embarcacaoId, contaBancariaId,
+        status: editingItem.status || 'lancado'
+      }]);
+    } else if (isRepetir && modoRepeticao === 'parcelado' && parcelas.length > 0) {
       const lancamentos = parcelas.map(p => ({
         tipo,
         empresa,

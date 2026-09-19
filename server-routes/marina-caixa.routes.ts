@@ -38,7 +38,7 @@ async function handleUpsert(item: any) {
   await (currentPool as any).query(
     `INSERT INTO TransacoesFinanceiras (
       id, tipo, categoria, descricao, valor, dataVencimento, dataPagamento, status, clienteId, embarcacaoId, empresa, createdAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Marina', ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Marina Velho Chico', ?)
     ON DUPLICATE KEY UPDATE
       descricao = VALUES(descricao),
       valor = VALUES(valor),

@@ -1,0 +1,1211 @@
+import { fetchWithAuth, getAuthHeaders, getAdminToken } from '../utils/apiAuth';
+import React, { useState, useEffect, useRef } from 'react';
+import { reservationDB, boatDB, clientDB } from '../db';
+import { Embarcacao, Cliente, Reserva, TransacaoFinanceira } from '../types';
+import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
+import { toPng } from 'html-to-image';
+// @ts-ignore
+import logoUrl from '../assets/images/vale_nauticos_logo_1780256879963.png';
+import { ShieldAlert, Smartphone, UserCheck, UserX, QrCode, LogOut, CheckCircle, MessageSquare, Calendar as CalendarIcon, Check, AlertTriangle, 
+  RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet, Paperclip, FileText, Users, Plus, Trash2, Play, Pause, X, CheckSquare, Square, File, Image as ImageIcon, Sparkles, Filter
+} from 'lucide-react';
+
+const formatFirstName = (fullName: string): string => {
+  if (!fullName) return '';
+  const firstName = fullName.trim().split(' ')[0];
+  if (!firstName) return '';
+  return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+};
+
+const getQuando = (targetDateStr: string): string => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const [y, m, d] = targetDateStr.split('-').map(Number);
+    const target = new Date(y, m - 1, d);
+    target.setHours(0, 0, 0, 0);
+    
+    const diffTime = target.getTime() - today.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return 'hoje';
+    } else if (diffDays === 1) {
+      return 'amanhã';
+    } else {
+      return `no dia ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+    }
+  } catch (e) {
+    return 'amanhã';
+  }
+};
+
+
+const BLOQUEIO_VARIATIONS_DIA = [
+  "Oi, {nome}! 😊\n\nEstou tentando gerar a *OS* para a marina descer sua embarcação, mas o sistema *não permite* a emissão porque identificou valores em aberto no cadastro.\n\nComo sua reserva é *hoje*, você consegue verificar isso com urgência? Se já pagou, envie o comprovante para conferirmos e tentarmos liberar a OS a tempo. 👍",
+  "Olá, {nome}! Tudo bem? ⚓\n\nFui emitir a *Ordem de Serviço* para a equipe da marina preparar a sua embarcação para hoje, mas o sistema bloqueou indicando uma pendência financeira no cadastro.\n\nComo o seu passeio é *hoje*, consegue dar uma olhadinha nisso para nós? Se o pagamento já foi realizado, manda o comprovante aqui para liberarmos a sua OS o quanto antes! 👍",
+  "Oi, {nome}! 😉\n\nJá estamos organizando os atendimentos de *hoje*, mas ao tentar gerar a *OS* para descer seu barco, o sistema travou a emissão por conta de um valor em aberto.\n\nComo queremos deixar tudo pronto para o seu passeio, você consegue verificar para a gente? Caso já tenha feito o pagamento, basta nos enviar o comprovante por aqui. 👍",
+  "Olá, {nome}! 😊\n\nPassando para avisar que tentei emitir a *OS de descida* da sua embarcação para hoje, porém o sistema não liberou devido a uma pendência no seu cadastro.\n\nComo sua reserva é para *hoje*, precisamos regularizar isso com urgência. Se já efetuou o pagamento, nos mande o comprovante para fazermos a liberação manual da OS! 👍",
+  "Oi, {nome}! Tudo joia? 🚤\n\nEstamos na fase de liberação das *Ordens de Serviço* da marina para hoje, mas constou um impedimento no sistema referente a valores pendentes no seu cadastro.\n\nVocê consegue conferir para nós? Se o pagamento já tiver sido feito, nos envie o comprovante agora para podermos liberar a OS sem atrasar seu atendimento! 👍",
+  "Olá, {nome}! 😊\n\nTudo pronto para o seu passeio de *hoje*? Só tive um probleminha aqui: ao tentar gerar a *OS* para descer a embarcação, o sistema bloqueou por pendência financeira.\n\nPara garantirmos a liberação a tempo, você pode dar uma checada? Se já pagou, é só enviar o comprovante aqui na conversa. Obrigado! 👍",
+  "Oi, {nome}! ⚓\n\nEstava gerando as *OSs* do dia para a marinharia preparar os barcos, mas o sistema não permitiu a emissão do seu devido a um débito em aberto no cadastro.\n\nComo a sua reserva é *hoje*, peço que verifique isso quanto antes. Caso já tenha realizado o pagamento, mande o comprovante por aqui para tentarmos a liberação imediata! 👍",
+  "Olá, {nome}! 😉\n\nPara deixar sua embarcação pronta para descer *hoje*, fui rodar a *Ordem de Serviço*, mas apareceu uma trava no sistema por conta de um valor pendente.\n\nVocê consegue dar uma olhada nisso pra gente? Se o pagamento já foi feito, manda o comprovante por aqui que a gente já checa e tenta liberar sua OS! 👍",
+  "Oi, {nome}! 😊\n\nSua reserva é *hoje* e já estamos preparando a movimentação das embarcações! Porém, o sistema não autorizou a geração da *OS* porque acusou pendência no cadastro.\n\nVocê pode verificar para nós por gentileza? Se o comprovante já estiver em mãos, manda aqui para agilizarmos a autorização da sua descida! 👍",
+  "Olá, {nome}! Tudo bem? 🚤\n\nEstou no sistema tentando emitir a *OS* para a marina descer seu barco para a reserva de *hoje*, mas constou um aviso de bloqueio por valor em aberto.\n\nComo o horário está próximo, você consegue conferir com urgência? Se já foi pago, é só mandar o comprovante aqui para conferirmos e liberarmos a OS a tempo. 👍"
+];
+
+const BLOQUEIO_VARIATIONS_VESPERA = [
+  "Oi, {nome}! 😊 Tudo bem?\n\nSua reserva está marcada para {data}.\n\nEstamos fazendo uma conferência rápida nos cadastros e apareceu um valor pendente no seu. Você consegue verificar para nós? Caso já tenha pago, é só mandar o comprovante por aqui.\n\nAssim deixamos tudo certinho para a sua reserva! 👍",
+  "Olá, {nome}! Tudo joia? ⚓\n\nSua reserva para {data} já está no nosso radar! Durante a conferência dos cadastros de amanhã, notamos um valor pendente no seu usuário.\n\nConsegue dar uma olhada para nós? Se já tiver pago, nos envie o comprovante por aqui para deixarmos a sua liberação 100% pronta! 👍",
+  "Oi, {nome}! 😊\n\nPassando para lembrar que sua reserva é {data}. Tivemos uma notificação de pendência no seu cadastro ao revisar as descidas.\n\nVocê consegue conferir para a gente? Caso o pagamento já tenha sido realizado, basta mandar o comprovante aqui na conversa. Obrigado! 👍",
+  "Olá, {nome}! Tudo bem? 🚤\n\nJá estamos adiantando a organização para {data}, mas apareceu um aviso de pendência financeira no seu cadastro.\n\nVocê pode dar uma checada? Se já estiver pago, envie o comprovante por aqui para deixarmos a Ordem de Serviço liberada antecipadamente! 👍",
+  "Oi, {nome}! 😉\n\nTudo certo para a sua reserva do dia {data}? Fazendo a conferência prévia, identificamos um valor pendente na sua ficha.\n\nVocê consegue verificar por favor? Se o pagamento já foi feito, mande o comprovante aqui para deixarmos tudo ajustado a tempo! 👍",
+  "Olá, {nome}! ⚓\n\nSua reserva para {data} se aproxima! Durante a nossa verificação interna, o sistema indicou uma pendência em seu cadastro.\n\nPoderia verificar para nós? Se já realizou o pagamento, envie o comprovante por aqui para evitarmos qualquer imprevisto na sua descida! 👍",
+  "Oi, {nome}! 😊\n\nEstamos preparando os agendamentos do dia {data} e vimos que há um valor em aberto registrado no seu cadastro.\n\nVocê consegue conferir? Se o pagamento já foi concluído, é só mandar o comprovante para nós que atualizamos tudo por aqui. 👍",
+  "Olá, {nome}! Tudo joia? 😉\n\nAmanhã temos a sua reserva marcada ({data})! Ao rodar a pré-conferência das embarcações, constou uma pendência cadastral.\n\nVocê consegue nos ajudar verificando esse ponto? Caso já tenha pago, envie o comprovante aqui para deixarmos sua descida autorizada! 👍",
+  "Oi, {nome}! 🚤\n\nConferindo os cadastros das reservas de {data}, notamos um lançamento pendente em seu nome.\n\nPode dar uma olhada para nós? Se o comprovante já estiver com você, manda por aqui para deixarmos tudo alinhado para a sua navegação! 👍",
+  "Olá, {nome}! 😊\n\nSua navegação para {data} está chegando! Ao verificar as fichas de atendimento, o sistema apontou um valor em aberto.\n\nConsegue checar pra gente? Se o pagamento já foi efetuado, por favor mande o comprovante por aqui para garantirmos sua liberação sem atropelos! 👍"
+];
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const calculateTransactionInterest = (t: TransacaoFinanceira) => {
+  const originalVal = Number(t.valor) || 0;
+  if (t.status === 'pago' || !t.dataVencimento) {
+    return { daysOverdue: 0, interest: 0, total: originalVal };
+  }
+  const [y, m, d] = t.dataVencimento.split('-').map(Number);
+  const dueDate = new Date(y, m - 1, d);
+  dueDate.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diffTime = today.getTime() - dueDate.getTime();
+  const daysOverdue = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  if (daysOverdue <= 0) {
+    return { daysOverdue: 0, interest: 0, total: originalVal };
+  }
+
+  const multa = originalVal * 0.02;
+  const jurosDiarios = originalVal * 0.00033 * daysOverdue;
+  const interest = multa + jurosDiarios;
+  return { daysOverdue, interest, total: originalVal + interest };
+};
+
+export default function WhatsAppPage() {
+  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'config'>('confirmations');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const token = getAdminToken();
+    if (!token) return;
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+
+    const keys = [
+      'whatsapp_conf_template1',
+      'whatsapp_conf_template2',
+      'whatsapp_custom_templates',
+      'whatsapp_bloqueio_template_vespera',
+      'whatsapp_bloqueio_template_dia',
+      'whatsapp_bloqueio_counter',
+      'whatsapp_cal_template'
+    ].join(',');
+
+    fetch(`/api/config?chaves=${keys}`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (data.configs) {
+          if (data.configs.whatsapp_conf_template1) {
+            setConfTemplate1(data.configs.whatsapp_conf_template1);
+            localStorage.setItem('whatsapp_conf_template1', data.configs.whatsapp_conf_template1);
+          }
+          if (data.configs.whatsapp_conf_template2) {
+            setConfTemplate2(data.configs.whatsapp_conf_template2);
+            localStorage.setItem('whatsapp_conf_template2', data.configs.whatsapp_conf_template2);
+          }
+          if (data.configs.whatsapp_custom_templates) {
+            try {
+              const parsed = JSON.parse(data.configs.whatsapp_custom_templates);
+              setCustomTemplates(parsed);
+              localStorage.setItem('whatsapp_custom_templates', data.configs.whatsapp_custom_templates);
+            } catch (e) {}
+          }
+          if (data.configs.whatsapp_bloqueio_template_vespera) {
+            setBloqueioTemplateVespera(data.configs.whatsapp_bloqueio_template_vespera);
+            localStorage.setItem('whatsapp_bloqueio_template_vespera', data.configs.whatsapp_bloqueio_template_vespera);
+          }
+          if (data.configs.whatsapp_bloqueio_template_dia) {
+            setBloqueioTemplateDia(data.configs.whatsapp_bloqueio_template_dia);
+            localStorage.setItem('whatsapp_bloqueio_template_dia', data.configs.whatsapp_bloqueio_template_dia);
+          }
+          if (data.configs.whatsapp_bloqueio_counter) {
+            localStorage.setItem('whatsapp_bloqueio_counter', data.configs.whatsapp_bloqueio_counter);
+          }
+          if (data.configs.whatsapp_cal_template) {
+            setCalMessageTemplate(data.configs.whatsapp_cal_template);
+            localStorage.setItem('whatsapp_cal_template', data.configs.whatsapp_cal_template);
+          }
+        }
+      })
+      .catch(console.warn);
+  }, []);
+
+
+  const [confTemplate1, setConfTemplate1] = useState(() => {
+    return localStorage.getItem('whatsapp_conf_template1') || "Olá, *{cliente}*! 😃\nPosso confirmar sua saída *{quando}* com a embarcação *{barco}*?";
+  });
+
+  const [confTemplate2, setConfTemplate2] = useState(() => {
+    return localStorage.getItem('whatsapp_conf_template2') || "⚠️ *ATENÇÃO: DADOS OBRIGATÓRIOS PARA NAVEGAÇÃO!* ⚠️\nCaso o passeio esteja confirmado, por favor responda com:\n\n📍 *Destino:*\n⏰ *Previsão de saída às:*\n⏰ *Previsão de chegada às:*\n👥 *Número de pessoas a bordo:*\n\n🚨 *A Marinha exige o Plano de Navegação prévio. Com esses dados, adiantaremos o preenchimento obrigatório para sua segurança!*";
+  });
+
+  const [showTemplatesEditor, setShowTemplatesEditor] = useState(false);
+
+  const handleSaveConfTemplate1 = (val: string) => {
+    setConfTemplate1(val);
+    localStorage.setItem('whatsapp_conf_template1', val);
+    // Persist to centralized database
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template1: val }) }).catch(console.warn);
+  };
+
+  const handleSaveConfTemplate2 = (val: string) => {
+    setConfTemplate2(val);
+    localStorage.setItem('whatsapp_conf_template2', val);
+    // Persist to centralized database
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template2: val }) }).catch(console.warn);
+  };
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  };
+
+  // --- WHATSAPP CONFIG LOGIC ---
+  // WhatsApp States
+  const [activeTab, setActiveTab] = useState<'conta' | 'contatos' | 'grupos'>('conta');
+  const [waStatus, setWaStatus] = useState<string>('loading');
+  const [waQrCode, setWaQrCode] = useState<string | null>(null);
+  const [isFetchingWaStatus, setIsFetchingWaStatus] = useState(false);
+
+  // WhatsApp Contacts Sync States
+  const [clients, setClients] = useState<Cliente[]>([]);
+  const setClientsFiltered = (allClients: Cliente[]) => {
+    setClients(allClients.filter(c => !c.nome.toLowerCase().includes('vila nautica')));
+  };
+  const [whatsAppContacts, setWhatsAppContacts] = useState<any[]>([]);
+  const [isFetchingContacts, setIsFetchingContacts] = useState(false);
+  const [activeContactsTab, setActiveContactsTab] = useState<'todos' | 'sem_telefone' | 'vinculados'>('sem_telefone');
+  const [clientSearch, setClientSearch] = useState('');
+  const [activeManualSyncClientId, setActiveManualSyncClientId] = useState<string | null>(null);
+  const [contactQuery, setContactQuery] = useState('');
+
+  
+  // WhatsApp Groups Sync States
+  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [isFetchingGroups, setIsFetchingGroups] = useState(false);
+  const [mappingState, setMappingState] = useState<Record<string, string>>({});
+  const [boats, setBoats] = useState<any[]>([]);
+
+  
+
+  // --- CUSTOM MESSAGES LOGIC ---
+  const [customTargetType, setCustomTargetType] = useState<'clients' | 'groups' | 'custom_number'>('clients');
+  const [customClientFilterBoatId, setCustomClientFilterBoatId] = useState<string>('all');
+  const [customSearch, setCustomSearch] = useState('');
+  
+  // Selected IDs
+  const [customSelectedClientIds, setCustomSelectedClientIds] = useState<string[]>([]);
+  const [customSelectedGroupIds, setCustomSelectedGroupIds] = useState<string[]>([]);
+  const [customManualNumbers, setCustomManualNumbers] = useState<string>('');
+  
+  // Message Content & Media
+  const [customText, setCustomText] = useState('');
+  const [customMedia, setCustomMedia] = useState<{ base64: string; mimetype: string; fileName: string } | null>(null);
+  
+  // Templates
+  const [customTemplates, setCustomTemplates] = useState<Array<{ id: string; title: string; text: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('whatsapp_custom_templates');
+      return saved ? JSON.parse(saved) : [
+        { id: '1', title: 'Comunicado Geral', text: 'Prezado(a) *{cliente}*,\n\nInformamos que ...\n\nQualquer dúvida estamos à disposição! ⚓' },
+        { id: '2', title: 'Aviso de Manutenção', text: 'Atenção cotistas da embarcação *{barco}* ⚠️\n\nA embarcação passará por manutenção preventiva no período de ...\n\nAgradecemos a compreensão!' }
+      ];
+    } catch {
+      return [];
+    }
+  });
+  const [newTemplateTitle, setNewTemplateTitle] = useState('');
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+
+  // Send Execution & Delay
+  const [customDelaySeconds, setCustomDelaySeconds] = useState<number>(3);
+  const [customSendingStatus, setCustomSendingStatus] = useState<'idle' | 'sending' | 'paused' | 'completed'>('idle');
+  const [customSendQueue, setCustomSendQueue] = useState<Array<{
+    id: string;
+    name: string;
+    target: string;
+    status: 'pending' | 'sending' | 'success' | 'error';
+    error?: string;
+    clientObj?: Cliente;
+  }>>([]);
+  const cancelSendingRef = useRef<boolean>(false);
+
+  const handleSaveCustomTemplate = () => {
+    if (!newTemplateTitle.trim() || !customText.trim()) {
+      showToast('Preencha o título e o texto da mensagem.', 'error');
+      return;
+    }
+    const newT = { id: Date.now().toString(), title: newTemplateTitle.trim(), text: customText };
+    const updated = [...customTemplates, newT];
+    setCustomTemplates(updated);
+    localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_custom_templates: JSON.stringify(updated) }) }).catch(console.warn);
+    setNewTemplateTitle('');
+    setShowSaveTemplateModal(false);
+    showToast('Modelo salvo com sucesso!');
+  };
+
+  const handleDeleteCustomTemplate = (id: string) => {
+    const updated = customTemplates.filter(t => t.id !== id);
+    setCustomTemplates(updated);
+    localStorage.setItem('whatsapp_custom_templates', JSON.stringify(updated));
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_custom_templates: JSON.stringify(updated) }) }).catch(console.warn);
+    showToast('Modelo removido.');
+  };
+
+  const handleCustomMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('O arquivo deve ter no máximo 10MB.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const base64 = evt.target?.result as string;
+      setCustomMedia({
+        base64,
+        mimetype: file.type,
+        fileName: file.name
+      });
+      showToast(`Arquivo "${file.name}" anexado!`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleClearCustomMedia = () => {
+    setCustomMedia(null);
+    showToast('Anexo removido.');
+  };
+
+  const handleInsertVariable = (variableStr: string) => {
+    setCustomText(prev => prev + variableStr);
+  };
+
+  // Helper lists for custom selection
+  const filteredCustomClients = clients.filter(c => {
+    if (!c.telefone) return false;
+    if (customSearch) {
+      const s = customSearch.toLowerCase();
+      const matchName = c.nome.toLowerCase().includes(s);
+      const matchPhone = c.telefone.includes(s);
+      if (!matchName && !matchPhone) return false;
+    }
+    if (customClientFilterBoatId !== 'all') {
+      const boat = boats.find(b => b.id === customClientFilterBoatId);
+      if (!boat || !boat.cotistas?.some((cot: any) => cot.clienteId === c.id)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const handleToggleSelectClient = (id: string) => {
+    setCustomSelectedClientIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAllClients = () => {
+    const visibleIds = filteredCustomClients.map(c => c.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => customSelectedClientIds.includes(id));
+    if (allSelected) {
+      setCustomSelectedClientIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      const combined = new Set([...customSelectedClientIds, ...visibleIds]);
+      setCustomSelectedClientIds(Array.from(combined));
+    }
+  };
+
+  // Groups selection helper
+  const allAvailableGroupsList = () => {
+    const list: Array<{ id: string; name: string; boatName?: string }> = [];
+    const addedIds = new Set<string>();
+
+    // Mapped boat groups
+    boats.forEach(b => {
+      if (b.whatsappGroupId && !addedIds.has(b.whatsappGroupId)) {
+        addedIds.add(b.whatsappGroupId);
+        list.push({
+          id: b.whatsappGroupId,
+          name: `Grupo ${b.nome} (${b.numero ? 'M' + b.numero : 'Lancha'})`,
+          boatName: b.nome
+        });
+      }
+    });
+    // Fetched groups from VPS
+    availableGroups.forEach(g => {
+      const gid = g?.id || g?.jid;
+      if (gid && !addedIds.has(gid)) {
+        addedIds.add(gid);
+        list.push({
+          id: gid,
+          name: g.subject || g.name || gid
+        });
+      }
+    });
+    return list;
+  };
+
+  const filteredCustomGroups = allAvailableGroupsList().filter(g => {
+    if (!customSearch) return true;
+    const s = customSearch.toLowerCase();
+    return g.name.toLowerCase().includes(s) || g.id.toLowerCase().includes(s);
+  });
+
+  const handleToggleSelectGroup = (id: string) => {
+    setCustomSelectedGroupIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAllGroups = () => {
+    const visibleIds = filteredCustomGroups.map(g => g.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => customSelectedGroupIds.includes(id));
+    if (allSelected) {
+      setCustomSelectedGroupIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      const combined = new Set([...customSelectedGroupIds, ...visibleIds]);
+      setCustomSelectedGroupIds(Array.from(combined));
+    }
+  };
+
+  const handlePrepareCustomSend = () => {
+    if (!customText.trim() && !customMedia) {
+      showToast('Digite uma mensagem ou selecione um anexo.', 'error');
+      return;
+    }
+
+    const queue: Array<{ id: string; name: string; target: string; status: 'pending' | 'sending' | 'success' | 'error'; clientObj?: Cliente }> = [];
+
+    if (customTargetType === 'clients') {
+      if (customSelectedClientIds.length === 0) {
+        showToast('Selecione pelo menos um cliente com WhatsApp.', 'error');
+        return;
+      }
+      for (const clientId of customSelectedClientIds) {
+        const client = clients.find(c => c.id === clientId);
+        if (client && client.telefone) {
+          queue.push({
+            id: client.id,
+            name: client.nome,
+            target: client.telefone,
+            status: 'pending',
+            clientObj: client
+          });
+        }
+      }
+    } else if (customTargetType === 'groups') {
+      if (customSelectedGroupIds.length === 0) {
+        showToast('Selecione pelo menos um grupo de WhatsApp.', 'error');
+        return;
+      }
+      for (const groupId of customSelectedGroupIds) {
+        const groupInfo = allAvailableGroupsList().find(g => g.id === groupId);
+        queue.push({
+          id: groupId,
+          name: groupInfo ? groupInfo.name : groupId,
+          target: groupId,
+          status: 'pending'
+        });
+      }
+    } else if (customTargetType === 'custom_number') {
+      const numbers = customManualNumbers
+        .split(/[\n,;]+/)
+        .map(n => n.trim())
+        .filter(n => n.length >= 8);
+      if (numbers.length === 0) {
+        showToast('Digite ao menos um número válido.', 'error');
+        return;
+      }
+      numbers.forEach((num, idx) => {
+        queue.push({
+          id: `manual_${idx}`,
+          name: `Contato (${num})`,
+          target: num,
+          status: 'pending'
+        });
+      });
+    }
+
+    if (queue.length === 0) {
+      showToast('Nenhum destinatário válido encontrado.', 'error');
+      return;
+    }
+
+    setCustomSendQueue(queue);
+    cancelSendingRef.current = false;
+    setCustomSendingStatus('sending');
+    startSendingCustomQueue(queue);
+  };
+
+  const startSendingCustomQueue = async (initialQueue: typeof customSendQueue) => {
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+
+    for (let i = 0; i < initialQueue.length; i++) {
+      if (cancelSendingRef.current) {
+        showToast('Envio de mensagens cancelado pelo usuário.', 'error');
+        setCustomSendingStatus('idle');
+        return;
+      }
+
+      const item = initialQueue[i];
+
+      // Build custom message variables
+      let finalMsg = customText;
+      if (item.clientObj) {
+        const clientFirstName = formatFirstName(item.clientObj.nome);
+        const clientBoats = boats.filter(b => b.cotistas?.some((c: any) => c.clienteId === item.clientObj?.id));
+        const boatName = clientBoats.map(b => b.nome).join(', ') || 'Vila Náutica';
+        finalMsg = finalMsg
+          .replace(/{cliente}/g, item.clientObj.nome)
+          .replace(/{primeiro_nome}/g, clientFirstName)
+          .replace(/{barco}/g, boatName);
+      } else {
+        finalMsg = finalMsg
+          .replace(/{cliente}/g, item.name)
+          .replace(/{primeiro_nome}/g, item.name.split(' ')[0])
+          .replace(/{barco}/g, 'Vila Náutica');
+      }
+
+      setCustomSendQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'sending' } : q));
+
+      try {
+        const res = await fetch('/api/whatsapp/send-custom', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            number: item.target,
+            text: finalMsg,
+            media: customMedia?.base64,
+            mimetype: customMedia?.mimetype,
+            fileName: customMedia?.fileName
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || 'Erro no envio');
+        }
+
+        setCustomSendQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'success' } : q));
+      } catch (err: any) {
+        setCustomSendQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', error: err.message } : q));
+      }
+
+      // Delay between sending items
+      if (i < initialQueue.length - 1) {
+        await sleep(customDelaySeconds * 1000);
+      }
+    }
+
+    setCustomSendingStatus('completed');
+    showToast('Processo de disparo concluído!', 'success');
+  };
+
+  const handleStopCustomSend = () => {
+    cancelSendingRef.current = true;
+    setCustomSendingStatus('idle');
+    showToast('Interrompendo envios...');
+  };
+
+  // --- CONFIRMATIONS LOGIC ---
+  const [confDate, setConfDate] = useState(() => {
+    const today = new Date();
+    const localStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    return localStr;
+  });
+  
+  const [confReservations, setConfReservations] = useState<Reserva[]>([]);
+  const [confSearch, setConfSearch] = useState('');
+  const [confFilter, setConfFilter] = useState<'all' | 'with_contact' | 'without_contact'>('all');
+  const [confSelectedIds, setConfSelectedIds] = useState<string[]>([]);
+  const [confSendingStatus, setConfSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
+  const [confSendResults, setConfSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
+
+  useEffect(() => {
+    const res = reservationDB.getAll().filter(r => r.data === confDate && (r.status === 'agendado' || r.status === 'confirmado'));
+    setConfReservations(res);
+    
+    // Auto-seleciona apenas os que têm telefone e AINDA NÃO tiveram confirmação enviada
+    const initialSelected = res
+      .filter(r => {
+        const client = clientDB.getById(r.clienteId);
+        return !!client?.telefone && !r.confirmacaoEnviada && client?.statusFinanceiro !== 'inadimplente';
+      })
+      .map(r => r.id);
+    setConfSelectedIds(initialSelected);
+
+    // Inicializa o status visual mostrando quais já foram enviados no passado
+    const initialResults: Record<string, 'pending' | 'sending' | 'success' | 'error'> = {};
+    res.forEach(r => {
+      initialResults[r.id] = r.confirmacaoEnviada ? 'success' : 'pending';
+    });
+    setConfSendResults(initialResults);
+    setConfSendingStatus('idle');
+  }, [confDate]);
+
+  const filteredConfRes = confReservations.filter(res => {
+    const client = clientDB.getById(res.clienteId);
+    const boat = boatDB.getById(res.embarcacaoId);
+    const search = confSearch.toLowerCase();
+    
+    const matchesSearch = !search || 
+      client?.nome?.toLowerCase().includes(search) || 
+      boat?.nome?.toLowerCase().includes(search) || 
+      String(boat?.numero).includes(search);
+      
+    if (!matchesSearch) return false;
+    
+    const hasPhone = !!client?.telefone;
+    if (confFilter === 'with_contact' && !hasPhone) return false;
+    if (confFilter === 'without_contact' && hasPhone) return false;
+    
+    return true;
+  });
+
+  const visibleIdsWithPhone = filteredConfRes
+    .filter(res => !!clientDB.getById(res.clienteId)?.telefone)
+    .map(res => res.id);
+  
+  const allVisibleSelected = visibleIdsWithPhone.length > 0 && visibleIdsWithPhone.every(id => confSelectedIds.includes(id));
+
+  const handleConfToggleSelect = (id: string) => {
+    setConfSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleConfToggleSelectAll = () => {
+    if (allVisibleSelected) {
+      setConfSelectedIds(prev => prev.filter(id => !visibleIdsWithPhone.includes(id)));
+    } else {
+      const newSelection = new Set([...confSelectedIds, ...visibleIdsWithPhone]);
+      setConfSelectedIds(Array.from(newSelection));
+    }
+  };
+
+  const handleSendConfirmations = async () => {
+    if (confSelectedIds.length === 0) {
+      showToast('Nenhum agendamento selecionado.', 'error');
+      return;
+    }
+    cancelSendingRef.current = false;
+    setConfSendingStatus('sending');
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+
+    for (const resId of confSelectedIds) {
+      if (cancelSendingRef.current) {
+        showToast('Envio de confirmações cancelado pelo usuário.', 'error');
+        setConfSendingStatus('idle');
+        return;
+      }
+
+      const res = confReservations.find(r => r.id === resId);
+      if (!res) continue;
+      const client = clientDB.getById(res.clienteId);
+      const boat = boatDB.getById(res.embarcacaoId);
+      if (!client || !client.telefone) continue;
+
+      const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
+      const clientFirstName = client.nome ? formatFirstName(client.nome) : '';
+      const quando = getQuando(res.data);
+      const text1 = confTemplate1
+        .replace(/{cliente}/g, clientFirstName)
+        .replace(/{barco}/g, boatCode)
+        .replace(/{quando}/g, quando);
+      const text2 = confTemplate2
+        .replace(/{cliente}/g, clientFirstName)
+        .replace(/{barco}/g, boatCode)
+        .replace(/{quando}/g, quando);
+
+      setConfSendResults(prev => ({ ...prev, [resId]: 'sending' }));
+
+      try {
+        let response = await fetch('/api/whatsapp/send-text', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ number: client.telefone, text: text1 })
+        });
+        if (!response.ok) throw new Error('Falha 1');
+        
+        await sleep(4000);
+        
+        response = await fetch('/api/whatsapp/send-text', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ number: client.telefone, text: text2 })
+        });
+        if (!response.ok) throw new Error('Falha 2');
+
+        setConfSendResults(prev => ({ ...prev, [resId]: 'success' }));
+        reservationDB.update(resId, { confirmacaoEnviada: true });
+      } catch (err) {
+        setConfSendResults(prev => ({ ...prev, [resId]: 'error' }));
+      }
+      await sleep(5000);
+    }
+    setConfSendingStatus('completed');
+    showToast('Processo de disparo concluído!', 'success');
+  };
+
+  const handleStopConfSend = () => {
+    cancelSendingRef.current = true;
+    setConfSendingStatus('idle');
+    showToast('Interrompendo envios de confirmação...');
+  };
+
+  // --- BLOQUEIO LOGIC ---
+  const [bloqueioMode, setBloqueioMode] = useState<'vespera' | 'dia'>('vespera');
+  const [bloqueioDate, setBloqueioDate] = useState(() => {
+    const today = new Date();
+    today.setDate(today.getDate() + 1);
+    return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  });
+
+  const [bloqueioTemplateVespera, setBloqueioTemplateVespera] = useState(() => {
+    return localStorage.getItem('whatsapp_bloqueio_template_vespera') || 
+      "Oi, {nome}! 😊 Tudo bem?\n\nSua reserva está marcada para {data}.\n\nEstamos fazendo uma conferência rápida nos cadastros e apareceu um valor pendente no seu. Você consegue verificar para nós? Caso já tenha pago, é só mandar o comprovante por aqui.\n\nAssim deixamos tudo certinho para a sua reserva! 👍";
+  });
+
+  const [bloqueioTemplateDia, setBloqueioTemplateDia] = useState(() => {
+    const defaultTemplate = "Oi, {nome}! 😊\n\nEstou tentando gerar a *OS* para a marina descer sua embarcação, mas o sistema *não permite* a emissão porque identificou valores em aberto no cadastro.\n\nComo sua reserva é *hoje*, você consegue verificar isso com urgência? Se já pagou, envie o comprovante para conferirmos e tentarmos liberar a OS a tempo. 👍";
+    const saved = localStorage.getItem('whatsapp_bloqueio_template_dia');
+    if (!saved || saved.includes("queremos muito garantir o passeio")) {
+      localStorage.setItem('whatsapp_bloqueio_template_dia', defaultTemplate);
+      return defaultTemplate;
+    }
+    return saved;
+  });
+
+  const [showBloqueioTemplatesEditor, setShowBloqueioTemplatesEditor] = useState(false);
+  const [useBloqueioVariations, setUseBloqueioVariations] = useState(true);
+  const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
+
+  useEffect(() => {
+    fetch('/api/financeiro/transacoes', {
+      headers: getAuthHeaders()
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTransacoes(data);
+      })
+      .catch(console.warn);
+  }, []);
+
+  const getNextBloqueioVariation = (mode: 'vespera' | 'dia') => {
+    const variations = mode === 'vespera' ? BLOQUEIO_VARIATIONS_VESPERA : BLOQUEIO_VARIATIONS_DIA;
+    const currentCount = parseInt(localStorage.getItem('whatsapp_bloqueio_counter') || '0', 10);
+    const selectedText = variations[currentCount % variations.length];
+    const nextCount = String(currentCount + 1);
+    localStorage.setItem('whatsapp_bloqueio_counter', nextCount);
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_counter: nextCount }) }).catch(console.warn);
+    return selectedText;
+  };
+
+  const handleSaveBloqueioTemplateVespera = (val: string) => {
+    setBloqueioTemplateVespera(val);
+    localStorage.setItem('whatsapp_bloqueio_template_vespera', val);
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_template_vespera: val }) }).catch(console.warn);
+  };
+
+  const handleSaveBloqueioTemplateDia = (val: string) => {
+    setBloqueioTemplateDia(val);
+    localStorage.setItem('whatsapp_bloqueio_template_dia', val);
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_bloqueio_template_dia: val }) }).catch(console.warn);
+  };
+
+  const [bloqueioSearch, setBloqueioSearch] = useState('');
+  const [bloqueioFilter, setBloqueioFilter] = useState<'all' | 'with_contact' | 'without_contact'>('all');
+  const [bloqueioSelectedIds, setBloqueioSelectedIds] = useState<string[]>([]);
+  const [bloqueioSendingStatus, setBloqueioSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
+  const [bloqueioSendResults, setBloqueioSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
+  const [bloqueioReservations, setBloqueioReservations] = useState<Reserva[]>([]);
+
+  const handleChangeBloqueioMode = (mode: 'vespera' | 'dia') => {
+    setBloqueioMode(mode);
+    const today = new Date();
+    if (mode === 'vespera') {
+      today.setDate(today.getDate() + 1);
+    }
+    const localStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    setBloqueioDate(localStr);
+  };
+
+  useEffect(() => {
+    const allRes = reservationDB.getAll().filter(r => r.data === bloqueioDate && (r.status === 'agendado' || r.status === 'confirmado'));
+    
+    // Filter strictly to inadimplente clients
+    const pendingRes = allRes.filter(r => {
+      const client = clientDB.getById(r.clienteId);
+      if (!client) return false;
+      return client.statusFinanceiro === 'inadimplente';
+    });
+
+    setBloqueioReservations(pendingRes);
+
+    // Auto-select clients with phone numbers
+    const initialSelected = pendingRes
+      .filter(r => {
+        const client = clientDB.getById(r.clienteId);
+        return !!client?.telefone;
+      })
+      .map(r => r.id);
+    setBloqueioSelectedIds(initialSelected);
+
+    const initialResults: Record<string, 'pending' | 'sending' | 'success' | 'error'> = {};
+    pendingRes.forEach(r => {
+      initialResults[r.id] = (bloqueioMode === 'vespera' ? (r as any).bloqueioVesperaEnviado : (r as any).bloqueioDiaEnviado) ? 'success' : 'pending';
+    });
+    setBloqueioSendResults(initialResults);
+    setBloqueioSendingStatus('idle');
+  }, [bloqueioDate, bloqueioMode]);
+
+  const filteredBloqueioRes = bloqueioReservations.filter(res => {
+    const client = clientDB.getById(res.clienteId);
+    const boat = boatDB.getById(res.embarcacaoId);
+    const search = bloqueioSearch.toLowerCase();
+
+    const matchesSearch = !search || 
+      client?.nome?.toLowerCase().includes(search) || 
+      boat?.nome?.toLowerCase().includes(search) || 
+      String(boat?.numero).includes(search);
+
+    if (!matchesSearch) return false;
+
+    const hasPhone = !!client?.telefone;
+    if (bloqueioFilter === 'with_contact' && !hasPhone) return false;
+    if (bloqueioFilter === 'without_contact' && hasPhone) return false;
+
+    return true;
+  });
+
+  const visibleBloqueioIdsWithPhone = filteredBloqueioRes
+    .filter(res => !!clientDB.getById(res.clienteId)?.telefone)
+    .map(res => res.id);
+
+  const allVisibleBloqueioSelected = visibleBloqueioIdsWithPhone.length > 0 && visibleBloqueioIdsWithPhone.every(id => bloqueioSelectedIds.includes(id));
+
+  const handleBloqueioToggleSelect = (id: string) => {
+    setBloqueioSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleBloqueioToggleSelectAll = () => {
+    if (allVisibleBloqueioSelected) {
+      setBloqueioSelectedIds(prev => prev.filter(id => !visibleBloqueioIdsWithPhone.includes(id)));
+    } else {
+      const newSelection = new Set([...bloqueioSelectedIds, ...visibleBloqueioIdsWithPhone]);
+      setBloqueioSelectedIds(Array.from(newSelection));
+    }
+  };
+
+  const handleSendBloqueio = async () => {
+    if (bloqueioSelectedIds.length === 0) {
+      showToast('Nenhum agendamento selecionado.', 'error');
+      return;
+    }
+    cancelSendingRef.current = false;
+    setBloqueioSendingStatus('sending');
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+
+    let itemIndex = 0;
+    for (const resId of bloqueioSelectedIds) {
+      if (cancelSendingRef.current) {
+        showToast('Envio de bloqueios cancelado pelo usuário.', 'error');
+        setBloqueioSendingStatus('idle');
+        return;
+      }
+      const res = bloqueioReservations.find(r => r.id === resId);
+      if (!res) continue;
+      const client = clientDB.getById(res.clienteId);
+      const boat = boatDB.getById(res.embarcacaoId);
+      if (!client || !client.telefone) continue;
+
+      const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome) : 'M00';
+      const clientFirstName = client.nome ? formatFirstName(client.nome) : '';
+      
+      const dateParts = res.data.split('-');
+      const dateBr = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : res.data;
+
+      // Select template variation dynamically (cycling through the 10 variations)
+      const selectedVariation = useBloqueioVariations 
+        ? getNextBloqueioVariation(bloqueioMode)
+        : (bloqueioMode === 'vespera' ? bloqueioTemplateVespera : bloqueioTemplateDia);
+
+      const text = selectedVariation
+        .replace(/\[nome\]|\{nome\}|\{cliente\}/g, clientFirstName)
+        .replace(/\[data\]|\{data\}/g, dateBr)
+        .replace(/\{barco\}/g, boatCode);
+
+      itemIndex++;
+
+      // Generate image for client debit statement card
+      let base64Image: string | null = null;
+      try {
+        const captureEl = document.getElementById(`bloqueio-invoice-capture-${client.id}`);
+        if (captureEl) {
+          base64Image = await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 2, skipFonts: true });
+        }
+      } catch (imgErr) {
+        console.warn('Erro ao gerar imagem do extrato de débito:', imgErr);
+      }
+
+      setBloqueioSendResults(prev => ({ ...prev, [resId]: 'sending' }));
+
+      try {
+        const endpoint = base64Image ? '/api/whatsapp/send-custom' : '/api/whatsapp/send-text';
+        const bodyPayload = base64Image ? {
+          number: client.telefone,
+          text: text,
+          media: base64Image,
+          mimetype: 'image/png',
+          fileName: `Fatura-${clientFirstName}.png`
+        } : {
+          number: client.telefone,
+          text: text
+        };
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(bodyPayload)
+        });
+        if (!response.ok) throw new Error('Falha no envio');
+
+        setBloqueioSendResults(prev => ({ ...prev, [resId]: 'success' }));
+        reservationDB.update(resId, { 
+          [bloqueioMode === 'vespera' ? 'bloqueioVesperaEnviado' : 'bloqueioDiaEnviado']: true 
+        });
+      } catch (err) {
+        setBloqueioSendResults(prev => ({ ...prev, [resId]: 'error' }));
+      }
+      await sleep(4000);
+    }
+    setBloqueioSendingStatus('completed');
+    showToast('Disparo de avisos de bloqueio concluído!', 'success');
+  };
+
+  const handleStopBloqueioSend = () => {
+    cancelSendingRef.current = true;
+    setBloqueioSendingStatus('idle');
+    showToast('Interrompendo envios de bloqueio...');
+  };
+
+  const fetchWaStatus = async () => {
+    setIsFetchingWaStatus(true);
+    try {
+      const res = await fetch('/api/whatsapp/status', {
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      const state = data?.instance?.state || 'close';
+      setWaStatus(state);
+      if (state !== 'open') {
+        fetchWaQrCode();
+      } else {
+        setWaQrCode(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setWaStatus('error');
+    } finally {
+      setIsFetchingWaStatus(false);
+    }
+  };
+
+  const fetchWaQrCode = async () => {
+    try {
+      const res = await fetch('/api/whatsapp/connect', {
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      const qr = data.base64 || data.qrcode?.base64 || data.code;
+      if (qr) {
+        setWaQrCode(qr);
+      } else if (data.instance?.state === 'open') {
+        setWaStatus('open');
+        setWaQrCode(null);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleWaLogout = async () => {
+    if (!window.confirm('Tem certeza que deseja desconectar o WhatsApp?')) return;
+    try {
+      await fetch('/api/whatsapp/logout', {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      showToast('WhatsApp desconectado!');
+      setWaStatus('close');
+      setTimeout(() => fetchWaQrCode(), 2000);
+    } catch (err) {
+      showToast('Erro ao desconectar', 'error');
+    }
+  };
+
+  const handleFetchGroups = async () => {
+    setIsFetchingGroups(true);
+    try {
+      const res = await fetch('/api/whatsapp/groups', {
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.groups)) {
+        const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
+        setAvailableGroups(unique);
+        const newMapping: Record<string, string> = {};
+        for (const b of boats) {
+          if (b.whatsappGroupId) newMapping[b.id] = b.whatsappGroupId;
+        }
+        setMappingState(newMapping);
+        showToast(`${unique.length} grupos carregados.`);
+      } else {
+        showToast('Erro ao carregar grupos', 'error');
+      }
+    } catch (err) {
+      showToast('Erro de conexão com grupos', 'error');
+    } finally {
+      setIsFetchingGroups(false);
+    }
+  };
+
+  const handleMappingChange = (boatId: string, groupId: string) => {
+    setMappingState(prev => ({ ...prev, [boatId]: groupId }));
+  };
+
+  const handleSaveGroupMapping = () => {
+    try {
+      let count = 0;
+      for (const b of boats) {
+        const newGroupId = mappingState[b.id] || '';
+        if (newGroupId !== (b.whatsappGroupId || '')) {
+          boatDB.update(b.id, { whatsappGroupId: newGroupId || undefined });
+          count++;
+        }
+      }
+      setBoats(boatDB.getAll());
+      showToast(`Mapeamento salvo! ${count} atualizações.`);
+    } catch (err) {
+      showToast('Erro ao salvar mapeamento', 'error');
+    }
+  };
+
+  const fetchWhatsAppContactsList = async () => {
+    setIsFetchingContacts(true);
+    try {
+      const res = await fetch('/api/whatsapp/contacts', {
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.contacts)) {
+        const personal = data.contacts.filter((c: any) => c.remoteJid && c.remoteJid.endsWith('@s.whatsapp.net'));
+        setWhatsAppContacts(personal);
+        showToast(`${personal.length} contatos carregados!`);
+      } else {
+        throw new Error();
+      }
+    } catch (err) {
+      showToast('Erro ao obter contatos da VPS.', 'error');
+    } finally {
+      setIsFetchingContacts(false);
+    }
+  };
+
+  const handleLinkPhone = (clientId: string, phone: string) => {
+    try {
+      clientDB.update(clientId, { telefone: phone });
+      setClientsFiltered(clientDB.getAll());
+      showToast('Telefone vinculado com sucesso!');
+    } catch (err: any) {
+      showToast('Erro ao atualizar cadastro', 'error');
+    }
+  };
+
+  const handleUnlinkPhone = (clientId: string) => {
+    try {
+      clientDB.update(clientId, { telefone: '' });
+      setClientsFiltered(clientDB.getAll());
+      showToast('Vínculo de telefone removido.');
+    } catch (err: any) {
+      showToast('Erro ao remover vínculo', 'error');
+    }
+  };
+
+  const formatPhoneNumber = (jid: string): string => {
+    const raw = jid.split('@')[0];
+    if (raw.startsWith('55') && raw.length >= 12) {
+      const ddd = raw.substring(2, 4);
+      const rest = raw.substring(4);
+      if (rest.length === 9) return `(${ddd}) ${rest.substring(0, 5)}-${rest.substring(5)}`;
+      return `(${ddd}) ${rest.substring(0, 4)}-${rest.substring(4)}`;
+    }
+    return raw;
+  };
+
+  
+
+
+  useEffect(() => {
+    fetchWaStatus();
+    setClientsFiltered(clientDB.getAll());
+    setBoats(boatDB.getAll());
+  }, []);
+
+  // --- CALENDARS LOGIC ---
+  const [calMonth, setCalMonth] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+  
+  const [calBoats, setCalBoats] = useState<Embarcacao[]>([]);
+  const [calSearch, setCalSearch] = useState('');
+  const [calSelectedIds, setCalSelectedIds] = useState<string[]>([]);
+  const [calSendingStatus, setCalSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
+  const [calSendResults, setCalSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
+  const [currentBoatIdx, setCurrentBoatIdx] = useState<number>(-1);
+
+  const [calMessageTemplate, setCalMessageTemplate] = useState(() => {
+    return localStorage.getItem('whatsapp_cal_template') || "Olá pessoal! 📅 Segue o calendário de reservas da embarcação {barco} para o mês de {mes}. Bom uso a todos! ☀️⛵";
+  });
+
+  const handleSaveCalTemplate = (val: string) => {
+    setCalMessageTemplate(val);
+    localStorage.setItem('whatsapp_cal_template', val);
+    // Persist to centralized database
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_cal_template: val }) }).catch(console.warn);
+  };
+
+  useEffect(() => {
+    // Only boats with WhatsApp groups
+    const all = boatDB.getAll().filter(b => b.whatsappGroupId);
+    setCalBoats(all);
+  }, []);
+
+  const filteredCalBoats = calBoats.filter(b => {
+    if (!calSearch) return true;
+    const s = calSearch.toLowerCase();
+    return b.nome.toLowerCase().includes(s) || String(b.numero).includes(s);
+  });
+
+  const calAllSelected = filteredCalBoats.length > 0 && filteredCalBoats.every(b => calSelectedIds.includes(b.id));
+
+  const handleCalToggleSelectAll = () => {
+    if (calAllSelected) {
+      setCalSelectedIds(prev => prev.filter(id => !filteredCalBoats.some(b => b.id === id)));
+    } else {
+      const newSelection = new Set([...calSelectedIds, ...filteredCalBoats.map(b => b.id)]);
+      setCalSelectedIds(Array.from(newSelection));
+    }
+  };
+
+  const handleStartCalSend = () => {
+    if (calSelectedIds.length === 0) {
+      showToast('Selecione pelo menos uma embarcação.', 'error');
+      return;
+    }
+    setCalSendingStatus('sending');
+    setCurrentBoatIdx(0);
+    // Initializes the results mapping
+    const initialResults: Record<string, 'pending' | 'sending' | 'success' | 'error'> = {};
+    calSelectedIds.forEach(id => initialResults[id] = 'pending');
+    setCalSendResults(initialResults);
+  };
+
+  // Called when MonthlyCalendarGenerator triggers onExport
+  const handleCalendarExported = async (base64Image: string) => {
+    const boatId = calSelectedIds[currentBoatIdx];
+    const boat = boatDB.getById(boatId);
+    if (!boat || !boat.whatsappGroupId) {
+       nextCalendar();
+       return;
+    }
+    
+    setCalSendResults(prev => ({ ...prev, [boatId]: 'sending' }));
+    
+    try {
+      const token = getAdminToken();
+      
+      const groupObj = availableGroups.find(g => g.id === boat.whatsappGroupId);
+      const groupName = groupObj ? (groupObj.subject || groupObj.name || boat.whatsappGroupId) : boat.nome;
+      
+      const [year, month] = calMonth.split('-');
+      const monthsPt = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+      ];
+      const monthName = monthsPt[parseInt(month, 10) - 1] || month;
+      
+      const caption = calMessageTemplate
+        .replace(/{barco}/g, boat.nome)
+        .replace(/{grupo}/g, groupName)
+        .replace(/{mes}/g, `${monthName} de ${year}`)
+        .replace(/{ano}/g, year);
+
+      const response = await fetch('/api/whatsapp/send-calendar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          base64Image: base64Image,
+          groupId: boat.whatsappGroupId,
+          boatName: boat.nome,
+          caption: caption
+        })
+      });
+      
+      if (!response.ok) throw new Error('Falha no envio');
+      setCalSendResults(prev => ({ ...prev, [boatId]: 'success' }));
+    } catch (err) {
+      setCalSendResults(prev => ({ ...prev, [boatId]: 'error' }));
+    }
+    
+    await sleep(3000); // Wait 3 seconds before moving to next boat
+    nextCalendar();
+  };
+
+  const nextCalendar = () => {
+    if (currentBoatIdx + 1 < calSelectedIds.length) {
+      setCurrentBoatIdx(currentBoatIdx + 1);
+    } else {
+      setCalSendingStatus('completed');
+      setCurrentBoatIdx(-1);
+      showToast('Envio de calendários concluído!', 'success');
+    }
+  };
+
+  const activeProcessingBoatId = currentBoatIdx >= 0 ? calSelectedIds[currentBoatIdx] : null;

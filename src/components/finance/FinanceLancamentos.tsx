@@ -15,6 +15,7 @@ import logoUrl from '../../assets/images/vale_nauticos_logo_1780256879963.png';
 
 import TransactionDetailsModal from './TransactionDetailsModal';
 import ImportXMLModal from './ImportXMLModal';
+import FinanceLancamentoDrawer from './FinanceLancamentoDrawer';
 import Select from 'react-select';
 import { clientDB } from '../../db';
 
@@ -38,10 +39,9 @@ export default function FinanceLancamentos() {
 
   const [contasBancarias, setContasBancarias] = useState<any[]>([]);
   const [planosContas, setPlanosContas] = useState<any[]>([]);
+  const [centrosCusto, setCentrosCusto] = useState<any[]>([]);
   const [fornecedores, setFornecedores] = useState<any[]>([]);
-  const [recorrenciaMode, setRecorrenciaMode] = useState<'Nenhum' | 'Parcelado' | 'Recorrente Mensalidade'>('Nenhum');
-  const [qtdParcelas, setQtdParcelas] = useState(2);
-  
+      
   // Tabs state: 'dashboard' | 'lancamentos' | 'atividades' | 'agenda' | 'cobranca' | 'configuracoes'
   
 
@@ -67,22 +67,11 @@ export default function FinanceLancamentos() {
   const [viewingTransaction, setViewingTransaction] = useState<TransacaoFinanceira | null>(null);
   
   // Form state
-  const [formData, setFormData] = useState<Partial<TransacaoFinanceira>>({
-    tipo: 'receita',
-    categoria: 'Mensalidade',
-    status: 'lancado',
-    valor: 0,
-    dataVencimento: new Date().toISOString().split('T')[0]
-  });
+    
   
-  const [isCustomCategoria, setIsCustomCategoria] = useState(false);
-
   // States for Period monthly fee creation
-  const [isPeriodMode, setIsPeriodMode] = useState(false);
-  const [periodMonths, setPeriodMonths] = useState(12);
-  const [periodStartMonth, setPeriodStartMonth] = useState(new Date().toISOString().slice(0, 7)); // e.g. "2026-06"
-  const [periodDueDay, setPeriodDueDay] = useState(10);
-
+      const [periodStartMonth, setPeriodStartMonth] = useState(new Date().toISOString().slice(0, 7)); // e.g. "2026-06"
+  
   // Upload state
   const [isUploading, setIsUploading] = useState<{[key: string]: boolean}>({});
 
@@ -170,14 +159,16 @@ export default function FinanceLancamentos() {
       if (res.ok) {
 
       try {
-        const [resContas, resPlanos, resForn] = await Promise.all([
+        const [resContas, resPlanos, resForn, resCentros] = await Promise.all([
           fetch('/api/financeiro/contas-bancarias', { headers: { 'Authorization': `Bearer ${token}` } }),
           fetch('/api/financeiro/planos-contas', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/financeiro/fornecedores', { headers: { 'Authorization': `Bearer ${token}` } })
+          fetch('/api/financeiro/fornecedores', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/financeiro/centros-custo', { headers: { 'Authorization': `Bearer ${token}` } })
         ]);
         if (resContas.ok) setContasBancarias(await resContas.json());
         if (resPlanos.ok) setPlanosContas(await resPlanos.json());
         if (resForn.ok) setFornecedores(await resForn.json());
+        if (resCentros.ok) setCentrosCusto(await resCentros.json());
       } catch (err) { console.error('Erro ao buscar dados complementares no financeiro:', err); }
 
         transacoesData = await res.json();
@@ -248,87 +239,33 @@ export default function FinanceLancamentos() {
     }
   }, [selectedClienteId, clientes]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = localStorage.getItem('admin_token');
-    
-    const isEditing = !!editingItem;
-    let payloadData: any;
+  const handleSaveLancamentos = async (novosLancamentos: Partial<TransacaoFinanceira>[]) => {
+    setIsModalOpen(false);
+    setEditingItem(null);
+    const withIds = novosLancamentos.map(l => ({
+      ...l, id: l.id || `fin_${Date.now()}_${Math.random().toString(36).substring(7)}`, createdAt: l.createdAt || new Date().toISOString()
+    }));
 
-    let isP = isPeriodMode;
-    if (recorrenciaMode === 'Recorrente Mensalidade') isP = true;
-
-    if (isP && !isEditing) {
-      const generated: any[] = [];
-      const nowStr = new Date().toISOString();
-      for (let i = 0; i < periodMonths; i++) {
-        const dueDate = generateDueDateForMonth(periodStartMonth, periodDueDay, i);
-        const [yearPart, monthPart] = dueDate.split('-').map(Number);
-        const refMonth = String(monthPart).padStart(2, '0') + '/' + yearPart;
-        
-
-        generated.push({
-          ...formData,
-          id: `fin_${Date.now()}_${i}`,
-          dataVencimento: dueDate,
-          descricao: `${formData.descricao ? formData.descricao + ' - ' : 'Mensalidade - '}${['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][monthPart - 1]}/${yearPart} (Parcela ${i + 1} de ${periodMonths})`,
-          createdAt: nowStr
-        });
-      }
-      payloadData = generated;
-    } else if (recorrenciaMode === 'Parcelado' && !isEditing) {
-      const generated = [];
-      const nowStr = new Date().toISOString();
-      const baseDate = new Date((formData.dataVencimento || new Date().toISOString().split('T')[0]) + 'T12:00:00');
-      const totalParcelas = Number(qtdParcelas) || 2;
-      const valorParcela = Number(formData.valor) / totalParcelas;
-      const grupoId = 'grp_' + Date.now().toString(36);
-
-      for (let i = 0; i < totalParcelas; i++) {
-        const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, baseDate.getDate());
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const dueDate = `${yyyy}-${mm}-${dd}`;
-
-        generated.push({
-          ...formData,
-          id: `fin_${Date.now()}_${i}`,
-          valor: valorParcela,
-          dataVencimento: dueDate,
-          grupoParcelamentoId: grupoId,
-          numeroParcela: i + 1,
-          totalParcelas: totalParcelas,
-          descricao: `${formData.descricao ? formData.descricao + ' - ' : ''}Parcela ${i + 1} de ${totalParcelas}`,
-          createdAt: nowStr
-        });
-      }
-      payloadData = generated;
-    } else {
-      payloadData = {
-        ...formData,
-        id: isEditing ? editingItem.id : `fin_${Date.now()}`,
-        createdAt: isEditing ? editingItem.createdAt : new Date().toISOString()
-      };
-    }
+    setTransacoes(prev => {
+      const updated = [...prev];
+      withIds.forEach(newItem => {
+        const idx = updated.findIndex(t => t.id === newItem.id);
+        if (idx !== -1) updated[idx] = newItem as any;
+        else updated.unshift(newItem as any);
+      });
+      return updated;
+    });
 
     try {
-      const res = await fetch('/api/financeiro/transacoes/save', {
+      const token = localStorage.getItem('admin_token');
+      await fetch('/api/financeiro/transacoes/save', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ action: 'upsert', data: payloadData })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'upsert', data: withIds })
       });
-      
-      if (res.ok) {
-        setIsModalOpen(false);
-        setEditingItem(null);
-        fetchData();
-      }
-    } catch (err) {
-      console.error("Error saving transacao:", err);
+      fetchData();
+    } catch(e) {
+      console.error("Erro ao salvar lançamentos", e);
     }
   };
 
@@ -721,7 +658,7 @@ export default function FinanceLancamentos() {
   const filteredTransacoes = transacoes.filter(t => {
     // Empresa Filter
     if (empresaFiltro !== 'Todos') {
-      if (t.empresa !== empresaFiltro && !(!t.empresa && empresaFiltro === 'Mexicano')) return false;
+      if (t.empresa !== empresaFiltro) return false;
     }
 
     const searchLower = searchTerm.toLowerCase();
@@ -1271,312 +1208,19 @@ export default function FinanceLancamentos() {
         fornecedores={fornecedores}
       />
 
-      {/* Modal de Lançamento */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-md animate-in fade-in transition-all">
-          <div className="bg-white/95 backdrop-blur-xl rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden border border-white/50 relative flex flex-col">
-            <div className="px-6 py-5 border-b border-slate-100/80 flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-20">
-              <h3 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-                <div className={`p-2 rounded-xl ${formData.tipo === 'receita' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                  {formData.tipo === 'receita' ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-                </div>
-                {editingItem ? 'Editar Lançamento' : 'Novo Lançamento'}
-              </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-colors">
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleSave}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-                  e.preventDefault();
-                  handleSave(e as any);
-                }
-              }}
-              className="p-6 space-y-6 flex-1"
-            >
-              {/* Resumo do Tipo */}
-              <div className="flex bg-slate-100/80 p-1.5 rounded-2xl">
-                <button
-                  type="button"
-                  onClick={() => setFormData({...formData, tipo: 'receita'})}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${formData.tipo === 'receita' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Receita (Entrada)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({...formData, tipo: 'despesa'})}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${formData.tipo === 'despesa' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Despesa (Saída)
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Categoria</label>
-                  <select
-                    value={isCustomCategoria ? 'Outro' : formData.categoria}
-                    onChange={(e) => {
-                      if (e.target.value === 'Outro') {
-                        setIsCustomCategoria(true);
-                        setFormData({...formData, categoria: ''});
-                      } else {
-                        setIsCustomCategoria(false);
-                        const selectedPlan = planosContas.find(p => p.descricao === e.target.value);
-                        setFormData({...formData, categoria: e.target.value});
-                      }
-                    }}
-                    className="w-full px-4 py-3 bg-slate-50 hover:bg-white border border-slate-200/80 rounded-xl focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 font-semibold text-sm transition-all shadow-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    {planosContas.filter(p => !p.tipo || p.tipo === formData.tipo).map(p => (
-                      <option key={p.id || p.descricao} value={p.descricao}>{p.descricao}</option>
-                    ))}
-                    {!planosContas.find(p => p.descricao === 'Mensalidade') && <option value="Mensalidade">Mensalidade</option>}
-                    {!planosContas.find(p => p.descricao === 'Serviço') && <option value="Serviço">Serviço</option>}
-                    <option value="Outro">Outra Categoria...</option>
-                  </select>
-                  {isCustomCategoria && (
-                    <input
-                      type="text" required
-                      value={formData.categoria}
-                      onChange={(e) => setFormData({...formData, categoria: e.target.value})}
-                      placeholder="Digite a categoria"
-                      className="w-full mt-3 px-4 py-3 bg-white border border-slate-200/80 rounded-xl focus:ring-2 focus:ring-indigo-500/30 font-semibold text-sm transition-all shadow-sm"
-                    />
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Conta Bancária</label>
-                  <select required value={formData.contaBancariaId || ''}
-                      onChange={(e) => setFormData({...formData, contaBancariaId: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 hover:bg-white border border-slate-200/80 rounded-xl focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 font-semibold text-sm transition-all shadow-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    {contasBancarias.map(c => (
-                      <option key={c.id} value={c.id}>{c.nome} - {c.banco}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* ... The rest of fields carefully translated ... */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Vínculo: Cliente (Opcional)</label>
-                  <Select
-                    value={formData.clienteId ? {
-                      value: formData.clienteId,
-                      label: clientes.find(c => c.id === formData.clienteId)?.nome || ''
-                    } : null}
-                    onChange={(selected) => setFormData({...formData, clienteId: selected?.value || null})}
-                    options={clientes.map(c => ({ value: c.id, label: c.nome }))}
-                    isClearable
-                    placeholder="Selecione um cliente..."
-                    styles={{
-                      control: (base, state) => ({
-                        ...base,
-                        borderRadius: '0.75rem',
-                        borderColor: state.isFocused ? '#6366f1' : '#e2e8f0',
-                        backgroundColor: state.isFocused ? '#ffffff' : '#f8fafc',
-                        padding: '2px',
-                        boxShadow: state.isFocused ? '0 0 0 4px rgba(99, 102, 241, 0.1)' : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-                        borderWidth: '1px',
-                        fontWeight: '600',
-                        fontSize: '0.875rem'
-                      })
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Vínculo: Embarcação (Opcional)</label>
-                  <Select
-                      value={formData.embarcacaoId ? {
-                        value: formData.embarcacaoId,
-                        label: embarcacoes.find(b => b.id === formData.embarcacaoId)?.nome || ''
-                      } : null}
-                      onChange={(selected) => {
-                        const boatId = selected?.value || null;
-                        const boat = embarcacoes.find(b => b.id === boatId);
-                        setFormData({
-                          ...formData,
-                          embarcacaoId: boatId,
-                          ...(boat?.clienteId && !formData.clienteId ? { clienteId: boat.clienteId } : {})
-                        });
-                      }}
-                      options={(() => {
-                        let filteredBoats = embarcacoes;
-                        if (formData.clienteId) {
-                          const c = clientes.find(x => x.id === formData.clienteId);
-                          const clientBoatIds = [];
-                          if (c?.embarcacaoId) clientBoatIds.push(c.embarcacaoId);
-                          if (c?.embarcacoes?.length) c.embarcacoes.forEach(cb => clientBoatIds.push(cb.embarcacaoId));
-                          if (clientBoatIds.length > 0) {
-                            filteredBoats = embarcacoes.filter(b => clientBoatIds.includes(b.id));
-                          }
-                        }
-                        return filteredBoats.map(b => ({ value: b.id, label: b.nome }));
-                      })()}
-                      isClearable
-                      placeholder="Selecione uma embarcação..."
-                      styles={{
-                        control: (base, state) => ({
-                          ...base,
-                          borderRadius: '0.75rem',
-                          borderColor: state.isFocused ? '#6366f1' : '#e2e8f0',
-                          backgroundColor: state.isFocused ? '#ffffff' : '#f8fafc',
-                          padding: '2px',
-                          boxShadow: state.isFocused ? '0 0 0 4px rgba(99, 102, 241, 0.1)' : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-                          borderWidth: '1px',
-                          fontWeight: '600',
-                          fontSize: '0.875rem'
-                        })
-                      }}
-                  />
-                  {formData.embarcacaoId && embarcacoes.find(b => b.id === formData.embarcacaoId)?.donos?.length > 1 && formData.tipo === 'receita' && (
-                    <div className="mt-2 text-[10px] text-amber-600 font-bold bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100 flex items-center gap-1.5 animate-in slide-in-from-top-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      Embarcação tem múltiplos donos. Considere dividir no lançamento.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Data and Value in bigger highlight */}
-              <div className="bg-slate-50/50 p-5 pl-7 border border-slate-200/50 rounded-2xl relative overflow-hidden">
-                <div className={`absolute left-0 top-0 bottom-0 w-2 ${formData.tipo === 'receita' ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
-
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 items-end">
-                  <div className="lg:col-span-1">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Vencimento</label>
-                    <input
-                      type="date" required
-                      value={formData.dataVencimento}
-                      onChange={(e) => setFormData({...formData, dataVencimento: e.target.value})}
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-semibold text-sm shadow-sm"
-                    />
-                  </div>
-                  <div className="lg:col-span-1">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Status</label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({...formData, status: e.target.value as any})}
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-semibold text-sm shadow-sm"
-                    >
-                      <option value="lancado">A Receber / A Pagar</option>
-                      <option value="pago">Confirmado / Já Pago</option>
-                      {formData.status === 'vencido' && <option value="vencido">Vencido</option>}
-                      <option value="cancelado">Cancelado</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Valor {recorrenciaMode === 'Parcelado' ? 'Total (R$)' : '(R$)'}
-                    </label>
-                    <div className="relative">
-                      <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black text-lg ${formData.tipo === 'receita' ? 'text-emerald-500' : 'text-rose-500'}`}>R$</span>
-                      <input
-                        type="number" step="0.01" min="0" required
-                        value={formData.valor}
-                        onChange={(e) => setFormData({...formData, valor: e.target.value === '' ? ('' as any) : parseFloat(e.target.value)})}
-                        className={`w-full pl-12 pr-4 py-3 bg-white border rounded-xl focus:ring-4 font-mono text-xl font-bold shadow-sm transition-all ${formData.tipo === 'receita' ? 'border-emerald-200 focus:border-emerald-500 focus:ring-emerald-500/20 text-emerald-900' : 'border-rose-200 focus:border-rose-500 focus:ring-rose-500/20 text-rose-900'}`}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {!editingItem && (
-                  <div className="mt-5 pt-4 border-t border-slate-200/50">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Padrão de Repetição</label>
-                    <select
-                      value={recorrenciaMode}
-                      onChange={(e) => setRecorrenciaMode(e.target.value as any)}
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-semibold mb-3 shadow-sm"
-                    >
-                      <option value="Nenhum">Única (Não repete, 1x)</option>
-                      <option value="Parcelado">Dividir em Parcela (Gera N Lançamentos agora)</option>
-                      <option value="Recorrente Mensalidade">Lançamento de Mensalidade (Gera N Lançamentos com dias fixos)</option>
-                    </select>
-
-                    {recorrenciaMode === 'Parcelado' && (
-                      <div className="flex bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm items-center">
-                        <span className="px-3 text-xs font-bold text-slate-500 bg-slate-50 h-full py-2.5 border-r border-slate-200">Parcelas</span>
-                        <input
-                          type="number" min="2" max="120"
-                          value={qtdParcelas}
-                          onChange={(e) => setQtdParcelas(parseInt(e.target.value))}
-                          className="flex-1 px-4 py-2 text-sm font-bold border-none focus:ring-0 text-slate-800"
-                        />
-                         {qtdParcelas > 0 && formData.valor ? (
-                           <span className="px-4 text-xs font-bold text-indigo-600">{qtdParcelas}x de R$ {(Number(formData.valor)/qtdParcelas).toFixed(2)}</span>
-                         ) : null}
-                      </div>
-                    )}
-
-                    {recorrenciaMode === 'Recorrente Mensalidade' && (
-                      <div className="grid grid-cols-3 gap-3">
-                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Duração (Meses)</label>
-                          <input type="number" min="1" max="120" value={periodMonths}
-                            onChange={(e) => setPeriodMonths(parseInt(e.target.value))}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold shadow-sm" />
-                         </div>
-                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Início (Mês)</label>
-                          <input type="month" value={periodStartMonth}
-                            onChange={(e) => setPeriodStartMonth(e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold shadow-sm" />
-                         </div>
-                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Dia do Venc.</label>
-                          <input type="number" min="1" max="31" value={periodDueDay}
-                            onChange={(e) => setPeriodDueDay(parseInt(e.target.value))}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold shadow-sm" />
-                         </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Descrição Comercial</label>
-                <textarea
-                  value={formData.descricao}
-                  onChange={(e) => setFormData({...formData, descricao: e.target.value})}
-                  rows={2}
-                  className="w-full px-4 py-3 bg-slate-50 hover:bg-white border border-slate-200/80 rounded-xl focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 text-sm transition-all shadow-sm resize-none"
-                  placeholder={"Ex: " + (formData.tipo === 'receita' ? "Mensalidade Marina, Manutenção motor..." : "Conta de Luz, Peças reposição...")}
-                />
-              </div>
-
-              {/* Botões de Ação na Base */}
-              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white/95 backdrop-blur-md pb-2 z-10 -mx-2 px-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl font-bold text-slate-600 text-sm bg-slate-100 hover:bg-slate-200 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className={`px-6 py-2.5 rounded-xl font-bold text-white text-sm transition-all shadow-sm hover:shadow-md ${formData.tipo === 'receita' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}
-                >
-                  {editingItem ? 'Salvar Alterações' : (recorrenciaMode !== 'Nenhum' ? 'Gerar Lançamentos' : 'Criar Lançamento')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <FinanceLancamentoDrawer
+        open={isModalOpen}
+        onClose={() => { setIsModalOpen(false); setEditingItem(null); }}
+        onSave={handleSaveLancamentos}
+        editingItem={editingItem}
+        defaultEmpresa={empresaFiltro}
+        planosContas={planosContas}
+        centrosCusto={centrosCusto}
+        clientes={clientes}
+        fornecedores={fornecedores}
+        contasBancarias={contasBancarias}
+        embarcacoes={embarcacoes}
+      />
 
     </div>
   );
