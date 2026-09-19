@@ -137,7 +137,7 @@ export default function FinanceLancamentos() {
     const days = getDaysDiff(t.dataVencimento);
     if (days <= 0) return { days: 0, interest: 0, total: Number(t.valor) };
 
-    const ratePerDay = 0.000733; // 0.0733% ao dia (2.2% ao mês)
+    const ratePerDay = 0.0007333; // 0.0733% ao dia (2.2% ao mês)
     const interest = Number(t.valor) * ratePerDay * days;
     const total = Number(t.valor) + interest;
 

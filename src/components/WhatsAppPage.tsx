@@ -89,9 +89,8 @@ const calculateTransactionInterest = (t: TransacaoFinanceira) => {
     return { daysOverdue: 0, interest: 0, total: originalVal };
   }
 
-  const multa = originalVal * 0.02;
-  const jurosDiarios = originalVal * 0.00033 * daysOverdue;
-  const interest = multa + jurosDiarios;
+  const ratePerDay = 0.0007333; // 0.07333% ao dia (~2.2% ao mes)
+  const interest = originalVal * ratePerDay * daysOverdue;
   return { daysOverdue, interest, total: originalVal + interest };
 };
 
