@@ -8,7 +8,7 @@ import { toPng } from 'html-to-image';
 import logoUrl from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import { ShieldAlert, Smartphone, UserCheck, UserX, QrCode, LogOut, CheckCircle, MessageSquare, Calendar as CalendarIcon, Check, AlertTriangle, 
   RefreshCw, Search, Send, Clock, Ship, CalendarDays, Wallet, Paperclip, FileText, Users, Plus, Trash2, Play, Pause, X, CheckSquare, Square, File, Image as ImageIcon, Sparkles, Filter
-, Download } from 'lucide-react';
+, Download, Clipboard, ArrowLeft } from 'lucide-react';
 
 const formatFirstName = (fullName: string): string => {
   if (!fullName) return '';
@@ -99,6 +99,9 @@ export default function WhatsAppPage() {
   const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'extratos' | 'config'>('confirmations');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [extratoSearchQuery, setExtratoSearchQuery] = useState('');
+  const [extratoSelectedClientId, setExtratoSelectedClientId] = useState<string | null>(null);
+  const [extratoPreviewImage, setExtratoPreviewImage] = useState<string | null>(null);
+  const [extratoGenerating, setExtratoGenerating] = useState(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const token = getAdminToken();
@@ -329,40 +332,137 @@ export default function WhatsAppPage() {
     return true;
   });
 
-  const handleDownloadExtrato = async (clientId: string, clientName: string) => {
+  
+  const generateExtratoBase64 = async (clientId: string) => {
+    const captureEl = document.getElementById(`extrato-invoice-capture-${clientId}`) || document.getElementById(`bloqueio-invoice-capture-${clientId}`);
+    if (!captureEl) throw new Error("Elemento de extrato não encontrado");
+    
+    // Mostra brevemente se estiver escondido (necessário pro dom-to-image em alguns casos, mas ele tá num fixed offscreen)
+    await new Promise(r => setTimeout(r, 200));
+
     try {
-      const captureEl = document.getElementById(`extrato-invoice-capture-${clientId}`) || document.getElementById(`bloqueio-invoice-capture-${clientId}`);
-      if (captureEl) {
-        console.log("Gerando imagem do extrato para download...");
-        // Pequeno atraso para garantir fontes renderizadas
-        await new Promise(r => setTimeout(r, 200));
-
-        let base64Image = null;
-        try {
-          // @ts-ignore
-          base64Image = await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 2, skipFonts: true, cacheBust: true });
-        } catch(e) {
-          await new Promise(r => setTimeout(r, 600));
-          // @ts-ignore
-          base64Image = await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 1.5, skipFonts: true, cacheBust: true });
-        }
-
-        if (base64Image) {
-          const a = document.createElement('a');
-          a.href = base64Image;
-          a.download = `Extrato_Debitos_${clientName.replace(/\s+/g, '_')}.png`;
-          a.click();
-        }
-      } else {
-        alert("Erro: Não foi possível localizar o modelo de extrato na página. (ID: " + clientId + ")");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Falha ao gerar o extrato: " + err.message);
+      // @ts-ignore
+      return await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 2, skipFonts: true, cacheBust: true });
+    } catch(e) {
+      await new Promise(r => setTimeout(r, 600));
+      // @ts-ignore
+      return await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 1.5, skipFonts: true, cacheBust: true });
     }
   };
 
-  const handleToggleSelectClient = (id: string) => {
+  const handleGenerateExtratoPreview = async (clientId: string) => {
+    setExtratoGenerating(true);
+    try {
+      const b64 = await generateExtratoBase64(clientId);
+      setExtratoPreviewImage(b64);
+    } catch (err: any) {
+      showToast("Erro ao gerar prévia da imagem.", "error");
+    } finally {
+      setExtratoGenerating(false);
+    }
+  };
+
+  const handleDownloadExtratoNew = async (clientId: string, clientName: string) => {
+    setExtratoGenerating(true);
+    try {
+      const base64Image = extratoPreviewImage || await generateExtratoBase64(clientId);
+      const a = document.createElement('a');
+      a.href = base64Image;
+      a.download = `Extrato_${clientName.replace(/s+/g, '_')}.png`;
+      a.click();
+      showToast("Extrato baixado!", "success");
+    } catch (err: any) {
+      showToast("Falha ao baixar extrato.", "error");
+    } finally {
+      setExtratoGenerating(false);
+    }
+  };
+
+  const generateExtratoText = (clientId: string): string => {
+    const client = clientDB.getById(clientId);
+    if (!client) return '';
+    const unpaid = transacoes.filter(t => t.clienteId === clientId && t.status !== 'pago' && t.status !== 'cancelado');
+    let text = `Olá, *${formatFirstName(client.nome)}*! Tudo bem? ⚓
+
+`;
+    text += `Constam em nosso sistema as seguintes pendências financeiras vinculadas ao seu cadastro:
+
+`;
+    let totalGeral = 0;
+    unpaid.forEach((t, i) => {
+      const { interest, total } = calculateTransactionInterest(t);
+      totalGeral += total;
+      const catName = t.categoria ? t.categoria.replace('Servi??o', 'Serviço').replace('??', 'ç') : 'Lançamento';
+      const desc = t.descricao ? ` - ${t.descricao}` : '';
+      const venc = t.dataVencimento ? t.dataVencimento.split('-').reverse().join('/') : '-';
+      text += `🔸 *${i+1}. ${catName}*${desc}
+`;
+      text += `Vencimento: ${venc}
+`;
+      text += `Valor Orig.: R$ ${Number(t.valor).toFixed(2).replace('.', ',')}`;
+      if (interest > 0) {
+        text += ` | Juros/Atraso: R$ ${interest.toFixed(2).replace('.', ',')}`;
+      }
+      text += `
+*_Total: R$ ${total.toFixed(2).replace('.', ',')}_*
+
+`;
+    });
+    
+    text += `*Total Geral Pendente: R$ ${totalGeral.toFixed(2).replace('.', ',')}*
+
+`;
+    text += `⚠ Sua embarcação/reserva se encontra bloqueada até a regularização.
+
+`;
+    text += `Para efetuar o pagamento, utilize a nossa chave PIX:
+[ INSERIR CHAVE AQUI ]
+
+`;
+    text += `Por favor, nos envie o comprovante assim que realizar o pagamento para liberarmos o seu acesso no sistema! 👍`;
+    return text;
+  };
+
+  const handleCopyExtratoText = async (clientId: string) => {
+    try {
+      const text = generateExtratoText(clientId);
+      await navigator.clipboard.writeText(text);
+      showToast("Texto copiado para a área de transferência!", "success");
+    } catch (e) {
+      showToast("Erro ao copiar texto.", "error");
+    }
+  };
+
+  const handleCopyExtratoImage = async (clientId: string) => {
+    setExtratoGenerating(true);
+    try {
+      const base64Image = extratoPreviewImage || await generateExtratoBase64(clientId);
+      const res = await fetch(base64Image);
+      const blob = await res.blob();
+      const item = new ClipboardItem({ "image/png": blob });
+      await navigator.clipboard.write([item]);
+      showToast("Imagem copiada para a área de transferência!", "success");
+    } catch (err: any) {
+      showToast("Seu navegador não suporta cópia direta de imagem. Tente Baixar a imagem.", "error");
+    } finally {
+      setExtratoGenerating(false);
+    }
+  };
+
+  const handleSendWAExtrato = (clientId: string) => {
+    const client = clientDB.getById(clientId);
+    if (!client || !client.telefone) return showToast("Cliente sem telefone válido.", "error");
+    const text = generateExtratoText(clientId);
+    const wppNum = client.telefone.replace(/D/g, '');
+    const url = `https://wa.me/55${wppNum}?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleDownloadExtrato = async (clientId: string, clientName: string) => {
+    // Mantendo compatibility original pro caso de outro lugar chamar (pouco provável)
+    await handleDownloadExtratoNew(clientId, clientName);
+  };
+const handleToggleSelectClient = (id: string) => {
     setCustomSelectedClientIds(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
@@ -2302,110 +2402,201 @@ export default function WhatsAppPage() {
       
         {/* CONFIG TAB */}
         {activeMainTab === 'extratos' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">Extratos Financeiros</h2>
-                <p className="text-sm text-slate-500">Busque um cliente para visualizar ou baixar o extrato de débitos em aberto.</p>
-              </div>
+          <div className="h-full flex flex-col pt-2 pb-6 px-1 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            {!extratoSelectedClientId ? (
+              // TELA 1: BUSCA DE CLIENTE
+              <div className="flex-1 flex flex-col">
+                <div className="text-center space-y-3 mb-8 pt-8">
+                  <div className="mx-auto w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-2">
+                    <FileText className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Extratos Financeiros</h2>
+                  <p className="text-slate-500 font-medium max-w-md mx-auto">Busque um cliente inadimplente para gerar extrato de débitos em imagem PNG ou em texto formatado para o WhatsApp.</p>
+                </div>
 
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Buscar cliente..."
-                  value={extratoSearchQuery}
-                  onChange={(e) => setExtratoSearchQuery(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm w-64 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </div>
-            </div>
+                <div className="max-w-2xl mx-auto w-full">
+                  <div className="relative mb-6 shadow-sm">
+                    <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Digite o nome do cliente..."
+                      value={extratoSearchQuery}
+                      onChange={(e) => setExtratoSearchQuery(e.target.value)}
+                      className="w-full text-base pl-12 pr-4 py-3.5 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 font-medium"
+                      autoFocus
+                    />
+                  </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="max-h-[600px] overflow-y-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                    <tr>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase">Cliente</th>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase text-center">Contato</th>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase text-right">Pendências</th>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase text-right">Valor Aberto</th>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-500 uppercase text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs divide-y divide-slate-100 max-h-[400px] overflow-y-auto subtle-scrollbar">
                     {clientDB.getAll()
                       .filter(c =>
+                        (!extratoSearchQuery ? transacoes.some(t => t.clienteId === c.id && t.status !== 'pago' && t.status !== 'cancelado') : true) &&
                         (c.nome.toLowerCase().includes(extratoSearchQuery.toLowerCase()) ||
-                        (c.telefone && c.telefone.includes(extratoSearchQuery))) &&
-                        (!extratoSearchQuery ? transacoes.some(t => t.clienteId === c.id && t.status !== 'pago' && t.status !== 'cancelado') : true)
+                        (c.telefone && c.telefone.includes(extratoSearchQuery)))
                       )
                       .slice(0, extratoSearchQuery ? 50 : 20)
                       .map(client => {
                         const unpaid = transacoes.filter(t => t.clienteId === client.id && t.status !== 'pago' && t.status !== 'cancelado');
-                        const totalDebt = unpaid.reduce((acc, t) => acc + (t.valorFinal || t.valorOriginal), 0);
-                        const hasPhone = !!client.telefone;
+                        if (!extratoSearchQuery && unpaid.length === 0) return null;
+
+                        const totalDebt = unpaid.reduce((acc, t) => {
+                          const { total } = calculateTransactionInterest(t);
+                          return acc + total;
+                        }, 0);
 
                         return (
-                          <tr key={client.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="py-3 px-4">
-                              <div className="font-semibold text-sm text-slate-900">{client.nome}</div>
-                              <div className="text-xs text-slate-500">{client.email || 'Sem e-mail'}</div>
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              {hasPhone ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
-                                  {client.telefone}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-slate-400">Sem TV/Wpp</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 text-right">
+                          <div
+                            key={client.id}
+                            onClick={() => {
+                              setExtratoSelectedClientId(client.id);
+                              setExtratoPreviewImage(null); // Reset preview
+                            }}
+                            className="flex items-center justify-between p-4 cursor-pointer hover:bg-blue-50/50 transition-colors group"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold font-mono">
+                                {client.nome.substring(0,2).toUpperCase()}
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-slate-900 group-hover:text-blue-700 transition-colors">{client.nome}</h3>
+                                <p className="text-xs text-slate-500">{client.telefone || 'Sem contato'}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
                               {unpaid.length > 0 ? (
-                                <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full bg-rose-100 text-rose-700 text-xs font-bold font-mono">
-                                  {unpaid.length}
-                                </span>
+                                <>
+                                  <p className="font-black text-rose-600 font-mono">R$ {totalDebt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                  <p className="text-[11px] font-bold text-rose-500 mt-0.5">{unpaid.length} em aberto</p>
+                                </>
                               ) : (
-                                <span className="text-xs text-slate-400">0</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <span className={`font-mono text-sm font-bold ${totalDebt > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
-                                R$ {totalDebt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              {totalDebt > 0 ? (
-                                <div className="flex justify-end items-center gap-2">
-                                  <button
-                                    onClick={() => handleDownloadExtrato(client.id, client.nome)}
-                                    className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
-                                    title="Baixar imagem PNG"
-                                  >
-                                    <Download className="w-3.5 h-3.5" /> Baixar PNG
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="text-xs font-semibold text-emerald-500 px-2 py-1 bg-emerald-50 border border-emerald-100 rounded-md">
-                                  Tudo Certo
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100">
+                                  <CheckCircle className="w-3.5 h-3.5"/> Sem Pendências
                                 </span>
                               )}
-                            </td>
-                          </tr>
+                            </div>
+                          </div>
                         );
                     })}
-                    {clientDB.getAll().length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-500 text-sm">
-                          Nenhum cliente encontrado.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              // TELA 2: EXECUTAR AÇÕES (CLIENTE SELECIONADO)
+              <div className="flex flex-col h-full bg-slate-50 p-6 rounded-2xl border border-slate-200">
+
+                <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-200/60">
+                  <button
+                    onClick={() => {
+                      setExtratoSelectedClientId(null);
+                      setExtratoPreviewImage(null);
+                    }}
+                    className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-200/50 transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Voltar
+                  </button>
+                  <h3 className="font-black text-xl text-slate-900">
+                    Ações de Extrato - {clientDB.getById(extratoSelectedClientId)?.nome.split(' ')[0]}
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 flex-1 items-start">
+
+                  {/* ESQUERDA: Botões de Ação */}
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-6">O que deseja fazer?</h4>
+
+                    <button
+                      disabled={extratoGenerating}
+                      onClick={() => handleGenerateExtratoPreview(extratoSelectedClientId)}
+                      className="w-full relative flex items-center gap-4 bg-white hover:bg-blue-50 border-2 border-transparent hover:border-blue-200 p-4 rounded-xl shadow-sm cursor-pointer transition-all disabled:opacity-50 group"
+                    >
+                      <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shrink-0">
+                        {extratoGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5" />}
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-bold text-slate-900 group-hover:text-blue-800">Visualizar Imagem (PNG)</h4>
+                        <p className="text-xs font-semibold text-slate-500 mt-0.5">Pré-visualizar o extrato visual na tela.</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleCopyExtratoImage(extratoSelectedClientId)}
+                      disabled={extratoGenerating}
+                      className="w-full flex items-center gap-4 bg-white hover:bg-amber-50 border-2 border-transparent hover:border-amber-200 p-4 rounded-xl shadow-sm cursor-pointer transition-all disabled:opacity-50 group"
+                    >
+                      <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center shrink-0">
+                         {extratoGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Clipboard className="w-5 h-5" />}
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-bold text-slate-900 group-hover:text-amber-800">Copiar Imagem</h4>
+                        <p className="text-xs font-semibold text-slate-500 mt-0.5">Copia a imagem PNG diretamente para a nuvem/área de transferência.</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleCopyExtratoText(extratoSelectedClientId)}
+                      className="w-full flex items-center gap-4 bg-white hover:bg-slate-100 border-2 border-transparent hover:border-slate-300 p-4 rounded-xl shadow-sm cursor-pointer transition-all group"
+                    >
+                      <div className="w-12 h-12 bg-slate-200 text-slate-700 rounded-full flex items-center justify-center shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-bold text-slate-900 group-hover:text-slate-800">Copiar Texto</h4>
+                        <p className="text-xs font-semibold text-slate-500 mt-0.5">Cópia do relatório formatado para colar direto no WhatsApp.</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleSendWAExtrato(extratoSelectedClientId)}
+                      className="w-full flex items-center gap-4 bg-white hover:bg-emerald-50 border-2 border-transparent hover:border-emerald-200 p-4 rounded-xl shadow-sm cursor-pointer transition-all group"
+                    >
+                      <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0">
+                        <MessageSquare className="w-5 h-5" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-bold text-slate-900 group-hover:text-emerald-800">Enviar Textão (WhatsApp)</h4>
+                        <p className="text-xs font-semibold text-slate-500 mt-0.5">Abre o WhatsApp Web direto com o celular do cliente.</p>
+                      </div>
+                    </button>
+
+                  </div>
+
+                  {/* DIREITA: PREVIEW DA IMAGEM E DOWNLOAD */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col items-center justify-center min-h-[400px]">
+                    {extratoGenerating ? (
+                       <div className="flex flex-col items-center justify-center space-y-4 animate-pulse">
+                         <div className="w-14 h-14 border-4 border-slate-100 border-t-amber-500 rounded-full animate-spin"></div>
+                         <p className="text-sm font-bold text-slate-500">Renderizando Extrato...</p>
+                       </div>
+                    ) : extratoPreviewImage ? (
+                      <div className="w-full flex flex-col items-center animate-in zoom-in-95 duration-300">
+                        <img
+                          src={extratoPreviewImage}
+                          alt="Prévia do Extrato"
+                          className="w-full max-w-[280px] h-auto border border-slate-200 shadow-md rounded border-b-2"
+                        />
+                        <button
+                          onClick={() => handleDownloadExtratoNew(extratoSelectedClientId, clientDB.getById(extratoSelectedClientId)?.nome || 'Cliente')}
+                          className="mt-6 font-bold flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white w-full max-w-[280px] py-3 rounded-xl transition-colors shadow-blue-500/30 shadow-lg"
+                        >
+                          <Download className="w-5 h-5" /> Baixar Arquivo PNG
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-center opacity-60">
+                         <ImageIcon className="w-16 h-16 text-slate-300 mb-4" />
+                         <p className="font-bold text-slate-400">Nenhuma prévia carregada</p>
+                         <p className="text-xs font-medium text-slate-400 mt-1 max-w-[220px]">
+                            Clique no botão de "Visualizar Imagem" para renderizar o Extrato.
+                         </p>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+
+              </div>
+            )}
           </div>
         )}
 
