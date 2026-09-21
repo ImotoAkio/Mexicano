@@ -69,9 +69,6 @@ export default function FinanceLancamentos() {
   // Form state
     
   
-  // States for Period monthly fee creation
-      const [periodStartMonth, setPeriodStartMonth] = useState(new Date().toISOString().slice(0, 7)); // e.g. "2026-06"
-  
   // Upload state
   const [isUploading, setIsUploading] = useState<{[key: string]: boolean}>({});
 
@@ -105,7 +102,8 @@ export default function FinanceLancamentos() {
 
   const isAdmin = loggedUser?.role === 'admin';
   const isFinanceiro = loggedUser?.role === 'financeiro';
-  const isFinanceiroOrAdmin = isAdmin || isFinanceiro;
+  const isGerente = loggedUser?.role === 'marina_gerente' || loggedUser?.role === 'gerente';
+  const isFinanceiroOrAdmin = isAdmin || isFinanceiro || isGerente;
 
   const getDaysDiff = (dateStr: string) => {
     const due = new Date(dateStr + 'T12:00:00'); // avoid timezone shifts
@@ -628,29 +626,7 @@ export default function FinanceLancamentos() {
   };
 
   const openModal = (item?: TransacaoFinanceira) => {
-    if (item) {
-      setEditingItem(item);
-      setFormData(item);
-      setIsPeriodMode(false);
-      setRecorrenciaMode('Nenhum');
-      setQtdParcelas(2);
-    } else {
-      setEditingItem(null);
-      setFormData({
-        tipo: 'receita',
-        categoria: 'Mensalidade',
-        status: 'lancado',
-        valor: 0,
-        dataVencimento: new Date().toISOString().split('T')[0]
-      });
-      setIsCustomCategoria(false);
-      setIsPeriodMode(false);
-      setRecorrenciaMode('Nenhum');
-      setQtdParcelas(2);
-      setPeriodMonths(12);
-      setPeriodStartMonth(new Date().toISOString().slice(0, 7));
-      setPeriodDueDay(new Date().getDate());
-    }
+    setEditingItem(item || null);
     setIsModalOpen(true);
   };
 
@@ -798,7 +774,7 @@ export default function FinanceLancamentos() {
                 <option value="Vale Administradora">Vale Administradora</option>
                 <option value="Mexicano">Mexicano</option>
               </select>
-              {isAdmin && (
+              {isFinanceiroOrAdmin && (
                 <button
                   onClick={() => setIsImportModalOpen(true)}
                   className="group relative inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-xl text-slate-700 bg-white border border-slate-200/80 hover:bg-slate-50 transition-all duration-300 shadow-sm overflow-hidden shrink-0 cursor-pointer"

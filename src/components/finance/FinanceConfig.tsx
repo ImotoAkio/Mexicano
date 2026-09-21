@@ -51,6 +51,7 @@ export default function FinanceConfig({
   const [planosContas, setPlanosContas] = useState<PlanoDeConta[]>([]);
   const [centrosCusto, setCentrosCusto] = useState<CentroDeCusto[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [globalConfig, setGlobalConfig] = useState<{ taxaJurosMensal: string }>({ taxaJurosMensal: "2.2" });
   const [loading, setLoading] = useState(false);
 
   // Modals / Form State
@@ -137,12 +138,18 @@ export default function FinanceConfig({
     try {
       const q = empresa && empresa !== 'Todos' ? `?empresa=${encodeURIComponent(empresa)}` : '';
 
-      const [resContas, resPlanos, resFornecedores, resCentros] = await Promise.all([
+      const [resContas, resPlanos, resFornecedores, resCentros, resConfig] = await Promise.all([
         fetch(`/api/financeiro/contas-bancarias${q}`, { credentials: 'include', headers: getAuthHeader() }),
         fetch(`/api/financeiro/planos-contas${q}`, { credentials: 'include', headers: getAuthHeader() }),
         fetch(`/api/financeiro/fornecedores${q}`, { credentials: 'include', headers: getAuthHeader() }),
-        fetch(`/api/financeiro/centros-custo${q}`, { credentials: 'include', headers: getAuthHeader() })
+        fetch(`/api/financeiro/centros-custo${q}`, { credentials: 'include', headers: getAuthHeader() }),
+        fetch(`/api/financeiro/configuracoes`, { credentials: 'include', headers: getAuthHeader() })
       ]);
+
+      if (resConfig.ok) {
+        const { configuracoes } = await resConfig.json();
+        if (configuracoes) setGlobalConfig(configuracoes);
+      }
 
       if (resContas.ok) {
         const data = await resContas.json();

@@ -34,7 +34,7 @@ import {
   getPixQrCode,
   createAsaasBulkCharge
 } from "../server-asaas";
-import { getDbPool } from "../server-db";
+import { getDbPool, getConfigValue, setConfigValue } from "../server-db";
 
 function getGlobalEmpresaFromRole(role: string): string | null {
   const r = role.toLowerCase().trim();
@@ -428,7 +428,6 @@ router.post("/transacoes/gerar-asaas-lote", requireAdminAuth, sensitiveLimiter, 
   }
 });
 
-export default router;
 
 // ----------------------------------------------------------------------
 // CENTROS DE CUSTO
@@ -467,3 +466,34 @@ router.post("/centros-custo/save", requireAdminAuth, async (req, res) => {
     res.status(500).json({ error: true, message: err.message || "Failed to save Centro de Custo" });
   }
 });
+
+// ----------------------------------------------------------------------
+// CONFIGURAÇÕES GLOBAIS (TAXA DE JUROS)
+// ----------------------------------------------------------------------
+router.get("/configuracoes", requireAdminAuth, async (req, res) => {
+  try {
+    const taxaJurosMensal = await getConfigValue('fin_taxa_juros_mensal') || '2.2';
+    res.json({ success: true, configuracoes: { taxaJurosMensal } });
+  } catch (err: any) {
+    console.error("[Configuracoes Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch configuracoes" });
+  }
+});
+
+router.post("/configuracoes", requireAdminAuth, async (req, res) => {
+  try {
+    const { taxaJurosMensal } = req.body;
+    if (taxaJurosMensal !== undefined) {
+      await setConfigValue('fin_taxa_juros_mensal', String(taxaJurosMensal));
+    }
+    const io = (req.app as any).locals.io;
+    if (io) io.emit('finance_config_update', { taxaJurosMensal });
+    
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[Post Configuracoes Error]", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to save configuracoes" });
+  }
+});
+
+export default router;

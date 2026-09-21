@@ -130,3 +130,10 @@ export function writeAuditLog(userId: string, userRole: string, action: string, 
   const logEntry = `[AUDIT] IP: ${clientIp} | User: ${userId} (${userRole}) | Action: ${action} | Details: ${details || "N/A"}`;
   console.log(logEntry);
 }
+
+import multer from "multer";
+
+export const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB limit (adjusted from comment 5MB to 20MB match)
+});
