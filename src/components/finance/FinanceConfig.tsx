@@ -44,7 +44,7 @@ export default function FinanceConfig({
   isFinanceiro: boolean;
   empresa: string;
 }) {
-  const [activeSubTab, setActiveSubTab] = useState<'contas_bancarias' | 'planos_contas' | 'centros_custo' | 'fornecedores'>('contas_bancarias');
+  const [activeSubTab, setActiveSubTab] = useState<'contas_bancarias' | 'planos_contas' | 'centros_custo' | 'fornecedores' | 'configuracoes_gerais'>('contas_bancarias');
 
   // Data States
   const [contasBancarias, setContasBancarias] = useState<ContaBancaria[]>([]);
@@ -360,6 +360,30 @@ export default function FinanceConfig({
     }
   };
 
+  const handleSaveGlobalConfig = async () => {
+    try {
+      const res = await fetch('/api/financeiro/configuracoes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader()
+        },
+        body: JSON.stringify({
+          taxaJurosMensal: parseFloat(globalConfig.taxaJurosMensal || '0')
+        })
+      });
+      if (res.ok) {
+        alert('Configurações salvas com sucesso!');
+        fetchData();
+      } else {
+        alert('Erro ao salvar configurações');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao salvar configurações');
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
 
@@ -414,21 +438,37 @@ export default function FinanceConfig({
             <Briefcase className="w-4 h-4" />
             Fornecedores
           </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('configuracoes_gerais')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                activeSubTab === 'configuracoes_gerais'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <AlertCircle className="w-4 h-4" />
+              Configurações Gerais
+            </button>
+          )}
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenCreateModal}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>
-            {activeSubTab === 'contas_bancarias' && 'Nova Conta Bancária'}
-            {activeSubTab === 'planos_contas' && 'Novo Plano de Contas'}
-            {activeSubTab === 'centros_custo' && 'Novo Centro de Custo'}
-            {activeSubTab === 'fornecedores' && 'Novo Fornecedor'}
-          </span>
-        </button>
+        {activeSubTab !== 'configuracoes_gerais' && (
+          <button
+            type="button"
+            onClick={handleOpenCreateModal}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>
+              {activeSubTab === 'contas_bancarias' && 'Nova Conta Bancária'}
+              {activeSubTab === 'planos_contas' && 'Novo Plano de Contas'}
+              {activeSubTab === 'centros_custo' && 'Novo Centro de Custo'}
+              {activeSubTab === 'fornecedores' && 'Novo Fornecedor'}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Main Table Content */}
@@ -736,6 +776,52 @@ export default function FinanceConfig({
                     </tbody>
                   </table>
                 )}
+              </div>
+            )}
+
+            {/* SUBTAB 5: CONFIGURACOES GERAIS */}
+            {activeSubTab === 'configuracoes_gerais' && (
+              <div className="p-6">
+                <div className="max-w-2xl bg-slate-50 border border-slate-200 rounded-2xl p-6">
+                  <h3 className="font-bold text-slate-800 text-lg mb-4 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-indigo-500" />
+                    Parâmetros Globais do Financeiro
+                  </h3>
+
+                  <div className="space-y-6">
+                    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm relative overflow-hidden">
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
+                      <label className="block text-sm font-bold text-slate-700 mb-2">
+                        Taxa de Juros Mensal Padrão (%)
+                      </label>
+                      <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                        Esta taxa será utilizada como referência global para cálculo de juros e mora em operações financeiras e faturamentos em atraso que não possuam taxa específica configurada.
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={globalConfig.taxaJurosMensal}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaJurosMensal: e.target.value }))}
+                            className="pl-4 pr-8 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all w-32"
+                            placeholder="0.00"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleSaveGlobalConfig}
+                          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm shadow-indigo-100 hover:shadow active:scale-95 cursor-pointer"
+                        >
+                          <Save className="w-4 h-4" />
+                          <span>Salvar Configuração</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </>

@@ -45,7 +45,7 @@ export default function ClientMaintenanceModal({ isOpen, onClose, boats, clientI
         descricaoAvaria: formData.descricaoAvaria,
         urgencia: formData.urgencia,
         status: 'pendente',
-        dataAbertura: new Date().toISOString()
+        dataAbertura: new Date().toISOString().split('T')[0]
       });
 
       alert( 'Seu chamado foi aberto com sucesso.');

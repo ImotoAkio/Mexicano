@@ -41,6 +41,7 @@ export default function FinanceLancamentos() {
   const [planosContas, setPlanosContas] = useState<any[]>([]);
   const [centrosCusto, setCentrosCusto] = useState<any[]>([]);
   const [fornecedores, setFornecedores] = useState<any[]>([]);
+  const [taxaJurosMensal, setTaxaJurosMensal] = useState<number>(2.2);
       
   // Tabs state: 'dashboard' | 'lancamentos' | 'atividades' | 'agenda' | 'cobranca' | 'configuracoes'
   
@@ -124,7 +125,7 @@ export default function FinanceLancamentos() {
     const days = getDaysDiff(t.dataVencimento);
     if (days <= 0) return { days: 0, interest: 0, total: Number(t.valor) };
 
-    const ratePerDay = 0.0007333; // 0.0733% ao dia (2.2% ao mês)
+    const ratePerDay = (taxaJurosMensal / 100) / 30;
     const interest = Number(t.valor) * ratePerDay * days;
     const total = Number(t.valor) + interest;
 
@@ -157,16 +158,23 @@ export default function FinanceLancamentos() {
       if (res.ok) {
 
       try {
-        const [resContas, resPlanos, resForn, resCentros] = await Promise.all([
+        const [resContas, resPlanos, resForn, resCentros, resConfig] = await Promise.all([
           fetch('/api/financeiro/contas-bancarias', { headers: { 'Authorization': `Bearer ${token}` } }),
           fetch('/api/financeiro/planos-contas', { headers: { 'Authorization': `Bearer ${token}` } }),
           fetch('/api/financeiro/fornecedores', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/financeiro/centros-custo', { headers: { 'Authorization': `Bearer ${token}` } })
+          fetch('/api/financeiro/centros-custo', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/financeiro/configuracoes', { headers: { 'Authorization': `Bearer ${token}` } })
         ]);
         if (resContas.ok) setContasBancarias(await resContas.json());
         if (resPlanos.ok) setPlanosContas(await resPlanos.json());
         if (resForn.ok) setFornecedores(await resForn.json());
         if (resCentros.ok) setCentrosCusto(await resCentros.json());
+        if (resConfig.ok) {
+           const d = await resConfig.json();
+           if (d.success && d.configuracoes) {
+               setTaxaJurosMensal(parseFloat(d.configuracoes.taxaJurosMensal || '2.2'));
+           }
+        }
       } catch (err) { console.error('Erro ao buscar dados complementares no financeiro:', err); }
 
         transacoesData = await res.json();
@@ -532,7 +540,7 @@ export default function FinanceLancamentos() {
     doc.text("Vencimento", 60, y);
     doc.text("Valor Orig.", 95, y);
     doc.text("Atraso", 125, y);
-    doc.text("Juros (2.2%/mês)", 145, y);
+    doc.text(`Juros (${taxaJurosMensal.toFixed(2)}%/mês)`, 145, y);
     doc.text("Total", 175, y);
     
     doc.line(20, y + 4, 190, y + 4);

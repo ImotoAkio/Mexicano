@@ -306,12 +306,50 @@ export default function FinanceFluxoCaixa() {
   const [centroCustoFilter, setCentroCustoFilter] = useState('todos');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
+  const [taxaJurosMensal, setTaxaJurosMensal] = useState<number>(2.2);
+
+  const getDaysDiff = (dateStr: string) => {
+    const due = new Date(dateStr + 'T12:00:00'); // avoid timezone shifts
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const diffTime = today.getTime() - due.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const calculateTransactionInterest = (t: TransacaoFinanceira) => {
+    if (t.tipo !== 'receita') return { days: 0, interest: 0, total: Number(t.valor) };
+
+    const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
+    if (!isOverdue) return { days: 0, interest: 0, total: Number(t.valor) };
+
+    const days = getDaysDiff(t.dataVencimento);
+    if (days <= 0) return { days: 0, interest: 0, total: Number(t.valor) };
+
+    const ratePerDay = (taxaJurosMensal / 100) / 30;
+    const interest = Number(t.valor) * ratePerDay * days;
+    const total = Number(t.valor) + interest;
+
+    return { days, interest, total };
+  };
 
   const fetchTransacoes = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('admin_token');
-      const res = await fetch('/api/db/pull', { headers: { 'Authorization': `Bearer ${token}` }});
+
+      const [res, resConfig] = await Promise.all([
+        fetch('/api/db/pull', { headers: { 'Authorization': `Bearer ${token}` }}),
+        fetch('/api/financeiro/configuracoes', { headers: { 'Authorization': `Bearer ${token}` }})
+      ]);
+
+      if (resConfig.ok) {
+        const d = await resConfig.json();
+        if (d.success && d.configuracoes) {
+          setTaxaJurosMensal(parseFloat(d.configuracoes.taxaJurosMensal || '2.2'));
+        }
+      }
+
       if(res.ok) {
         const dbData = await res.json();
         if (dbData.planosContas) {
@@ -505,6 +543,7 @@ export default function FinanceFluxoCaixa() {
 
   // Calculate quick metrics for current view
   const metricReceber = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status !== 'pago').reduce((acc, curr) => acc + (parseFloat(curr.valor)||0), 0);
+  const metricReceberJuros = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status !== 'pago').reduce((acc, curr) => acc + calculateTransactionInterest(curr as any).interest, 0);
   const metricPagar = filteredTransacoes.filter(t => t.tipo === 'despesa' && t.status !== 'pago').reduce((acc, curr) => acc + (parseFloat(curr.valor)||0), 0);
   const metricSaldo = filteredTransacoes.filter(t => t.status === 'pago').reduce((acc, curr) => acc + (curr.tipo === 'receita' ? (parseFloat(curr.valor)||0) : -(parseFloat(curr.valor)||0)), 0);
 
@@ -577,7 +616,12 @@ export default function FinanceFluxoCaixa() {
            <div className="bg-white rounded-2xl p-5 border border-black/[0.04] shadow-sm flex items-center justify-between">
              <div>
                <p className="text-[13px] font-semibold text-[#86868b] tracking-wide uppercase mb-1">A Receber</p>
-               <p className="text-[24px] font-semibold text-[#1d1d1f] tracking-tight text-[#008f5d]">R$ {metricReceber.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+               <p className="text-[24px] font-semibold text-[#1d1d1f] tracking-tight text-[#008f5d]">
+                 R$ {metricReceber.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                 {metricReceberJuros > 0 && (
+                   <span className="text-[14px] text-[#e30000] ml-2">(+R$ {metricReceberJuros.toLocaleString('pt-BR', {minimumFractionDigits: 2})})</span>
+                 )}
+               </p>
              </div>
              <div className="w-12 h-12 bg-[#008f5d]/10 rounded-full flex items-center justify-center">
                <TrendingUp className="w-6 h-6 text-[#008f5d]" />
@@ -753,8 +797,19 @@ export default function FinanceFluxoCaixa() {
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <div className={`text-[15px] font-semibold ${t.tipo === 'receita' ? 'text-[#008f5d]' : 'text-[#1d1d1f]'}`}>
-                            {t.tipo === 'despesa' ? '- ' : '+ '}R$ {parseFloat(t.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                          <div className={`text-[15px] font-semibold flex flex-col justify-center ${t.tipo === 'receita' ? 'text-[#008f5d]' : 'text-[#1d1d1f]'}`}>
+                            <span>{t.tipo === 'despesa' ? '- ' : '+ '}R$ {parseFloat(t.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                            {(() => {
+                              const { days, interest } = calculateTransactionInterest(t as any);
+                              if (days > 0 && interest > 0) {
+                                return (
+                                  <span className="text-[11px] text-[#e30000] font-bold mt-0.5">
+                                    (+R$ {interest.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-center">
