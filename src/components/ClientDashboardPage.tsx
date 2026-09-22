@@ -8,6 +8,7 @@ import boatImg2 from '../assets/images/2.webp';
 import ClientReservationModal from './ClientReservationModal';
 import ClientCheckinModal from './ClientCheckinModal';
 import ClientMaintenanceModal from './ClientMaintenanceModal';
+import FeedbackForm from './FeedbackForm';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
 import { getBoatCode } from '../utils/boatUtils';
@@ -32,6 +33,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [privacyTab, setPrivacyTab] = useState<'general' | 'data' | 'rights' | 'dpo'>('general');
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
+  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [showProfilePanel, setShowProfilePanel] = useState(false);
   const [maintenanceView, setMaintenanceView] = useState<'list' | 'create'>('list');
   const [maintenanceSearch, setMaintenanceSearch] = useState('');
@@ -205,6 +207,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
   // Calendar states
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [isCalendarBoatDropdownOpen, setIsCalendarBoatDropdownOpen] = useState(false);
+  const [calendarBoatSearchQuery, setCalendarBoatSearchQuery] = useState('');
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [selectedReservationForCheckin, setSelectedReservationForCheckin] = useState<any>(null);
@@ -622,27 +626,47 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         ) : (
           <>
             {/* Scrollable Container */}
-            <div 
+            <div
               ref={sliderRef}
               onMouseDown={handleMouseDown}
               onMouseLeave={handleMouseLeave}
               onMouseUp={handleMouseUp}
               onMouseMove={handleMouseMove}
-              className={`w-full flex overflow-x-auto snap-x snap-mandatory subtle-scrollbar hide-scrollbar ${isDown ? 'cursor-grabbing snap-none' : 'cursor-grab'}`} 
+              className={`w-full flex overflow-x-auto snap-x snap-mandatory subtle-scrollbar hide-scrollbar ${isDown ? 'cursor-grabbing snap-none' : 'cursor-grab'}`}
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               {boats.map((boat, index) => {
                 // Usa a imagem configurada no banco ou fallback alternado
                 const fallbackImg = index % 2 === 0 ? boatImg1 : boatImg2;
                 const imgSource = boat.imagemUrl ? boat.imagemUrl : fallbackImg;
+
+                // Status dinâmico da embarcação
+                let boatStatus = { text: 'Pronta para uso', colorClass: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400', pulseClass: 'bg-emerald-500' };
+                if (boat.emManutencao) {
+                  boatStatus = { text: 'Em Manutenção', colorClass: 'bg-rose-500/10 border-rose-500/20 text-rose-400', pulseClass: 'bg-rose-500' };
+                } else {
+                  const todaysBoatReservations = mergedReservations.filter(r =>
+                    r.embarcacaoId === boat.id && r.data === todayStrLocal && r.status !== 'cancelado'
+                  );
+                  const activeNavigating = todaysBoatReservations.find(r =>
+                    ['descida', 'pier', 'saida', 'chegada'].includes(r.statusMarina || '')
+                  );
+                  if (activeNavigating) {
+                    if (activeNavigating.statusMarina === 'saida') boatStatus = { text: 'Navegando', colorClass: 'bg-blue-500/10 border-blue-500/20 text-blue-400', pulseClass: 'bg-blue-500' };
+                    if (activeNavigating.statusMarina === 'descida') boatStatus = { text: 'Em Descida', colorClass: 'bg-amber-500/10 border-amber-500/20 text-amber-400', pulseClass: 'bg-amber-500' };
+                    if (activeNavigating.statusMarina === 'pier') boatStatus = { text: 'No Píer', colorClass: 'bg-sky-500/10 border-sky-500/20 text-sky-400', pulseClass: 'bg-sky-500' };
+                    if (activeNavigating.statusMarina === 'chegada') boatStatus = { text: 'Verificando Chegada', colorClass: 'bg-amber-500/10 border-amber-500/20 text-amber-400', pulseClass: 'bg-amber-500' };
+                  }
+                }
+
                 return (
                   <div key={boat.id} className="min-w-full snap-center px-6 flex flex-col items-center relative">
-                    
+
                     {/* Boat Image */}
                     <div className="relative z-10 w-full max-w-[320px] aspect-square flex items-center justify-center [animation:luxury-scale-up_1.5s_cubic-bezier(0.16,1,0.3,1)_forwards]">
-                      <img 
-                        src={imgSource} 
-                        alt={boat.nome} 
+                      <img
+                        src={imgSource}
+                        alt={boat.nome}
                         className="w-full h-auto drop-shadow-[0_20px_50px_rgba(0,0,0,0.8)] [animation:luxury-float_6s_ease-in-out_infinite]"
                         style={{ WebkitUserDrag: 'none' } as React.CSSProperties}
                       />
@@ -659,11 +683,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                           <Ship className="w-5 h-5 text-[#B69D74]" />
                         </div>
                       </div>
-                      
+
                       <div className="mt-5 flex items-center gap-3">
-                        <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-medium text-emerald-400 uppercase tracking-wider">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                          Pronta para uso
+                        <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-medium uppercase tracking-wider ${boatStatus.colorClass}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${boatStatus.pulseClass}`}></span>
+                          {boatStatus.text}
                         </span>
                         {boat.modelo && (
                           <span className="px-3 py-1.5 rounded-full bg-white/5 border border-white/5 text-[10px] text-white/60 uppercase tracking-wider">
@@ -863,44 +887,144 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
     return (
       <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pt-0">
-        {/* Multi-Boat Selector Tabs (If client has more than 1 boat) */}
+        {/* Multi-Boat Selector (Custom Dropdown for scalability) */}
         {boats.length > 1 && (
-          <div className="mb-5 bg-[#111] border border-white/10 rounded-2xl p-1.5 flex gap-2 overflow-x-auto subtle-scrollbar">
-            {boats.map((b) => {
-              const isSelected = (b.id === activeBoatId);
-              const isJet = b.tipo === 'jet' || (b.nome || '').toLowerCase().includes('jet');
-              const boatResCount = myReservations.filter(r => r.embarcacaoId === b.id && r.data >= todayStr && r.status !== 'cancelado').length;
-              return (
-                <button
-                  key={b.id}
-                  onClick={() => setSelectedCalendarBoatId(b.id)}
-                  className={`flex-1 min-w-[130px] flex items-center justify-between p-3 rounded-xl border transition-all duration-300 cursor-pointer ${
-                    isSelected
-                      ? 'bg-gradient-to-r from-[#B69D74]/20 to-[#B69D74]/10 border-[#B69D74]/50 shadow-[0_0_20px_rgba(182,157,116,0.15)] text-white'
-                      : 'bg-white/[0.02] border-white/5 hover:bg-white/5 text-white/50 hover:text-white'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${isSelected ? 'bg-[#B69D74] text-slate-900 font-bold' : 'bg-white/5 text-white/40'}`}>
-                      {isJet ? <Droplets className="w-3.5 h-3.5" /> : <Ship className="w-3.5 h-3.5" />}
-                    </div>
-                    <div className="text-left">
-                      <p className={`text-xs font-semibold truncate max-w-[90px] ${isSelected ? 'text-white' : 'text-white/70'}`}>
-                        {getBoatCode(b)}
-                      </p>
-                      <p className="text-[9px] uppercase tracking-wider text-white/40">
-                        {b.numero ? `M${b.numero}` : (isJet ? 'Jetski' : 'Lancha')}
-                      </p>
+          <div className="mb-4 relative">
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/50 mb-2 pl-1">
+              Selecionar Embarcação
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsCalendarBoatDropdownOpen(!isCalendarBoatDropdownOpen)}
+                className={`w-full bg-[#111] hover:bg-[#1a1a1a] border rounded-xl pl-11 pr-10 py-3.5 flex items-center justify-between text-sm font-medium text-white transition-all cursor-pointer shadow-sm
+                  ${isCalendarBoatDropdownOpen ? 'border-[#B69D74] ring-1 ring-[#B69D74]/50' : 'border-white/10 hover:border-white/20'}`}
+              >
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Ship className={`w-4 h-4 transition-colors ${isCalendarBoatDropdownOpen ? 'text-[#B69D74]' : 'text-white/40'}`} />
+                </div>
+
+                {activeBoat ? (
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-white tracking-wide">{getBoatCode(activeBoat)}</span>
+                    <span className="text-white/30">-</span>
+                    <span className="text-white/80">{activeBoat.numero ? `M${activeBoat.numero}` : (activeBoat.tipo === 'jet' || (activeBoat.nome || '').toLowerCase().includes('jet') ? 'Jetski' : 'Lancha')}</span>
+                  </div>
+                ) : (
+                  <span className="text-white/50">Selecione uma embarcação...</span>
+                )}
+
+                <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                  <ChevronDown className={`w-4 h-4 transition-all duration-300 ${isCalendarBoatDropdownOpen ? 'rotate-180 text-[#B69D74]' : 'text-white/40'}`} />
+                </div>
+              </button>
+
+              {/* Custom Dropdown List */}
+              {isCalendarBoatDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsCalendarBoatDropdownOpen(false)}
+                  />
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-[#111] border border-white/10 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                    {/* Search Field */}
+                    {boats.length > 5 && (
+                      <div className="p-2 border-b border-white/[0.05]">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+                          <input
+                            type="text"
+                            placeholder="Buscar embarcação..."
+                            value={calendarBoatSearchQuery}
+                            onChange={(e) => setCalendarBoatSearchQuery(e.target.value)}
+                            className="w-full bg-white/[0.03] border border-white/5 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-white/30 focus:border-[#B69D74]/50 focus:ring-1 focus:ring-[#B69D74]/50 outline-none transition-all"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Boat List */}
+                    <div className="max-h-[240px] overflow-y-auto subtle-scrollbar p-2">
+                      {boats
+                        .filter(b =>
+                          (b.nome || '').toLowerCase().includes(calendarBoatSearchQuery.toLowerCase()) ||
+                          getBoatCode(b).toLowerCase().includes(calendarBoatSearchQuery.toLowerCase())
+                        )
+                        .map((b) => {
+                          const isJet = b.tipo === 'jet' || (b.nome || '').toLowerCase().includes('jet');
+                          const TypeIcon = isJet ? Droplets : Ship;
+                          const isSelected = activeBoatId === b.id;
+
+                          // Count reservations
+                          const boatResCount = myReservations.filter(r => r.embarcacaoId === b.id && r.data >= todayStr && r.status !== 'cancelado').length;
+
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCalendarBoatId(b.id);
+                                setIsCalendarBoatDropdownOpen(false);
+                                setCalendarBoatSearchQuery('');
+                              }}
+                              className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 last:mb-0 flex items-center justify-between transition-all cursor-pointer group ${
+                                isSelected
+                                  ? 'bg-[#B69D74]/15 hover:bg-[#B69D74]/20'
+                                  : 'hover:bg-white/5'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border transition-colors ${
+                                  isSelected
+                                    ? 'bg-[#B69D74]/20 border-[#B69D74]/30 text-[#B69D74]'
+                                    : 'bg-white/5 border-white/10 text-white/40 group-hover:bg-white/10 group-hover:text-white/70'
+                                }`}>
+                                  <TypeIcon className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`font-semibold text-sm ${isSelected ? 'text-white' : 'text-white/80 group-hover:text-white'}`}>
+                                      {getBoatCode(b)}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5 block">
+                                    {b.numero ? `M${b.numero}` : (isJet ? 'Jetski' : 'Lancha')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                {boatResCount > 0 && (
+                                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-medium ${
+                                    isSelected
+                                      ? 'bg-white/10 text-white/80'
+                                      : 'bg-white/5 text-white/50 group-hover:bg-white/10'
+                                  }`}>
+                                    {boatResCount} res.
+                                  </span>
+                                )}
+                                {isSelected && (
+                                  <Check className="w-4 h-4 text-[#B69D74]" />
+                                )}
+                              </div>
+                            </button>
+                          );
+                      })}
+
+                      {boats.filter(b =>
+                        (b.nome || '').toLowerCase().includes(calendarBoatSearchQuery.toLowerCase()) ||
+                        getBoatCode(b).toLowerCase().includes(calendarBoatSearchQuery.toLowerCase())
+                      ).length === 0 && (
+                        <div className="p-4 text-center">
+                          <span className="text-xs text-white/40">Nenhuma embarcação encontrada.</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {boatResCount > 0 && (
-                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${isSelected ? 'bg-[#B69D74] text-slate-900' : 'bg-white/10 text-white/60'}`}>
-                      {boatResCount}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                </>
+              )}
+            </div>
           </div>
         )}
 
@@ -1397,7 +1521,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
     setIsMaintenanceSubmitting(true);
     try {
-      chamadoDB.create({
+      await chamadoDB.create({
         embarcacaoId: maintenanceFormData.embarcacaoId,
         solicitanteTipo: 'cliente',
         solicitanteNome: client.nome,
@@ -1413,6 +1537,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       setTimeout(() => {
         setIsMaintenanceSubmitting(false);
         setMaintenanceView('list');
+        if (onRefresh) onRefresh();
       }, 500);
 
       setMaintenanceFormData({
@@ -1451,9 +1576,13 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   };
 
   const renderMaintenance = () => {
+    const validStatuses = ['pendente', 'em_analise', 'os_gerada', 'concluido'];
     const filteredChamados = chamados.filter(c =>
-      c.titulo.toLowerCase().includes(maintenanceSearch.toLowerCase()) ||
-      (c.codigoChamado || '').toLowerCase().includes(maintenanceSearch.toLowerCase())
+      c.solicitanteTipo === 'cliente' &&
+      c.clienteId === client.id &&
+      validStatuses.includes(c.status) &&
+      (c.titulo.toLowerCase().includes(maintenanceSearch.toLowerCase()) ||
+       (c.codigoChamado || '').toLowerCase().includes(maintenanceSearch.toLowerCase()))
     );
 
     return (
@@ -1782,7 +1911,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 <button
                   onClick={() => {
                     setIsActionMenuOpen(false);
-                    showToast('Ticket para Administração', 'A central de chamados com o administrador estará disponível em breve.', 'warning');
+                    setIsTicketModalOpen(true);
                   }}
                   className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-sky-500/15 border border-white/[0.05] hover:border-sky-500/30 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-3"
                 >
@@ -2342,7 +2471,17 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         }}
       />
 
-      <ClientReservationModal 
+      {isTicketModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#020202]/95 backdrop-blur-xl transition-all duration-300 animate-in fade-in">
+          <FeedbackForm 
+            isEmbedded={true} 
+            prefilledClient={client}
+            onClose={() => setIsTicketModalOpen(false)} 
+          />
+        </div>
+      )}
+
+      <ClientReservationModal
         isOpen={isReservationModalOpen}
         onClose={() => setIsReservationModalOpen(false)}
         selectedDate={selectedDate}

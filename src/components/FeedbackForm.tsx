@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, MessageSquare, Star, ArrowRight, ArrowLeft, Send, CheckCircle2, User, Phone, Clipboard, EyeOff } from 'lucide-react';
+import { ShieldCheck, MessageSquare, Star, ArrowRight, ArrowLeft, Send, CheckCircle2, User, Phone, Clipboard, EyeOff, X } from 'lucide-react';
 import Logo from './Logo';
 
 type StepType = 'rating' | 'content' | 'identification' | 'success';
@@ -20,7 +20,17 @@ const CATEGORIES = [
   { id: 'outro' as CategoryType, label: 'Outro', desc: 'Outros assuntos ou dúvidas gerais.' }
 ];
 
-export default function FeedbackForm() {
+interface FeedbackFormProps {
+  isEmbedded?: boolean;
+  prefilledClient?: {
+    cpf: string;
+    nome: string;
+    telefone: string;
+  };
+  onClose?: () => void;
+}
+
+export default function FeedbackForm({ isEmbedded = false, prefilledClient, onClose }: FeedbackFormProps = {}) {
   const [step, setStep] = useState<StepType>('rating');
   const [rating, setRating] = useState<number | null>(null);
   const [category, setCategory] = useState<CategoryType>('sugestao');
@@ -90,7 +100,7 @@ export default function FeedbackForm() {
   }, [cpf]);
 
   // Submit Feedback
-  const handleSubmit = async () => {
+  const handleSubmit = async (submitWithPrefilled = false) => {
     if (!rating) return;
     setIsLoading(true);
     setError('');
@@ -100,9 +110,9 @@ export default function FeedbackForm() {
         nota: rating,
         categoria: category,
         comentario: comment,
-        cpf: !isAnonymous ? cpf : undefined,
-        nomeCliente: !isAnonymous ? (identifiedClientName || clientName) : undefined,
-        telefoneCliente: !isAnonymous ? phone : undefined
+        cpf: (submitWithPrefilled === true && prefilledClient) ? prefilledClient.cpf : (!isAnonymous ? cpf : undefined),
+        nomeCliente: (submitWithPrefilled === true && prefilledClient) ? prefilledClient.nome : (!isAnonymous ? (identifiedClientName || clientName) : undefined),
+        telefoneCliente: (submitWithPrefilled === true && prefilledClient) ? prefilledClient.telefone : (!isAnonymous ? phone : undefined)
       };
 
       const response = await fetch('/api/feedbacks', {
@@ -210,7 +220,7 @@ export default function FeedbackForm() {
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white selection:bg-[#B69D74]/30 selection:text-white">
+    <div className={isEmbedded ? "w-full h-full flex items-center justify-center font-sans relative text-white" : "min-h-[100dvh] w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white selection:bg-[#B69D74]/30 selection:text-white"}>
       {/* Canvas for Success Confetti */}
       <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-50 w-full h-full" />
 
@@ -219,10 +229,18 @@ export default function FeedbackForm() {
         <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(ellipse_at_center,_rgba(182,157,116,0.06)_0%,_transparent_50%)] animate-pulse" style={{ animationDuration: '6s' }}></div>
       </div>
 
-      <div className="w-full max-w-[460px] min-h-[100dvh] md:min-h-[780px] md:h-[780px] md:rounded-[2.5rem] bg-[#0c0c0c]/85 backdrop-blur-3xl md:border border-white/[0.04] shadow-[0_0_80px_rgba(0,0,0,0.9)] relative z-10 flex flex-col p-6 sm:p-10 justify-between overflow-y-auto subtle-scrollbar">
+      <div className={`w-full max-w-[460px] ${isEmbedded ? 'min-h-[650px] rounded-[2rem]' : 'min-h-[100dvh] md:min-h-[780px] md:h-[780px] md:rounded-[2.5rem]'} bg-[#0c0c0c]/85 backdrop-blur-3xl md:border border-white/[0.04] shadow-[0_0_80px_rgba(0,0,0,0.9)] relative z-10 flex flex-col p-6 sm:p-10 justify-between overflow-y-auto subtle-scrollbar`}>
         
         {/* Top Header */}
-        <header className="flex flex-col items-center pt-2">
+        <header className="flex flex-col items-center pt-2 relative">
+          {isEmbedded && onClose && (
+            <button 
+              onClick={onClose}
+              className="absolute top-0 right-0 p-2 text-white/40 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
           <div className="w-20 h-20 opacity-90 p-3 bg-white/[0.02] rounded-2xl border border-white/[0.05] shadow-inner mb-4">
             <Logo className="w-full h-full text-[#B69D74]" />
           </div>
@@ -353,7 +371,13 @@ export default function FeedbackForm() {
                 
                 <button
                   disabled={!comment.trim()}
-                  onClick={() => setStep('identification')}
+                  onClick={() => {
+                    if (prefilledClient) {
+                      handleSubmit(true);
+                    } else {
+                      setStep('identification');
+                    }
+                  }}
                   className={`flex-1 flex items-center justify-center py-3.5 rounded-full font-semibold text-xs tracking-widest uppercase transition-all duration-300 border ${
                     comment.trim()
                       ? 'bg-[#B69D74] text-[#050505] border-[#B69D74] hover:bg-[#a58c63] hover:shadow-[0_4px_20px_rgba(182,157,116,0.3)] cursor-pointer'
