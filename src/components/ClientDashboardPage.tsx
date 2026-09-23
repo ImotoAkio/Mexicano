@@ -3,9 +3,9 @@ import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2
 import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
 // @ts-ignore
-import boatImg1 from '../assets/images/1.webp';
+import boatImgLancha from '../assets/images/lancha.svg';
 // @ts-ignore
-import boatImg2 from '../assets/images/2.webp';
+import boatImgJet from '../assets/images/jet.svg';
 import ClientReservationModal from './ClientReservationModal';
 import ClientCheckinModal from './ClientCheckinModal';
 import ClientMaintenanceModal from './ClientMaintenanceModal';
@@ -637,8 +637,9 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               {boats.map((boat, index) => {
-                // Usa a imagem configurada no banco ou fallback alternado
-                const fallbackImg = index % 2 === 0 ? boatImg1 : boatImg2;
+                // Usa a imagem configurada no banco ou fallback com base no tipo
+                const isJet = boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet');
+                const fallbackImg = isJet ? boatImgJet : boatImgLancha;
                 const imgSource = boat.imagemUrl ? boat.imagemUrl : fallbackImg;
 
                 // Status dinâmico da embarcação

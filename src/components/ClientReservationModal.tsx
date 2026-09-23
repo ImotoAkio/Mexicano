@@ -267,6 +267,18 @@ export default function ClientReservationModal({
           </div>
 
           <div className="p-6 border-t border-white/5 bg-[#050505] flex justify-end">
+            <div className="hidden">
+              <MonthlyCalendarGenerator
+                initialBoatId={selectedBoatId}
+                initialDate={selectedDate}
+                autoExport={true}
+                onExport={(base64) => {
+                  if (whatsappStatus === 'idle') {
+                    handleWhatsAppExport(base64, b);
+                  }
+                }}
+              />
+            </div>
             <button
               onClick={handleFinish}
               className="w-full sm:w-auto px-8 py-3.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 font-bold text-sm tracking-wide rounded-xl transition-all shadow-[0_0_20px_rgba(182,157,116,0.15)]"
