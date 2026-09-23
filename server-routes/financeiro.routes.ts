@@ -339,8 +339,21 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
       return res.status(404).json({ error: true, message: "Cliente não encontrado" });
     }
 
-    const asaasCustomerId = await getOrRegisterAsaasCustomer(client);
-    const charge = await createAsaasBulkCharge(txs, asaasCustomerId, billingType);
+    let asaasCustomerId = await getOrRegisterAsaasCustomer(client);
+    let charge;
+    try {
+      charge = await createAsaasBulkCharge(txs, asaasCustomerId, billingType);
+    } catch (chargeErr: any) {
+      if (chargeErr.message && (chargeErr.message.toLowerCase().includes("customer") || chargeErr.message.toLowerCase().includes("cliente"))) {
+        console.warn("[Asaas] Customer ID rejected by Asaas API for bulk charge. Clearing cached ID and retrying...");
+        await currentPool.query("UPDATE Clientes SET asaasCustomerId = NULL WHERE id = ?", [client.id]);
+        client.asaasCustomerId = null;
+        asaasCustomerId = await getOrRegisterAsaasCustomer(client);
+        charge = await createAsaasBulkCharge(txs, asaasCustomerId, billingType);
+      } else {
+        throw chargeErr;
+      }
+    }
 
     for (const tx of txs) {
       await currentPool.query(
