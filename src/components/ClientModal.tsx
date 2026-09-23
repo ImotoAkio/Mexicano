@@ -336,6 +336,21 @@ export default function ClientModal({
                 )}
               </div>
 
+              {/* Plano de Agendamento */}
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Plano de Agendamento</span>
+                </label>
+                <select
+                  value={plano}
+                  onChange={(e) => setPlano(e.target.value as 'normal' | 'completo')}
+                  className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 font-medium cursor-pointer"
+                >
+                  <option value="normal">Normal (Sem acesso a seg/ter)</option>
+                  <option value="completo">Plano Completo (Acesso total)</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-800 mb-1">Nome Completo *</label>
                 <input
@@ -803,19 +818,6 @@ export default function ClientModal({
                           rows={2}
                           className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white resize-none"
                         ></textarea>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Plano de Agendamento</label>
-                        <select
-                          tabIndex={28}
-                          value={plano}
-                          onChange={(e) => setPlano(e.target.value as 'normal' | 'completo')}
-                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-medium"
-                        >
-                          <option value="normal">Normal (Sem acesso a seg/ter)</option>
-                          <option value="completo">Plano Completo (Acesso total)</option>
-                        </select>
                       </div>
                     </div>
                   </div>
