@@ -536,10 +536,15 @@ export async function initializeDatabase() {
         saldoInicial DECIMAL(10, 2) DEFAULT 0,
         status VARCHAR(20) DEFAULT 'ativo',
         parentId VARCHAR(50),
+        asaasWalletId VARCHAR(255),
         createdAt VARCHAR(50) NOT NULL,
         updatedAt VARCHAR(50) NOT NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    try {
+      await connection.query(`ALTER TABLE ContasBancarias ADD COLUMN asaasWalletId VARCHAR(255);`);
+    } catch (e) {}
 
     
     // 8.5 CentrosDeCusto Table
@@ -3196,15 +3201,15 @@ export async function upsertContaBancaria(c: any): Promise<void> {
   const idToUse = c.id || `conta_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
 
   await currentPool.query(
-    `INSERT INTO ContasBancarias (id, nome, empresa, banco, agencia, conta, saldoInicial, status, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO ContasBancarias (id, nome, empresa, banco, agencia, conta, saldoInicial, status, asaasWalletId, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        nome=VALUES(nome), empresa=VALUES(empresa), banco=VALUES(banco),
        agencia=VALUES(agencia), conta=VALUES(conta), saldoInicial=VALUES(saldoInicial),
-       status=VALUES(status), updatedAt=VALUES(updatedAt)`,
+       status=VALUES(status), asaasWalletId=VALUES(asaasWalletId), updatedAt=VALUES(updatedAt)`,
     [
       idToUse, c.nome, c.empresa || null, c.banco || null, c.agencia || null, c.conta || null,
-      c.saldoInicial || 0, c.status || 'ativo', c.createdAt || new Date().toISOString(),
+      c.saldoInicial || 0, c.status || 'ativo', c.asaasWalletId || null, c.createdAt || new Date().toISOString(),
       c.updatedAt || new Date().toISOString()
     ]
   );

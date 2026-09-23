@@ -14,6 +14,7 @@ interface ContaBancaria {
   conta: string;
   saldoInicial?: number;
   status: 'ativo' | 'inativo';
+  asaasWalletId?: string;
 }
 
 interface PlanoDeConta {
@@ -51,7 +52,7 @@ export default function FinanceConfig({
   const [planosContas, setPlanosContas] = useState<PlanoDeConta[]>([]);
   const [centrosCusto, setCentrosCusto] = useState<CentroDeCusto[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
-  const [globalConfig, setGlobalConfig] = useState<{ taxaJurosMensal: string }>({ taxaJurosMensal: "2.2" });
+  const [globalConfig, setGlobalConfig] = useState<{ taxaJurosMensal: string, taxaMultaAtraso?: string, asaasContaBancariaId?: string, fin_asaas_split_enabled?: boolean }>({ taxaJurosMensal: "2.2", taxaMultaAtraso: "2.0", asaasContaBancariaId: "", fin_asaas_split_enabled: false });
   const [loading, setLoading] = useState(false);
 
   // Modals / Form State
@@ -71,7 +72,8 @@ export default function FinanceConfig({
     agencia: '',
     conta: '',
     saldoInicial: 0,
-    status: 'ativo'
+    status: 'ativo',
+    asaasWalletId: ''
   });
 
   const [centroForm, setCentroForm] = useState<Partial<CentroDeCusto>>({
@@ -369,7 +371,10 @@ export default function FinanceConfig({
           ...getAuthHeader()
         },
         body: JSON.stringify({
-          taxaJurosMensal: parseFloat(globalConfig.taxaJurosMensal || '0')
+          taxaJurosMensal: parseFloat(globalConfig.taxaJurosMensal || '0'),
+          taxaMultaAtraso: parseFloat(globalConfig.taxaMultaAtraso || '0'),
+          asaasContaBancariaId: globalConfig.asaasContaBancariaId,
+          fin_asaas_split_enabled: globalConfig.fin_asaas_split_enabled ? '1' : '0'
         })
       });
       if (res.ok) {
@@ -789,7 +794,7 @@ export default function FinanceConfig({
                   </h3>
 
                   <div className="space-y-6">
-                    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm relative overflow-hidden">
+                                        <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm relative overflow-hidden">
                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
                       <label className="block text-sm font-bold text-slate-700 mb-2">
                         Taxa de Juros Mensal Padrão (%)
@@ -797,27 +802,91 @@ export default function FinanceConfig({
                       <p className="text-xs text-slate-500 mb-4 leading-relaxed">
                         Esta taxa será utilizada como referência global para cálculo de juros e mora em operações financeiras e faturamentos em atraso que não possuam taxa específica configurada.
                       </p>
-                      <div className="flex items-center gap-4">
-                        <div className="relative">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={globalConfig.taxaJurosMensal}
-                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaJurosMensal: e.target.value }))}
-                            className="pl-4 pr-8 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all w-32"
-                            placeholder="0.00"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                      <div className="flex flex-col gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={globalConfig.taxaJurosMensal}
+                              onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaJurosMensal: e.target.value }))}
+                              className="pl-4 pr-8 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all w-32"
+                              placeholder="0.00"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                          </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={handleSaveGlobalConfig}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm shadow-indigo-100 hover:shadow active:scale-95 cursor-pointer"
-                        >
-                          <Save className="w-4 h-4" />
-                          <span>Salvar Configuração</span>
-                        </button>
+                        <label className="block text-sm font-bold text-slate-700">
+                          Multa de Atraso Padrão (%)
+                        </label>
+                        <p className="text-xs text-slate-500 mb-2 leading-relaxed">
+                          Percentual de multa aplicado uma única vez sobre faturamentos e boletos vencidos (ex: Asaas).
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={globalConfig.taxaMultaAtraso || ''}
+                              onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaMultaAtraso: e.target.value }))}
+                              className="pl-4 pr-8 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all w-32"
+                              placeholder="2.00"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                          </div>
+                        </div>
+
+                        <label className="block text-sm font-bold text-slate-700 mt-2">
+                          Conta Bancária Padrão do Asaas
+                        </label>
+                        <p className="text-xs text-slate-500 mb-2 leading-relaxed">
+                          Conta bancária onde os fundos liquidados pelo Webhook do Asaas serão depositados.
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <select
+                            value={globalConfig.asaasContaBancariaId || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, asaasContaBancariaId: e.target.value }))}
+                            className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all w-full max-w-sm"
+                          >
+                            <option value="">-- Não Definida --</option>
+                            {contasBancarias.map(c => (
+                              <option key={c.id} value={c.id}>{c.nome} ({c.banco})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="pt-4 mt-2 border-t border-slate-100 flex flex-col gap-2">
+                          <label className="block text-sm font-bold text-slate-700">
+                            Split Payment Asaas (Roteamento Automático de Wallets)
+                          </label>
+                          <p className="text-xs text-slate-500 mb-2 leading-relaxed max-w-lg">
+                            Se ativado, envia múltiplas transações separadas para diferentes contas bancárias através do Split Payment do Asaas (é necessário configurar o "Wallet ID (Asaas Split)" em cada Conta Bancária).
+                          </p>
+                          <label className="relative inline-flex items-center cursor-pointer mb-2">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={globalConfig.fin_asaas_split_enabled || false}
+                              onChange={(e) => setGlobalConfig(prev => ({ ...prev, fin_asaas_split_enabled: e.target.checked }))}
+                            />
+                            <div className="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            <span className="ml-3 text-sm font-medium text-slate-700">
+                              {globalConfig.fin_asaas_split_enabled ? "Ativado" : "Desativado"}
+                            </span>
+                          </label>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100 flex items-center gap-4">
+                          <button
+                            type="button"
+                            onClick={handleSaveGlobalConfig}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm shadow-indigo-100 hover:shadow active:scale-95 cursor-pointer"
+                          >
+                            <Save className="w-4 h-4" />
+                            <span>Salvar Configurações</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -943,6 +1012,25 @@ export default function FinanceConfig({
                       </select>
                     </div>
                   </div>
+
+                  {globalConfig.fin_asaas_split_enabled && (
+                    <div>
+                      <label className="block mb-1.5 flex items-center gap-2">
+                        Wallet ID (Asaas Split)
+                        <span className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px]">Opcional</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: 5d1b... (ID da Wallet no Asaas correspondente a esta conta)"
+                        value={contaForm.asaasWalletId || ''}
+                        onChange={(e) => setContaForm({ ...contaForm, asaasWalletId: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-normal"
+                      />
+                      <p className="mt-1 text-slate-500 text-[10px] font-normal">
+                        Usado apenas se o "Split Payment Asaas" estiver ativado nas configurações.
+                      </p>
+                    </div>
+                  )}
                 </form>
               )}
 

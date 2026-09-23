@@ -41,7 +41,7 @@ function getGlobalEmpresaFromRole(role: string): string | null {
   if (['admin', 'financeiro'].includes(r)) return null; // global
   if (['pecas_servicos'].includes(r)) return 'Vale Administradora';
   if (['comercial'].includes(r)) return 'Mexicano';
-  return 'Marina'; // fallback for all others (marina_gerente, marinheiro operador, etc)
+  return 'Marina Velho Chico'; // fallback for all others (marina_gerente, marinheiro operador, etc)
 }
 
 const router = Router();
@@ -269,8 +269,21 @@ router.post("/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, asy
       return res.status(404).json({ error: true, message: "Cliente vinculado não encontrado" });
     }
 
-    const asaasCustomerId = await getOrRegisterAsaasCustomer(client);
-    const charge = await createAsaasCharge(tx, asaasCustomerId, billingType);
+    let asaasCustomerId = await getOrRegisterAsaasCustomer(client);
+    let charge;
+    try {
+      charge = await createAsaasCharge(tx, asaasCustomerId, billingType);
+    } catch (chargeErr: any) {
+      if (chargeErr.message && (chargeErr.message.toLowerCase().includes("customer") || chargeErr.message.toLowerCase().includes("cliente"))) {
+        console.warn("[Asaas] Customer ID rejected by Asaas API. Clearing cached ID and retrying...");
+        await currentPool.query("UPDATE Clientes SET asaasCustomerId = NULL WHERE id = ?", [client.id]);
+        client.asaasCustomerId = null;
+        asaasCustomerId = await getOrRegisterAsaasCustomer(client);
+        charge = await createAsaasCharge(tx, asaasCustomerId, billingType);
+      } else {
+        throw chargeErr;
+      }
+    }
 
     await currentPool.query(
       "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ? WHERE id = ?",
@@ -389,13 +402,29 @@ router.post("/transacoes/gerar-asaas-lote", requireAdminAuth, sensitiveLimiter, 
       return res.status(404).json({ error: true, message: "Cliente não encontrado" });
     }
 
-    const asaasCustomerId = await getOrRegisterAsaasCustomer(client);
+    let asaasCustomerId = await getOrRegisterAsaasCustomer(client);
     // Para 1 transacao usa single, para multiplas usa bulk
     let charge;
-    if (txs.length === 1) {
-       charge = await createAsaasCharge(txs[0], asaasCustomerId, billingType || "PIX");
-    } else {
-       charge = await createAsaasBulkCharge(txs, asaasCustomerId, billingType || "PIX");
+    const makeCharge = async (customerId: string) => {
+      if (txs.length === 1) {
+         return await createAsaasCharge(txs[0], customerId, billingType || "PIX");
+      } else {
+         return await createAsaasBulkCharge(txs, customerId, billingType || "PIX");
+      }
+    };
+
+    try {
+      charge = await makeCharge(asaasCustomerId);
+    } catch (chargeErr: any) {
+      if (chargeErr.message && (chargeErr.message.toLowerCase().includes("customer") || chargeErr.message.toLowerCase().includes("cliente"))) {
+        console.warn("[Asaas] Customer ID rejected by Asaas API. Clearing cached ID and retrying...");
+        await currentPool.query("UPDATE Clientes SET asaasCustomerId = NULL WHERE id = ?", [client.id]);
+        client.asaasCustomerId = null;
+        asaasCustomerId = await getOrRegisterAsaasCustomer(client);
+        charge = await makeCharge(asaasCustomerId);
+      } else {
+        throw chargeErr;
+      }
     }
 
     // Associa o ID e a URL a todas as transações incluídas
@@ -473,7 +502,10 @@ router.post("/centros-custo/save", requireAdminAuth, async (req, res) => {
 router.get("/configuracoes", requireAdminAuth, async (req, res) => {
   try {
     const taxaJurosMensal = await getConfigValue('fin_taxa_juros_mensal') || '2.2';
-    res.json({ success: true, configuracoes: { taxaJurosMensal } });
+    const taxaMultaAtraso = await getConfigValue('fin_taxa_multa_atraso') || '2.0';
+    const asaasContaBancariaId = await getConfigValue('fin_asaas_conta_bancaria_id') || '';
+    const fin_asaas_split_enabled = await getConfigValue('fin_asaas_split_enabled') === '1';
+    res.json({ success: true, configuracoes: { taxaJurosMensal, taxaMultaAtraso, asaasContaBancariaId, fin_asaas_split_enabled } });
   } catch (err: any) {
     console.error("[Configuracoes Error]", err);
     res.status(500).json({ error: true, message: err.message || "Failed to fetch configuracoes" });
@@ -482,13 +514,22 @@ router.get("/configuracoes", requireAdminAuth, async (req, res) => {
 
 router.post("/configuracoes", requireAdminAuth, async (req, res) => {
   try {
-    const { taxaJurosMensal } = req.body;
+    const { taxaJurosMensal, taxaMultaAtraso, asaasContaBancariaId, fin_asaas_split_enabled } = req.body;
     if (taxaJurosMensal !== undefined) {
       await setConfigValue('fin_taxa_juros_mensal', String(taxaJurosMensal));
     }
+    if (taxaMultaAtraso !== undefined) {
+      await setConfigValue('fin_taxa_multa_atraso', String(taxaMultaAtraso));
+    }
+    if (asaasContaBancariaId !== undefined) {
+      await setConfigValue('fin_asaas_conta_bancaria_id', String(asaasContaBancariaId));
+    }
+    if (fin_asaas_split_enabled !== undefined) {
+      await setConfigValue('fin_asaas_split_enabled', fin_asaas_split_enabled === '1' || fin_asaas_split_enabled === true ? '1' : '0');
+    }
     const io = (req.app as any).locals.io;
-    if (io) io.emit('finance_config_update', { taxaJurosMensal });
-    
+    if (io) io.emit('finance_config_update', { taxaJurosMensal, taxaMultaAtraso, asaasContaBancariaId, fin_asaas_split_enabled });
+
     res.json({ success: true });
   } catch (err: any) {
     console.error("[Post Configuracoes Error]", err);
