@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { JetSkiIcon } from '../icons/JetSkiIcon';
 import {
   Ship,
   User as UserIcon,
@@ -359,8 +360,10 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                 <div className="pl-2 flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-full bg-slate-100 flex shrink-0 items-center justify-center text-slate-500 border border-slate-200 shadow-sm">
-                      {displaySizeText ? (
-                        <span className="font-extrabold text-[11px] tracking-widest">{displaySizeText}</span>
+                      {isJet ? (
+                        <JetSkiIcon className="w-6 h-6 text-slate-600" />
+                      ) : boat?.tamanho ? (
+                        <span className="font-extrabold text-[11px] tracking-widest">{boat.tamanho}'</span>
                       ) : (
                         <Ship className="w-5 h-5 text-slate-400" />
                       )}

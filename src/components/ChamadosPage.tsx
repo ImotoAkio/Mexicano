@@ -81,19 +81,21 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
   const filteredChamados = useMemo(() => {
     return chamados.filter(c => {
       const boat = embarcacoes.find(b => b.id === c.embarcacaoId);
-      const matchesSearch = 
-        c.codigoChamado.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.descricaoAvaria.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.solicitanteNome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (boat && boat.nome.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (boat && boat.numero.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesSearch =
+        (c.codigoChamado || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.titulo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.descricaoAvaria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.solicitanteNome || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (boat && (boat.nome || '').toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (boat && (boat.numero || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
       let matchesStatus = true;
       if (statusFilter === 'ativos') {
         matchesStatus = c.status !== 'descartado';
       } else if (statusFilter === 'todos') {
         matchesStatus = true;
+      } else if (statusFilter === 'pendente') {
+        matchesStatus = c.status === 'pendente' || c.status === 'em_analise';
       } else {
         matchesStatus = c.status === statusFilter;
       }
@@ -123,40 +125,44 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
     }));
   }, [embarcacoes]);
 
-  const handleCreateChamado = (e: React.FormEvent) => {
+  const handleCreateChamado = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChamadoForm.embarcacaoId || !newChamadoForm.titulo) {
       alert("Por favor, selecione a embarcação e informe o título da avaria.");
       return;
     }
 
-    const defaultSolicitante = newChamadoForm.solicitanteNome || 
-      (newChamadoForm.solicitanteTipo === 'gerente' ? 'Gerência da Marina' : 
-       newChamadoForm.solicitanteTipo === 'operador' ? 'Operador da Marina' : 
-       newChamadoForm.solicitanteTipo === 'administrador' ? 'Administração' : 
+    const defaultSolicitante = newChamadoForm.solicitanteNome ||
+      (newChamadoForm.solicitanteTipo === 'gerente' ? 'Gerência da Marina' :
+       newChamadoForm.solicitanteTipo === 'operador' ? 'Operador da Marina' :
+       newChamadoForm.solicitanteTipo === 'administrador' ? 'Administração' :
        newChamadoForm.solicitanteTipo === 'pecas_servicos' ? 'Peças & Serviços' : 'Cliente Proprietário');
 
-    chamadoDB.create({
-      embarcacaoId: newChamadoForm.embarcacaoId,
-      solicitanteTipo: newChamadoForm.solicitanteTipo,
-      solicitanteNome: defaultSolicitante,
-      titulo: newChamadoForm.titulo,
-      descricaoAvaria: newChamadoForm.descricaoAvaria,
-      urgencia: newChamadoForm.urgencia,
-      status: 'pendente',
-      dataAbertura: new Date().toISOString().split('T')[0]
-    });
+    try {
+      await chamadoDB.create({
+        embarcacaoId: newChamadoForm.embarcacaoId,
+        solicitanteTipo: newChamadoForm.solicitanteTipo,
+        solicitanteNome: defaultSolicitante,
+        titulo: newChamadoForm.titulo,
+        descricaoAvaria: newChamadoForm.descricaoAvaria,
+        urgencia: newChamadoForm.urgencia,
+        status: 'pendente',
+        dataAbertura: new Date().toISOString().split('T')[0]
+      });
 
-    setShowCreateModal(false);
-    setNewChamadoForm({
-      embarcacaoId: '',
-      solicitanteTipo: 'gerente',
-      solicitanteNome: '',
-      titulo: '',
-      descricaoAvaria: '',
-      urgencia: 'media'
-    });
-    loadData();
+      setShowCreateModal(false);
+      setNewChamadoForm({
+        embarcacaoId: '',
+        solicitanteTipo: 'gerente',
+        solicitanteNome: '',
+        titulo: '',
+        descricaoAvaria: '',
+        urgencia: 'media'
+      });
+      loadData();
+    } catch(err) {
+      alert("Erro ao criar o chamado.");
+    }
   };
 
   const handleOpenLinkedOS = (chamado: Chamado) => {

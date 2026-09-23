@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { TransacaoFinanceira } from '../../types';
 import FinanceLancamentoDrawer from './FinanceLancamentoDrawer';
+import FinanceVisualizadorDrawer from './FinanceVisualizadorDrawer';
 import { generateFinanceReportPDF } from '../../utils/pdfGenerator';
 import Select from 'react-select';
 import { clientDB } from '../../db';
@@ -296,6 +297,8 @@ export default function FinanceFluxoCaixa() {
 
   // Lancamento Form State
   const [isLancamentoDrawerOpen, setIsLancamentoDrawerOpen] = useState(false);
+  const [editingLancamento, setEditingLancamento] = useState<any>(null);
+  const [viewingTransacao, setViewingTransacao] = useState<any>(null);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
   // Filter states
@@ -485,8 +488,8 @@ export default function FinanceFluxoCaixa() {
   };
 
   const handleEdit = (t: any) => {
-    alert("Para editar um lançamento, exclua-o e crie novamente, ou abra na listagem (Lancamentos).");
-    // Not implemented fully inside FluxoCaixa due to lack of initialData in drawer props
+    setEditingLancamento(t);
+    setIsLancamentoDrawerOpen(true);
   };
 
   const handleDelete = async (t: any) => {
@@ -764,6 +767,7 @@ export default function FinanceFluxoCaixa() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: idx * 0.02 }}
                         key={t.id || idx}
+                        onClick={() => setViewingTransacao(t)}
                         className="group hover:bg-[#f5f5f7]/50 transition-colors cursor-pointer"
                       >
                         <td className="px-4 py-3 whitespace-nowrap">
@@ -840,8 +844,12 @@ export default function FinanceFluxoCaixa() {
 
       <FinanceLancamentoDrawer
         open={isLancamentoDrawerOpen}
-        onClose={() => setIsLancamentoDrawerOpen(false)}
+        onClose={() => {
+          setIsLancamentoDrawerOpen(false);
+          setEditingLancamento(null);
+        }}
         onSave={handleSaveLancamentos}
+        editingItem={editingLancamento}
         defaultEmpresa={empresaFiltro}
         planosContas={planosList}
         centrosCusto={centrosList}
@@ -871,6 +879,23 @@ export default function FinanceFluxoCaixa() {
         setDataInicio={setDataInicio}
         dataFim={dataFim}
         setDataFim={setDataFim}
+      />
+
+      <FinanceVisualizadorDrawer
+        open={!!viewingTransacao}
+        onClose={() => setViewingTransacao(null)}
+        transacao={viewingTransacao}
+        mapPlanos={mapPlanos}
+        mapCentros={mapCentros}
+        clientes={clientesList}
+        fornecedores={fornecedoresList}
+        embarcacoes={embarcacoesList}
+        taxaJurosMensal={taxaJurosMensal}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onBaixaManual={handleBaixaManual}
+        onGerarLink={handleGerarLink}
+        onEnviarWhatsApp={handleEnviarWhatsApp}
       />
     </div>
   );

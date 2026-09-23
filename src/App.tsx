@@ -1,6 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Logo from './components/Logo';
 import { loadFromRemote } from './db';
+import { io } from 'socket.io-client';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import { STORAGE_KEYS, UI } from './utils/constants';
 
@@ -244,6 +245,27 @@ export default function App() {
     }
   }, [isAuthenticated, isAdminDbLoaded]);
 
+  // Real-time synchronization for Admin/Marina/Peças dashboard
+  useEffect(() => {
+    if (isAuthenticated) {
+      const socket = io('/', { path: '/socket.io' });
+
+      const handleGlobalAdminSync = () => {
+        // Silently reload the DB into memory to update internal arrays
+        // This will reflect in any page currently mounted since they do polling/intervals on the local memory arrays
+        loadFromRemote().then((data) => {
+          setDbData(data);
+        });
+      };
+
+      socket.on('chamado_update', handleGlobalAdminSync);
+
+      return () => {
+        socket.disconnect();
+      };
+    }
+  }, [isAuthenticated]);
+
   const fetchClientData = async (showLoading = false) => {
     if (!clientToken) return;
     if (showLoading && !clientData) setClientLoading(true);
@@ -464,7 +486,7 @@ export default function App() {
             boats={clientData.boats || []}
             reservations={clientData.reservations || []}
             transacoes={clientData.transacoes || []}
-            
+            chamados={clientData.chamados || []}
             onLogout={() => {
               localStorage.removeItem('client_token');
               localStorage.removeItem('client_data_cache');

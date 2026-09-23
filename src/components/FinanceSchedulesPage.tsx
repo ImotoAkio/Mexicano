@@ -3,6 +3,7 @@ import {
   Calendar, List, Search, ChevronLeft, ChevronRight, Filter,
   CheckCircle2, XCircle, HelpCircle, Ship, User, CalendarDays, Eye, ChevronDown, X
 } from 'lucide-react';
+import { JetSkiIcon } from './icons/JetSkiIcon';
 import { reservationDB, boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente, Reserva } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
@@ -409,7 +410,11 @@ export default function FinanceSchedulesPage() {
 
                         <div className="space-y-2 mt-3">
                           <div className="flex items-center gap-2 text-xs text-slate-700">
-                            <Ship className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            {boat?.tipo === 'jet' ? (
+                              <JetSkiIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            ) : (
+                              <Ship className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            )}
                             <span className="font-bold text-slate-800">{getBoatCode(boat)}</span>
                             <span className="text-slate-400">({boat?.tipo === 'jet' ? 'Jet' : 'Lancha'})</span>
                           </div>

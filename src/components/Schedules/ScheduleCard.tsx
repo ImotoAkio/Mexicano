@@ -1,10 +1,11 @@
 import React from 'react';
 import { Reserva } from '../../types';
 import { boatDB, clientDB } from '../../db';
-import { 
+import {
   Anchor, Wrench, AlertTriangle, RefreshCw, FileDown, ClipboardList, Trash2,
-  X, Wallet, Calendar, AlertCircle, ExternalLink 
+  X, Wallet, Calendar, AlertCircle, ExternalLink
 } from 'lucide-react';
+import { JetSkiIcon } from '../icons/JetSkiIcon';
 
 interface ScheduleCardProps {
   res: Reserva;
@@ -133,7 +134,7 @@ export default function ScheduleCard({
           {boatCode ? (
             <div className="flex flex-col items-center justify-center leading-none">
               {isJet ? (
-                <span className="text-[8px] font-extrabold leading-none tracking-tighter opacity-75 mb-0.5 font-mono uppercase">JET</span>
+                <JetSkiIcon className="w-4 h-4 opacity-75 mb-0.5" />
               ) : (
                 <Anchor className="w-3 h-3 opacity-75 mb-0.5" />
               )}
@@ -142,7 +143,7 @@ export default function ScheduleCard({
               </span>
             </div>
           ) : (
-            <Anchor className="w-4.5 h-4.5" />
+            isJet ? <JetSkiIcon className="w-5 h-5" /> : <Anchor className="w-4.5 h-4.5" />
           )}
         </div>
 

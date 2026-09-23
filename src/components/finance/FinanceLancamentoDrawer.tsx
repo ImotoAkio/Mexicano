@@ -459,6 +459,26 @@ export default function FinanceLancamentoDrawer({
                              classNamePrefix="react-select"
                            />
                        </div>
+
+                       <div className="col-span-2">
+                         <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Embarcação</label>
+                         <Select
+                             placeholder="Opcional..."
+                             isClearable
+                             noOptionsMessage={() => "Nenhuma embarcação"}
+                             options={embarcacoes.map(e => ({ value: e.id, label: e.nome }))}
+                             value={embarcacoes.find(e => e.id === embarcacaoId) ? { value: embarcacaoId, label: embarcacoes.find(e => e.id === embarcacaoId)?.nome } : null}
+                             onChange={(opt: any) => setEmbarcacaoId(opt?.value || "")}
+                             styles={{
+                               control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: 'transparent', backgroundColor: '#f5f5f7', boxShadow: 'none', '&:hover': { borderColor: 'transparent' } }),
+                               menu: (base) => ({ ...base, borderRadius: '0.75rem', overflow: 'hidden', zIndex: 9999 }),
+                               option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f0f0f5' : 'white', color: '#1d1d1f' }),
+                               menuPortal: (base) => ({ ...base, zIndex: 9999 })
+                             }}
+                             menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                             classNamePrefix="react-select"
+                           />
+                       </div>
                      </div>
                    </div>
                 </div>

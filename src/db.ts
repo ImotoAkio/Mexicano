@@ -457,7 +457,7 @@ export const chamadoDB = {
   getByEmbarcacaoId: (embarcacaoId: string): Chamado[] => {
     return memoryChamados.filter(c => c.embarcacaoId === embarcacaoId);
   },
-  create: (chamado: Omit<Chamado, 'id' | 'codigoChamado' | 'createdAt'>): Chamado => {
+  create: async (chamado: Omit<Chamado, 'id' | 'codigoChamado' | 'createdAt'>): Promise<Chamado> => {
     // Generate a temporary code locally (will be overwritten by server-generated code if available)
     const tempNum = memoryChamados.length + 1;
     const year = new Date().getFullYear();
@@ -469,35 +469,35 @@ export const chamadoDB = {
       dataAbertura: chamado.dataAbertura || new Date().toISOString().split('T')[0],
       createdAt: new Date().toISOString()
     };
-    memoryChamados.push(newChamado);
 
-    // Async: fetch correct sequential code from backend, then save
-    (async () => {
-      try {
-        const token = getAdminToken();
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+    try {
+      const token = getAdminToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        // Get the correct sequential code from the server
-        const codeRes = await fetch('/api/chamados/next-code', { headers });
-        if (codeRes.ok) {
-          const { code } = await codeRes.json();
-          newChamado.codigoChamado = code;
-          // Update in-memory too
-          const idx = memoryChamados.findIndex(c => c.id === newChamado.id);
-          if (idx !== -1) memoryChamados[idx].codigoChamado = code;
-        }
-
-        // Persist to database
-        await fetch('/api/chamados/save', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ action: 'upsert', data: newChamado })
-        });
-      } catch (err) {
-        console.warn('[Chamados] Failed to sync create to server:', err);
+      // Get the correct sequential code from the server
+      const codeRes = await fetch('/api/chamados/next-code', { headers });
+      if (codeRes.ok) {
+        const { code } = await codeRes.json();
+        newChamado.codigoChamado = code;
       }
-    })();
+
+      // Persist to database
+      const saveRes = await fetch('/api/chamados/save', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'upsert', data: newChamado })
+      });
+
+      if (!saveRes.ok) {
+        throw new Error('Falha ao salvar no banco de dados');
+      }
+
+      memoryChamados.push(newChamado); // Only push if successful
+    } catch (err) {
+      console.warn('[Chamados] Failed to sync create to server:', err);
+      throw err;
+    }
 
     return newChamado;
   },

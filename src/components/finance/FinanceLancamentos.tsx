@@ -1190,6 +1190,7 @@ export default function FinanceLancamentos() {
         embarcacoes={embarcacoes}
         planosContas={planosContas}
         fornecedores={fornecedores}
+        centrosDeCusto={centrosCusto}
       />
 
       <FinanceLancamentoDrawer

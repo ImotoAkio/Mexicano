@@ -36,7 +36,7 @@ export default function ClientMaintenanceModal({ isOpen, onClose, boats, clientI
 
     setIsSubmitting(true);
     try {
-      chamadoDB.create({
+      await chamadoDB.create({
         embarcacaoId: formData.embarcacaoId,
         solicitanteTipo: 'cliente',
         solicitanteNome: clientName,
@@ -90,9 +90,13 @@ export default function ClientMaintenanceModal({ isOpen, onClose, boats, clientI
     }
   };
 
+  const validStatuses = ['pendente', 'em_analise', 'os_gerada', 'concluido'];
   const filteredChamados = chamados.filter(c =>
-    c.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.codigoChamado || '').toLowerCase().includes(searchTerm.toLowerCase())
+    c.solicitanteTipo === 'cliente' &&
+    c.clienteId === clientId &&
+    validStatuses.includes(c.status) &&
+    (c.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+     (c.codigoChamado || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (

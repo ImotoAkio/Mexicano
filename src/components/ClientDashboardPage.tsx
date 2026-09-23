@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
+import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
 // @ts-ignore
 import boatImg1 from '../assets/images/1.webp';
@@ -229,7 +230,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
   
   const totalAberto = transacoesList
-    .filter((t: any) => t.status !== 'pago' && t.status !== 'cancelado')
+    .filter((t: any) => t.status !== 'pago' && t.status !== 'cancelado' && (t.status === 'vencido' || (t.dataVencimento && t.dataVencimento < todayStr)))
     .reduce((acc: number, t: any) => acc + (Number(t.valor) || 0), 0);
 
 
@@ -854,7 +855,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     }
 
     if (isOccupied) {
-      showToast('Aviso', 'Esta data já encontra-se ocupada por outro condômino.', 'warning');
+      showToast('Aviso', 'Esta data já encontra-se ocupada por outro sócio.', 'warning');
       return;
     }
 
@@ -953,7 +954,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                         )
                         .map((b) => {
                           const isJet = b.tipo === 'jet' || (b.nome || '').toLowerCase().includes('jet');
-                          const TypeIcon = isJet ? Droplets : Ship;
+                          const TypeIcon = isJet ? JetSkiIcon : Ship;
                           const isSelected = activeBoatId === b.id;
 
                           // Count reservations
@@ -1033,7 +1034,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           <div className="mb-4 bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center text-[#B69D74]">
-                {activeBoat.tipo === 'jet' ? <Droplets className="w-5 h-5" /> : <Ship className="w-5 h-5" />}
+                {activeBoat.tipo === 'jet' ? <JetSkiIcon className="w-6 h-6" /> : <Ship className="w-5 h-5" />}
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-white tracking-wide">{getBoatCode(activeBoat)}</h3>
@@ -1320,7 +1321,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     <Wallet className="w-4 h-4 text-[#B69D74]" />
                   </div>
                 </div>
-                <span className="text-xs font-medium text-white/60 tracking-wider">MARINA CLUB</span>
+                <span className="text-xs font-medium text-white/60 tracking-wider">VILA NÁUTICA</span>
               </div>
               
               <div className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border backdrop-blur-sm ${
@@ -1333,7 +1334,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </div>
 
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1">Total em Aberto</p>
+              <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1">Total Vencido</p>
               <div className="flex items-baseline gap-1">
                 <span className="text-lg text-white/60 font-light">R$</span>
                 <h2 className="text-4xl font-light text-white tracking-tight">

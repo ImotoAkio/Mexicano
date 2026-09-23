@@ -97,17 +97,17 @@ export default function MarinaChamadosView({ operadorNome, showToast }: MarinaCh
       const boat = embarcacoes.find(b => b.id === c.embarcacaoId);
       const client = clientes.find(cli => cli.id === (c.clienteId || boat?.clienteId));
       
-      const matchesSearch = 
-        c.codigoChamado.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.descricaoAvaria.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.solicitanteNome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch =
+        (c.codigoChamado || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.titulo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.descricaoAvaria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.solicitanteNome || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (boat && (
           (boat.nome && boat.nome.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (boat.numero && String(boat.numero).toLowerCase().includes(searchTerm.toLowerCase())) ||
           (getBoatCode(boat).toLowerCase().includes(searchTerm.toLowerCase()))
         )) ||
-        (client && client.nome.toLowerCase().includes(searchTerm.toLowerCase()));
+        (client && (client.nome || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
       // Status filter
       let matchesStatus = true;
@@ -193,7 +193,7 @@ export default function MarinaChamadosView({ operadorNome, showToast }: MarinaCh
       const requesterName = newChamadoForm.solicitanteNome.trim() || 
         (newChamadoForm.solicitanteTipo === 'gerente' ? (operadorNome || 'Gerência da Marina') : 'Operador do Píer');
 
-      const created = chamadoDB.create({
+      const created = await chamadoDB.create({
         embarcacaoId: newChamadoForm.embarcacaoId,
         solicitanteTipo: newChamadoForm.solicitanteTipo,
         solicitanteNome: requesterName,

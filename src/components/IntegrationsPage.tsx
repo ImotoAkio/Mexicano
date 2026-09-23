@@ -257,6 +257,19 @@ export default function IntegrationsPage() {
           </div>
 
           <div className="p-6 space-y-4">
+
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
+              <h5 className="font-bold text-blue-800 text-xs mb-2">Instruções de Configuração Asaas:</h5>
+              <ol className="list-decimal list-inside text-[11px] text-blue-700/90 space-y-1.5 leading-relaxed">
+                <li>Acesse sua conta no Asaas e vá em <strong>Configurações &gt; Integração &gt; API</strong> ou "Gerar API Key".</li>
+                <li>Copie o "Access Token" e cole no campo <strong>API Key</strong> abaixo.</li>
+                <li>Para o Webhook, vá em <strong>Integração &gt; Webhooks</strong> e crie um novo.</li>
+                <li>Use o endpoint do servidor para <code>/api/webhook/asaas</code>.</li>
+                <li>Marque os eventos <code>PAYMENT_RECEIVED</code> e <code>PAYMENT_CONFIRMED</code>.</li>
+                <li>Configure um <strong>Token Autenticador</strong> (Token de Segurança) lá e preencha-o abaixo.</li>
+              </ol>
+            </div>
+
             <div className="space-y-3">
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Ambiente de Execução</label>
