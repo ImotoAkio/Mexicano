@@ -105,7 +105,7 @@ router.post("/calendar/config", requireAdminAuth, async (req, res) => {
 // Route: Save an activity log (Audit)
 
 // Route: Public config (only safe/cosmetic keys, no auth required)
-const PUBLIC_CONFIG_KEYS = new Set(["custom_sidebar_logo"]);
+const PUBLIC_CONFIG_KEYS = new Set(["custom_sidebar_logo", "marina_checkin_saida", "marina_checkin_chegada", "marina_checkin_antecedencia", "marina_abertura", "marina_fechamento", "marina_horarios_semana"]);
 router.get("/config/public", async (req, res) => {
   try {
     const chaves = (req.query.chaves as string || "").split(",").filter(k => PUBLIC_CONFIG_KEYS.has(k));
@@ -154,12 +154,31 @@ router.get("/config", requireAdminAuth, async (req, res) => {
       try { nautical_csv_mapping = JSON.parse(nautical_csv_mapping_str); } catch { nautical_csv_mapping = {}; }
     }
 
+    const marina_checkin_saida = await getConfigValue("marina_checkin_saida") || "09:00";
+    const marina_checkin_chegada = await getConfigValue("marina_checkin_chegada") || "17:00";
+    const marina_checkin_antecedencia = await getConfigValue("marina_checkin_antecedencia") || "40";
+    const marina_abertura = await getConfigValue("marina_abertura") || "08:00";
+    const marina_fechamento = await getConfigValue("marina_fechamento") || "18:00";
+
+    // Per-day-of-week schedule (JSON). Keys 0-6 map to JS Date.getDay() (0=Sunday)
+    const marina_horarios_semana_str = await getConfigValue("marina_horarios_semana");
+    let marina_horarios_semana = null;
+    if (marina_horarios_semana_str) {
+      try { marina_horarios_semana = JSON.parse(marina_horarios_semana_str); } catch { marina_horarios_semana = null; }
+    }
+
     const client = await getGoogleAuthClient();
     res.json({
       google_client_id,
       calendar_mappings,
       has_service_account: client !== null,
       service_account_email: client?.email || null,
+      marina_checkin_saida,
+      marina_checkin_chegada,
+      marina_checkin_antecedencia,
+      marina_abertura,
+      marina_fechamento,
+      marina_horarios_semana,
       whatsapp_conf_template1,
       whatsapp_conf_template2,
       whatsapp_cal_template,
@@ -181,7 +200,9 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
     const { google_client_id, calendar_mappings, google_service_account_json,
             whatsapp_conf_template1, whatsapp_conf_template2, whatsapp_cal_template,
             finance_whatsapp_instance, finance_whatsapp_custom_templates,
-            nautical_csv_mapping, asaas_api_key, asaas_api_url, asaas_webhook_token } = req.body;
+            nautical_csv_mapping, asaas_api_key, asaas_api_url, asaas_webhook_token,
+            marina_checkin_saida, marina_checkin_chegada, marina_checkin_antecedencia,
+            marina_abertura, marina_fechamento, marina_horarios_semana } = req.body;
 
     if (google_client_id !== undefined) {
       await setConfigValue("google_client_id", google_client_id);
@@ -225,6 +246,26 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
     // CSV import mapping
     if (nautical_csv_mapping !== undefined) {
       await setConfigValue("nautical_csv_mapping", JSON.stringify(nautical_csv_mapping));
+    }
+
+    // Configurações de Checkin
+    if (marina_checkin_saida !== undefined) {
+      await setConfigValue("marina_checkin_saida", marina_checkin_saida);
+    }
+    if (marina_checkin_chegada !== undefined) {
+      await setConfigValue("marina_checkin_chegada", marina_checkin_chegada);
+    }
+    if (marina_checkin_antecedencia !== undefined) {
+      await setConfigValue("marina_checkin_antecedencia", marina_checkin_antecedencia.toString());
+    }
+    if (marina_abertura !== undefined) {
+      await setConfigValue("marina_abertura", marina_abertura);
+    }
+    if (marina_fechamento !== undefined) {
+      await setConfigValue("marina_fechamento", marina_fechamento);
+    }
+    if (marina_horarios_semana !== undefined) {
+      await setConfigValue("marina_horarios_semana", JSON.stringify(marina_horarios_semana));
     }
 
     // Asaas integration settings

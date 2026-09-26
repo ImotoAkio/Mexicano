@@ -18,6 +18,8 @@ import {
 import { Manutencao, Embarcacao, Chamado, Mecanico } from '../../types';
 import { getBoatCode } from '../../utils/boatUtils';
 import { maintenanceDB, chamadoDB } from '../../db';
+import MaintenanceCheckoutModal from './MaintenanceCheckoutModal';
+import MaintenanceTransitionModal from './MaintenanceTransitionModal';
 
 interface KanbanBoardProps {
   manutencoes: Manutencao[];
@@ -39,15 +41,18 @@ export default function KanbanBoard({
   sortBy = 'stage'
 }: KanbanBoardProps) {
   
-  // Unified 4 Columns Workflow (Chamado -> Orçamento -> Em Manutenção -> Concluído)
+  const [checkoutItem, setCheckoutItem] = React.useState<Manutencao | null>(null);
+  const [transitionItem, setTransitionItem] = React.useState<{item: Manutencao, target: 'orcamento_pendente' | 'em_andamento'} | null>(null);
+
+  // Unified 4 Columns Workflow (Fila -> Orçamento -> Em Manutenção -> Concluído)
   const columns = [
-    { 
-      id: 'chamado_aberto', 
-      label: '1. Triagem & Chamado', 
-      dotColor: 'bg-pink-500', 
-      containerBg: 'bg-pink-100/60 border-pink-200/60', 
-      textColor: 'text-pink-900', 
-      progress: 15 
+    {
+      id: 'fila_espera',
+      label: '1. Fila / Agendado',
+      dotColor: 'bg-pink-500',
+      containerBg: 'bg-pink-100/60 border-pink-200/60',
+      textColor: 'text-pink-900',
+      progress: 15
     },
     { 
       id: 'orcamento_pendente', 
@@ -88,9 +93,30 @@ export default function KanbanBoard({
     const id = e.dataTransfer.getData('text/plain');
     if (!id) return;
 
+    const item = manutencoes.find(m => m.id === id);
+    if (!item) return;
+
     let targetStatus = columnId;
     if (columnId === 'em_manutencao') {
       targetStatus = 'em_andamento';
+    }
+
+    // Modal intercept for specific stages
+    if (targetStatus === 'orcamento_pendente') {
+      if (!item.mecanico) {
+        setTransitionItem({ item, target: 'orcamento_pendente' });
+        return;
+      }
+    } else if (targetStatus === 'em_andamento') {
+      const needsBudgetConf = (!item.orcamento && item.orcamento !== 0) || item.orcamentoStatus !== 'aprovado';
+      if (needsBudgetConf || !item.mecanico) {
+        setTransitionItem({ item, target: 'em_andamento' });
+        return;
+      }
+    } else if (targetStatus === 'concluido') {
+      // Checkout Modal applies validation of Horímetro and Finances
+      setCheckoutItem(item);
+      return;
     }
 
     try {
@@ -126,13 +152,27 @@ export default function KanbanBoard({
   return (
     <div className="h-full w-full flex overflow-x-auto p-6 gap-6 custom-scrollbar items-start bg-[#f3f7f5]/80 font-sans">
       {columns.map(col => {
-        const cards = filteredManutencoes.filter(m => {
+        const allCards = filteredManutencoes.filter(m => {
           const currentStatus = m.status || 'em_andamento';
           if (col.id === 'em_manutencao') {
             return currentStatus === 'em_andamento' || currentStatus === 'na_oficina' || currentStatus === 'aguardando_pecas';
           }
           return currentStatus === col.id;
         });
+
+        // For the "Concluído" column, only show the 5 most recent to avoid clutter.
+        // All other columns show every card.
+        const MAX_CONCLUIDO_VISIBLE = 5;
+        const isConcluido = col.id === 'concluido';
+        const cards = isConcluido
+          ? [...allCards]
+              .sort((a, b) =>
+                new Date(b.concluidoEm || b.createdAt || 0).getTime() -
+                new Date(a.concluidoEm || a.createdAt || 0).getTime()
+              )
+              .slice(0, MAX_CONCLUIDO_VISIBLE)
+          : allCards;
+        const hiddenCount = isConcluido ? allCards.length - cards.length : 0;
 
         return (
           <div 
@@ -152,7 +192,7 @@ export default function KanbanBoard({
               
               <div className="flex items-center gap-1.5">
                 <span className="bg-white/80 backdrop-blur-xs text-slate-700 text-xs font-black px-2.5 py-0.5 rounded-full shadow-2xs">
-                  {cards.length}
+                  {isConcluido ? allCards.length : cards.length}
                 </span>
                 <button 
                   className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-white/40 transition-colors"
@@ -317,10 +357,45 @@ export default function KanbanBoard({
                   <span className="text-[10px] text-slate-300 mt-0.5">Arraste tarefas para cá</span>
                 </div>
               )}
+
+              {hiddenCount > 0 && (
+                <div className="mt-1 py-3 text-center bg-white/50 rounded-2xl border border-purple-200/60">
+                  <span className="text-[11px] font-bold text-purple-600">
+                    +{hiddenCount} concluída{hiddenCount > 1 ? 's' : ''} anteriore{hiddenCount > 1 ? 's' : ''}
+                  </span>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                    Consulte o histórico completo na Tabela
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         );
       })}
+
+      {checkoutItem && (
+        <MaintenanceCheckoutModal
+          item={checkoutItem}
+          onClose={() => setCheckoutItem(null)}
+          onSuccess={() => {
+            setCheckoutItem(null);
+            onRefresh();
+          }}
+        />
+      )}
+
+      {transitionItem && (
+        <MaintenanceTransitionModal
+          item={transitionItem.item}
+          targetStatus={transitionItem.target}
+          mecanicos={mecanicos}
+          onClose={() => setTransitionItem(null)}
+          onSuccess={() => {
+            setTransitionItem(null);
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

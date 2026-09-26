@@ -79,6 +79,11 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
       return res.status(403).json({ error: true, message: "Acesso negado à embarcação." });
     }
 
+    const boat = dbData.boats.find((b: any) => b.id === embarcacaoId);
+    if (boat && boat.emManutencao) {
+      return res.status(400).json({ error: true, message: "Esta embarcação está em manutenção. Não é possível realizar reservas no momento." });
+    }
+
     const todayStr = new Date().toISOString().split('T')[0];
     if (date < todayStr) {
       return res.status(400).json({ error: true, message: "Não é possível reservar datas passadas." });
@@ -206,8 +211,8 @@ clientRoutes.post("/request-deletion", requireClientAuth, async (req, res) => {
 clientRoutes.post("/checkin", requireClientAuth, async (req, res) => {
   try {
     const userId = (req as any).user.id;
-    const { id, previsaoSaida, previsaoChegada, pessoasABordo, destino } = req.body;
-    
+    const { id, previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosSolicitados } = req.body;
+
     if (!id || !previsaoSaida || !pessoasABordo || !previsaoChegada || !destino) {
       return res.status(400).json({ error: true, message: "Faltam parâmetros obrigatórios para a NORMAM." });
     }
@@ -217,14 +222,28 @@ clientRoutes.post("/checkin", requireClientAuth, async (req, res) => {
       return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
     }
 
+    const [resRows] = await currentPool.query("SELECT embarcacaoId FROM Reservas WHERE id = ?", [id]);
+    const reserva = (resRows as any[])[0];
+    if (!reserva) {
+      return res.status(404).json({ error: true, message: "Reserva não encontrada." });
+    }
+
+    const [boatRows] = await currentPool.query("SELECT emManutencao FROM Embarcacoes WHERE id = ?", [reserva.embarcacaoId]);
+    const boat = (boatRows as any[])[0];
+    if (boat && (boat.emManutencao === 1 || boat.emManutencao === true || boat.emManutencao === 'true')) {
+      return res.status(400).json({ error: true, message: "Esta embarcação está em manutenção. Não é possível confirmar a reserva no momento." });
+    }
+
+    const acessoriosJson = acessoriosSolicitados ? JSON.stringify(acessoriosSolicitados) : null;
+
     // Update reservation. Removed setting horaSaida and horaChegada during check-in so operational status isn't corrupted.
     await currentPool.query(
-      "UPDATE Reservas SET previsaoSaida = ?, previsaoChegada = ?, pessoasABordo = ?, destino = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ?",
-      [previsaoSaida, previsaoChegada, pessoasABordo, destino, id]
+      "UPDATE Reservas SET previsaoSaida = ?, previsaoChegada = ?, pessoasABordo = ?, destino = ?, acessoriosSolicitados = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ?",
+      [previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosJson, id]
     );
 
     const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ?", [id]);
-    const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, previsaoChegada, pessoasABordo, destino, statusMarina: 'agendado', status: 'confirmado' };
+    const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosSolicitados: acessoriosJson, statusMarina: 'agendado', status: 'confirmado' };
 
     req.app.locals.io?.emit("marina_update", { action: 'checkin', reservation: updatedRes });
 
@@ -346,6 +365,11 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
       : [client.embarcacaoId];
     if (!clientBoatsList.includes(embarcacaoId)) {
       return res.status(403).json({ error: true, message: "Acesso negado à embarcação." });
+    }
+
+    const boat = dbData.boats.find((b: any) => b.id === embarcacaoId);
+    if (boat && boat.emManutencao) {
+      return res.status(400).json({ error: true, message: "Esta embarcação está em manutenção. Não é possível contestar reservas no momento." });
     }
 
     // Find the target reservation

@@ -34,6 +34,7 @@ export default function BoatModal({
   const [chassi, setChassi] = useState('');
   const [inscricao, setInscricao] = useState('');
   const [tipoPropulsao, setTipoPropulsao] = useState('MOTOR');
+  const [capacidadePassageiros, setCapacidadePassageiros] = useState<number | ''>('');
   const [potencia, setPotencia] = useState('');
   const [selectedDonos, setSelectedDonos] = useState<string[]>([]);
   const [googleCalendarId, setGoogleCalendarId] = useState('');
@@ -77,6 +78,7 @@ export default function BoatModal({
         setChassi(editingBoat.chassi || '');
         setInscricao(editingBoat.inscricao || '');
         setTipoPropulsao(editingBoat.tipo_propulsao || 'MOTOR');
+        setCapacidadePassageiros(editingBoat.capacidadePassageiros || '');
         setPotencia(editingBoat.potencia || '');
         setSelectedDonos(editingBoat.donos || []);
         
@@ -109,6 +111,7 @@ export default function BoatModal({
         setChassi('');
         setInscricao('');
         setTipoPropulsao('MOTOR');
+        setCapacidadePassageiros('');
         setPotencia('');
         setSelectedDonos([]);
         setGoogleCalendarId('');
@@ -244,6 +247,7 @@ export default function BoatModal({
         chassi: chassi.trim() || undefined,
         inscricao: inscricao.trim() || undefined,
         tipo_propulsao: tipoPropulsao.trim() || undefined,
+        capacidadePassageiros: capacidadePassageiros === '' ? undefined : capacidadePassageiros,
         potencia: potencia.trim() || undefined,
         donos: selectedDonos,
         googleCalendarId: googleCalendarId.trim() || undefined,
@@ -473,6 +477,18 @@ export default function BoatModal({
                       placeholder="Ex: 250 HP"
                       value={potencia}
                       onChange={(e) => setPotencia(e.target.value)}
+                      className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Capacidade (Passageiros)</label>
+                    <input
+                      id="input-boat-capacidade"
+                      type="number"
+                      tabIndex={11}
+                      placeholder="Ex: 8"
+                      value={capacidadePassageiros}
+                      onChange={(e) => setCapacidadePassageiros(e.target.value ? Number(e.target.value) : '')}
                       className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                   </div>

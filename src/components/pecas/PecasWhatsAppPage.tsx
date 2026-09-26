@@ -132,7 +132,7 @@ export default function PecasWhatsAppPage() {
     if (!matchesSearch) return false;
 
     if (maintStatusFilter !== 'todos') {
-      if (maintStatusFilter === 'pendente' && (m.status as string) !== 'pendente' && m.status !== 'chamado_aberto' && m.status !== 'orcamento_pendente') return false;
+      if (maintStatusFilter === 'pendente' && (m.status as string) !== 'pendente' && m.status !== 'fila_espera' && m.status !== 'orcamento_pendente') return false;
       if (maintStatusFilter === 'aguardando_peca' && (m.status as string) !== 'aguardando_peca' && m.status !== 'aguardando_pecas') return false;
       if (maintStatusFilter === 'em_andamento' && m.status !== 'em_andamento') return false;
       if (maintStatusFilter === 'concluido' && m.status !== 'concluido') return false;

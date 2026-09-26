@@ -20,12 +20,12 @@ export interface Cliente {
   bairro?: string;
   cidade?: string;
   estado?: string;
+  plano?: 'completo' | 'normal';
   statusFinanceiro?: 'em_dia' | 'inadimplente' | 'pendente';
   status?: 'ativo' | 'inativo';
   temLancamentos?: boolean;
   temValoresEmAberto?: boolean;
   observacoesFinanceiras?: string;
-  plano?: 'normal' | 'completo';
   asaasCustomerId?: string;
   rg?: string;
   orgaoEmissor?: string;
@@ -36,6 +36,13 @@ export interface Cliente {
   validadeHabilitacao?: string;
   orgaoEmissorHabilitacao?: string;
   categoriaHabilitacao?: string;
+  acessorios?: {
+    tenda?: boolean;
+    mesa?: boolean;
+    bancosCadeiras?: boolean;
+    churrasqueira?: boolean;
+    observacoes?: string;
+  };
 }
 
 export interface RegistroHoras {
@@ -84,6 +91,7 @@ export interface Embarcacao {
   chassi?: string; // N° do Chassi
   inscricao?: string; // N° de Inscrição na Marinha
   tipo_propulsao?: string; // Tipo de propulsão (ex: MOTOR, JET)
+  capacidadePassageiros?: number; // Boat capacity
   potencia?: string; // Potência (ex: 250 HP)
   donos: string[]; // List of Cliente IDs (unlimited)
   googleCalendarId?: string; // Optional Google Calendar ID directly linked to the boat
@@ -136,6 +144,7 @@ export interface Reserva {
   previsaoChegada?: string;
   destino?: string;
   pessoasABordo?: number | string;
+  acessoriosSolicitados?: { tenda?: boolean; mesa?: boolean; churrasqueira?: boolean; bancos?: number; };
   horaDescida?: string;
   fotosExtrasDescida?: string[];
   fotosExtrasSubida?: string[];
@@ -253,8 +262,8 @@ export interface Chamado {
   titulo: string;
   descricaoAvaria: string;
   urgencia: 'baixa' | 'media' | 'alta' | 'critica';
-  status: 'pendente' | 'em_analise' | 'os_gerada' | 'rejeitado' | 'concluido' | 'descartado';
-  osId?: string;
+  status: 'pendente' | 'em_analise' | 'parcialmente_atendido' | 'os_gerada' | 'rejeitado' | 'concluido' | 'descartado';
+  osIds?: string[];
   dataAbertura: string;
   observacoesAnalise?: string;
   createdAt: string;
@@ -293,8 +302,8 @@ export interface Manutencao {
   custo?: number | null;
   orcamento?: number | null;
   valorRepassado?: number | null;
-  orcamentoAprovado?: boolean;
-  status: 'chamado_aberto' | 'orcamento_pendente' | 'na_oficina' | 'em_andamento' | 'aguardando_pecas' | 'concluido' | 'cancelado';
+  orcamentoStatus?: 'pendente' | 'enviado' | 'aprovado' | 'reprovado';
+  status: 'fila_espera' | 'orcamento_pendente' | 'na_oficina' | 'em_andamento' | 'aguardando_pecas' | 'concluido' | 'cancelado';
   localizacao?: 'marina' | 'oficina_externa';
   descricaoServico?: string;
   gerarFinanceiro?: boolean;

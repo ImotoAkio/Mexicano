@@ -916,7 +916,21 @@ export async function loadFromRemote() {
     memoryCatalogoEpis = remoteData.catalogoEPIs || [];
     memoryHistoricoEpis = remoteData.historicoEpis || [];
     memoryRegistrosAtividades = remoteData.registrosAtividades || [];
-    memoryChamados = remoteData.chamados || [];
+
+    // Migração em tempo de leitura para compatibilidade (1:1 -> 1:N)
+    memoryChamados = (remoteData.chamados || []).map((ch: any) => {
+      if (ch.manutencaoId && (!ch.osIds || ch.osIds.length === 0)) {
+        ch.osIds = [ch.manutencaoId];
+      }
+      return ch;
+    });
+
+    memoryManutencoes = (remoteData.manutencoes || []).map((m: any) => {
+      if ((m.status as any) === 'chamado_aberto') {
+        m.status = 'fila_espera';
+      }
+      return m;
+    });
 
     return { 
       connected: true,

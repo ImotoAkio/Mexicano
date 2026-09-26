@@ -48,7 +48,8 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedChamadoForAnalysis, setSelectedChamadoForAnalysis] = useState<Chamado | null>(null);
   const [analiseNotes, setAnaliseNotes] = useState<string>('');
-  
+  const [analiseMecanicoId, setAnaliseMecanicoId] = useState<string>('');
+
   // OS Generation Modal State
   const [showOSModal, setShowOSModal] = useState(false);
   const [prefilledOSData, setPrefilledOSData] = useState<any>(null);
@@ -165,32 +166,28 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
     }
   };
 
-  const handleOpenLinkedOS = (chamado: Chamado) => {
-    const os = manutencoes.find(m => m.id === chamado.osId || m.chamadoId === chamado.id);
-    if (os) {
-      setPrefilledOSData(os);
-      setSelectedChamadoForAnalysis(null);
-      setShowOSModal(true);
-    } else {
-      alert("Ordem de Serviço vinculada não encontrada nos registros locais.");
-    }
+  const handleOpenLinkedOS = (osArg: Manutencao) => {
+    setPrefilledOSData(osArg);
+    setSelectedChamadoForAnalysis(null);
+    setShowOSModal(true);
   };
 
   const handleConvertChamadoToOS = (chamado: Chamado) => {
     const boat = embarcacoes.find(b => b.id === chamado.embarcacaoId);
-    
+
     // Update Chamado status to em_analise with notes
-    chamadoDB.update(chamado.id, { 
+    chamadoDB.update(chamado.id, {
       status: 'em_analise',
       observacoesAnalise: analiseNotes || chamado.observacoesAnalise
     });
-    
+
     setPrefilledOSData({
       embarcacaoId: chamado.embarcacaoId,
       tituloChamado: `[${chamado.codigoChamado}] ${chamado.titulo}`,
       descricaoServico: `Chamado de Origem: ${chamado.codigoChamado}\nSolicitante: ${chamado.solicitanteNome}\n\nDescrição da Avaria:\n${chamado.descricaoAvaria}${analiseNotes ? `\n\nObservações da Análise:\n${analiseNotes}` : ''}`,
       chamadoId: chamado.id,
-      status: 'chamado_aberto',
+      status: 'fila_espera',
+      mecanico: analiseMecanicoId, // Pass assigned mechanic if any
       dataChamado: new Date().toISOString().split('T')[0],
       horasMotorAtual: boat?.horasMotor || 0
     });
@@ -208,24 +205,29 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
   };
 
   const handleDeleteChamado = (chamado: Chamado) => {
-    const linkedOS = manutencoes.find(m => m.chamadoId === chamado.id || m.id === chamado.osId);
+    const linkedOSs = manutencoes.filter(m => m.chamadoId === chamado.id || (chamado.osIds || []).includes(m.id));
     let confirmMsg = `Deseja realmente apagar o chamado ${chamado.codigoChamado} (${chamado.titulo})?`;
-    if (linkedOS) {
-      confirmMsg += `\n\n⚠️ Atenção: Este chamado possui uma Ordem de Serviço vinculada (${linkedOS.codigoOS || linkedOS.id}). A exclusão removerá o registro do chamado do sistema. Deseja continuar?`;
+    if (linkedOSs.length > 0) {
+      confirmMsg += `\n\n⚠️ Atenção: Este chamado possui ${linkedOSs.length} Ordem(ns) de Serviço vinculada(s). A exclusão removerá o registro do chamado do sistema, mas as OS continuarão existindo e ficarão orfãs. Deseja continuar?`;
     }
 
     if (window.confirm(confirmMsg)) {
       chamadoDB.delete(chamado.id);
-      if (linkedOS) {
-        maintenanceDB.update(linkedOS.id, { chamadoId: undefined });
-      }
+      linkedOSs.forEach(os => {
+        maintenanceDB.update(os.id, { chamadoId: undefined });
+      });
       setSelectedChamadoForAnalysis(null);
       loadData();
     }
   };
 
   const handleConcluirChamadoDireto = (chamado: Chamado) => {
-    if (window.confirm(`Deseja concluir o chamado ${chamado.codigoChamado} diretamente sem gerar OS (resolução pontual)?`)) {
+    const linkedOSs = manutencoes.filter(m => m.chamadoId === chamado.id || (chamado.osIds || []).includes(m.id));
+    const msg = linkedOSs.length > 0
+      ? `Deseja encerrar o chamado ${chamado.codigoChamado}? (Foram geradas ${linkedOSs.length} OS)`
+      : `Deseja concluir o chamado ${chamado.codigoChamado} diretamente sem gerar OS (resolução pontual)?`;
+
+    if (window.confirm(msg)) {
       chamadoDB.update(chamado.id, { status: 'concluido', observacoesAnalise: analiseNotes || chamado.observacoesAnalise });
       setSelectedChamadoForAnalysis(null);
       loadData();
@@ -261,9 +263,9 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
 
           {/* Botões Utilitários Circulares Padronizados */}
           <div className="flex items-center gap-2.5 self-end sm:self-auto">
-            <button 
+            <button
               onClick={() => {
-                const input = document.querySelector('input[placeholder*="Pesquisar por código"]') as HTMLInputElement;
+                const input = document.querySelector('input[placeholder*="Pesquisar chamado"]') as HTMLInputElement;
                 if (input) input.focus();
               }}
               className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
@@ -547,6 +549,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                     onClick={() => {
                       setSelectedChamadoForAnalysis(chamado);
                       setAnaliseNotes(chamado.observacoesAnalise || '');
+                      setAnaliseMecanicoId('');
                     }}
                     className="px-3 py-1.5 bg-[#186b77] hover:bg-[#12555f] text-white font-extrabold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
                   >
@@ -731,14 +734,14 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
 
       {/* Modal 2: Analisar Chamado & Converter em OS */}
       {selectedChamadoForAnalysis && (() => {
-        const linkedOS = manutencoes.find(m => m.id === selectedChamadoForAnalysis.osId || m.chamadoId === selectedChamadoForAnalysis.id);
+        const linkedOSs = manutencoes.filter(m => (selectedChamadoForAnalysis.osIds || []).includes(m.id) || m.chamadoId === selectedChamadoForAnalysis.id);
         const boat = embarcacoes.find(b => b.id === selectedChamadoForAnalysis.embarcacaoId);
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/80 w-full max-w-lg overflow-hidden font-sans">
-              
-              <div className="px-6 py-4 bg-slate-50 text-slate-900 flex items-center justify-between border-b border-slate-200/80">
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/80 w-full max-w-lg overflow-hidden font-sans flex flex-col max-h-[90vh]">
+
+              <div className="px-6 py-4 bg-slate-50 text-slate-900 flex items-center justify-between border-b border-slate-200/80 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-teal-50 text-[#186b77] border border-teal-200/70 flex items-center justify-center">
                     <Wrench className="w-5 h-5" />
@@ -804,46 +807,57 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                   <p className="text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">{selectedChamadoForAnalysis.descricaoAvaria}</p>
                 </div>
 
-                {/* Card OS Vinculada (se existir) */}
-                {linkedOS ? (
-                  <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200/80 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-extrabold text-emerald-800 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-                        <Wrench className="w-3.5 h-3.5 text-emerald-600" />
-                        Ordem de Serviço Vinculada
-                      </span>
-                      <span className="font-mono text-xs font-black bg-emerald-600 text-white px-2.5 py-0.5 rounded-lg shadow-xs">
-                        {linkedOS.codigoOS || ('OS-' + linkedOS.id.substring(0, 6).toUpperCase())}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 pt-1 text-slate-700">
-                      <div>
-                        <span className="text-[10px] text-slate-400 font-bold block">Status da OS</span>
-                        <span className="font-bold text-slate-900 capitalize">{linkedOS.status.replace('_', ' ')}</span>
+                {/* Cards OS Vinculadas */}
+                {linkedOSs.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="font-extrabold text-sm text-slate-800 flex items-center gap-1.5 pt-2">
+                      <FileText className="w-4 h-4 text-[#186b77]" />
+                      Ordens de Serviço ({linkedOSs.length})
+                    </h4>
+                    {linkedOSs.map(os => (
+                      <div key={os.id} className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200/80 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-emerald-800 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                            <Wrench className="w-3.5 h-3.5 text-emerald-600" />
+                            OS Vinculada
+                          </span>
+                          <span className="font-mono text-xs font-black bg-emerald-600 text-white px-2.5 py-0.5 rounded-lg shadow-xs">
+                            {os.codigoOS || ('OS-' + os.id.substring(0, 6).toUpperCase())}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1 text-slate-700">
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold block">Status da OS</span>
+                            <span className="font-bold text-slate-900 capitalize">{os.status.replace('_', ' ')}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold block">Orçamento</span>
+                            <span className="font-bold text-slate-900">
+                              {(os.orcamento || os.custoTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenLinkedOS(os)}
+                          className="w-full mt-2 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Wrench className="w-3.5 h-3.5" />
+                          <span>Abrir OS</span>
+                        </button>
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 font-bold block">Orçamento</span>
-                        <span className="font-bold text-slate-900">
-                          {(linkedOS.orcamento || linkedOS.custoTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenLinkedOS(selectedChamadoForAnalysis)}
-                      className="w-full mt-2 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                    >
-                      <Wrench className="w-3.5 h-3.5" />
-                      <span>Abrir Ordem de Serviço (OS)</span>
-                    </button>
+                    ))}
                   </div>
-                ) : (
+                )}
+
+                {/* Always allow creating MORE OSs from a Chamado (1:N), or adding notes if not fully concluded/discarded */}
+                {selectedChamadoForAnalysis.status !== 'descartado' && selectedChamadoForAnalysis.status !== 'concluido' && (
                   <>
-                    {/* Technical Analysis Notes Input */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Observações da Análise Técnica</span>
-                        {selectedChamadoForAnalysis.status !== 'descartado' && selectedChamadoForAnalysis.status !== 'concluido' && (
+                    <div className="pt-2 border-t border-slate-100 mt-4">
+                      {/* Technical Analysis Notes Input */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Observações da Análise Técnica</span>
                           <button
                             type="button"
                             onClick={handleSaveAnalysisNotes}
@@ -851,31 +865,45 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                           >
                             Salvar Anotações
                           </button>
-                        )}
+                        </div>
+                        <textarea
+                          rows={2}
+                          placeholder="Observações do técnico sobre a avaria ou instruções para a oficina..."
+                          value={analiseNotes}
+                          onChange={(e) => setAnaliseNotes(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#186b77]"
+                        />
                       </div>
-                      <textarea
-                        rows={2}
-                        placeholder="Observações do técnico sobre a avaria ou instruções para a oficina..."
-                        value={analiseNotes}
-                        onChange={(e) => setAnaliseNotes(e.target.value)}
-                        disabled={selectedChamadoForAnalysis.status === 'descartado' || selectedChamadoForAnalysis.status === 'concluido'}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#186b77]"
-                      />
-                    </div>
 
-                    {/* Status Action Notice */}
-                    <div className="p-3 bg-teal-50 border border-teal-200/80 rounded-xl text-teal-800 flex items-start gap-2.5">
-                      <Sparkles className="w-4 h-4 text-[#186b77] shrink-0 mt-0.5" />
-                      <div className="text-[11px]">
-                        <strong className="block font-bold">Próximo Passo do Fluxo:</strong>
-                        Ao clicar em **Gerar Ordem de Serviço (OS)**, a OS será criada e a embarcação será marcada em manutenção.
+                      {/* Atribuição Antecipada de Mecânico */}
+                      <div className="space-y-1.5 pt-3">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Mecânico / Oficina Pré-Atribuída</span>
+                        <select
+                          value={analiseMecanicoId}
+                          onChange={(e) => setAnaliseMecanicoId(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#186b77]"
+                        >
+                          <option value="">(Opcional) Selecione um mecânico agora...</option>
+                          {mecanicos.map(m => (
+                            <option key={m.id} value={m.id}>{m.nome}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Status Action Notice */}
+                      <div className="p-3 bg-teal-50 border border-teal-200/80 rounded-xl text-teal-800 flex items-start gap-2.5 mt-3">
+                        <Sparkles className="w-4 h-4 text-[#186b77] shrink-0 mt-0.5" />
+                        <div className="text-[11px]">
+                          <strong className="block font-bold">Gerar Ordem de Serviço (OS)</strong>
+                          Um chamado pode gerar mais de uma OS (Ex: 1 OS para mecânico, 1 OS para tapeceiro). Crie quantas forem necessárias.
+                        </div>
                       </div>
                     </div>
                   </>
                 )}
 
                 {/* Actions Footer */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                <div className="pt-4 mt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -896,15 +924,15 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                     </button>
                   </div>
 
-                  {!linkedOS && selectedChamadoForAnalysis.status !== 'descartado' && selectedChamadoForAnalysis.status !== 'concluido' && (
+                  {selectedChamadoForAnalysis.status !== 'descartado' && selectedChamadoForAnalysis.status !== 'concluido' && (
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => handleConcluirChamadoDireto(selectedChamadoForAnalysis)}
                         className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold rounded-xl text-xs border border-emerald-200 transition-colors cursor-pointer"
-                        title="Concluir sem necessidade de OS"
+                        title={linkedOSs.length > 0 ? "Marcar este chamado como concluído (OS(s) já gerada(s))" : "Concluir sem necessidade de OS"}
                       >
-                        Concluir s/ OS
+                        {linkedOSs.length > 0 ? 'Concluir Chamado' : 'Concluir s/ OS'}
                       </button>
 
                       <button
@@ -913,7 +941,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                         className="px-4 py-2.5 bg-[#186b77] hover:bg-[#12555f] text-white font-extrabold rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                       >
                         <Wrench className="w-4 h-4" />
-                        <span>Gerar OS</span>
+                        <span>Gerar {linkedOSs.length > 0 ? 'Outra OS' : 'OS'}</span>
                       </button>
                     </div>
                   )}

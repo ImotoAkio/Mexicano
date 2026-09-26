@@ -176,7 +176,7 @@ export default function MaintenanceCalendarView({
                         className={`p-1.5 rounded-xl border text-[10px] font-extrabold cursor-pointer hover:shadow-2xs transition-all ${
                           ev.status === 'concluido' ? 'bg-purple-50 text-purple-900 border-purple-200' :
                           ev.status === 'orcamento_pendente' ? 'bg-amber-50 text-amber-900 border-amber-200' :
-                          ev.status === 'chamado_aberto' ? 'bg-pink-50 text-pink-900 border-pink-200' :
+                          ev.status === 'fila_espera' ? 'bg-pink-50 text-pink-900 border-pink-200' :
                           'bg-blue-50 text-blue-900 border-blue-200'
                         }`}
                         title={`${osCode} - ${getBoatCode(boat)}: ${ev.tituloChamado}`}

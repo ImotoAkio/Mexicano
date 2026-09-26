@@ -211,6 +211,10 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE Clientes ADD COLUMN asaasCustomerId VARCHAR(100);`);
     } catch (e) {}
 
+    try {
+      await connection.query(`ALTER TABLE Clientes ADD COLUMN acessorios TEXT;`);
+    } catch (e) {}
+
     // 2. Embarcacoes Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS Embarcacoes (
@@ -376,6 +380,9 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN contestadaEm VARCHAR(50);`);
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN acessoriosSolicitados TEXT;`);
+    } catch (e) {}
     } catch (e) {}
 
     // 4. ControlesSom Table
@@ -1245,6 +1252,7 @@ export async function pullDatabase(forceFresh = false) {
       temValoresEmAberto: fin.openCnt > 0,
       statusFinanceiro: fin.overdueCnt > 0 ? 'inadimplente' : (fin.openCnt > 0 ? 'pendente' : 'em_dia'),
       observacoesFinanceiras: c.observacoesFinanceiras || '',
+      acessorios: c.acessorios ? (typeof c.acessorios === 'string' ? JSON.parse(c.acessorios) : c.acessorios) : undefined,
     };
   });
 
@@ -1297,6 +1305,7 @@ export async function pullDatabase(forceFresh = false) {
       fotosChecklistChegada,
       fotosChecklistDescida,
       fotosChecklistSubida,
+      acessoriosSolicitados: r.acessoriosSolicitados ? (typeof r.acessoriosSolicitados === "string" ? JSON.parse(r.acessoriosSolicitados) : r.acessoriosSolicitados) : undefined,
     };
   });
 
@@ -1362,15 +1371,19 @@ export async function upsertClient(client: any) {
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   if (!client || !client.id) throw new Error("Invalid client object: id is required.");
 
-  const embarcacoesJson = client.embarcacoes 
+  const embarcacoesJson = client.embarcacoes
     ? (typeof client.embarcacoes === 'string' ? client.embarcacoes : JSON.stringify(client.embarcacoes))
+    : null;
+
+  const acessoriosJson = client.acessorios
+    ? (typeof client.acessorios === 'string' ? client.acessorios : JSON.stringify(client.acessorios))
     : null;
 
   const query = `
     INSERT INTO Clientes (
-      id, nome, embarcacaoId, cota, telefone, email, cpf, dataNascimento, dataCadastro, 
-      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId, cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, nome, embarcacaoId, cota, telefone, email, cpf, dataNascimento, dataCadastro,
+      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId, cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao, status, acessorios
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       nome = VALUES(nome),
       embarcacaoId = VALUES(embarcacaoId),
@@ -1400,7 +1413,8 @@ export async function upsertClient(client: any) {
       validadeHabilitacao = VALUES(validadeHabilitacao),
       orgaoEmissorHabilitacao = VALUES(orgaoEmissorHabilitacao),
       categoriaHabilitacao = VALUES(categoriaHabilitacao),
-      status = VALUES(status)
+      status = VALUES(status),
+      acessorios = VALUES(acessorios)
   `;
 
   await currentPool.query(query, [
@@ -1434,7 +1448,8 @@ export async function upsertClient(client: any) {
     client.validadeHabilitacao || null,
     client.orgaoEmissorHabilitacao || null,
     client.categoriaHabilitacao || null,
-    client.status || 'ativo'
+    client.status || 'ativo',
+    acessoriosJson
   ]);
 
   if (client.empresas && Array.isArray(client.empresas)) {
@@ -1590,12 +1605,14 @@ export async function upsertReservation(reserva: any) {
   const fotosChecklistSaidaStr = reserva.fotosChecklistSaida ? JSON.stringify(reserva.fotosChecklistSaida) : null;
   const fotosChecklistChegadaStr = reserva.fotosChecklistChegada ? JSON.stringify(reserva.fotosChecklistChegada) : null;
   const fotosChecklistSubidaStr = reserva.fotosChecklistSubida ? JSON.stringify(reserva.fotosChecklistSubida) : null;
+  const acessoriosSolicitadosStr = reserva.acessoriosSolicitados ? JSON.stringify(reserva.acessoriosSolicitados) : null;
 
   const query = `
     INSERT INTO Reservas (
       id, embarcacaoId, clienteId, data, periodo, observacoes, googleEventId, status, createdAt,
       somRetirado, somTesteSaida, somTesteRetorno, horaSaida, horaChegada, fotosChecklistSaida, fotosChecklistChegada,
       previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada, litrosAbastecidos, horaSubida, operadorSubida, fotosChecklistSubida,
+      acessoriosSolicitados,
       abastecimentoLitros, abastecimentoStatusCobranca, abastecimentoFormaPagamento, abastecimentoValorTotal, abastecimentoComprovanteUrl, abastecimentoOperador,
       tipoReserva, contestadaPor, contestadaEm
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1629,6 +1646,7 @@ export async function upsertReservation(reserva: any) {
       horaSubida = VALUES(horaSubida),
       operadorSubida = VALUES(operadorSubida),
       fotosChecklistSubida = VALUES(fotosChecklistSubida),
+      acessoriosSolicitados = VALUES(acessoriosSolicitados),
       abastecimentoLitros = VALUES(abastecimentoLitros),
       abastecimentoStatusCobranca = VALUES(abastecimentoStatusCobranca),
       abastecimentoFormaPagamento = VALUES(abastecimentoFormaPagamento),
@@ -1672,6 +1690,7 @@ export async function upsertReservation(reserva: any) {
     reserva.horaSubida || null,
     reserva.operadorSubida || null,
     fotosChecklistSubidaStr,
+    acessoriosSolicitadosStr,
     reserva.abastecimentoLitros || null,
     reserva.abastecimentoStatusCobranca || null,
     reserva.abastecimentoFormaPagamento || null,

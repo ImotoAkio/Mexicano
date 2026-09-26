@@ -71,7 +71,7 @@ export default function MaintenanceModal({
     mecanico: '',
     orcamento: 0,
     orcamentoAprovado: false,
-    status: 'chamado_aberto',
+    status: 'fila_espera',
     localizacao: 'marina',
     descricaoServico: '',
     horasMotorAtual: 0,
@@ -100,7 +100,7 @@ export default function MaintenanceModal({
     if (editingItem) {
       setFormData({
         ...editingItem,
-        status: editingItem.status || 'chamado_aberto',
+        status: editingItem.status || 'fila_espera',
         pecas: editingItem.pecas || [],
         gerarFinanceiro: editingItem.gerarFinanceiro !== undefined ? editingItem.gerarFinanceiro : true
       });
@@ -117,7 +117,7 @@ export default function MaintenanceModal({
         mecanico: '',
         orcamento: 0,
         orcamentoAprovado: false,
-        status: 'chamado_aberto',
+        status: 'fila_espera',
         localizacao: 'marina',
         descricaoServico: '',
         horasMotorAtual: 0,
@@ -178,7 +178,7 @@ export default function MaintenanceModal({
   }, [mecanicosList]);
 
   const statusOptions = [
-    { value: 'chamado_aberto', label: '1. Triagem & Chamado' },
+    { value: 'fila_espera', label: '1. Triagem & Chamado' },
     { value: 'orcamento_pendente', label: '2. Orçamento (Aprovação)' },
     { value: 'em_andamento', label: '3. Em Manutenção' },
     { value: 'concluido', label: '4. Concluído & Liberado' },
@@ -270,13 +270,46 @@ export default function MaintenanceModal({
       return;
     }
 
+    // Validation matching Kanban standards
+    if (formData.status === 'orcamento_pendente') {
+      if (!formData.mecanico) {
+        alert("Para o estágio 'Orçamento (Aprovação)', é obrigatório definir o Mecânico ou Oficina responsável.");
+        return;
+      }
+    } else if (formData.status === 'em_andamento') {
+      const needsBudgetConf = (!formData.orcamento && formData.orcamento !== 0) || formData.orcamentoStatus !== 'aprovado';
+      if (needsBudgetConf || !formData.mecanico) {
+        alert("Para o estágio 'Em Manutenção', é obrigatório definir Mecânico/Oficina, Valor do Orçamento e marcar como 'Aprovado'. (Se for cortesia/garantia, coloque o valor como 0).");
+        return;
+      }
+    } else if (formData.status === 'concluido') {
+      if (!formData.mecanico) {
+        alert("Para concluir, é necessário definir o mecânico/oficina responsável.");
+        return;
+      }
+      if (!formData.horasMotorAtual || formData.horasMotorAtual <= 0) {
+        alert("Para concluir uma ordem de serviço, é obrigatório registrar o horímetro final na seção de Horímetros.");
+        return;
+      }
+    }
+
     try {
       if (isEditing && editingItem?.id) {
         await maintenanceDB.update(editingItem.id, formData);
       } else {
         const created = await maintenanceDB.create(formData as any);
         if (formData.chamadoId) {
-          chamadoDB.update(formData.chamadoId, { status: 'os_gerada', osId: created.id });
+          const chamado = chamadoDB.findById(formData.chamadoId);
+          if (chamado) {
+            const newOsIds = [...(chamado.osIds || [])];
+            if (!newOsIds.includes(created.id)) {
+              newOsIds.push(created.id);
+            }
+            // For now, let's mark it as os_gerada automatically if it was pendente or em_analise.
+            // But doing it partially allows 1:N. We will set it to 'os_gerada' here to keep old behavior,
+            // or the user can manually re-open/add more in ChamadosPage.
+            chamadoDB.update(formData.chamadoId, { osIds: newOsIds, status: 'os_gerada' });
+          }
         }
       }
       onRefresh();
@@ -290,7 +323,7 @@ export default function MaintenanceModal({
     const boat = embarcacoes.find(b => b.id === formData.embarcacaoId);
     let texto = `*ORÇAMENTO DE MANUTENÇÃO - ${getBoatCode(boat)}*\n\n`;
     texto += `*Tipo de Serviço:* ${formData.tipoManutencaoNome || formData.tituloChamado || 'Manutenção'}\n`;
-    texto += `*Status:* ${formData.orcamentoAprovado ? 'Aprovado pelo Cliente' : 'Aguardando Aprovação'}\n\n`;
+    texto += `*Status:* ${formData.orcamentoStatus === 'aprovado' ? 'Aprovado pelo Cliente' : 'Aguardando Aprovação'}\n\n`;
     
     if (formData.pecas && formData.pecas.length > 0) {
       texto += `*Peças & Materiais:*\n`;
@@ -464,7 +497,7 @@ export default function MaintenanceModal({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Tipo de Manutenção / Serviço *
+                      Tipo de Manutenção / Serviço
                     </label>
                     <button
                       type="button"
@@ -498,7 +531,7 @@ export default function MaintenanceModal({
                 {/* Status / Estágio Select */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Estágio Atual (Kanban) *
+                    Estágio Atual (Kanban)
                   </label>
                   <Select
                     options={statusOptions}
@@ -529,7 +562,7 @@ export default function MaintenanceModal({
                 <div className="space-y-1.5 md:col-span-1">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Mecânico / Oficina *
+                      Mecânico / Oficina <span className="text-[9px] font-normal text-slate-400 normal-case">(Requerido p/ orçamento)</span>
                     </label>
                     <button
                       type="button"
@@ -705,22 +738,41 @@ export default function MaintenanceModal({
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={formData.orcamentoAprovado || false}
+                    checked={formData.orcamentoStatus === 'aprovado' || false}
                     onChange={(e) => setFormData(prev => ({ ...prev, orcamentoAprovado: e.target.checked }))}
                     className="w-4 h-4 accent-[#186b77] rounded"
                   />
                   <span>Orçamento Aprovado pelo Cliente</span>
                 </label>
 
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Valor Total da OS:</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.orcamento || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, orcamento: parseFloat(e.target.value) || 0 }))}
-                    className="w-36 px-3 py-2 bg-emerald-50 border-2 border-emerald-500 rounded-xl text-sm font-black text-emerald-800 outline-none text-right"
-                  />
+                <div className="flex flex-col sm:flex-row gap-4 items-end">
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-[10px] items-center gap-1 font-bold text-slate-400 uppercase tracking-widest flex" title="O custo real interno. Opcional.">
+                      Custo Interno Pago (R$)
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.custo || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, custo: parseFloat(e.target.value) || null }))}
+                      className="w-32 px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-slate-300 text-right"
+                      placeholder="Ex: 500.00"
+                    />
+                  </div>
+
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">
+                      Repassado ao Cliente (R$)
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.orcamento || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, orcamento: parseFloat(e.target.value) || 0 }))}
+                      className="w-36 px-3 py-2 bg-emerald-50 border-2 border-emerald-500 rounded-xl text-sm font-black text-emerald-800 outline-none text-right placeholder-emerald-300"
+                      placeholder="Ex: 850.00"
+                    />
+                  </div>
                 </div>
 
               </div>
@@ -751,9 +803,9 @@ export default function MaintenanceModal({
 
         {/* Footer Actions */}
         <div className="px-6 py-4 border-t border-slate-100 bg-white shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
-          
+
           <div className="flex items-center gap-2">
-            {(isEditing || Boolean(formData.embarcacaoId)) && (
+            {(isEditing || Boolean(formData.embarcacaoId)) && (formData.orcamento ? formData.orcamento > 0 : false) && (
               <>
                 <button
                   type="button"
@@ -762,18 +814,22 @@ export default function MaintenanceModal({
                     generateOrcamentoOSPDF(formData, boat);
                   }}
                   className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  title="Gerar PDF do Orçamento detalhado"
                 >
                   <FileText className="w-4 h-4 text-[#186b77]" />
-                  <span>PDF do Orçamento</span>
+                  <span className="hidden sm:inline">PDF do Orçamento</span>
+                  <span className="sm:hidden">PDF</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={enviarWhatsApp}
                   className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+                  title="Enviar os valores e itens pro grupo de WhatsApp do cliente"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Enviar WPP</span>
+                  <span className="hidden sm:inline">Enviar Orçamento (WhatsApp)</span>
+                  <span className="sm:hidden">Enviar</span>
                 </button>
               </>
             )}

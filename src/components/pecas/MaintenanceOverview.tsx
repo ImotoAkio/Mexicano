@@ -35,11 +35,11 @@ export default function MaintenanceOverview({
   const metrics = useMemo(() => {
     const total = manutencoes.length;
     const emManutencao = manutencoes.filter(m => m.status === 'em_andamento' || m.status === 'na_oficina' || m.status === 'aguardando_pecas').length;
-    const orcamentosPendentes = manutencoes.filter(m => m.status === 'orcamento_pendente' || (m.orcamento && !m.orcamentoAprovado)).length;
+    const orcamentosPendentes = manutencoes.filter(m => m.status === 'orcamento_pendente' || (m.orcamento && m.orcamentoStatus !== 'aprovado')).length;
     const concluidos = manutencoes.filter(m => m.status === 'concluido').length;
     
     const valorTotalOrcado = manutencoes.reduce((acc, m) => acc + (m.orcamento || 0), 0);
-    const valorAprovado = manutencoes.filter(m => m.orcamentoAprovado || m.status === 'concluido').reduce((acc, m) => acc + (m.orcamento || 0), 0);
+    const valorAprovado = manutencoes.filter(m => m.orcamentoStatus === 'aprovado' || m.status === 'concluido').reduce((acc, m) => acc + (m.orcamento || 0), 0);
 
     return {
       total,
@@ -54,7 +54,7 @@ export default function MaintenanceOverview({
   // Stage distribution
   const stageDistribution = useMemo(() => {
     const counts = {
-      chamado_aberto: manutencoes.filter(m => m.status === 'chamado_aberto').length,
+      chamado_aberto: manutencoes.filter(m => m.status === 'fila_espera').length,
       orcamento_pendente: manutencoes.filter(m => m.status === 'orcamento_pendente').length,
       em_manutencao: manutencoes.filter(m => m.status === 'em_andamento' || m.status === 'na_oficina' || m.status === 'aguardando_pecas').length,
       concluido: manutencoes.filter(m => m.status === 'concluido').length

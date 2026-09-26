@@ -1,21 +1,86 @@
-import React, { useState } from 'react';
-import { X, CheckCircle2, Clock, MapPin, Users, ChevronRight, ChevronLeft, Plus, Minus, Navigation } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, CheckCircle2, Clock, MapPin, Users, ChevronRight, ChevronLeft, Plus, Minus, Navigation, Package } from 'lucide-react';
 
 interface ClientCheckinModalProps {
   isOpen: boolean;
   onClose: () => void;
   reservation: any;
+  boat?: any; // Pega informacoes da embarcacao
+  client?: any; // Pega informacoes do cliente para checar acesso aos acessorios
   onSuccess: (checkinData?: any) => void;
 }
 
-export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuccess }: ClientCheckinModalProps) {
+export default function ClientCheckinModal({ isOpen, onClose, reservation, boat, client, onSuccess }: ClientCheckinModalProps) {
   const [step, setStep] = useState(1);
   const [previsaoSaida, setPrevisaoSaida] = useState('09:00');
   const [previsaoChegada, setPrevisaoChegada] = useState('17:00');
+  const [tempoHabil, setTempoHabil] = useState(40);
   const [pessoasABordo, setPessoasABordo] = useState(2);
   const [destino, setDestino] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Acessórios selecionados para a saída
+  const [takeTenda, setTakeTenda] = useState(false);
+  const [takeMesa, setTakeMesa] = useState(false);
+  const [takeChurrasqueira, setTakeChurrasqueira] = useState(false);
+  const [qtdBancos, setQtdBancos] = useState(0);
+
+  const hasAcessorios = client?.acessorios?.tenda || client?.acessorios?.mesa || client?.acessorios?.churrasqueira || client?.acessorios?.bancosCadeiras;
+  const maxSteps = hasAcessorios ? 4 : 3;
+
+  useEffect(() => {
+    if (isOpen) {
+      setStep(1);
+      setPessoasABordo(2);
+      setDestino('');
+      setErrorMsg(null);
+      setTakeTenda(false);
+      setTakeMesa(false);
+      setTakeChurrasqueira(false);
+      setQtdBancos(0);
+
+      // Determine the day-of-week from the reservation date
+      const dayOfWeek = reservation?.data
+        ? new Date(reservation.data + 'T12:00:00').getDay()
+        : new Date().getDay();
+
+      // Fetch per-day schedule from public config
+      fetch('/api/config/public?chaves=marina_horarios_semana,marina_checkin_antecedencia')
+        .then(res => res.json())
+        .then(data => {
+          const configs = data?.configs || {};
+          let schedule: Record<string, any> | null = null;
+          if (configs.marina_horarios_semana) {
+            try {
+              schedule = typeof configs.marina_horarios_semana === 'string'
+                ? JSON.parse(configs.marina_horarios_semana)
+                : configs.marina_horarios_semana;
+            } catch { /* ignore */ }
+          }
+          if (schedule && schedule[String(dayOfWeek)]) {
+            const dayConfig = schedule[String(dayOfWeek)];
+            if (dayConfig.checkinSaida) setPrevisaoSaida(dayConfig.checkinSaida);
+            if (dayConfig.checkinChegada) setPrevisaoChegada(dayConfig.checkinChegada);
+          } else {
+            // Fallback defaults: weekdays 09-17, weekends 09-19
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            setPrevisaoSaida('09:00');
+            setPrevisaoChegada(isWeekend ? '19:00' : '17:00');
+          }
+          if (configs.marina_checkin_antecedencia) {
+            const mins = parseInt(configs.marina_checkin_antecedencia, 10);
+            if (!isNaN(mins)) setTempoHabil(mins);
+          }
+        })
+        .catch(() => {
+          // Fallback on error
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          setPrevisaoSaida('09:00');
+          setPrevisaoChegada(isWeekend ? '19:00' : '17:00');
+        });
+    }
+  }, [isOpen, reservation?.data]);
 
   if (!isOpen || !reservation) return null;
 
@@ -29,8 +94,8 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
 
       const diffInMinutes = (outputTime.getTime() - now.getTime()) / (1000 * 60);
 
-      if (diffInMinutes >= 0 && diffInMinutes < 40) {
-        setErrorMsg('O horário de previsão de saída deve ter pelo menos 40 minutos de antecedência.');
+      if (diffInMinutes >= 0 && diffInMinutes < tempoHabil) {
+        setErrorMsg(`O horário de previsão de saída deve ter pelo menos ${tempoHabil} minutos de antecedência.`);
         return;
       }
       if (diffInMinutes < 0) {
@@ -42,8 +107,18 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
   };
   const handlePrev = () => setStep(prev => prev - 1);
 
-  const incrementPessoas = () => setPessoasABordo(prev => prev + 1);
-  const decrementPessoas = () => setPessoasABordo(prev => (prev > 1 ? prev - 1 : 1));
+  const incrementPessoas = () => {
+    if (boat?.capacidadePassageiros && pessoasABordo >= boat.capacidadePassageiros) {
+      setErrorMsg(`A capacidade máxima da embarcação é de ${boat.capacidadePassageiros} passageiros.`);
+      return;
+    }
+    setErrorMsg(null);
+    setPessoasABordo(prev => prev + 1);
+  };
+  const decrementPessoas = () => {
+    setErrorMsg(null);
+    setPessoasABordo(prev => (prev > 1 ? prev - 1 : 1));
+  };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -68,7 +143,13 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
           previsaoSaida,
           previsaoChegada,
           pessoasABordo: pessoasABordo.toString(),
-          destino
+          destino,
+          acessoriosSolicitados: hasAcessorios ? {
+            tenda: takeTenda,
+            mesa: takeMesa,
+            churrasqueira: takeChurrasqueira,
+            bancos: qtdBancos > 0 ? qtdBancos : 0
+          } : undefined
         })
       });
 
@@ -81,7 +162,13 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
         previsaoSaida,
         previsaoChegada,
         pessoasABordo: pessoasABordo.toString(),
-        destino
+        destino,
+        acessoriosSolicitados: hasAcessorios ? {
+          tenda: takeTenda,
+          mesa: takeMesa,
+          churrasqueira: takeChurrasqueira,
+          bancos: qtdBancos > 0 ? qtdBancos : 0
+        } : undefined
       });
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -93,12 +180,12 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
   const renderProgress = () => {
     return (
       <div className="flex items-center justify-between gap-2 mb-6">
-        {[1, 2, 3].map((s) => (
+        {Array.from({ length: maxSteps }, (_, i) => i + 1).map((s) => (
           <div key={s} className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden relative">
             {step >= s && (
-              <div 
+              <div
                 className="absolute inset-0 bg-[#B69D74] transition-all duration-500 ease-out"
-                style={{ width: step > s ? '100%' : '100%', transformOrigin: 'left' }}
+                style={{ width: '100%', transformOrigin: 'left' }}
               />
             )}
           </div>
@@ -132,8 +219,8 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
             </div>
           )}
 
-          {step === 1 && (
-            <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
+              {step === 1 && (
+                <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
               <div className="text-center mb-8">
                 <div className="w-16 h-16 rounded-full bg-[#B69D74]/10 border border-[#B69D74]/20 flex items-center justify-center mx-auto mb-4">
                   <Clock className="w-8 h-8 text-[#B69D74]" />
@@ -212,7 +299,7 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
               </div>
 
               <div>
-                <textarea 
+                <textarea
                   required
                   value={destino}
                   onChange={(e) => setDestino(e.target.value)}
@@ -223,11 +310,82 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
               </div>
             </div>
           )}
+
+          {step === 4 && hasAcessorios && (
+            <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 rounded-full bg-[#B69D74]/10 border border-[#B69D74]/20 flex items-center justify-center mx-auto mb-4">
+                  <Package className="w-8 h-8 text-[#B69D74]" />
+                </div>
+                <h3 className="text-xl font-light text-white mb-2">Quais acessórios levar?</h3>
+                <p className="text-sm text-white/40">Selecione os itens que você deseja embarcar.</p>
+              </div>
+
+              <div className="space-y-3">
+                {client?.acessorios?.tenda && (
+                  <label className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors">
+                    <span className="text-white">Tenda</span>
+                    <input
+                      type="checkbox"
+                      checked={takeTenda}
+                      onChange={(e) => setTakeTenda(e.target.checked)}
+                      className="w-5 h-5 rounded border-white/20 bg-white/5 text-[#B69D74] focus:ring-[#B69D74]/50 focus:ring-offset-0"
+                    />
+                  </label>
+                )}
+
+                {client?.acessorios?.mesa && (
+                  <label className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors">
+                    <span className="text-white">Mesa</span>
+                    <input
+                      type="checkbox"
+                      checked={takeMesa}
+                      onChange={(e) => setTakeMesa(e.target.checked)}
+                      className="w-5 h-5 rounded border-white/20 bg-white/5 text-[#B69D74] focus:ring-[#B69D74]/50 focus:ring-offset-0"
+                    />
+                  </label>
+                )}
+
+                {client?.acessorios?.churrasqueira && (
+                  <label className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors">
+                    <span className="text-white">Churrasqueira</span>
+                    <input
+                      type="checkbox"
+                      checked={takeChurrasqueira}
+                      onChange={(e) => setTakeChurrasqueira(e.target.checked)}
+                      className="w-5 h-5 rounded border-white/20 bg-white/5 text-[#B69D74] focus:ring-[#B69D74]/50 focus:ring-offset-0"
+                    />
+                  </label>
+                )}
+
+                {client?.acessorios?.bancosCadeiras && (
+                  <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
+                    <span className="text-white">Bancos/Cadeiras</span>
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => setQtdBancos(prev => (prev > 0 ? prev - 1 : 0))}
+                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="text-white font-medium w-4 text-center">{qtdBancos}</span>
+                      <button
+                        onClick={() => setQtdBancos(prev => prev + 1)}
+                        className="w-8 h-8 rounded-full bg-[#B69D74]/20 hover:bg-[#B69D74]/30 flex items-center justify-center text-[#B69D74] transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="p-6 border-t border-white/5 shrink-0 flex gap-3">
           {step > 1 && (
-            <button 
+            <button
               onClick={handlePrev}
               disabled={isSubmitting}
               className="px-5 py-4 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center"
@@ -235,9 +393,9 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
               <ChevronLeft className="w-5 h-5" />
             </button>
           )}
-          
-          {step < 3 ? (
-            <button 
+
+          {step < maxSteps ? (
+            <button
               onClick={handleNext}
               className="flex-1 flex items-center justify-center gap-2 py-4 bg-[#B69D74] hover:bg-[#a08a65] text-slate-900 rounded-xl font-bold uppercase tracking-widest transition-all active:scale-[0.98]"
             >
@@ -245,7 +403,7 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, onSuc
               <ChevronRight className="w-5 h-5" />
             </button>
           ) : (
-            <button 
+            <button
               onClick={() => handleSubmit()}
               disabled={isSubmitting || !destino.trim()}
               className="flex-1 flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 rounded-xl font-bold uppercase tracking-widest transition-all active:scale-[0.98]"

@@ -56,8 +56,8 @@ export default function MaintenanceDocumentsView({
 
       const matchesApproval = 
         approvalFilter === 'todos' ||
-        (approvalFilter === 'aprovado' && m.orcamentoAprovado) ||
-        (approvalFilter === 'pendente' && !m.orcamentoAprovado);
+        (approvalFilter === 'aprovado' && m.orcamentoStatus === 'aprovado') ||
+        (approvalFilter === 'pendente' && m.orcamentoStatus !== 'aprovado');
 
       return matchesSearch && matchesApproval;
     });
@@ -66,8 +66,8 @@ export default function MaintenanceDocumentsView({
   // Metrics
   const metrics = useMemo(() => {
     const totalDocs = manutencoes.filter(m => (m.orcamento && m.orcamento > 0) || (m.pecas && m.pecas.length > 0)).length;
-    const aprovados = manutencoes.filter(m => m.orcamentoAprovado).length;
-    const pendentes = manutencoes.filter(m => !m.orcamentoAprovado && (m.orcamento && m.orcamento > 0)).length;
+    const aprovados = manutencoes.filter(m => m.orcamentoStatus === 'aprovado').length;
+    const pendentes = manutencoes.filter(m => m.orcamentoStatus !== 'aprovado' && (m.orcamento && m.orcamento > 0)).length;
     const valorTotal = manutencoes.reduce((acc, m) => acc + (m.orcamento || 0), 0);
 
     return { totalDocs, aprovados, pendentes, valorTotal };
@@ -82,7 +82,7 @@ export default function MaintenanceDocumentsView({
 
     let texto = `*ORÇAMENTO DE MANUTENÇÃO - ${getBoatCode(boat)}*\n\n`;
     texto += `*Serviço:* ${m.tituloChamado || 'Manutenção'}\n`;
-    texto += `*Status:* ${m.orcamentoAprovado ? 'Aprovado' : 'Aguardando Aprovação'}\n\n`;
+    texto += `*Status:* ${m.orcamentoStatus === 'aprovado' ? 'Aprovado' : 'Aguardando Aprovação'}\n\n`;
     
     if (m.pecas && m.pecas.length > 0) {
       texto += `*Peças & Materiais:*\n`;
@@ -212,7 +212,7 @@ export default function MaintenanceDocumentsView({
                   </h3>
                 </div>
 
-                {m.orcamentoAprovado ? (
+                {m.orcamentoStatus === 'aprovado' ? (
                   <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                     <CheckCircle className="w-3 h-3 text-emerald-600" /> Aprovado
                   </span>

@@ -37,6 +37,29 @@ export default function IntegrationsPage() {
   const [asaasWebhookToken, setAsaasWebhookToken] = useState('');
   const [hasAsaasApiKey, setHasAsaasApiKey] = useState(false);
 
+  // Marina Configs
+  const [checkinAntecedencia, setCheckinAntecedencia] = useState('40');
+
+  // Per-day-of-week schedule: keys 0-6 = Sunday-Saturday (JS Date.getDay())
+  const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  const DEFAULT_SCHEDULE: Record<string, { abertura: string; fechamento: string; checkinSaida: string; checkinChegada: string }> = {
+    '0': { abertura: '09:00', fechamento: '19:00', checkinSaida: '09:00', checkinChegada: '19:00' },
+    '1': { abertura: '08:00', fechamento: '18:00', checkinSaida: '09:00', checkinChegada: '17:00' },
+    '2': { abertura: '08:00', fechamento: '18:00', checkinSaida: '09:00', checkinChegada: '17:00' },
+    '3': { abertura: '08:00', fechamento: '18:00', checkinSaida: '09:00', checkinChegada: '17:00' },
+    '4': { abertura: '08:00', fechamento: '18:00', checkinSaida: '09:00', checkinChegada: '17:00' },
+    '5': { abertura: '08:00', fechamento: '18:00', checkinSaida: '09:00', checkinChegada: '17:00' },
+    '6': { abertura: '09:00', fechamento: '19:00', checkinSaida: '09:00', checkinChegada: '19:00' },
+  };
+  const [horariosSemana, setHorariosSemana] = useState(DEFAULT_SCHEDULE);
+
+  const updateDaySchedule = (day: string, field: string, value: string) => {
+    setHorariosSemana(prev => ({
+      ...prev,
+      [day]: { ...prev[day], [field]: value }
+    }));
+  };
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -72,6 +95,10 @@ export default function IntegrationsPage() {
           setHasAsaasApiKey(!!data.has_asaas_api_key);
           setAsaasApiUrl(data.asaas_api_url || 'https://api-sandbox.asaas.com/v3');
           setAsaasWebhookToken(data.asaas_webhook_token || '');
+          if (data.marina_checkin_antecedencia) setCheckinAntecedencia(data.marina_checkin_antecedencia);
+          if (data.marina_horarios_semana) {
+            setHorariosSemana(prev => ({ ...prev, ...data.marina_horarios_semana }));
+          }
           if (data.has_asaas_api_key) {
             setAsaasApiKey('__UNCHANGED__');
           }
@@ -109,6 +136,34 @@ export default function IntegrationsPage() {
       }
     } catch (err: any) {
       showToast(err.message || 'Erro ao conectar ao servidor.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveMarinaConfig = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          marina_checkin_antecedencia: checkinAntecedencia,
+          marina_horarios_semana: horariosSemana
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showToast(data.message || 'Falha ao salvar configurações', 'error');
+      } else {
+        showToast('Configurações da Marina salvas com sucesso!');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro de conexão.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -325,6 +380,109 @@ export default function IntegrationsPage() {
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors mt-2"
               >
                 {isLoading ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* MARINA CONFIG CARD */}
+        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+          <div className="border-b border-slate-100 bg-slate-50 p-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100/50">
+                <Compass className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800">Regras de Operação da Marina</h3>
+                <p className="text-[11px] text-slate-500 font-medium">Controle os horários de início e término das operações e check-ins.</p>
+              </div>
+            </div>
+            {isLoading && <div className="text-[10px] uppercase font-bold text-slate-400 animate-pulse">Salvando...</div>}
+          </div>
+
+          <div className="p-6">
+            <p className="text-xs text-slate-500 mb-4">Configure os horários de operação e check-in padrão para cada dia da semana.</p>
+
+            {/* Per-day schedule table */}
+            <div className="overflow-x-auto -mx-2">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    <th className="text-left py-2 px-2 w-24">Dia</th>
+                    <th className="text-center py-2 px-2">Abertura</th>
+                    <th className="text-center py-2 px-2">Fechamento</th>
+                    <th className="text-center py-2 px-2">Saída Check-in</th>
+                    <th className="text-center py-2 px-2">Retorno Check-in</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+                    <tr key={day} className={`border-t border-slate-100 ${day === 0 || day === 6 ? 'bg-amber-50/50' : ''}`}>
+                      <td className="py-2 px-2">
+                        <span className={`text-xs font-semibold ${day === 0 || day === 6 ? 'text-amber-700' : 'text-slate-700'}`}>
+                          {DAY_LABELS[day]}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="time"
+                          value={horariosSemana[String(day)]?.abertura || '08:00'}
+                          onChange={(e) => updateDaySchedule(String(day), 'abertura', e.target.value)}
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono text-center"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="time"
+                          value={horariosSemana[String(day)]?.fechamento || '18:00'}
+                          onChange={(e) => updateDaySchedule(String(day), 'fechamento', e.target.value)}
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono text-center"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="time"
+                          value={horariosSemana[String(day)]?.checkinSaida || '09:00'}
+                          onChange={(e) => updateDaySchedule(String(day), 'checkinSaida', e.target.value)}
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono text-center"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="time"
+                          value={horariosSemana[String(day)]?.checkinChegada || '17:00'}
+                          onChange={(e) => updateDaySchedule(String(day), 'checkinChegada', e.target.value)}
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono text-center"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Antecedência (global, stays flat) */}
+            <div className="mt-4 flex items-center gap-4">
+              <div className="flex-shrink-0">
+                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Antecedência Mínima (min)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={checkinAntecedencia}
+                  onChange={(e) => setCheckinAntecedencia(e.target.value)}
+                  className="w-28 bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                />
+              </div>
+              <p className="text-[11px] text-slate-400 mt-4">Tempo mínimo de antecedência para o horário de saída no check-in do cliente.</p>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleSaveMarinaConfig}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition-colors"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Aguarde...' : 'Salvar Configurações da Marina'}
               </button>
             </div>
           </div>

@@ -17,6 +17,8 @@ import { Manutencao, Embarcacao, Mecanico } from '../../types';
 import { getBoatCode } from '../../utils/boatUtils';
 import { generateOrcamentoOSPDF } from '../../utils/pdfGenerator';
 import { maintenanceDB } from '../../db';
+import MaintenanceCheckoutModal from './MaintenanceCheckoutModal';
+import MaintenanceTransitionModal from './MaintenanceTransitionModal';
 
 interface MaintenanceListViewProps {
   manutencoes: Manutencao[];
@@ -36,6 +38,9 @@ export default function MaintenanceListView({
   searchTerm = ''
 }: MaintenanceListViewProps) {
 
+  const [checkoutItem, setCheckoutItem] = React.useState<Manutencao | null>(null);
+  const [transitionItem, setTransitionItem] = React.useState<{item: Manutencao, target: 'orcamento_pendente' | 'em_andamento'} | null>(null);
+
   const filteredManutencoes = useMemo(() => {
     return manutencoes.filter(m => {
       const boat = embarcacoes.find(b => b.id === m.embarcacaoId);
@@ -53,6 +58,25 @@ export default function MaintenanceListView({
   }, [manutencoes, embarcacoes, searchTerm]);
 
   const handleStatusChange = async (id: string, newStatus: string) => {
+    const item = manutencoes.find(m => m.id === id);
+    if (!item) return;
+
+    if (newStatus === 'orcamento_pendente') {
+      if (!item.mecanico) {
+        setTransitionItem({ item, target: 'orcamento_pendente' });
+        return;
+      }
+    } else if (newStatus === 'em_andamento') {
+      const needsBudgetConf = (!item.orcamento && item.orcamento !== 0) || item.orcamentoStatus !== 'aprovado';
+      if (needsBudgetConf || !item.mecanico) {
+        setTransitionItem({ item, target: 'em_andamento' });
+        return;
+      }
+    } else if (newStatus === 'concluido') {
+      setCheckoutItem(item);
+      return;
+    }
+
     try {
       await maintenanceDB.update(id, { status: newStatus as any });
       onRefresh();
@@ -63,7 +87,7 @@ export default function MaintenanceListView({
 
   const getStatusBadge = (status?: string) => {
     switch (status) {
-      case 'chamado_aberto':
+      case 'fila_espera':
         return { label: '1. Triagem & Chamado', bg: 'bg-pink-100 text-pink-900 border-pink-200' };
       case 'orcamento_pendente':
         return { label: '2. Orçamento (Aprovação)', bg: 'bg-amber-100 text-amber-900 border-amber-200' };
@@ -250,6 +274,29 @@ export default function MaintenanceListView({
         })}
       </div>
 
+      {checkoutItem && (
+        <MaintenanceCheckoutModal
+          item={checkoutItem}
+          onClose={() => setCheckoutItem(null)}
+          onSuccess={() => {
+            setCheckoutItem(null);
+            onRefresh();
+          }}
+        />
+      )}
+
+      {transitionItem && (
+        <MaintenanceTransitionModal
+          item={transitionItem.item}
+          targetStatus={transitionItem.target}
+          mecanicos={mecanicos}
+          onClose={() => setTransitionItem(null)}
+          onSuccess={() => {
+            setTransitionItem(null);
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

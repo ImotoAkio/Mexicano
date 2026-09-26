@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { 
-  X, User, Folder, Calendar, Printer, Download, MapPin, 
-  CreditCard, FileText, Anchor, Award, Phone, Mail, 
-  ShieldCheck, Briefcase, HeartHandshake, Ship, ShieldAlert, Sparkles
+import {
+  X, User, Folder, Calendar, Printer, Download, MapPin,
+  CreditCard, FileText, Anchor, Award, Phone, Mail,
+  ShieldCheck, Briefcase, HeartHandshake, Ship, ShieldAlert, Sparkles, Package
 } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
 import InternalDrive from './finance/InternalDrive';
@@ -260,8 +260,40 @@ export default function ClientProfileModal({ client, boats, onClose }: ClientPro
 
     y = (doc as any).lastAutoTable.finalY + 6;
 
-    // Section 5: Embarcações e Cotas Vinculadas
-    renderSectionHeader('5. Embarcações e Cotas Vinculadas');
+    let sectionNumber = 5;
+
+    // Acessórios
+    if (client.acessorios) {
+      renderSectionHeader(`${sectionNumber}. Acessórios da Lancha (Cotista)`);
+      sectionNumber++;
+
+      const accData = [
+        ['Tenda:', client.acessorios.tenda ? 'Sim' : 'Não', 'Mesa:', client.acessorios.mesa ? 'Sim' : 'Não'],
+        ['Bancos/Cadeiras:', client.acessorios.bancosCadeiras ? 'Sim' : 'Não', 'Churrasqueira:', client.acessorios.churrasqueira ? 'Sim' : 'Não'],
+      ];
+      if (client.acessorios.observacoes) {
+        accData.push(['Observações:', client.acessorios.observacoes, '', '']);
+      }
+
+      autoTable(doc, {
+        startY: y,
+        margin: { left: 14, right: 14 },
+        body: accData as any,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2, textColor: [30, 41, 59] },
+        columnStyles: {
+          0: { cellWidth: 35 },
+          1: { cellWidth: 56 },
+          2: { cellWidth: 35 },
+          3: { cellWidth: 56 }
+        }
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 6;
+    }
+
+    // Section 6: Embarcações e Cotas Vinculadas
+    renderSectionHeader(`${sectionNumber}. Embarcações e Cotas Vinculadas`);
 
     const boatRows = linkedBoatsList.map((item, idx) => {
       const boat = boats.find(b => b.id === item.embarcacaoId);
@@ -537,7 +569,59 @@ export default function ClientProfileModal({ client, boats, onClose }: ClientPro
                 </div>
               </div>
 
-              {/* Bloco 5: Veículos & Cotas Vinculadas */}
+              {/* Bloco: Acessórios Vinculados */}
+              {client.acessorios && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+                  <h4 className="text-xs font-bold text-indigo-600 mb-5 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <Package className="w-4 h-4 text-indigo-600" />
+                    Acessórios da Lancha Associados ao Cotista
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block mb-1">Tenda</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border mt-0.5 ${
+                        client.acessorios.tenda ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                      }`}>
+                        {client.acessorios.tenda ? 'Sim' : 'Não'}
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block mb-1">Mesa</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border mt-0.5 ${
+                        client.acessorios.mesa ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                      }`}>
+                        {client.acessorios.mesa ? 'Sim' : 'Não'}
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block mb-1">Bancos / Cadeiras</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border mt-0.5 ${
+                        client.acessorios.bancosCadeiras ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                      }`}>
+                        {client.acessorios.bancosCadeiras ? 'Sim' : 'Não'}
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block mb-1">Churrasqueira</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border mt-0.5 ${
+                        client.acessorios.churrasqueira ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                      }`}>
+                        {client.acessorios.churrasqueira ? 'Sim' : 'Não'}
+                      </span>
+                    </div>
+                    {client.acessorios.observacoes && (
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 sm:col-span-4 mt-2">
+                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block mb-1">Observações de Acessórios</span>
+                        <p className="text-slate-700 font-medium text-xs whitespace-pre-wrap">
+                          {client.acessorios.observacoes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Bloco 6: Veículos & Cotas Vinculadas */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
                 <h4 className="text-xs font-bold text-indigo-600 mb-5 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3">
                   <Anchor className="w-4 h-4 text-indigo-600" />

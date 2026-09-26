@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Package, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
 import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
 // @ts-ignore
-import boatImgLancha from '../assets/images/lancha.svg';
+import boatImgLancha from '../assets/images/lancha.webp';
 // @ts-ignore
-import boatImgJet from '../assets/images/jet.svg';
+import boatImgJet from '../assets/images/jet.webp';
 import ClientReservationModal from './ClientReservationModal';
 import ClientCheckinModal from './ClientCheckinModal';
 import ClientMaintenanceModal from './ClientMaintenanceModal';
@@ -2035,6 +2035,48 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               </div>
             </div>
 
+            {/* Acessórios da Lancha (Cotista) */}
+            {client.acessorios && (
+              <div className="bg-white/[0.03] border border-[#B69D74]/20 rounded-3xl p-5 space-y-4">
+                <div className="flex items-center gap-3 border-b border-white/5 pb-3">
+                  <Package className="w-4 h-4 text-[#B69D74]" />
+                  <h3 className="text-xs font-semibold text-white/90 uppercase tracking-widest">Acessórios da Embarcação</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-y-4 gap-x-2">
+                  <div>
+                    <p className="text-[9px] uppercase tracking-wider text-white/30">Tenda</p>
+                    <p className={`text-xs mt-1 font-medium ${client.acessorios.tenda ? 'text-emerald-400' : 'text-white/40'}`}>
+                      {client.acessorios.tenda ? 'Possui' : 'Não possui'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] uppercase tracking-wider text-white/30">Mesa</p>
+                    <p className={`text-xs mt-1 font-medium ${client.acessorios.mesa ? 'text-emerald-400' : 'text-white/40'}`}>
+                      {client.acessorios.mesa ? 'Possui' : 'Não possui'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] uppercase tracking-wider text-white/30">Bancos / Cadeiras</p>
+                    <p className={`text-xs mt-1 font-medium ${client.acessorios.bancosCadeiras ? 'text-emerald-400' : 'text-white/40'}`}>
+                      {client.acessorios.bancosCadeiras ? 'Possui' : 'Não possui'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] uppercase tracking-wider text-white/30">Churrasqueira</p>
+                    <p className={`text-xs mt-1 font-medium ${client.acessorios.churrasqueira ? 'text-emerald-400' : 'text-white/40'}`}>
+                      {client.acessorios.churrasqueira ? 'Possui' : 'Não possui'}
+                    </p>
+                  </div>
+                </div>
+                {client.acessorios.observacoes && (
+                  <div className="pt-2 border-t border-white/5">
+                    <p className="text-[9px] uppercase tracking-wider text-white/30 mb-1">Observações</p>
+                    <p className="text-xs text-white/70 italic leading-relaxed">{client.acessorios.observacoes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Install App Banner */}
             {showInstallBanner && !isStandalone && (
               <div className="bg-gradient-to-br from-[#1a1815] to-[#0d0b08] border border-[#B69D74]/25 rounded-3xl p-5 relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -2503,10 +2545,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         }}
       />
 
-      <ClientCheckinModal 
+      <ClientCheckinModal
         isOpen={isCheckinModalOpen}
         onClose={() => setIsCheckinModalOpen(false)}
         reservation={selectedReservationForCheckin}
+        boat={boats.find(b => b.id === selectedReservationForCheckin?.embarcacaoId)}
+        client={client}
         onSuccess={(checkinData) => {
           setIsCheckinModalOpen(false);
           

@@ -666,6 +666,7 @@ export default function SettingsPage({ operadorNome = 'Operador', showToast }: S
 
       </div>
 
+
     </div>
   );
 }
