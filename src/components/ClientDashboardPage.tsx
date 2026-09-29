@@ -22,12 +22,14 @@ interface ClientDashboardPageProps {
   reservations: any[];
   transacoes?: any[];
   chamados?: Chamado[];
+  manutencoes?: any[];
   onLogout: () => void;
-  onRefresh?: () => void;
+  onRefresh?: (forceRefresh?: boolean) => void;
 }
 
-export default function ClientDashboardPage({ client, boats, reservations, transacoes = [], chamados = [], onLogout, onRefresh }: ClientDashboardPageProps) {
+export default function ClientDashboardPage({ client, boats, reservations, transacoes = [], chamados = [], manutencoes = [], onLogout, onRefresh }: ClientDashboardPageProps) {
   const [activeTab, setActiveTab] = useState<'home' | 'calendar' | 'finance' | 'maintenance'>('home');
+  const [maintenanceSubTab, setMaintenanceSubTab] = useState<'chamados' | 'servicos'>('chamados');
   const [financeTab, setFinanceTab] = useState<'fatura' | 'extrato'>('fatura');
   const [showFutureInvoices, setShowFutureInvoices] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
@@ -56,7 +58,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const handleManualRefresh = async () => {
     if (!onRefresh || isRefreshing) return;
     setIsRefreshing(true);
-    await Promise.resolve(onRefresh());
+    await Promise.resolve(onRefresh(true));
     setTimeout(() => setIsRefreshing(false), 800); // Visual feedback time
   };
 
@@ -1578,21 +1580,61 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   };
 
   const renderMaintenance = () => {
-    const validStatuses = ['pendente', 'em_analise', 'os_gerada', 'concluido'];
+    const validChamadoStatuses = ['pendente', 'em_analise', 'os_gerada', 'concluido'];
     const filteredChamados = chamados.filter(c =>
       c.solicitanteTipo === 'cliente' &&
       c.clienteId === client.id &&
-      validStatuses.includes(c.status) &&
+      validChamadoStatuses.includes(c.status) &&
       (c.titulo.toLowerCase().includes(maintenanceSearch.toLowerCase()) ||
        (c.codigoChamado || '').toLowerCase().includes(maintenanceSearch.toLowerCase()))
     );
 
+    const filteredServicos = (manutencoes || []).filter(m =>
+      m.titulo?.toLowerCase().includes(maintenanceSearch.toLowerCase()) ||
+      (m.codigoOS || '').toLowerCase().includes(maintenanceSearch.toLowerCase())
+    );
+
+    const getServicoStatus = (status) => {
+      switch (status) {
+        case 'aguardando_orcamento': return { label: 'Aguard. Orç.', color: 'text-amber-500', bg: 'bg-amber-500/10' };
+        case 'aguardando_aprovacao': return { label: 'Aguard. Aprov.', color: 'text-indigo-400', bg: 'bg-indigo-400/10' };
+        case 'em_execucao': return { label: 'Em Execução', color: 'text-blue-400', bg: 'bg-blue-400/10' };
+        case 'concluido': return { label: 'Concluído', color: 'text-emerald-500', bg: 'bg-emerald-500/10' };
+        case 'reprovado': return { label: 'Reprovado', color: 'text-rose-500', bg: 'bg-rose-500/10' };
+        default: return { label: status, color: 'text-slate-400', bg: 'bg-white/5' };
+      }
+    };
+
     return (
       <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pt-0">
 
-        {maintenanceView === 'list' ? (
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="py-4 flex gap-3">
+        {/* Apple Design Top Navigation Pill */}
+        {maintenanceView === 'list' && (
+          <div className="mb-4">
+            <div className="flex bg-white/5 border border-white/5 rounded-xl p-1 relative">
+              <div
+                className="absolute inset-y-1 w-[calc(50%-4px)] bg-[#B69D74] rounded-lg shadow-sm transition-all duration-300 ease-[cubic-bezier(0.2,1,0.2,1)]"
+                style={{ left: maintenanceSubTab === 'chamados' ? '4px' : 'calc(50%)' }}
+              />
+              <button
+                onClick={() => setMaintenanceSubTab('chamados')}
+                className={`flex-1 py-1.5 text-xs font-semibold z-10 transition-colors duration-300 ${maintenanceSubTab === 'chamados' ? 'text-white drop-shadow-md' : 'text-white/40 hover:text-white/70'}`}
+              >
+                Atendimento
+              </button>
+              <button
+                onClick={() => setMaintenanceSubTab('servicos')}
+                className={`flex-1 py-1.5 text-xs font-semibold z-10 transition-colors duration-300 ${maintenanceSubTab === 'servicos' ? 'text-white drop-shadow-md' : 'text-white/40 hover:text-white/70'}`}
+              >
+                O.S. / Serviços
+              </button>
+            </div>
+          </div>
+        )}
+
+        {maintenanceView === 'list' && maintenanceSubTab === 'chamados' && (
+          <div className="flex-1 flex flex-col min-h-0 animate-in fade-in zoom-in-95 duration-300">
+            <div className="pb-4 flex gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
                 <input
@@ -1600,12 +1642,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   placeholder="Buscar chamados..."
                   value={maintenanceSearch}
                   onChange={(e) => setMaintenanceSearch(e.target.value)}
-                  className="w-full bg-white/[0.03] border border-white/[0.05] rounded-xl pl-9 pr-4 py-2 text-sm text-white placeholder-white/20 focus:border-[#B69D74] focus:ring-1 focus:ring-[#B69D74] transition-all outline-none"
+                  className="w-full bg-white/[0.03] border border-white/[0.05] rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/20 focus:border-[#B69D74] focus:ring-1 focus:ring-[#B69D74] transition-all outline-none"
                 />
               </div>
               <button
                 onClick={() => setMaintenanceView('create')}
-                className="bg-[#B69D74] hover:bg-[#a38b65] text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 cursor-pointer"
+                className="bg-[#B69D74] hover:bg-[#a38b65] text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 cursor-pointer shadow-lg active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Novo</span>
@@ -1628,40 +1670,133 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   </button>
                 </div>
               ) : (
-                filteredChamados.map(chamado => (
-                  <div key={chamado.id} className="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-5 hover:border-white/[0.1] transition-colors">
-                    <div className="flex flex-col sm:flex-row gap-4 sm:items-start justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-xs font-mono text-white/40">{chamado.codigoChamado || 'Local'}</span>
-                          {getStatusBadge(chamado.status)}
+                filteredChamados.map(chamado => {
+                  const boat = boats.find(b => b.id === chamado.embarcacaoId);
+                  return (
+                    <div key={chamado.id} className="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-5 hover:border-white/[0.1] transition-all active:scale-[0.98] cursor-pointer">
+                      <div className="flex flex-col sm:flex-row gap-4 sm:items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="text-xs font-mono text-white/40">{chamado.codigoChamado || 'Local'}</span>
+                            {getStatusBadge(chamado.status)}
+                          </div>
+                          <h4 className="text-white font-medium">{chamado.titulo}</h4>
+                          <div className="flex items-center gap-4 text-xs text-white/40">
+                            <p className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5" />
+                              {new Date(chamado.createdAt).toLocaleDateString('pt-BR')}
+                            </p>
+                            <p className="flex items-center gap-1.5" title="Urgência">
+                              {getUrgenciaIcon(chamado.urgencia)}
+                              <span className="capitalize">{chamado.urgencia}</span>
+                            </p>
+                          </div>
                         </div>
-                        <h4 className="text-white font-medium">{chamado.titulo}</h4>
-                        <div className="flex items-center gap-4 text-xs text-white/40">
-                          <p className="flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5" />
-                            {new Date(chamado.createdAt).toLocaleDateString('pt-BR')}
-                          </p>
-                          <p className="flex items-center gap-1.5" title="Urgência">
-                            {getUrgenciaIcon(chamado.urgencia)}
-                            <span className="capitalize">{chamado.urgencia}</span>
+                        <div className="text-left sm:text-right mt-2 sm:mt-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-t-0">
+                          <p className="text-[10px] uppercase tracking-wider text-white/40 mb-0.5">Embarcação</p>
+                          <p className="text-sm font-medium text-white/80">
+                            {boat ? boat.nome : 'Excluída'}
                           </p>
                         </div>
-                      </div>
-                      <div className="text-left sm:text-right mt-2 sm:mt-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-t-0">
-                        <p className="text-[10px] uppercase tracking-wider text-white/40 mb-0.5">Embarcação</p>
-                        <p className="text-sm font-medium text-white/80">
-                          {boats.find(b => b.id === chamado.embarcacaoId)?.nome || 'Excluída'}
-                        </p>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
-        ) : (
-          <div className="flex-1 subtle-scrollbar pt-2">
+        )}
+
+        {maintenanceView === 'list' && maintenanceSubTab === 'servicos' && (
+          <div className="flex-1 flex flex-col min-h-0 animate-in fade-in zoom-in-95 duration-300">
+            <div className="pb-4 flex gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                <input
+                  type="text"
+                  placeholder="Buscar O.S. e serviços..."
+                  value={maintenanceSearch}
+                  onChange={(e) => setMaintenanceSearch(e.target.value)}
+                  className="w-full bg-white/[0.03] border border-white/[0.05] rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/20 focus:border-[#B69D74] focus:ring-1 focus:ring-[#B69D74] transition-all outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-4 pt-2">
+              {filteredServicos.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-white/[0.02] border border-white/[0.05] rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Database className="w-8 h-8 text-white/20" />
+                  </div>
+                  <h3 className="text-white/80 font-medium mb-1">Nenhum serviço encontrado</h3>
+                  <p className="text-sm text-white/40">Sua embarcação não possui ordens de serviço ativas.</p>
+                </div>
+              ) : (
+                filteredServicos.map(s => {
+                  const boat = boats.find(b => b.id === s.embarcacaoId);
+                  const st = getServicoStatus(s.status);
+                  return (
+                    <div
+                      key={s.id}
+                      className="bg-white/[0.03] border border-white/[0.05] rounded-2xl p-4 shadow-sm relative overflow-hidden"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 mr-3">
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <span className="text-[10px] font-bold tracking-wider text-[#B69D74] uppercase bg-[#B69D74]/10 px-2 py-0.5 rounded-md">
+                              {s.codigoOS}
+                            </span>
+                            {s.categoria && (
+                              <span className="text-[10px] font-bold text-white/50 bg-white/5 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                {s.categoria.replace('_', ' ')}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-sm font-semibold text-white leading-snug">{s.titulo || s.tituloChamado || s.tipo?.nome || 'Serviço em Embarcação'}</h4>
+                        </div>
+                        <div className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap shrink-0 ${st.bg} ${st.color}`}>
+                          {st.label}
+                        </div>
+                      </div>
+
+                      {s.descricaoServico && (
+                        <p className="text-xs text-white/50 mb-3 line-clamp-2 leading-relaxed">
+                          {s.descricaoServico}
+                        </p>
+                      )}
+
+                      {/* Financial info if it is finalized / approved / budget generated */}
+                      {(s.custoTotal > 0 || (s.orcamento && s.orcamento > 0)) && s.orcamentoStatus !== 'reprovado' && (
+                        <div className="mb-3 p-2.5 bg-white/[0.02] rounded-xl border border-white/[0.02] flex items-center justify-between">
+                          <span className="text-xs text-white/50 flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-white/30"/> Orçamento</span>
+                          <span className="text-sm font-bold text-white tracking-wide">
+                            {(s.valorRepassado || s.orcamento || s.custoTotal).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-xs text-white/40 pt-3 border-t border-white/5 mt-1">
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center gap-1.5">
+                            <Anchor className="w-3.5 h-3.5 text-white/30" />
+                            {boat ? boat.nome : 'Embarcação'}
+                          </span>
+                        </div>
+                        <span className="flex items-center gap-1.5">
+                           <Clock className="w-3.5 h-3.5 text-white/30" />
+                          {s.dataEntradaOficina ? new Date(s.dataEntradaOficina).toLocaleDateString('pt-BR') : (s.dataChamado ? new Date(s.dataChamado).toLocaleDateString('pt-BR') : '')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {maintenanceView === 'create' && (
+          <div className="flex-1 subtle-scrollbar pt-2 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-light text-white">Novo Chamado</h2>
@@ -1700,7 +1835,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
                 <div>
                   <label className="block text-xs font-medium text-white/60 mb-1.5">Urgência</label>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {[
                       { id: 'baixa', label: 'Baixa', icon: CheckCircle2, color: 'emerald' },
                       { id: 'media', label: 'Média', icon: AlertTriangle, color: 'amber' },
@@ -1711,23 +1846,23 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                       const isActive = maintenanceFormData.urgencia === u.id;
 
                       let activeClasses = "";
-                      if (u.id === 'baixa') activeClasses = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
-                      else if (u.id === 'media') activeClasses = 'bg-amber-500/10 border-amber-500/30 text-amber-400';
-                      else if (u.id === 'alta') activeClasses = 'bg-orange-500/10 border-orange-500/30 text-orange-400';
-                      else activeClasses = 'bg-rose-500/10 border-rose-500/30 text-rose-400';
+                      if (u.id === 'baixa') activeClasses = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-[inset_0_1px_3px_rgba(0,0,0,0.1)]';
+                      else if (u.id === 'media') activeClasses = 'bg-amber-500/10 border-amber-500/30 text-amber-400 shadow-[inset_0_1px_3px_rgba(0,0,0,0.1)]';
+                      else if (u.id === 'alta') activeClasses = 'bg-orange-500/10 border-orange-500/30 text-orange-400 shadow-[inset_0_1px_3px_rgba(0,0,0,0.1)]';
+                      else activeClasses = 'bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-[inset_0_1px_3px_rgba(0,0,0,0.1)]';
 
                       return (
                         <button
                           key={u.id}
                           type="button"
                           onClick={() => setMaintenanceFormData(p => ({ ...p, urgencia: u.id as any }))}
-                          className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs gap-1.5 transition-all cursor-pointer ${
+                          className={`flex flex-col items-center justify-center py-4 rounded-xl border text-xs gap-2 transition-all cursor-pointer ${
                             isActive
                               ? activeClasses
-                              : 'bg-white/[0.02] border-white/10 text-white/40 hover:border-white/20 hover:text-white/60'
+                              : 'bg-white/[0.02] border-white/5 text-white/40 hover:bg-white/5 hover:text-white/60'
                           }`}
                         >
-                          <Icon className="w-4 h-4" />
+                          <Icon className="w-5 h-5" />
                           {u.label}
                         </button>
                       );
@@ -1752,14 +1887,14 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 <button
                   type="button"
                   onClick={() => setMaintenanceView('list')}
-                  className="flex-1 px-4 py-3 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] rounded-xl text-white font-medium text-sm transition-all cursor-pointer"
+                  className="flex-1 px-4 py-3 border border-white/[0.05] bg-white/[0.02] hover:bg-white/[0.05] rounded-xl text-white/70 font-medium text-sm transition-all cursor-pointer active:scale-95"
                   disabled={isMaintenanceSubmitting}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-[2] px-4 py-3 bg-[#B69D74] hover:bg-[#a38b65] text-white rounded-xl font-medium text-sm transition-all shadow-[0_5px_20px_rgba(182,157,116,0.3)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex justify-center"
+                  className="flex-[2] px-4 py-3 bg-[#B69D74] hover:bg-[#a38b65] text-white rounded-xl font-medium text-sm transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex justify-center"
                   disabled={isMaintenanceSubmitting}
                 >
                   {isMaintenanceSubmitting ? (
@@ -1775,7 +1910,6 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       </div>
     );
   };
-
   return (
     <div className="h-[100dvh] w-full bg-[#020202] text-white font-sans relative overflow-x-hidden overflow-y-auto pb-24 selection:bg-[#B69D74]/30">
 

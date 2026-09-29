@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import KanbanBoard from './pecas/KanbanBoard';
 import MaintenanceModal from './pecas/MaintenanceModal';
+import MaintenanceViewerModal from './pecas/MaintenanceViewerModal';
 import MaintenanceOverview from './pecas/MaintenanceOverview';
 import MaintenanceListView from './pecas/MaintenanceListView';
 import MaintenanceCalendarView from './pecas/MaintenanceCalendarView';
@@ -39,8 +40,10 @@ export default function PecasKanbanPage() {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Manutencao | null>(null);
+  const [viewingItem, setViewingItem] = useState<Manutencao | null>(null);
 
   const loadData = () => {
     setManutencoes(maintenanceDB.getAll());
@@ -55,14 +58,33 @@ export default function PecasKanbanPage() {
   }, []);
 
   const handleOpenModal = (item?: Manutencao) => {
-    setEditingItem(item || null);
-    setIsModalOpen(true);
+    if (item) {
+      // Abre o visualizador quando clica num card existente
+      setViewingItem(item);
+      setIsViewerOpen(true);
+    } else {
+      // Nova OS abre direto o editor
+      setEditingItem(null);
+      setIsModalOpen(true);
+    }
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingItem(null);
     loadData();
+  };
+
+  const handleCloseViewer = () => {
+    setIsViewerOpen(false);
+    setViewingItem(null);
+    loadData();
+  };
+
+  const promoteViewerToEditor = () => {
+    setEditingItem(viewingItem);
+    setIsViewerOpen(false);
+    setIsModalOpen(true);
   };
 
   return (
@@ -292,6 +314,18 @@ export default function PecasKanbanPage() {
           embarcacoes={embarcacoes}
           mecanicos={mecanicos}
           onRefresh={loadData}
+        />
+      )}
+
+      {/* OS Maintenance Viewer Modal */}
+      {isViewerOpen && viewingItem && (
+        <MaintenanceViewerModal
+          isOpen={isViewerOpen}
+          onClose={handleCloseViewer}
+          item={viewingItem}
+          embarcacao={embarcacoes.find(b => b.id === viewingItem.embarcacaoId)}
+          mecanico={mecanicos.find(m => m.id === viewingItem.mecanico)}
+          onEditClick={promoteViewerToEditor}
         />
       )}
 

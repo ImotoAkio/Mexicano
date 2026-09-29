@@ -11,7 +11,8 @@ import {
   ChevronRight,
   Filter,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 import { Manutencao, Embarcacao, Mecanico } from '../../types';
 import { getBoatCode } from '../../utils/boatUtils';
@@ -39,7 +40,18 @@ export default function MaintenanceListView({
 }: MaintenanceListViewProps) {
 
   const [checkoutItem, setCheckoutItem] = React.useState<Manutencao | null>(null);
-  const [transitionItem, setTransitionItem] = React.useState<{item: Manutencao, target: 'orcamento_pendente' | 'em_andamento'} | null>(null);
+  const [transitionItem, setTransitionItem] = React.useState<{item: Manutencao, target: 'aguardando_aprovacao' | 'em_execucao'} | null>(null);
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Tem certeza que deseja apagar esta OS permanentemente? A ação não pode ser desfeita.')) {
+      try {
+        await maintenanceDB.delete(id);
+        onRefresh();
+      } catch (e) {
+        console.error('Erro ao excluir:', e);
+      }
+    }
+  };
 
   const filteredManutencoes = useMemo(() => {
     return manutencoes.filter(m => {
@@ -63,13 +75,13 @@ export default function MaintenanceListView({
 
     if (newStatus === 'aguardando_aprovacao') {
       if (!item.mecanico) {
-        setTransitionItem({ item, target: 'aguardando_aprovacao' as any });
+        setTransitionItem({ item, target: 'aguardando_aprovacao' });
         return;
       }
     } else if (newStatus === 'em_execucao') {
       const needsBudgetConf = (!item.orcamento && item.orcamento !== 0) || item.orcamentoStatus !== 'aprovado';
       if (needsBudgetConf || !item.mecanico) {
-        setTransitionItem({ item, target: 'em_execucao' as any });
+        setTransitionItem({ item, target: 'em_execucao' });
         return;
       }
     } else if (newStatus === 'concluido') {
@@ -202,6 +214,13 @@ export default function MaintenanceListView({
                     {/* Actions */}
                     <td className="py-3.5 px-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleDelete(m.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          title="Apagar OS"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                         {m.orcamento && m.orcamento > 0 ? (
                           <button
                             onClick={() => generateOrcamentoOSPDF(m, boat)}
@@ -263,12 +282,21 @@ export default function MaintenanceListView({
                 <span className="font-bold text-slate-700">
                   {m.orcamento ? m.orcamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Sem orçamento'}
                 </span>
-                <button
-                  onClick={() => onOpenOS(m)}
-                  className="px-3 py-1.5 bg-[#186b77] text-white font-extrabold rounded-xl text-xs"
-                >
-                  Abrir OS
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDelete(m.id)}
+                    className="px-2 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors cursor-pointer"
+                    title="Apagar OS"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => onOpenOS(m)}
+                    className="px-3 py-1.5 bg-[#186b77] text-white font-extrabold rounded-xl text-xs"
+                  >
+                    Abrir OS
+                  </button>
+                </div>
               </div>
             </div>
           );

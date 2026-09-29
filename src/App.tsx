@@ -135,7 +135,7 @@ export default function App() {
   
   // Client session: JWT-based with local cache for instant PWA loading
   const [clientToken, setClientToken] = useState<string | null>(() => localStorage.getItem('client_token'));
-  const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[] } | null>(() => {
+  const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[]; chamados?: any[] } | null>(() => {
     try {
       const cached = localStorage.getItem('client_data_cache');
       return cached ? JSON.parse(cached) : null;
@@ -266,11 +266,12 @@ export default function App() {
     }
   }, [isAuthenticated]);
 
-  const fetchClientData = async (showLoading = false) => {
+  const fetchClientData = async (showLoading = false, forceRefresh = false) => {
     if (!clientToken) return;
     if (showLoading && !clientData) setClientLoading(true);
     try {
-      const res = await fetch('/api/client/me', {
+      const url = forceRefresh ? '/api/client/me?forceRefresh=true' : '/api/client/me';
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${clientToken}` }
       });
       if (res.status === 401 || res.status === 403) {
@@ -487,6 +488,7 @@ export default function App() {
             reservations={clientData.reservations || []}
             transacoes={clientData.transacoes || []}
             chamados={clientData.chamados || []}
+            manutencoes={clientData.manutencoes || []}
             onLogout={() => {
               localStorage.removeItem('client_token');
               localStorage.removeItem('client_data_cache');

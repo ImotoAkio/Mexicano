@@ -619,7 +619,7 @@ export const maintenanceDB = {
     
     const boat = memoryBoats.find(b => b.id === newManutencao.embarcacaoId);
     if (boat) {
-      boat.emManutencao = memoryManutencoes.some(m => m.embarcacaoId === newManutencao.embarcacaoId && m.status === 'em_andamento');
+      boat.emManutencao = memoryManutencoes.some(m => m.embarcacaoId === newManutencao.embarcacaoId && m.status !== 'concluido' && m.status !== 'reprovado');
       if (newManutencao.horasMotorAtual !== undefined && newManutencao.horasMotorAtual > 0) {
         boatDB.update(boat.id, { horasMotor: newManutencao.horasMotorAtual });
       }
@@ -645,7 +645,7 @@ export const maintenanceDB = {
 
     const boat = memoryBoats.find(b => b.id === updated.embarcacaoId);
     if (boat) {
-      boat.emManutencao = memoryManutencoes.some(m => m.embarcacaoId === updated.embarcacaoId && m.status === 'em_andamento');
+      boat.emManutencao = memoryManutencoes.some(m => m.embarcacaoId === updated.embarcacaoId && m.status !== 'concluido' && m.status !== 'reprovado');
       if (updated.horasMotorAtual !== undefined && updated.horasMotorAtual > 0) {
         boatDB.update(boat.id, { horasMotor: updated.horasMotorAtual });
       }
@@ -670,7 +670,7 @@ export const maintenanceDB = {
     if (boatId) {
       const boat = memoryBoats.find(b => b.id === boatId);
       if (boat) {
-        boat.emManutencao = memoryManutencoes.some(item => item.embarcacaoId === boatId && item.status === 'em_andamento');
+        boat.emManutencao = memoryManutencoes.some(item => item.embarcacaoId === boatId && item.status !== 'concluido' && m.status !== 'reprovado');
       }
     }
     
@@ -871,7 +871,7 @@ export const epiDB = {
 
 
 // Carrega os dados remotamente e preenche a memoria
-export async function loadFromRemote() {
+export async function loadFromRemote(forceRefresh = false) {
   if (!localStorage.getItem('admin_token')) {
     return { success: false, connected: false, message: "Apenas administradores podem acessar." };
   }
@@ -893,7 +893,7 @@ export async function loadFromRemote() {
         return { success: false, message: "Não foi possível verificar conexão com a VPS." };
     }
     const status = await statusRes.json();
-    
+
     if (!status.connected) {
       isDbLoadAttempted = true;
       isDbLoaded = true;
@@ -906,7 +906,8 @@ export async function loadFromRemote() {
     }
 
     // Pull remote records
-    const pullRes = await fetch('/api/db/pull', { headers });
+    const url = forceRefresh ? '/api/db/pull?forceRefresh=true' : '/api/db/pull';
+    const pullRes = await fetch(url, { headers });
     if (!pullRes.ok) {
         isDbLoadAttempted = true;
         isDbLoaded = true;
@@ -938,8 +939,15 @@ export async function loadFromRemote() {
     });
 
     memoryManutencoes = (remoteData.manutencoes || []).map((m: any) => {
-      if ((m.status as any) === 'chamado_aberto') {
-        m.status = 'fila_espera';
+      // Auto-migrate legacy statuses cleanly to the 4 funicular stages
+      if (['chamado_aberto', 'fila_espera'].includes(m.status)) {
+        m.status = 'aguardando_orcamento';
+      } else if (m.status === 'orcamento_pendente') {
+        m.status = 'aguardando_aprovacao';
+      } else if (['na_oficina', 'em_execucao', 'aguardando_pecas'].includes(m.status)) {
+        m.status = 'em_execucao';
+      } else if (m.status === 'cancelado') {
+        m.status = 'reprovado';
       }
       return m;
     });
