@@ -2308,12 +2308,12 @@ export async function deleteFeedback(id: string) {
 
 // ---------------- Manutencoes de Embarcacoes ----------------
 
-async function updateBoatMaintenanceStatus(pool: any, boatId: string) {
+export async function updateBoatMaintenanceStatus(pool: any, boatId: string) {
   const [rows] = await pool.query(
     `SELECT COUNT(*) as activeCount
      FROM Manutencoes
      WHERE embarcacaoId = ?
-       AND status NOT IN ('concluido', 'cancelado')
+       AND status NOT IN ('concluido', 'cancelado', 'reprovado')
        `,
     [boatId]
   );
