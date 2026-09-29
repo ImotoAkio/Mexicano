@@ -35,7 +35,8 @@ const clientRoutes = Router();
 clientRoutes.get("/me", requireClientAuth, async (req, res) => {
   try {
     const userId = (req as any).user.id;
-    const dbData = await pullDatabase();
+    const forceRefresh = req.query.forceRefresh === 'true';
+    const dbData = await pullDatabase(forceRefresh);
     const client = dbData.clients.find((c: any) => c.id === userId);
 
     if (!client) {
@@ -50,8 +51,9 @@ clientRoutes.get("/me", requireClientAuth, async (req, res) => {
     const reservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
     const transacoes = dbData.transacoes.filter((t: any) => t.clienteId === client.id);
     const chamados = dbData.chamados ? dbData.chamados.filter((c: any) => c.clienteId === client.id || clientBoatsList.includes(c.embarcacaoId)) : [];
+    const manutencoes = dbData.manutencoes ? dbData.manutencoes.filter((m: any) => clientBoatsList.includes(m.embarcacaoId)) : [];
     writeAuditLog(client.nome, "client", "FETCH_DATA", req.ip, `ID: ${client.id}`);
-    res.json({ client, boats, reservations, transacoes, chamados });
+    res.json({ client, boats, reservations, transacoes, chamados, manutencoes });
   } catch (err: any) {
     console.error("Client data fetch error:", err);
     res.status(500).json({ error: true, message: "Erro ao carregar dados do cliente." });

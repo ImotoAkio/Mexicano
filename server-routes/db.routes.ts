@@ -38,7 +38,8 @@ router.get("/controles_som", requireAdminAuth, async (req, res) => {
 
 router.get("/pull", requireAdminAuth, async (req, res) => {
   try {
-    const data = await pullDatabase();
+    const forceRefresh = req.query.forceRefresh === 'true';
+    const data = await pullDatabase(forceRefresh);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Failed to pull remote database." });
