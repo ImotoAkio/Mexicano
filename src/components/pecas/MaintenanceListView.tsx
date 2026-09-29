@@ -74,10 +74,8 @@ export default function MaintenanceListView({
     if (!item) return;
 
     if (newStatus === 'aguardando_aprovacao') {
-      if (!item.mecanico) {
-        setTransitionItem({ item, target: 'aguardando_aprovacao' });
-        return;
-      }
+      onOpenOS(item);
+      return;
     } else if (newStatus === 'em_execucao') {
       const needsBudgetConf = (!item.orcamento && item.orcamento !== 0) || item.orcamentoStatus !== 'aprovado';
       if (needsBudgetConf || !item.mecanico) {

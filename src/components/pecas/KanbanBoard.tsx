@@ -100,10 +100,9 @@ export default function KanbanBoard({
 
     // Modal intercept for specific stages
     if (targetStatus === 'aguardando_aprovacao') {
-      if (!item.mecanico) {
-        setTransitionItem({ item, target: 'aguardando_aprovacao' });
-        return;
-      }
+      // Always prompt full budget insertion when moving from 1 to 2
+      onOpenCard(item);
+      return;
     } else if (targetStatus === 'em_execucao') {
       const needsBudgetConf = (!item.orcamento && item.orcamento !== 0) || item.orcamentoStatus !== 'aprovado';
       if (needsBudgetConf || !item.mecanico) {
