@@ -149,7 +149,10 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
 
     await upsertReservation(newRes);
 
-    req.app.locals.io?.emit("marina_update", { action: 'new', reservation: newRes });
+    // Enrich the socket payload with boat name and client name for admin notifications
+    const fetchedBoat = dbData.boats.find((b: any) => b.id === embarcacaoId);
+    const enrichedRes = { ...newRes, embarcacaoNome: fetchedBoat?.nome || embarcacaoId, clienteNome: client.nome };
+    req.app.locals.io?.emit("marina_update", { action: 'new', reservation: enrichedRes });
 
     writeAuditLog(client.nome, "client", "CREATE_RESERVATION", req.ip, `Reserva criada: ${date} - ${embarcacaoId}`);
     res.json({ success: true, reservation: newRes });
@@ -245,7 +248,18 @@ clientRoutes.post("/checkin", requireClientAuth, async (req, res) => {
     const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ?", [id]);
     const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosSolicitados: acessoriosJson, statusMarina: 'agendado', status: 'confirmado' };
 
-    req.app.locals.io?.emit("marina_update", { action: 'checkin', reservation: updatedRes });
+    const dbData = await pullDatabase();
+    const fetchedBoatCheckin = dbData.boats.find((b: any) => b.id === updatedRes.embarcacaoId);
+    const clientCheckin = dbData.clients.find((c: any) => c.id === userId);
+
+    // Anexa dados legíveis para a notificação de quem recebe o evento
+    const enrichedRes = {
+      ...updatedRes,
+      embarcacaoNome: fetchedBoatCheckin?.nome || updatedRes.embarcacaoId,
+      clienteNome: clientCheckin?.nome
+    };
+
+    req.app.locals.io?.emit("marina_update", { action: 'checkin', reservation: enrichedRes });
 
     res.json({ success: true, reservation: updatedRes });
   } catch (err: any) {

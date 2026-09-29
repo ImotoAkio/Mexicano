@@ -10,6 +10,7 @@ interface ClientReservationModalProps {
   selectedDate: string;
   client: any;
   boats: any[];
+  reservations?: any[];
   preselectedBoatId?: any;
   onSuccess: (newRes?: any) => void;
 }
@@ -27,6 +28,7 @@ export default function ClientReservationModal({
   selectedDate, 
   client, 
   boats,
+  reservations = [],
   preselectedBoatId,
   onSuccess 
 }: ClientReservationModalProps) {
@@ -272,6 +274,9 @@ export default function ClientReservationModal({
                 initialBoatId={selectedBoatId}
                 initialDate={selectedDate}
                 autoExport={true}
+                providedBoats={boats}
+                providedReservations={[...reservations, createdReservation].filter(Boolean)}
+                providedClients={[client]}
                 onExport={(base64) => {
                   if (whatsappStatus === 'idle') {
                     handleWhatsAppExport(base64, b);

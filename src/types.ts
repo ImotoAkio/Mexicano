@@ -7,6 +7,13 @@ export interface Cliente {
   embarcacoes?: Array<{
     embarcacaoId: string;
     cota: string;
+    acessorios?: {
+      tenda?: boolean;
+      mesa?: boolean;
+      bancosCadeiras?: boolean;
+      churrasqueira?: boolean;
+      observacoes?: string;
+    };
   }>;
   telefone?: string;
   email?: string;
@@ -303,7 +310,7 @@ export interface Manutencao {
   orcamento?: number | null;
   valorRepassado?: number | null;
   orcamentoStatus?: 'pendente' | 'enviado' | 'aprovado' | 'reprovado';
-  status: 'fila_espera' | 'orcamento_pendente' | 'na_oficina' | 'em_andamento' | 'aguardando_pecas' | 'concluido' | 'cancelado';
+  status: 'aguardando_orcamento' | 'aguardando_aprovacao' | 'em_execucao' | 'concluido' | 'reprovado';
   localizacao?: 'marina' | 'oficina_externa';
   descricaoServico?: string;
   gerarFinanceiro?: boolean;

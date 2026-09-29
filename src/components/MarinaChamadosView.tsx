@@ -339,26 +339,26 @@ export default function MarinaChamadosView({ operadorNome, showToast }: MarinaCh
     switch (urgencia) {
       case 'critica':
         return {
-          label: 'Crítica (Fora de Operação)',
+          label: 'Crítica',
           bg: 'bg-red-100 text-red-800 border-red-300',
           badgeBg: 'bg-red-600 text-white'
         };
       case 'alta':
         return {
-          label: 'Alta (Impedimento)',
+          label: 'Alta',
           bg: 'bg-orange-100 text-orange-800 border-orange-300',
           badgeBg: 'bg-orange-600 text-white'
         };
       case 'media':
         return {
-          label: 'Média (Ajuste/Reparo)',
+          label: 'Média',
           bg: 'bg-amber-100 text-amber-800 border-amber-300',
           badgeBg: 'bg-amber-600 text-white'
         };
       case 'baixa':
       default:
         return {
-          label: 'Baixa (Rotina/Revisão)',
+          label: 'Baixa',
           bg: 'bg-slate-100 text-slate-700 border-slate-300',
           badgeBg: 'bg-slate-600 text-white'
         };
@@ -844,16 +844,16 @@ export default function MarinaChamadosView({ operadorNome, showToast }: MarinaCh
                   </label>
                   <select
                     value={newChamadoForm.urgencia}
-                    onChange={(e) => setNewChamadoForm(prev => ({ 
-                      ...prev, 
-                      urgencia: e.target.value as Chamado['urgencia'] 
+                    onChange={(e) => setNewChamadoForm(prev => ({
+                      ...prev,
+                      urgencia: e.target.value as Chamado['urgencia']
                     }))}
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-600"
                   >
-                    <option value="baixa">Baixa (Rotina / Manutenção Preventiva)</option>
-                    <option value="media">Média (Ajuste / Barco Operável)</option>
-                    <option value="alta">Alta (Impedimento Parcial / Agendado)</option>
-                    <option value="critica">Crítica (Impedimento Total / Fora de Operação)</option>
+                    <option value="baixa">Baixa</option>
+                    <option value="media">Média</option>
+                    <option value="alta">Alta</option>
+                    <option value="critica">Crítica</option>
                   </select>
                 </div>
 

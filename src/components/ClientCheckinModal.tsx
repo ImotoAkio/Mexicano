@@ -14,6 +14,8 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
   const [step, setStep] = useState(1);
   const [previsaoSaida, setPrevisaoSaida] = useState('09:00');
   const [previsaoChegada, setPrevisaoChegada] = useState('17:00');
+  const [limiteSaida, setLimiteSaida] = useState('00:00');
+  const [limiteChegada, setLimiteChegada] = useState('23:59');
   const [tempoHabil, setTempoHabil] = useState(40);
   const [pessoasABordo, setPessoasABordo] = useState(2);
   const [destino, setDestino] = useState('');
@@ -26,7 +28,8 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
   const [takeChurrasqueira, setTakeChurrasqueira] = useState(false);
   const [qtdBancos, setQtdBancos] = useState(0);
 
-  const hasAcessorios = client?.acessorios?.tenda || client?.acessorios?.mesa || client?.acessorios?.churrasqueira || client?.acessorios?.bancosCadeiras;
+  const embarcacaoReserva = client?.embarcacoes?.find(e => e.embarcacaoId === reservation?.embarcacaoId);
+  const hasAcessorios = embarcacaoReserva?.acessorios?.tenda || embarcacaoReserva?.acessorios?.mesa || embarcacaoReserva?.acessorios?.churrasqueira || embarcacaoReserva?.acessorios?.bancosCadeiras;
   const maxSteps = hasAcessorios ? 4 : 3;
 
   useEffect(() => {
@@ -39,6 +42,8 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
       setTakeMesa(false);
       setTakeChurrasqueira(false);
       setQtdBancos(0);
+      setLimiteSaida('00:00');
+      setLimiteChegada('23:59');
 
       // Determine the day-of-week from the reservation date
       const dayOfWeek = reservation?.data
@@ -60,13 +65,21 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
           }
           if (schedule && schedule[String(dayOfWeek)]) {
             const dayConfig = schedule[String(dayOfWeek)];
-            if (dayConfig.checkinSaida) setPrevisaoSaida(dayConfig.checkinSaida);
-            if (dayConfig.checkinChegada) setPrevisaoChegada(dayConfig.checkinChegada);
+            if (dayConfig.checkinSaida) {
+              setPrevisaoSaida(dayConfig.checkinSaida);
+              setLimiteSaida(dayConfig.checkinSaida);
+            }
+            if (dayConfig.checkinChegada) {
+              setPrevisaoChegada(dayConfig.checkinChegada);
+              setLimiteChegada(dayConfig.checkinChegada);
+            }
           } else {
             // Fallback defaults: weekdays 09-17, weekends 09-19
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
             setPrevisaoSaida('09:00');
+            setLimiteSaida('09:00');
             setPrevisaoChegada(isWeekend ? '19:00' : '17:00');
+            setLimiteChegada(isWeekend ? '19:00' : '17:00');
           }
           if (configs.marina_checkin_antecedencia) {
             const mins = parseInt(configs.marina_checkin_antecedencia, 10);
@@ -77,7 +90,9 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
           // Fallback on error
           const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
           setPrevisaoSaida('09:00');
+          setLimiteSaida('09:00');
           setPrevisaoChegada(isWeekend ? '19:00' : '17:00');
+          setLimiteChegada(isWeekend ? '19:00' : '17:00');
         });
     }
   }, [isOpen, reservation?.data]);
@@ -87,9 +102,27 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
   const handleNext = () => {
     setErrorMsg(null);
     if (step === 1 && previsaoSaida) {
+      if (previsaoSaida < limiteSaida || previsaoSaida > limiteChegada) {
+        setErrorMsg(`Horário de saída inválido. A marina opera das ${limiteSaida} às ${limiteChegada} neste dia.`);
+        return;
+      }
+      
+      if (previsaoChegada && (previsaoChegada < limiteSaida || previsaoChegada > limiteChegada)) {
+        setErrorMsg(`Horário de retorno inválido. O limite de chegada para este dia é ${limiteChegada}.`);
+        return;
+      }
+
+      if (previsaoChegada && previsaoSaida >= previsaoChegada) {
+        setErrorMsg('O horário de retorno deve ser posterior ao horário de saída.');
+        return;
+      }
+
       const now = new Date();
       const [hours, minutes] = previsaoSaida.split(':').map(Number);
-      const outputTime = new Date();
+      const resDateStr = reservation?.data; // YYYY-MM-DD
+      const outputTime = resDateStr 
+        ? new Date(resDateStr + 'T00:00:00') 
+        : new Date();
       outputTime.setHours(hours, minutes, 0, 0);
 
       const diffInMinutes = (outputTime.getTime() - now.getTime()) / (1000 * 60);
@@ -108,8 +141,17 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
   const handlePrev = () => setStep(prev => prev - 1);
 
   const incrementPessoas = () => {
-    if (boat?.capacidadePassageiros && pessoasABordo >= boat.capacidadePassageiros) {
-      setErrorMsg(`A capacidade máxima da embarcação é de ${boat.capacidadePassageiros} passageiros.`);
+    let maxCap = boat?.capacidadePassageiros || 999;
+    if (boat?.tipo === 'jet') {
+      maxCap = Math.min(maxCap, 3);
+    }
+
+    if (pessoasABordo >= maxCap) {
+      if (boat?.tipo === 'jet') {
+         setErrorMsg(`A capacidade máxima permitida para Jet Ski é de ${maxCap} passageiros.`);
+      } else {
+         setErrorMsg(`A capacidade máxima da embarcação é de ${maxCap} passageiros.`);
+      }
       return;
     }
     setErrorMsg(null);
@@ -118,6 +160,20 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
   const decrementPessoas = () => {
     setErrorMsg(null);
     setPessoasABordo(prev => (prev > 1 ? prev - 1 : 1));
+  };
+
+  const incrementBancos = () => {
+    let maxCap = boat?.capacidadePassageiros || 999;
+    if (boat?.tipo === 'jet') {
+      maxCap = Math.min(maxCap, 3);
+    }
+
+    if (qtdBancos >= maxCap) {
+      setErrorMsg(`O número de bancos/cadeiras não pode exceder a capacidade máxima da embarcação (${maxCap}).`);
+      return;
+    }
+    setErrorMsg(null);
+    setQtdBancos(prev => prev + 1);
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -265,7 +321,11 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
                   <Users className="w-8 h-8 text-[#B69D74]" />
                 </div>
                 <h3 className="text-xl font-light text-white mb-2">Quem vai embarcar?</h3>
-                <p className="text-sm text-white/40">Informe o número total de pessoas a bordo (incluindo você e o marinheiro, se houver).</p>
+                <p className="text-sm text-white/40">
+                  Informe o número total de pessoas a bordo (incluindo você e o marinheiro, se houver).
+                  {boat?.tipo === 'jet' && <><br/><span className="text-rose-400/80 font-medium">Limite máximo de 3 pessoas para Jets.</span></>}
+                  {boat?.tipo !== 'jet' && boat?.capacidadePassageiros && <><br/><span className="text-emerald-400/80 font-medium">Capacidade máxima da embarcação: {boat.capacidadePassageiros} pessoas.</span></>}
+                </p>
               </div>
 
               <div className="flex items-center justify-center gap-6 py-4">
@@ -318,11 +378,14 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
                   <Package className="w-8 h-8 text-[#B69D74]" />
                 </div>
                 <h3 className="text-xl font-light text-white mb-2">Quais acessórios levar?</h3>
-                <p className="text-sm text-white/40">Selecione os itens que você deseja embarcar.</p>
+                <p className="text-sm text-white/40">
+                  Selecione os itens que você deseja embarcar.
+                  {boat?.capacidadePassageiros && <><br/><span className="text-emerald-400/80 font-medium">Capacidade máxima de cadeiras/bancos: {boat.capacidadePassageiros}.</span></>}
+                </p>
               </div>
 
               <div className="space-y-3">
-                {client?.acessorios?.tenda && (
+                {embarcacaoReserva?.acessorios?.tenda && (
                   <label className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors">
                     <span className="text-white">Tenda</span>
                     <input
@@ -334,7 +397,7 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
                   </label>
                 )}
 
-                {client?.acessorios?.mesa && (
+                {embarcacaoReserva?.acessorios?.mesa && (
                   <label className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors">
                     <span className="text-white">Mesa</span>
                     <input
@@ -346,7 +409,7 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
                   </label>
                 )}
 
-                {client?.acessorios?.churrasqueira && (
+                {embarcacaoReserva?.acessorios?.churrasqueira && (
                   <label className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/10 transition-colors">
                     <span className="text-white">Churrasqueira</span>
                     <input
@@ -358,19 +421,22 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
                   </label>
                 )}
 
-                {client?.acessorios?.bancosCadeiras && (
+                {embarcacaoReserva?.acessorios?.bancosCadeiras && (
                   <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
                     <span className="text-white">Bancos/Cadeiras</span>
                     <div className="flex items-center gap-4">
                       <button
-                        onClick={() => setQtdBancos(prev => (prev > 0 ? prev - 1 : 0))}
+                        onClick={() => {
+                          setErrorMsg(null);
+                          setQtdBancos(prev => (prev > 0 ? prev - 1 : 0));
+                        }}
                         className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
                       >
                         <Minus className="w-4 h-4" />
                       </button>
                       <span className="text-white font-medium w-4 text-center">{qtdBancos}</span>
                       <button
-                        onClick={() => setQtdBancos(prev => prev + 1)}
+                        onClick={incrementBancos}
                         className="w-8 h-8 rounded-full bg-[#B69D74]/20 hover:bg-[#B69D74]/30 flex items-center justify-center text-[#B69D74] transition-colors"
                       >
                         <Plus className="w-4 h-4" />

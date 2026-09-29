@@ -61,15 +61,15 @@ export default function MaintenanceListView({
     const item = manutencoes.find(m => m.id === id);
     if (!item) return;
 
-    if (newStatus === 'orcamento_pendente') {
+    if (newStatus === 'aguardando_aprovacao') {
       if (!item.mecanico) {
-        setTransitionItem({ item, target: 'orcamento_pendente' });
+        setTransitionItem({ item, target: 'aguardando_aprovacao' as any });
         return;
       }
-    } else if (newStatus === 'em_andamento') {
+    } else if (newStatus === 'em_execucao') {
       const needsBudgetConf = (!item.orcamento && item.orcamento !== 0) || item.orcamentoStatus !== 'aprovado';
       if (needsBudgetConf || !item.mecanico) {
-        setTransitionItem({ item, target: 'em_andamento' });
+        setTransitionItem({ item, target: 'em_execucao' as any });
         return;
       }
     } else if (newStatus === 'concluido') {
@@ -87,14 +87,14 @@ export default function MaintenanceListView({
 
   const getStatusBadge = (status?: string) => {
     switch (status) {
-      case 'fila_espera':
-        return { label: '1. Triagem & Chamado', bg: 'bg-pink-100 text-pink-900 border-pink-200' };
-      case 'orcamento_pendente':
-        return { label: '2. Orçamento (Aprovação)', bg: 'bg-amber-100 text-amber-900 border-amber-200' };
-      case 'em_andamento':
-      case 'aguardando_pecas':
-      case 'na_oficina':
-        return { label: '3. Em Manutenção', bg: 'bg-blue-100 text-blue-900 border-blue-200' };
+      case 'aguardando_orcamento':
+        return { label: '1. Aguardando Orçamento', bg: 'bg-pink-100 text-pink-900 border-pink-200' };
+      case 'aguardando_aprovacao':
+        return { label: '2. Aguardando Aprovação', bg: 'bg-amber-100 text-amber-900 border-amber-200' };
+      case 'em_execucao':
+        return { label: '3. Execução da OS', bg: 'bg-blue-100 text-blue-900 border-blue-200' };
+      case 'reprovado':
+        return { label: 'Reprovado', bg: 'bg-red-100 text-red-900 border-red-200' };
       case 'concluido':
         return { label: '4. Concluído & Liberado', bg: 'bg-purple-100 text-purple-900 border-purple-200' };
       default:
@@ -191,9 +191,10 @@ export default function MaintenanceListView({
                         onChange={(e) => handleStatusChange(m.id, e.target.value)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold border outline-none cursor-pointer ${badge.bg}`}
                       >
-                        <option value="chamado_aberto">1. Triagem & Chamado</option>
-                        <option value="orcamento_pendente">2. Orçamento (Aprovação)</option>
-                        <option value="em_andamento">3. Em Manutenção</option>
+                        <option value="aguardando_orcamento">1. Aguardando Orçamento</option>
+                        <option value="aguardando_aprovacao">2. Aguardando Aprovação Cliente</option>
+                        <option value="em_execucao">3. Execução da OS</option>
+                        <option value="reprovado">Cancelado / Reprovado</option>
                         <option value="concluido">4. Concluído & Liberado</option>
                       </select>
                     </td>

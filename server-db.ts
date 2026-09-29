@@ -283,6 +283,9 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN historicoHoras TEXT;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN capacidadePassageiros INT;`);
+    } catch (e) {}
 
     // 3. Reservas Table
     await connection.query(`
@@ -316,6 +319,9 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN fotosChecklistChegada TEXT;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN acessoriosSolicitados TEXT;`);
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN previsaoSaida VARCHAR(50);`);
@@ -1277,6 +1283,7 @@ export async function pullDatabase(forceFresh = false) {
       whatsappGroupId: b.whatsappGroupId || undefined,
       temSom: b.temSom === 1 || b.temSom === true,
       acessorios: b.acessorios ? JSON.parse(b.acessorios) : undefined,
+      capacidadePassageiros: b.capacidadePassageiros !== null && b.capacidadePassageiros !== undefined ? Number(b.capacidadePassageiros) : undefined,
       horasMotor: b.horasMotor ? Number(b.horasMotor) : 0,
       ultimaAtualizacaoHoras: b.ultimaAtualizacaoHoras || undefined,
       horasUltimaManutencao: b.horasUltimaManutencao ? Number(b.horasUltimaManutencao) : 0,
@@ -1520,8 +1527,8 @@ export async function upsertBoat(boat: any) {
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -1545,7 +1552,8 @@ export async function upsertBoat(boat: any) {
       horasMotor = VALUES(horasMotor),
       ultimaAtualizacaoHoras = VALUES(ultimaAtualizacaoHoras),
       horasUltimaManutencao = VALUES(horasUltimaManutencao),
-      historicoHoras = VALUES(historicoHoras)
+      historicoHoras = VALUES(historicoHoras),
+      capacidadePassageiros = VALUES(capacidadePassageiros)
   `;
 
   await currentPool.query(query, [
@@ -1572,7 +1580,8 @@ export async function upsertBoat(boat: any) {
     boat.horasMotor !== undefined ? Number(boat.horasMotor) : 0,
     boat.ultimaAtualizacaoHoras || null,
     boat.horasUltimaManutencao !== undefined ? Number(boat.horasUltimaManutencao) : 0,
-    historicoHorasJson
+    historicoHorasJson,
+    boat.capacidadePassageiros !== undefined && boat.capacidadePassageiros !== null ? Number(boat.capacidadePassageiros) : null
   ]);
 
   if (boat.empresas && Array.isArray(boat.empresas)) {
@@ -1615,7 +1624,7 @@ export async function upsertReservation(reserva: any) {
       acessoriosSolicitados,
       abastecimentoLitros, abastecimentoStatusCobranca, abastecimentoFormaPagamento, abastecimentoValorTotal, abastecimentoComprovanteUrl, abastecimentoOperador,
       tipoReserva, contestadaPor, contestadaEm
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       embarcacaoId = VALUES(embarcacaoId),
       clienteId = VALUES(clienteId),
@@ -1732,19 +1741,20 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
     for (const boat of payload.boats) {
       const donosJson = boat.donos ? JSON.stringify(boat.donos) : JSON.stringify([]);
       await connection.query(`
-        INSERT INTO Embarcacoes (id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, temSom, imagemUrl, documentoUrl, seguroUrl)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO Embarcacoes (id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, temSom, imagemUrl, documentoUrl, seguroUrl, capacidadePassageiros)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           tipo = VALUES(tipo), nome = VALUES(nome), numero = VALUES(numero),
           modelo = VALUES(modelo), fabricante = VALUES(fabricante), ano = VALUES(ano),
           chassi = VALUES(chassi), inscricao = VALUES(inscricao), tipo_propulsao = VALUES(tipo_propulsao), potencia = VALUES(potencia),
           donos = VALUES(donos), googleCalendarId = VALUES(googleCalendarId),
           whatsappGroupId = VALUES(whatsappGroupId), emManutencao = VALUES(emManutencao), temSom = VALUES(temSom),
-          imagemUrl = VALUES(imagemUrl), documentoUrl = VALUES(documentoUrl), seguroUrl = VALUES(seguroUrl)
+          imagemUrl = VALUES(imagemUrl), documentoUrl = VALUES(documentoUrl), seguroUrl = VALUES(seguroUrl), capacidadePassageiros = VALUES(capacidadePassageiros)
       `, [
         boat.id, boat.tipo, boat.nome, boat.numero, boat.modelo, boat.fabricante, boat.ano,
         boat.chassi || null, boat.inscricao || null, boat.tipo_propulsao || null, boat.potencia || null,
-        donosJson, boat.googleCalendarId || null, boat.whatsappGroupId || null, boat.emManutencao ? 1 : 0, boat.temSom ? 1 : 0, boat.imagemUrl || null, boat.documentoUrl || null, boat.seguroUrl || null
+        donosJson, boat.googleCalendarId || null, boat.whatsappGroupId || null, boat.emManutencao ? 1 : 0, boat.temSom ? 1 : 0, boat.imagemUrl || null, boat.documentoUrl || null, boat.seguroUrl || null,
+        boat.capacidadePassageiros !== undefined && boat.capacidadePassageiros !== null ? Number(boat.capacidadePassageiros) : null
       ]);
     }
 

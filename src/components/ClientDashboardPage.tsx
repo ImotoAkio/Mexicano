@@ -2531,12 +2531,15 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         selectedDate={selectedDate}
         client={client}
         boats={boats}
+        reservations={mergedReservations}
         preselectedBoatId={selectedCalendarBoatId}
         onSuccess={(newRes) => {
           if (newRes) {
             setOptimisticReservations(prev => [...prev, newRes]);
             setLastAddedResId(newRes.id);
           }
+          setIsReservationModalOpen(false);
+          setActiveTab('home');
           if (onRefresh) {
             onRefresh();
           } else {

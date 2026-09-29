@@ -97,6 +97,7 @@ export const io = new SocketIOServer(httpServer, {
     methods: ["GET", "POST"]
   }
 });
+app.locals.io = io; // Expose socket.io to route handlers via req.app.locals.io
 app.set('trust proxy', 1);
 const PORT = 3000;
 

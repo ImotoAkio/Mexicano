@@ -42,42 +42,42 @@ export default function KanbanBoard({
 }: KanbanBoardProps) {
   
   const [checkoutItem, setCheckoutItem] = React.useState<Manutencao | null>(null);
-  const [transitionItem, setTransitionItem] = React.useState<{item: Manutencao, target: 'orcamento_pendente' | 'em_andamento'} | null>(null);
+  const [transitionItem, setTransitionItem] = React.useState<{item: Manutencao, target: 'aguardando_aprovacao' | 'em_execucao'} | null>(null);
 
   // Unified 4 Columns Workflow (Fila -> Orçamento -> Em Manutenção -> Concluído)
   const columns = [
     {
-      id: 'fila_espera',
-      label: '1. Fila / Agendado',
+      id: 'aguardando_orcamento',
+      label: '1. Aguardando Orçamento',
       dotColor: 'bg-pink-500',
       containerBg: 'bg-pink-100/60 border-pink-200/60',
       textColor: 'text-pink-900',
       progress: 15
     },
-    { 
-      id: 'orcamento_pendente', 
-      label: '2. Orçamento (Aprovação)', 
-      dotColor: 'bg-amber-500', 
-      containerBg: 'bg-amber-100/60 border-amber-200/60', 
-      textColor: 'text-amber-900', 
-      progress: 40 
+    {
+      id: 'aguardando_aprovacao',
+      label: '2. Aguardando Aprovação',
+      dotColor: 'bg-amber-500',
+      containerBg: 'bg-amber-100/60 border-amber-200/60',
+      textColor: 'text-amber-900',
+      progress: 40
     },
-    { 
-      id: 'em_manutencao', 
-      label: '3. Em Manutenção', 
-      dotColor: 'bg-blue-500', 
-      containerBg: 'bg-blue-100/60 border-blue-200/60', 
-      textColor: 'text-blue-900', 
-      progress: 75 
+    {
+      id: 'em_execucao',
+      label: '3. Execução da OS',
+      dotColor: 'bg-blue-500',
+      containerBg: 'bg-blue-100/60 border-blue-200/60',
+      textColor: 'text-blue-900',
+      progress: 75
     },
-    { 
-      id: 'concluido', 
-      label: '4. Concluído & Liberado', 
-      dotColor: 'bg-purple-500', 
-      containerBg: 'bg-purple-100/60 border-purple-200/60', 
-      textColor: 'text-purple-900', 
-      progress: 100 
-    },
+    {
+      id: 'concluido',
+      label: '4. Concluído & Liberado',
+      dotColor: 'bg-purple-500',
+      containerBg: 'bg-purple-100/60 border-purple-200/60',
+      textColor: 'text-purple-900',
+      progress: 100
+    }
   ];
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -97,20 +97,17 @@ export default function KanbanBoard({
     if (!item) return;
 
     let targetStatus = columnId;
-    if (columnId === 'em_manutencao') {
-      targetStatus = 'em_andamento';
-    }
 
     // Modal intercept for specific stages
-    if (targetStatus === 'orcamento_pendente') {
+    if (targetStatus === 'aguardando_aprovacao') {
       if (!item.mecanico) {
-        setTransitionItem({ item, target: 'orcamento_pendente' });
+        setTransitionItem({ item, target: 'aguardando_aprovacao' });
         return;
       }
-    } else if (targetStatus === 'em_andamento') {
+    } else if (targetStatus === 'em_execucao') {
       const needsBudgetConf = (!item.orcamento && item.orcamento !== 0) || item.orcamentoStatus !== 'aprovado';
       if (needsBudgetConf || !item.mecanico) {
-        setTransitionItem({ item, target: 'em_andamento' });
+        setTransitionItem({ item, target: 'em_execucao' });
         return;
       }
     } else if (targetStatus === 'concluido') {
@@ -153,10 +150,7 @@ export default function KanbanBoard({
     <div className="h-full w-full flex overflow-x-auto p-6 gap-6 custom-scrollbar items-start bg-[#f3f7f5]/80 font-sans">
       {columns.map(col => {
         const allCards = filteredManutencoes.filter(m => {
-          const currentStatus = m.status || 'em_andamento';
-          if (col.id === 'em_manutencao') {
-            return currentStatus === 'em_andamento' || currentStatus === 'na_oficina' || currentStatus === 'aguardando_pecas';
-          }
+          const currentStatus = m.status || 'aguardando_orcamento';
           return currentStatus === col.id;
         });
 

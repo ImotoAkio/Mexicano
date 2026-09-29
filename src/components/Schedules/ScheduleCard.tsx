@@ -3,7 +3,7 @@ import { Reserva } from '../../types';
 import { boatDB, clientDB } from '../../db';
 import {
   Anchor, Wrench, AlertTriangle, RefreshCw, FileDown, ClipboardList, Trash2,
-  X, Wallet, Calendar, AlertCircle, ExternalLink
+  X, Wallet, Calendar, AlertCircle, ExternalLink, Navigation, Tent, Flame, Armchair, Table2, Printer
 } from 'lucide-react';
 import { JetSkiIcon } from '../icons/JetSkiIcon';
 
@@ -28,6 +28,7 @@ export default function ScheduleCard({
   const client = clientDB.getById(res.clienteId);
 
   const [showFinanceModal, setShowFinanceModal] = React.useState(false);
+  const [showNavPlanModal, setShowNavPlanModal] = React.useState(false);
   const [transactions, setTransactions] = React.useState<any[]>([]);
   const [loadingTransactions, setLoadingTransactions] = React.useState(false);
   const [financeError, setFinanceError] = React.useState<string | null>(null);
@@ -207,36 +208,42 @@ export default function ScheduleCard({
             ) : null}
           </div>
 
-          {isConfirmed && clientPhone && (
-            <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-2 bg-slate-50 border border-slate-200 p-3 rounded-lg text-xs w-full">
-              <p className="truncate flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Proprietário:</span> 
-                <strong className="text-slate-700 font-semibold truncate">{ownerName}</strong>
-              </p>
-              <p className="truncate flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Contato:</span> 
-                <strong className="text-slate-700 font-semibold truncate">{clientPhone}</strong>
-              </p>
-              <p className="truncate flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Período:</span> 
-                <strong className="text-slate-700 font-semibold truncate">{res.periodo === 'dia_inteiro' ? 'Dia Inteiro' : res.periodo === 'manha' ? 'Manhã' : 'Tarde'}</strong>
-              </p>
-              <p className="truncate flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Destino:</span> 
-                <strong className="text-slate-700 font-semibold truncate">{res.destino || 'N/A'}</strong>
-              </p>
-              <p className="truncate flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Pessoas a Bordo:</span> 
-                <strong className="text-slate-700 font-semibold truncate">{res.pessoasABordo || 'N/A'}</strong>
-              </p>
-              <p className="truncate flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Saída:</span> 
-                <strong className="text-slate-700 font-semibold truncate">{res.previsaoSaida || '08:00'}</strong>
-              </p>
-              <p className="truncate flex items-center gap-1.5">
-                <span className="text-slate-400 font-medium">Retorno:</span> 
-                <strong className="text-slate-700 font-semibold truncate">{res.previsaoChegada || '18:00'}</strong>
-              </p>
+          {isConfirmed && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-3">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowNavPlanModal(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                title="Ver Plano de Navegação"
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                <span>Plano de Navegação</span>
+              </button>
+
+              {res.acessoriosSolicitados && (
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
+                  {res.acessoriosSolicitados.tenda && (
+                    <div className="flex items-center gap-1 text-slate-600" title="Tenda">
+                      <Tent className="w-3.5 h-3.5" />
+                    </div>
+                  )}
+                  {res.acessoriosSolicitados.mesa && (
+                    <div className="flex items-center gap-1 text-slate-600 ml-1" title="Mesa">
+                      <Table2 className="w-3.5 h-3.5" />
+                    </div>
+                  )}
+                  {res.acessoriosSolicitados.churrasqueira && (
+                    <div className="flex items-center gap-1 text-slate-600 ml-1" title="Churrasqueira">
+                      <Flame className="w-3.5 h-3.5 text-orange-500" />
+                    </div>
+                  )}
+                  {(res.acessoriosSolicitados.bancos ?? 0) > 0 && (
+                    <div className="flex items-center gap-1 text-slate-600 ml-1" title={`${res.acessoriosSolicitados.bancos} Bancos/Cadeiras`}>
+                      <Armchair className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-bold bg-slate-200 px-1 rounded-sm leading-none flex items-center h-4">{res.acessoriosSolicitados.bancos}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -316,6 +323,138 @@ export default function ScheduleCard({
           onClose={() => setShowFinanceModal(false)}
         />
       )}
+
+      {showNavPlanModal && (
+        <NavigationPlanModal
+          res={res}
+          ownerName={ownerName}
+          clientPhone={clientPhone}
+          onClose={() => setShowNavPlanModal(false)}
+          onGeneratePDF={() => onGeneratePDF(res)}
+        />
+      )}
+    </div>
+  );
+}
+
+function NavigationPlanModal({
+  res,
+  ownerName,
+  clientPhone,
+  onClose,
+  onGeneratePDF
+}: {
+  res: Reserva;
+  ownerName: string;
+  clientPhone: string;
+  onClose: () => void;
+  onGeneratePDF: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-md overflow-hidden max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 shadow-xs border border-blue-100">
+              <Navigation className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Plano de Navegação</h3>
+              <p className="text-xs text-slate-500 font-semibold">{ownerName}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <div>
+              <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Contato</span>
+              <span className="font-semibold text-slate-700">{clientPhone || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Período</span>
+              <span className="font-semibold text-slate-700">
+                {res.periodo === 'dia_inteiro' ? 'Dia Inteiro' : res.periodo === 'manha' ? 'Manhã' : 'Tarde'}
+              </span>
+            </div>
+            <div>
+              <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Saída (Previsão)</span>
+              <span className="font-semibold text-slate-700">{res.previsaoSaida || '08:00'}</span>
+            </div>
+            <div>
+              <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Retorno (Previsão)</span>
+              <span className="font-semibold text-slate-700">{res.previsaoChegada || '18:00'}</span>
+            </div>
+            <div className="col-span-2">
+              <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Destino</span>
+              <span className="font-semibold text-slate-700">{res.destino || 'Não informado'}</span>
+            </div>
+            <div className="col-span-2">
+              <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Pessoas a Bordo</span>
+              <span className="font-semibold text-slate-700">{res.pessoasABordo || 'Não informado'}</span>
+            </div>
+          </div>
+
+          {(res.acessoriosSolicitados) && (
+            <div className="mt-4">
+              <span className="block text-[10px] uppercase font-bold text-slate-400 mb-2">Acessórios Solicitados</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {res.acessoriosSolicitados.tenda && (
+                  <span className="flex items-center gap-1.5 bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-lg text-xs font-medium">
+                    <Tent className="w-3.5 h-3.5" /> Tenda
+                  </span>
+                )}
+                {res.acessoriosSolicitados.mesa && (
+                  <span className="flex items-center gap-1.5 bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-lg text-xs font-medium">
+                    <Table2 className="w-3.5 h-3.5" /> Mesa
+                  </span>
+                )}
+                {res.acessoriosSolicitados.churrasqueira && (
+                  <span className="flex items-center gap-1.5 bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-lg text-xs font-medium">
+                    <Flame className="w-3.5 h-3.5 text-orange-500" /> Churrasqueira
+                  </span>
+                )}
+                {(res.acessoriosSolicitados.bancos ?? 0) > 0 && (
+                  <span className="flex items-center gap-1.5 bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-lg text-xs font-medium">
+                    <Armchair className="w-3.5 h-3.5" /> {res.acessoriosSolicitados.bancos} Bancos/Cadeiras
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between shrink-0">
+          <button
+            onClick={() => {
+              onGeneratePDF();
+              onClose();
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-xs"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Imprimir PDF (NORMAM)</span>
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

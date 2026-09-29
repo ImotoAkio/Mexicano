@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { boatDB, clientDB } from '../db';
+import { boatDB, clientDB, isDbLoaded } from '../db';
 import { Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
-import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid, ChevronDown } from 'lucide-react';
-import Select from 'react-select';
+import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid, ChevronDown, Filter } from 'lucide-react';
 import BoatModal from './BoatModal';
+
+import defaultJetImg from '../assets/images/jet.webp';
+import defaultLanchaImg from '../assets/images/lancha.webp';
 
 interface BoatPageProps {
   showWhatsAppMapping?: boolean;
@@ -68,7 +70,7 @@ function SearchableSelect({ id, label, icon: Icon, value, options, onChange, pla
         type="button"
         id={id}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-950 transition-all cursor-pointer shadow-xs text-left text-slate-700 font-semibold"
+        className="w-full flex items-center justify-between px-3 py-2 text-xs bg-slate-50 border border-slate-200/80 rounded-xl hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#186b77] focus:bg-white transition-all cursor-pointer shadow-xs text-left text-slate-700 font-semibold"
       >
         <span className="truncate">
           {selectedOption ? selectedOption.label : 'Selecione...'}
@@ -77,7 +79,7 @@ function SearchableSelect({ id, label, icon: Icon, value, options, onChange, pla
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100 min-w-[220px]">
+        <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-slate-100 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 min-w-[220px]">
           <div className="p-2 border-b border-slate-100 bg-slate-50">
             <div className="relative flex items-center">
               <Search className="w-3.5 h-3.5 absolute left-2.5 text-slate-400" />
@@ -87,14 +89,13 @@ function SearchableSelect({ id, label, icon: Icon, value, options, onChange, pla
                 placeholder={placeholder}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-800 placeholder-slate-400 font-medium"
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#186b77] text-slate-800 placeholder-slate-400 font-medium transition-all"
               />
               {searchTerm && (
-                <button 
+                <button
                   type="button"
                   onClick={() => setSearchTerm('')}
                   className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5"
-                  aria-label="Limpar busca"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -102,7 +103,7 @@ function SearchableSelect({ id, label, icon: Icon, value, options, onChange, pla
             </div>
           </div>
 
-          <div className="max-h-56 overflow-y-auto p-1 space-y-0.5">
+          <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5 subtle-scrollbar">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt) => {
                 const isSelected = opt.id === value;
@@ -124,7 +125,7 @@ function SearchableSelect({ id, label, icon: Icon, value, options, onChange, pla
                         {opt.label}
                       </span>
                       {opt.description && (
-                        <span className="text-[10px] text-slate-400 mt-0.5">{opt.description}</span>
+                        <span className="text-[10px] text-slate-400 mt-0.5 leading-tight">{opt.description}</span>
                       )}
                     </div>
                     {isSelected && <Check className="w-3.5 h-3.5 text-slate-900 shrink-0 ml-2" />}
@@ -146,50 +147,66 @@ function SearchableSelect({ id, label, icon: Icon, value, options, onChange, pla
 export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) {
   const [boats, setBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
   const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll());
+  const [isLoading, setIsLoading] = useState(true);
 
   React.useEffect(() => {
-    const checkData = () => {
+    let interval: ReturnType<typeof setInterval>;
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const syncState = () => {
       const dbBoats = boatDB.getAll();
       const dbClients = clientDB.getAll();
-      if (dbBoats.length > 0 && boats.length === 0) setBoats(dbBoats);
-      if (dbClients.length > 0 && clients.length === 0) setClients(dbClients);
+
+      // If we have data, we just update it
+      if (dbBoats.length > 0) {
+        setBoats(prev => prev.length !== dbBoats.length ? dbBoats : prev);
+      }
+      if (dbClients.length > 0) {
+        setClients(prev => prev.length !== dbClients.length ? dbClients : prev);
+      }
+
+      // If db finished loading (or already had data), drop the loader
+      if (isDbLoaded || dbBoats.length > 0) {
+        setIsLoading(false);
+        if (isDbLoaded) {
+          // Once the DB marks as fully loaded from remote, we can clear the aggressive 100ms interval
+          clearInterval(interval);
+          clearTimeout(timeout);
+        }
+      }
     };
-    const interval = setInterval(checkData, 500);
-    return () => clearInterval(interval);
-  }, [boats.length, clients.length]);
+
+    // If already loaded or already have data, don't show loader at all
+    if (isDbLoaded || boatDB.getAll().length > 0) {
+      setIsLoading(false);
+      syncState(); // ensure data is up to date immediately
+    } else {
+      // Aggressively check until `isDbLoaded` turns true
+      interval = setInterval(syncState, 150);
+
+      // Fallback just in case `isDbLoaded` never happens (e.g. some uncaught promise error elsewhere)
+      timeout = setTimeout(() => {
+        setIsLoading(false);
+        clearInterval(interval);
+      }, 8000);
+    }
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []); // Run only on mount
+
   const [search, setSearch] = useState('');
   const [filterEmpresa, setFilterEmpresa] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [filterTipo, setFilterTipo] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
 
-  // Form states
+  // Form states... keeping them for the modal logic even though modal is separate
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [tipo, setTipo] = useState<'jet' | 'lancha'>('lancha');
-  const [nome, setNome] = useState('');
-  const [numero, setNumero] = useState('');
-  const [modelo, setModelo] = useState('');
-  const [fabricante, setFabricante] = useState('');
-  const [ano, setAno] = useState<number>(new Date().getFullYear());
-  const [chassi, setChassi] = useState('');
-  const [inscricao, setInscricao] = useState('');
-  const [tipoPropulsao, setTipoPropulsao] = useState('MOTOR');
-  const [potencia, setPotencia] = useState('');
-  const [selectedDonos, setSelectedDonos] = useState<string[]>([]); // client IDs (unlimited)
-  const [ownerSearch, setOwnerSearch] = useState('');
-  const [googleCalendarId, setGoogleCalendarId] = useState(''); // Google Calendar ID directly linked to the boat
-  const [whatsappGroupId, setWhatsappGroupId] = useState(''); // Evolution API WhatsApp Group ID
-  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
-  const [isFetchingGroups, setIsFetchingGroups] = useState(false);
-  const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
-  const [mappingState, setMappingState] = useState<Record<string, string>>({}); // boat.id -> group.id
-  const [emManutencao, setEmManutencao] = useState(false);
-  const [temSom, setTemSom] = useState(false);
-  const [imagemUrl, setImagemUrl] = useState('');
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [documentoUrl, setDocumentoUrl] = useState('');
-  const [isUploadingDocumento, setIsUploadingDocumento] = useState(false);
-  const [seguroUrl, setSeguroUrl] = useState('');
-  const [empresas, setEmpresas] = useState<string[]>(['VALE']);
+  const [viewingOwners, setViewingOwners] = useState<{ boatName: string; owners: Cliente[] } | null>(null);
 
   const adminRole = useMemo(() => {
     try {
@@ -201,13 +218,14 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
       return null;
     }
   }, []);
-  const [isUploadingSeguro, setIsUploadingSeguro] = useState(false);
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   // Custom Confirm State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string; name: string } | null>(null);
-
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
+  const [isFetchingGroups, setIsFetchingGroups] = useState(false);
+  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [mappingState, setMappingState] = useState<Record<string, string>>({}); // boat.id -> group.id
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -221,92 +239,31 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
 
   const handleOpenCreateModal = () => {
     setEditingId(null);
-    setTipo('lancha');
-    setNome('');
-    setNumero('');
-    setModelo('');
-    setFabricante('');
-    setAno(new Date().getFullYear());
-    setChassi('');
-    setInscricao('');
-    setTipoPropulsao('MOTOR');
-    setPotencia('');
-    setSelectedDonos([]);
-    setOwnerSearch('');
-    setGoogleCalendarId('');
-    setWhatsappGroupId('');
-    setEmManutencao(false);
-    setTemSom(false);
-    setImagemUrl('');
-    setDocumentoUrl('');
-    setSeguroUrl('');
-    setEmpresas(['VALE']);
-    setIsAdvancedOpen(false);
     setIsModalOpen(true);
   };
 
   const handleOpenEditModal = (boat: Embarcacao) => {
     setEditingId(boat.id);
-    setTipo(boat.tipo);
-    setNome(boat.nome);
-    setNumero(boat.numero);
-    setModelo(boat.modelo);
-    setFabricante(boat.fabricante);
-    setAno(boat.ano);
-    setChassi(boat.chassi || '');
-    setInscricao(boat.inscricao || '');
-    setTipoPropulsao(boat.tipo_propulsao || 'MOTOR');
-    setPotencia(boat.potencia || '');
-    setSelectedDonos(boat.donos);
-    setOwnerSearch('');
-    
-    // Attempt to read from global calendar mapping if local one is empty
-    let mappedId = boat.googleCalendarId || '';
-    if (!mappedId) {
-      try {
-        const mappingsStr = localStorage.getItem('nautical_calendar_mappings');
-        if (mappingsStr) {
-          const mappings = JSON.parse(mappingsStr);
-          mappedId = mappings[boat.nome] || mappings[boat.id] || '';
-        }
-      } catch (e) {}
-    }
-    setGoogleCalendarId(mappedId);
-    
-    setWhatsappGroupId(boat.whatsappGroupId || '');
-    setAvailableGroups([]);
-    setEmManutencao(boat.emManutencao || false);
-    setTemSom(boat.temSom || false);
-    setImagemUrl(boat.imagemUrl || '');
-    setDocumentoUrl(boat.documentoUrl || '');
-    setSeguroUrl(boat.seguroUrl || '');
-    setEmpresas(boat.empresas && boat.empresas.length > 0 ? boat.empresas : ['VALE']);
-    setIsAdvancedOpen(Boolean(mappedId || boat.whatsappGroupId));
     setIsModalOpen(true);
   };
 
-  const handleFetchGroups = async () => {
-    setIsFetchingGroups(true);
+  const initiateDelete = (id: string, name: string) => {
+    setDeleteConfirmation({ id, name });
+  };
+
+  const executeDelete = () => {
+    if (!deleteConfirmation) return;
     try {
-      const token = localStorage.getItem('admin_token');
-      const res = await fetch('/api/whatsapp/groups', {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.groups)) {
-        const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
-        setAvailableGroups(unique);
-        showToast(`Foram carregados ${unique.length} grupos do WhatsApp com sucesso!`);
-      } else {
-        showToast(data.message || 'Falha ao buscar grupos', 'error');
-      }
+      boatDB.delete(deleteConfirmation.id);
+      showToast('Embarcação excluída com sucesso.');
+      setDeleteConfirmation(null);
+      handleRefresh();
     } catch (err: any) {
-      showToast(err.message || 'Erro ao conectar à API de grupos', 'error');
-    } finally {
-      setIsFetchingGroups(false);
+      showToast(err.message || 'Erro ao remover embarcação', 'error');
     }
   };
 
+  // WhatsApp Sync Mapping (preserving logic)
   const handleOpenMappingModal = async () => {
     setIsMappingModalOpen(true);
     setIsFetchingGroups(true);
@@ -326,7 +283,6 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
       const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
       setAvailableGroups(unique);
 
-      // Auto suggest
       const newMapping: Record<string, string> = {};
       const currentBoats = boatDB.getAll();
       let suggestionsCount = 0;
@@ -384,194 +340,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     setMappingState(prev => ({ ...prev, [boatId]: groupId }));
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('A imagem não pode ter mais que 5MB.', 'error');
-      return;
-    }
-
-    setIsUploadingImage(true);
-    const formData = new FormData();
-    formData.append('image', file);
-
-    try {
-      const token = localStorage.getItem('admin_token');
-      const res = await fetch('/api/upload/boat-image', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setImagemUrl(data.imageUrl);
-        showToast('Imagem carregada com sucesso!');
-      } else {
-        showToast(data.message || 'Erro ao fazer upload da imagem', 'error');
-      }
-    } catch (err: any) {
-      showToast('Falha na comunicação com o servidor para envio de imagem', 'error');
-    } finally {
-      setIsUploadingImage(false);
-    }
-  };
-
-  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'documento' | 'seguro') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (type === 'documento') setIsUploadingDocumento(true);
-    else setIsUploadingSeguro(true);
-
-    const formData = new FormData();
-    formData.append('document', file);
-
-    try {
-      const token = localStorage.getItem('admin_token');
-      const res = await fetch('/api/upload/boat-document', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (type === 'documento') setDocumentoUrl(data.documentUrl);
-        else setSeguroUrl(data.documentUrl);
-        showToast('Arquivo carregado com sucesso!');
-      } else {
-        showToast(data.message || 'Erro ao fazer upload do arquivo', 'error');
-      }
-    } catch (err: any) {
-      showToast('Falha na comunicação com o servidor', 'error');
-    } finally {
-      if (type === 'documento') setIsUploadingDocumento(false);
-      else setIsUploadingSeguro(false);
-    }
-  };
-
-  const handleToggleOwner = (clientId: string) => {
-    if (selectedDonos.includes(clientId)) {
-      setSelectedDonos(selectedDonos.filter(id => id !== clientId));
-    } else {
-      setSelectedDonos([...selectedDonos, clientId]);
-    }
-  };
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nome.trim() || !numero.trim()) {
-      showToast('Nome e número do veículo são campos obrigatórios.', 'error');
-      return;
-    }
-
-    const cleanNum = numero.trim().toUpperCase().replace(/M/g, '').replace(/\D/g, '');
-    if (!cleanNum) {
-      showToast('Por favor, informe uma numeração válida para o veículo.', 'error');
-      return;
-    }
-
-    if (selectedDonos.length === 0) {
-      showToast('Por favor, selecione pelo menos 1 proprietário.', 'error');
-      return;
-    }
-
-    try {
-      if (editingId) {
-        boatDB.update(editingId, {
-          tipo,
-          nome,
-          numero: cleanNum,
-          modelo,
-          fabricante,
-          ano,
-          chassi: chassi.trim() || undefined,
-          inscricao: inscricao.trim() || undefined,
-          tipo_propulsao: tipoPropulsao.trim() || undefined,
-          potencia: potencia.trim() || undefined,
-          donos: selectedDonos,
-          googleCalendarId: googleCalendarId.trim() || undefined,
-          whatsappGroupId: whatsappGroupId.trim() || undefined,
-          emManutencao,
-          temSom,
-          imagemUrl: imagemUrl || undefined,
-          documentoUrl: documentoUrl || undefined,
-          seguroUrl: seguroUrl || undefined,
-          empresas
-        });
-        showToast('Embarcação atualizada com sucesso!');
-      } else {
-        boatDB.create({
-          tipo,
-          nome,
-          numero: cleanNum,
-          modelo,
-          fabricante,
-          ano,
-          chassi: chassi.trim() || undefined,
-          inscricao: inscricao.trim() || undefined,
-          tipo_propulsao: tipoPropulsao.trim() || undefined,
-          potencia: potencia.trim() || undefined,
-          donos: selectedDonos,
-          googleCalendarId: googleCalendarId.trim() || undefined,
-          whatsappGroupId: whatsappGroupId.trim() || undefined,
-          emManutencao,
-          temSom,
-          imagemUrl: imagemUrl || undefined,
-          documentoUrl: documentoUrl || undefined,
-          seguroUrl: seguroUrl || undefined
-        });
-        showToast('Embarcação cadastrada com sucesso!');
-      }
-      
-      // Save calendar mappings to global config
-      try {
-        if (googleCalendarId.trim()) {
-          const mappingsStr = localStorage.getItem('nautical_calendar_mappings');
-          const mappings = mappingsStr ? JSON.parse(mappingsStr) : {};
-          mappings[nome] = googleCalendarId.trim();
-          localStorage.setItem('nautical_calendar_mappings', JSON.stringify(mappings));
-          
-          const token = localStorage.getItem('admin_token');
-          if (token) {
-            fetch('/api/calendar/config', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ calendar_mappings: mappings })
-            }).catch(console.error);
-          }
-        }
-      } catch (e) {}
-
-      setIsModalOpen(false);
-      handleRefresh();
-    } catch (err: any) {
-      showToast(err.message || 'Erro ao salvar embarcação', 'error');
-    }
-  };
-
-  const initiateDelete = (id: string, name: string) => {
-    setDeleteConfirmation({ id, name });
-  };
-
-  const executeDelete = () => {
-    if (!deleteConfirmation) return;
-    try {
-      boatDB.delete(deleteConfirmation.id);
-      showToast('Embarcação excluída com sucesso.');
-      setDeleteConfirmation(null);
-      handleRefresh();
-    } catch (err: any) {
-      showToast(err.message || 'Erro ao remover embarcação', 'error');
-    }
-  };
+  const defaultImage = (type: string) => type === 'jet' ? '/jet.webp' : '/lancha.webp';
 
   const filteredBoats = boats.filter(b => {
     let matchesEmpresa = true;
@@ -579,404 +348,492 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
       matchesEmpresa = (b.empresas || ['VALE']).includes(filterEmpresa);
     }
 
+    let matchesTipo = true;
+    if (filterTipo !== 'all') {
+      matchesTipo = b.tipo === filterTipo;
+    }
+
+    let matchesStatus = true;
+    if (filterStatus !== 'all') {
+      if (filterStatus === 'pronta') {
+        matchesStatus = !b.emManutencao;
+      } else if (filterStatus === 'manutencao') {
+        matchesStatus = !!b.emManutencao;
+      }
+    }
+
     const matchesSearch = !search || (
       (b.nome || '').toLowerCase().includes(search.toLowerCase()) ||
       (b.numero || '').includes(search) ||
-      (b.modelo || '').toLowerCase().includes(search.toLowerCase())
+      (b.modelo || '').toLowerCase().includes(search.toLowerCase()) ||
+      // Search in owners/cotistas names
+      (b.cotistas && b.cotistas.some(c => c.nome?.toLowerCase().includes(search.toLowerCase())))
     );
 
-    return matchesSearch && matchesEmpresa;
+    return matchesSearch && matchesEmpresa && matchesTipo && matchesStatus;
   });
 
+  const clearFilters = () => {
+    setSearch('');
+    setFilterEmpresa('all');
+    setFilterTipo('all');
+    setFilterStatus('all');
+  };
+
+  const activeFilterCount = (filterEmpresa !== 'all' ? 1 : 0) + (filterTipo !== 'all' ? 1 : 0) + (filterStatus !== 'all' ? 1 : 0) + (search ? 1 : 0);
+
   return (
-    <div id="boats-list-section" className="space-y-6">
-      {/* Toast */}
+    <div id="boats-list-section" className="flex flex-col w-full h-full space-y-6 sm:space-y-8 animate-in fade-in duration-300 font-sans">
+
+      {/* Toast Notificação */}
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-[9999] px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 border transition-all duration-300 ${
-          toast.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-800 border-rose-200'
+        <div className={`fixed bottom-4 right-4 z-[9999] px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border animate-in slide-in-from-bottom-5 duration-300 ${
+          toast.type === 'success' ? 'bg-white text-emerald-800 border-emerald-200' : 'bg-white text-rose-800 border-rose-200'
         }`}>
-          <span className="text-sm font-medium">{toast.message}</span>
+          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+          <span className="text-sm font-semibold">{toast.message}</span>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Cadastro de Embarcações</h2>
-          <p className="text-sm text-slate-500">Registre os veículos náuticos (Lanchas e Jets) e relacione seus proprietários compartilhados (coproprietários).</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          {showWhatsAppMapping && (
-            <button
-              onClick={handleOpenMappingModal}
-              className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 rounded-lg transition-colors cursor-pointer"
-              title="Mapear grupos do WhatsApp usando Evolution API"
-            >
-              <Zap className="w-4 h-4 mr-2 text-teal-500" />
-              Mapear WhatsApp
-            </button>
-          )}
-          <button
-            id="btn-new-boat"
-            onClick={handleOpenCreateModal}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Nova Embarcação
-          </button>
-        </div>
-      </div>
+      {/* Header Estilo Apple / PeçasKanban */}
+      <header className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <nav className="text-xs font-semibold text-slate-500 mb-1.5 flex items-center gap-1.5 opacity-80">
+              <span>Gestão</span>
+              <span>/</span>
+              <span className="text-[#186b77] font-bold">Cadastro de Embarcações</span>
+            </nav>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
+              Embarcações & Frotas
+            </h1>
+            <p className="text-sm text-slate-500 mt-1 font-medium">Reúna o histórico, especificações e relacione aos proprietários (coproprietários).</p>
+          </div>
 
-      {/* Quick guide on code constraints */}
-      <div className="flex items-start space-x-3 p-4 bg-slate-50 border border-slate-100 rounded-lg">
-        <ShieldAlert className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-        <div className="text-xs text-slate-600">
-          <span className="font-semibold text-slate-900">Regras de Negócio Náutico:</span>
-          <p className="mt-0.5">Cada embarcação suporta cotistas/proprietários sem limite de quantidade e possui uma numeração única que formará o título sincronizado do Google Calendar (por exemplo, embarcação número <code className="px-1 py-0.5 bg-slate-100 rounded text-slate-800">03</code> criará títulos formatados como <code className="px-1 py-0.5 bg-slate-100 rounded text-slate-800">M03 - Nome do Cliente</code>).</p>
-        </div>
-      </div>
-
-      {/* Search Bar & View Mode Switcher */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            id="search-boats"
-            type="text"
-            placeholder="Buscar veículo por nome, modelo ou número código..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
-          />
+          {/* Espaço removido */}
         </div>
 
-        {/* Filtro de Empresa */}
-        <div className="w-full sm:w-56">
-          <SearchableSelect
-            id="select-filter-empresa"
-            value={filterEmpresa}
-            onChange={setFilterEmpresa}
-            placeholder="Buscar empresa..."
-            options={EMPRESA_OPTIONS}
-          />
-        </div>
+        {/* Toolbar de Ações (Filtro, Busca e Botões) */}
+        <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs flex flex-col gap-3 text-sm transition-shadow hover:shadow-md">
 
-        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 shrink-0 self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={() => setViewMode('table')}
-            className={`px-3 py-1 text-xs font-bold rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
-              viewMode === 'table' ? 'bg-white text-slate-900 shadow-xs font-extrabold' : 'text-slate-500 hover:text-slate-900'
-            }`}
-            title="Exibir em Lista / Tabela"
-          >
-            <List className="w-3.5 h-3.5" />
-            <span>Lista</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('grid')}
-            className={`px-3 py-1 text-xs font-bold rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
-              viewMode === 'grid' ? 'bg-white text-slate-900 shadow-xs font-extrabold' : 'text-slate-500 hover:text-slate-900'
-            }`}
-            title="Exibir em Blocos / Cards"
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span>Blocos</span>
-          </button>
-        </div>
-      </div>
+          {/* Top Row: Search and Actions */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Campo de Pesquisa Fluído */}
+            <div className="relative w-full md:max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                id="search-boats"
+                type="text"
+                placeholder="Pesquisar ex: M19, modelo, proprietário..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 flex-1 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#186b77] focus:bg-white transition-all shadow-inner-xs"
+              />
+            </div>
 
-      {/* Ships List / Cards Grid */}
-      {filteredBoats.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center">
-          <Ship className="w-12 h-12 text-slate-400 mb-3 stroke-1" />
-          <p className="text-sm font-medium text-slate-900">Nenhuma embarcação encontrada</p>
-          <p className="text-xs text-slate-500 mt-1">Busque por outra palavra-chave ou crie uma nova embarcação acima.</p>
-        </div>
-      ) : viewMode === 'table' ? (
-        /* VISÃO EM TABELA / LISTA */
-        <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-          <div className="overflow-x-auto touch-pan-x scrollbar-thin scrollbar-thumb-slate-200">
-            <table className="w-full min-w-[840px] text-left text-xs text-slate-600 border-collapse">
-              <thead className="bg-slate-50/80 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
-                <tr>
-                  <th className="py-3.5 px-4">Embarcação</th>
-                  <th className="py-3.5 px-4">Código Calendar / Vaga</th>
-                  <th className="py-3.5 px-4">Modelo & Especificações</th>
-                  <th className="py-3.5 px-4">Proprietários (Cotistas)</th>
-                  <th className="py-3.5 px-4 text-center">Status / Equip.</th>
-                  <th className="py-3.5 px-4 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredBoats.map((boat) => {
-                  const ownerNames = boat.donos
-                    .map(id => clientDB.getById(id))
-                    .filter((c): c is Cliente => !!c);
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0 justify-end">
+              <div className="flex p-0.5 bg-slate-100/80 rounded-xl border border-slate-200/60 shadow-inner-xs mr-auto md:mr-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                    viewMode === 'grid' ? 'bg-white text-slate-900 shadow-xs font-bold ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="Blocos"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Cards</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                    viewMode === 'table' ? 'bg-white text-slate-900 shadow-xs font-bold ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="Lista"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Lista</span>
+                </button>
+              </div>
 
-                  return (
-                    <tr id={`boat-row-${boat.id}`} key={boat.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Embarcação */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-3">
-                          {boat.imagemUrl ? (
-                            <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 border border-slate-200 shadow-2xs">
-                              <img src={boat.imagemUrl} alt={boat.nome} className="w-full h-full object-cover" />
-                            </div>
-                          ) : (
-                            <div className="w-9 h-9 rounded-lg shrink-0 flex items-center justify-center bg-slate-100 text-slate-500 border border-slate-200">
-                              <Anchor className="w-4 h-4" />
-                            </div>
-                          )}
-                          <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-slate-900 text-xs">{getBoatCode(boat)}</span>
-                              <span className="text-[10px] text-slate-400 font-medium">
-                                ({boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-slate-400 block font-mono">
-                              Doc: {boat.nome} {boat.fabricante ? `• ${boat.fabricante}` : ''}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
+              {showWhatsAppMapping && (
+                <button
+                  onClick={handleOpenMappingModal}
+                  className="inline-flex items-center justify-center p-2 sm:px-3 sm:py-2 text-[11px] sm:text-xs font-bold text-[#186b77] bg-teal-50 border border-teal-100 hover:bg-teal-100 rounded-xl transition-all active:scale-95 cursor-pointer shadow-xs"
+                  title="Mapear grupos"
+                >
+                  <Zap className="w-4 h-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Map. Wpp</span>
+                </button>
+              )}
 
-                      {/* Código / Vaga */}
-                      <td className="py-3 px-4 font-mono">
-                        <span className="text-xs font-semibold text-slate-800">
-                          M{(boat.numero || '').padStart(2, '0')}
-                        </span>
-                        {boat.vaga && (
-                          <span className="text-[10px] text-slate-500 block mt-0.5 font-sans font-medium">
-                            Vaga: {boat.vaga}
-                          </span>
-                        )}
-                      </td>
+              <button
+                id="btn-new-boat"
+                onClick={handleOpenCreateModal}
+                className="inline-flex items-center justify-center px-4 py-2 text-xs font-extrabold text-white bg-[#186b77] hover:bg-[#12555f] rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer text-center"
+              >
+                <Plus className="w-4 h-4 mr-1.5 stroke-[2.5]" />
+                Nova <span className="hidden sm:inline ml-1"> Embarcação</span>
+              </button>
+            </div>
+          </div>
 
-                      {/* Modelo & Detalhes */}
-                      <td className="py-3 px-4">
-                        <span className="font-semibold text-slate-800 text-xs block">{boat.modelo || 'Modelo N/I'}</span>
-                        <span className="text-[10px] text-slate-400 font-mono block">
-                          {boat.tamanho ? `${boat.tamanho} Pés` : ''} {boat.inscricao ? `• Insc: ${boat.inscricao}` : ''}
-                        </span>
-                      </td>
+          {/* Bottom Row: Filters (Selects) */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 border-t border-slate-100">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 w-full sm:w-auto">
+              <Filter className="w-3.5 h-3.5" />
+              <span>Filtros</span>
+            </div>
 
-                      {/* Proprietários */}
-                      <td className="py-3 px-4">
-                        <div className="flex flex-wrap gap-1 max-w-[260px]">
-                          {ownerNames.length > 0 ? (
-                            ownerNames.map(owner => {
-                              const ownerCota = owner.embarcacoes?.find(e => e.embarcacaoId === boat.id)?.cota || owner.cota;
-                              return (
-                                <div key={owner.id} className="flex items-center gap-1.5 text-xs">
-                                  <span className="font-semibold text-slate-850">{owner.nome.split(' ')[0]}</span>
-                                  {ownerCota && (
-                                    <span className="text-[10px] text-slate-600 font-mono bg-slate-100 px-1.5 py-0.5 rounded font-medium">
-                                      Cota {ownerCota}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <span className="text-[10px] text-slate-400 italic">Nenhum cotista vinculado</span>
-                          )}
-                        </div>
-                      </td>
+            <div className="flex flex-wrap items-center gap-2 w-full">
+              {/* Type Filter */}
+              <select
+                value={filterTipo}
+                onChange={(e) => setFilterTipo(e.target.value)}
+                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200/80 rounded-lg text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-[#186b77] cursor-pointer"
+              >
+                <option value="all">Todas Categorias</option>
+                <option value="lancha">Somente Lanchas</option>
+                <option value="jet">Somente Jet Skis</option>
+              </select>
 
-                      {/* Status / Equip. */}
-                      <td className="py-3 px-4 text-center">
-                        <div className="inline-flex items-center justify-center gap-1.5 text-xs">
-                          <span className={`w-2 h-2 rounded-full ${boat.emManutencao ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                          <span className={boat.emManutencao ? 'text-rose-700 font-semibold' : 'text-slate-700 font-medium'}>
-                            {boat.emManutencao ? 'Manutenção' : 'Ativa'}
-                          </span>
-                          {boat.temSom && (
-                            <span className="text-[10px] text-slate-400 ml-1" title="Possui Som">
-                              • Som
-                            </span>
-                          )}
-                        </div>
-                      </td>
+              {/* Status Filter */}
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200/80 rounded-lg text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-[#186b77] cursor-pointer"
+              >
+                <option value="all">Qualquer Status</option>
+                <option value="pronta">Pronta / Em Uso</option>
+                <option value="manutencao">Em Manutenção</option>
+              </select>
 
-                      {/* Ações */}
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end space-x-1">
-                          <button
-                            onClick={() => handleOpenEditModal(boat)}
-                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-                            title="Editar"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => initiateDelete(boat.id, boat.nome)}
-                            className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-700 hover:text-rose-800 hover:bg-rose-100 transition-colors cursor-pointer"
-                            title="Remover"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+              {/* Company Filter (SearchableSelect fits strangely in a tight row of default selects if it's too big, let's just make it a standard select for spacing or use the component */}
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  id="select-filter-empresa"
+                  value={filterEmpresa}
+                  onChange={setFilterEmpresa}
+                  placeholder="Empresa..."
+                  options={EMPRESA_OPTIONS}
+                />
+              </div>
+
+              {/* Clear filters button */}
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-rose-600 bg-rose-50 border border-rose-100 hover:bg-rose-100 hover:border-rose-200 rounded-lg transition-colors cursor-pointer ml-auto sm:ml-0"
+                >
+                  <X className="w-3.5 h-3.5 stroke-[3]" />
+                  Limpar ({activeFilterCount})
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      ) : (
-        /* VISÃO EM BLOCOS / CARDS */
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {filteredBoats.map(boat => {
-            // Find clients associated to this boat
-            const ownerNames = boat.donos
-              .map(id => clientDB.getById(id))
-              .filter((c): c is Cliente => !!c);
+      </header>
 
-            return (
-              <div id={`boat-card-${boat.id}`} key={boat.id} className="bg-white border border-slate-100 rounded-xl shadow-xs hover:shadow-md hover:border-slate-200 p-5 flex flex-col justify-between transition-all duration-200">
-                <div>
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center space-x-3">
+      {/* Main Content Area */}
+      <main className="flex-1 w-full relative h-full">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center p-12 bg-white/50 backdrop-blur-sm border border-slate-200/50 rounded-2xl min-h-[300px] text-center animate-in fade-in duration-300 shadow-xs">
+            <div className="relative w-14 h-14 mb-4">
+              <div className="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-[#186b77] border-t-transparent animate-spin"></div>
+              <Ship className="absolute inset-0 m-auto w-5 h-5 text-[#186b77] animate-pulse" />
+            </div>
+            <p className="text-base font-bold text-slate-800">Carregando frota...</p>
+            <p className="text-sm text-slate-500 mt-1 max-w-sm">Sincronizando as embarcações com a base de dados.</p>
+          </div>
+        ) : filteredBoats.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 bg-white/50 backdrop-blur-sm border border-dashed border-slate-200 rounded-2xl text-center shadow-xs">
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+              <Ship className="w-8 h-8 text-slate-300 stroke-[1.5]" />
+            </div>
+            <p className="text-base font-bold text-slate-800">Nenhum registro encontrado</p>
+            <p className="text-sm text-slate-500 mt-1 max-w-sm mb-4">Tente usar outros termos de busca ou utilize o botão acima para adicionar uma nova embarcação.</p>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearFilters}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <X className="w-3.5 h-3.5" />
+                Limpar filtros ativos
+              </button>
+            )}
+          </div>
+        ) : viewMode === 'table' ? (
+
+          /* VISÃO LISTA / TABELA (MODERNIZADA) */
+          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full min-w-[840px] text-left border-collapse">
+                <thead className="bg-[#f8faf9] text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th className="py-4 px-5">Embarcação</th>
+                    <th className="py-4 px-5">Vaga</th>
+                    <th className="py-4 px-5">Especificações</th>
+                    <th className="py-4 px-5">Cotistas Ativos</th>
+                    <th className="py-4 px-5 text-center">Status</th>
+                    <th className="py-4 px-5 text-right">Opções</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100/80 text-xs font-medium bg-white">
+                  {filteredBoats.map((boat) => {
+                    const ownerNames = boat.donos
+                      .map(id => clientDB.getById(id))
+                      .filter((c): c is Cliente => !!c);
+
+                    return (
+                      <tr id={`boat-row-${boat.id}`} key={boat.id} className="hover:bg-slate-50/50 transition-colors group">
+                        {/* 1. Imagem e Nome */}
+                        <td className="py-3 px-5">
+                          <div className="flex items-center space-x-3.5">
+                            {boat.imagemUrl ? (
+                              <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-slate-200 shadow-2xs">
+                                <img src={boat.imagemUrl} alt={boat.nome} className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className={`w-10 h-10 rounded-xl overflow-hidden shrink-0 border shadow-2xs ${boat.tipo === 'jet' ? 'bg-amber-50 border-amber-200 border-opacity-50' : 'bg-slate-50 border-slate-200'}`}>
+                                <img src={boat.tipo === 'jet' ? defaultJetImg : defaultLanchaImg} alt={boat.nome} className="w-full h-full object-cover opacity-90" />
+                              </div>
+                            )}
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-slate-900 text-sm tracking-tight">{getBoatCode(boat)}</span>
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                  {boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-slate-500 mt-0.5 block font-medium">
+                                Doc: {boat.nome}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 2. Vaga */}
+                        <td className="py-3 px-5">
+                          {boat.vaga ? (
+                            <span className="inline-flex items-center px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 shadow-inner-xs">
+                              {boat.vaga}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-medium italic">-</span>
+                          )}
+                        </td>
+
+                        {/* 3. Specs */}
+                        <td className="py-3 px-5">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold text-slate-700 text-xs">{boat.modelo || 'Sem modelo definido'}</span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {boat.fabricante ? `${boat.fabricante} • ` : ''}{boat.ano}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 4. Cotistas */}
+                        <td className="py-3 px-5">
+                          {ownerNames.length === 0 ? (
+                            <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
+                              Nenhum cotista
+                            </span>
+                          ) : (
+                            <div
+                              className="flex flex-col gap-1.5 cursor-pointer group/owners"
+                              onClick={() => setViewingOwners({ boatName: getBoatCode(boat), owners: ownerNames })}
+                            >
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider group-hover/owners:text-[#186b77] transition-colors">{ownerNames.length} Associado{ownerNames.length > 1 ? 's' : ''}</span>
+                              <div className="flex -space-x-1.5 overflow-hidden">
+                                {ownerNames.slice(0, 4).map((owner) => (
+                                  <div key={owner.id} className="w-6 h-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center shadow-xs" title={owner.nome}>
+                                    <span className="text-[9px] font-bold text-slate-600">{owner.nome.substring(0, 1).toUpperCase()}</span>
+                                  </div>
+                                ))}
+                                {ownerNames.length > 4 && (
+                                  <div className="w-6 h-6 rounded-full bg-slate-50 border-2 border-white flex items-center justify-center shadow-xs">
+                                    <span className="text-[9px] font-bold text-slate-600">+{ownerNames.length - 4}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 5. Status */}
+                        <td className="py-3 px-5 text-center">
+                          <div className="flex flex-col gap-1 items-center justify-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border shadow-xs ${
+                              boat.emManutencao ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${boat.emManutencao ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                              {boat.emManutencao ? 'Oficina' : 'Pronta'}
+                            </span>
+                            {boat.temSom && (
+                              <span className="text-[9px] text-indigo-600 font-bold bg-indigo-50 border border-indigo-100 px-1.5 rounded-md mt-0.5">
+                                C/ Som
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 6. Ações */}
+                        <td className="py-3 px-5 text-right align-middle">
+                          <div className="flex items-center justify-end space-x-1.5 opacity-40 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleOpenEditModal(boat)}
+                              className="p-1.5 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-slate-500 hover:text-slate-800 transition-all shadow-xs hover:shadow-sm cursor-pointer active:scale-95"
+                              title="Editar Detalhes"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => initiateDelete(boat.id, boat.nome)}
+                              className="p-1.5 bg-white border border-rose-100 hover:border-rose-200 hover:bg-rose-50 rounded-lg text-rose-500 hover:text-rose-700 transition-all shadow-xs hover:shadow-sm cursor-pointer active:scale-95"
+                              title="Excluir Registro"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          /* VISÃO CARDS / GRID (MODERNIZADA) */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+            {filteredBoats.map(boat => {
+              const ownerNames = boat.donos
+                .map(id => clientDB.getById(id))
+                .filter((c): c is Cliente => !!c);
+
+              return (
+                <div id={`boat-card-${boat.id}`} key={boat.id} className="group relative bg-white border border-slate-200/70 rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-[#186b77]/30 p-4 sm:p-5 flex flex-col justify-between transition-all duration-300">
+                  {/* Floating Action Menu no topo direito */}
+                  <div className="absolute top-4 right-4 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button
+                      onClick={() => handleOpenEditModal(boat)}
+                      className="p-1.5 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-xl text-slate-600 hover:text-[#186b77] hover:border-[#186b77]/40 shadow-sm transition-all cursor-pointer active:scale-90"
+                      title="Editar"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col mb-4">
+                    {/* Cabeçalho do Card (Imagem & Title) */}
+                    <div className="flex items-start gap-4">
                       {boat.imagemUrl ? (
-                        <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200 shadow-sm">
+                        <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-slate-200/80 shadow-md">
                           <img src={boat.imagemUrl} alt={boat.nome} className="w-full h-full object-cover" />
                         </div>
                       ) : (
-                        <div className={`w-12 h-12 rounded-xl shrink-0 flex items-center justify-center shadow-sm ${
-                          boat.tipo === 'jet' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-sky-50 text-sky-600 border border-sky-100'
-                        }`}>
-                          <Anchor className="w-6 h-6" />
+                        <div className={`w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-slate-200/80 shadow-md ${boat.tipo === 'jet' ? 'bg-amber-50' : 'bg-slate-50'}`}>
+                          <img src={boat.tipo === 'jet' ? defaultJetImg : defaultLanchaImg} alt={boat.nome} className="w-full h-full object-cover opacity-90" />
                         </div>
                       )}
-                      <div>
-                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                          <h4 className="font-semibold text-slate-900 text-lg leading-tight">{getBoatCode(boat)}</h4>
-                          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${
-                            boat.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
+                      <div className="flex-1 min-w-0 pr-8">
+                        <h4 className="font-extrabold text-slate-900 text-lg leading-tight tracking-tight truncate">{getBoatCode(boat)}</h4>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-md ${
+                            boat.tipo === 'jet' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {boat.tipo === 'jet' ? 'Jet' : 'Lancha'}
+                            {boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'}
                           </span>
-                          {(boat.empresas || ['VALE']).map(emp => (
-                            <span key={emp} className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-md border ${
-                              emp === 'MARINA' ? 'bg-teal-50 text-teal-700 border-teal-200' :
-                              emp === 'MEXICANO' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                              'bg-indigo-50 text-indigo-700 border-indigo-200'
-                            }`}>
-                              {emp === 'VALE' ? 'Vale' : emp === 'MARINA' ? 'Marina' : 'Mexicano'}
-                            </span>
-                          ))}
-                          {boat.emManutencao && (
-                            <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-rose-100 text-rose-800 flex items-center shadow-xs">
-                              <Wrench className="w-3 h-3 mr-1" />
-                              Manutenção
-                            </span>
-                          )}
-                          {boat.temSom && (
-                            <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-indigo-100 text-indigo-800 flex items-center shadow-xs">
-                              <Volume2 className="w-3 h-3 mr-1" />
-                              Som
-                            </span>
-                          )}
                         </div>
-                        <span className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-sm mt-1 inline-block">
-                          Código Google Calendar: M{(boat.numero || '').padStart(2, '0')}
-                        </span>
-                        {boat.googleCalendarId && (
-                          <div className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md mt-1 truncate max-w-[210px] border border-emerald-100/50" title={boat.googleCalendarId}>
-                            Google ID: {boat.googleCalendarId}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Informações Resumidas do Card */}
+                  <div className="bg-[#f8faf9] rounded-xl p-3 border border-slate-100 mb-4 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-medium tracking-wide">Ano Fab/Modelo:</span>
+                      <span className="font-bold text-slate-700">{boat.ano || '-'}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-medium tracking-wide">Modelo:</span>
+                      <span className="font-bold text-slate-700 truncate max-w-[120px]">{boat.modelo || 'N/I'}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-medium tracking-wide">Vaga:</span>
+                      <span className="font-bold text-slate-700">{boat.vaga || '-'}</span>
+                    </div>
+
+                    {/* Status Tags Mini */}
+                    <div className="pt-2 border-t border-slate-200/60 flex items-center gap-1.5 flex-wrap">
+                       {boat.emManutencao ? (
+                         <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-rose-50 text-rose-700 flex items-center border border-rose-100">
+                           <Wrench className="w-2.5 h-2.5 mr-1" />
+                           Manutenção
+                         </span>
+                       ) : (
+                         <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-emerald-50 text-emerald-700 flex items-center border border-emerald-100">
+                           Pronta
+                         </span>
+                       )}
+                       {boat.temSom && (
+                         <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-indigo-50 text-indigo-700 flex items-center border border-indigo-100">
+                           <Volume2 className="w-2.5 h-2.5 mr-1" />
+                           Som
+                         </span>
+                       )}
+                    </div>
+                  </div>
+
+                  {/* Cotistas Footer */}
+                  <div
+                    className="mt-auto cursor-pointer group/owners"
+                    onClick={() => {
+                      if (ownerNames.length > 0) {
+                        setViewingOwners({ boatName: getBoatCode(boat), owners: ownerNames });
+                      }
+                    }}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover/owners:text-[#186b77] transition-colors">
+                         Cotistas Associados
+                       </span>
+                       <span className="text-[10px] font-extrabold text-slate-700 bg-slate-100 px-1.5 rounded group-hover/owners:bg-teal-50 group-hover/owners:text-[#186b77] transition-colors">
+                         {ownerNames.length}
+                       </span>
+                    </div>
+
+                    {ownerNames.length > 0 ? (
+                      <div className="flex -space-x-2 overflow-hidden py-1">
+                        {ownerNames.slice(0, 6).map((owner) => (
+                          <div key={owner.id} className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white shadow-2xs flex items-center justify-center text-[10px] font-extrabold text-slate-600" title={owner.nome}>
+                            {owner.nome.substring(0, 2).toUpperCase()}
                           </div>
-                        )}
-                        {showWhatsAppMapping && boat.whatsappGroupId && (
-                          <div className="text-[10px] font-mono text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded-md mt-1 truncate max-w-[210px] border border-teal-100/50" title={boat.whatsappGroupId}>
-                            WhatsApp: {boat.whatsappGroupId}
+                        ))}
+                        {ownerNames.length > 6 && (
+                          <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white shadow-2xs flex items-center justify-center text-[10px] font-extrabold text-[#186b77]">
+                            +{ownerNames.length - 6}
                           </div>
                         )}
                       </div>
-                    </div>
-
-                    <div className="flex items-center space-x-1">
-                      <button
-                        id={`edit-boat-${boat.id}`}
-                        onClick={() => handleOpenEditModal(boat)}
-                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-                        title="Editar"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        id={`delete-boat-${boat.id}`}
-                        onClick={() => initiateDelete(boat.id, boat.nome)}
-                        className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-700 hover:text-rose-800 hover:bg-rose-100 transition-colors cursor-pointer"
-                        title="Remover"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Vessel Specs */}
-                  <div className="mt-5 grid grid-cols-2 gap-3 text-xs bg-slate-50/50 p-3 rounded-lg border border-slate-100">
-                    <div>
-                      <span className="text-slate-400 block font-light">Fabricante</span>
-                      <span className="font-medium text-slate-800">{boat.fabricante || 'Não informado'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-light">Modelo</span>
-                      <span className="font-medium text-slate-800">{boat.modelo || 'Não informado'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-light">Ano / Numeração</span>
-                      <span className="font-medium text-slate-800 font-mono">{boat.ano} (#{boat.numero})</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-light">N° Inscrição (Marinha)</span>
-                      <span className="font-medium text-slate-800 font-mono">{boat.inscricao || 'Não informada'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-light">N° do Chassi</span>
-                      <span className="font-medium text-slate-800 font-mono">{boat.chassi || 'Não informado'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-light">Propulsão / Potência</span>
-                      <span className="font-medium text-slate-800">{boat.tipo_propulsao || 'MOTOR'} {boat.potencia ? `(${boat.potencia})` : ''}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Owners section */}
-                <div className="mt-5 pt-4 border-t border-slate-100">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Coproprietários ({ownerNames.length})
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto subtle-scrollbar pr-1">
-                    {ownerNames.length > 0 ? (
-                      ownerNames.map((owner, idx) => (
-                        <div key={idx} className="flex items-center space-x-1 px-2.5 py-1 bg-slate-50 hover:bg-slate-100 rounded-md text-slate-700 text-xs border border-slate-100 transition-colors">
-                          <User className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span className="font-medium truncate max-w-[140px]">{owner.nome}</span>
-                        </div>
-                      ))
                     ) : (
-<span className="text-xs text-rose-500 italic bg-rose-50 px-2 py-1 rounded border border-rose-100">
-                        Nenhum proprietário associado!
-                      </span>
+                      <div className="h-8 flex items-center">
+                        <span className="text-xs text-amber-600 font-medium italic">Falta relacionar sócio...</span>
+                      </div>
                     )}
                   </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Modal: Cadastro / Edição de Embarcação */}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </main>
+
+      {/* Modal: Cadastro / Edição de Embarcação (Mantido igual) */}
       <BoatModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -986,85 +843,129 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
         showWhatsAppMapping={showWhatsAppMapping}
       />
 
-      {/* Custom Confirmation Modal */}
-      {deleteConfirmation && (
-        <div id="delete-confirm-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-100">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full overflow-hidden border border-rose-100 animate-in zoom-in-95 duration-150">
-            <div className="p-6 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600 mb-4 border border-rose-100">
-                <ShieldAlert className="h-6 w-6" />
+      {/* Cotistas Modal */}
+      {viewingOwners && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100/80 bg-slate-50/50">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 tracking-tight">Associados</h3>
+                <p className="text-xs text-slate-500 font-medium tracking-wide mt-0.5">{viewingOwners.boatName}</p>
               </div>
-              <h3 className="text-lg font-bold text-slate-900">Remover Embarcação</h3>
-              <p className="mt-2 text-sm text-slate-500">
-                Gostaria de excluir permanentemente a embarcação <span className="font-semibold text-slate-800">"{deleteConfirmation.name}"</span>?
-              </p>
-              <div className="mt-3 p-3 bg-rose-50/50 rounded-lg text-rose-700 text-xs text-left font-medium leading-relaxed">
-                ⚠️ Todas as reservas associadas a esta embarcação serão permanentemente removidas, e os links de proprietários serão desfeitos!
-              </div>
-            </div>
-            
-            <div className="bg-slate-50 px-6 py-4 flex gap-3">
               <button
-                id="cancel-delete-boat"
-                onClick={() => setDeleteConfirmation(null)}
-                className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors pointer cursor-pointer"
+                onClick={() => setViewingOwners(null)}
+                className="w-8 h-8 flex items-center justify-center hover:bg-slate-200/50 rounded-full text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
               >
-                Cancelar
+                <X className="w-5 h-5 stroke-[2.5]" />
               </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 subtle-scrollbar space-y-2 bg-slate-50/30">
+              {viewingOwners.owners.map(owner => (
+                <div key={owner.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200/80 rounded-2xl shadow-2xs hover:border-[#186b77]/30 transition-colors">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-sm shrink-0 border border-slate-200">
+                    {owner.nome.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 truncate">{owner.nome}</p>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">{owner.telefone || 'Sem telefone cadastrado'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white px-5 py-4 border-t border-slate-100">
               <button
-                id="confirm-delete-boat"
-                onClick={executeDelete}
-                className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-700 px-4 py-2 text-sm font-semibold text-white transition-colors pointer cursor-pointer"
+                onClick={() => setViewingOwners(null)}
+                className="w-full rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer shadow-xs active:scale-95"
               >
-                Sim, Remover
+                Fechar
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* WhatsApp Mapping Modal */}
+      {/* Custom Confirmation Modal Redesigned */}
+      {deleteConfirmation && (
+        <div id="delete-confirm-modal" className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="p-6 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 mb-4 border border-rose-100 shadow-inner-xs">
+                <ShieldAlert className="h-7 w-7 stroke-[2]" />
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Remover Embarcação?</h3>
+              <p className="mt-2 text-sm text-slate-500 font-medium">
+                Gostaria de excluir permanentemente <span className="font-bold text-slate-800">"{deleteConfirmation.name}"</span> do sistema?
+              </p>
+              <div className="mt-4 p-3 bg-rose-50/80 rounded-xl text-rose-700 text-[11px] text-left font-semibold leading-relaxed border border-rose-100/50">
+                ⚠️ Todas as reservas e ordens de serviço (manutenção) atreladas a ela serão perdidas permanentemente. Essa ação é irreversível.
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 px-6 py-5 flex gap-3 border-t border-slate-100">
+              <button
+                onClick={() => setDeleteConfirmation(null)}
+                className="flex-1 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={executeDelete}
+                className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2.5 text-sm font-bold text-white shadow-xs transition-all cursor-pointer active:scale-95"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Mapping Modal Redesigned */}
       {showWhatsAppMapping && isMappingModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-100">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100/80 bg-slate-50/50">
               <div>
-                <h3 className="text-lg font-medium text-slate-900">Mapeamento de Grupos do WhatsApp</h3>
-                <p className="text-xs text-slate-500">Relacione as embarcações aos grupos encontrados na Evolution API.</p>
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight">Mapeamento de WhatsApp</h3>
+                <p className="text-xs text-slate-500 font-medium tracking-wide mt-1">Conecte embarcações aos grupos do Evolution API.</p>
               </div>
               <button
                 onClick={() => setIsMappingModalOpen(false)}
-                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                className="w-8 h-8 flex items-center justify-center hover:bg-slate-200/50 rounded-full text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5 stroke-[2.5]" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 subtle-scrollbar bg-slate-50/30">
               {isFetchingGroups ? (
                 <div className="flex flex-col items-center justify-center py-12">
-                  <RefreshCw className="w-8 h-8 text-teal-500 animate-spin mb-4" />
-                  <p className="text-sm font-medium text-slate-700">Carregando grupos do WhatsApp...</p>
+                  <RefreshCw className="w-8 h-8 text-[#186b77] animate-spin mb-4" />
+                  <p className="text-sm font-bold text-slate-700">Carregando grupos da Evolution API...</p>
                 </div>
               ) : availableGroups.length === 0 ? (
-                <div className="text-center py-8">
-                  <ShieldAlert className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-slate-800">Nenhum grupo encontrado</p>
-                  <p className="text-xs text-slate-500 mt-1">Verifique a conexão com a Evolution API.</p>
+                <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-200">
+                  <ShieldAlert className="w-12 h-12 text-amber-500 mx-auto mb-4 stroke-1" />
+                  <p className="text-base font-bold text-slate-800">Nenhum grupo encontrado</p>
+                  <p className="text-sm text-slate-500 mt-1">Verifique a conexão da API nas Configurações.</p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {boats.map(boat => (
-                    <div key={boat.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                      <div className="mb-2 sm:mb-0">
-                        <p className="text-sm font-semibold text-slate-800">{boat.nome}</p>
-                        <p className="text-xs text-slate-500">Nº {boat.numero} • {boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'}</p>
+                    <div key={boat.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-slate-200/80 rounded-2xl shadow-2xs hover:border-[#186b77]/30 transition-colors">
+                      <div className="mb-3 sm:mb-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-extrabold text-slate-800">{boat.nome}</p>
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border bg-slate-50 text-slate-700">M{(boat.numero || '').padStart(2,'0')}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1 font-medium">{boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'}</p>
                       </div>
-                      <div className="w-full sm:w-1/2">
+                      <div className="w-full sm:w-[55%]">
                         <select
                           value={mappingState[boat.id] || ''}
                           onChange={(e) => handleMappingChange(boat.id, e.target.value)}
-                          className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent font-mono"
+                          className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#186b77] focus:border-transparent font-medium text-slate-700 cursor-pointer shadow-inner-xs"
                         >
                           <option value="">-- Sem Grupo Associado --</option>
                           {availableGroups.map((g, idx) => (
@@ -1078,20 +979,20 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
               )}
             </div>
 
-            <div className="bg-slate-50 px-6 py-4 flex gap-3 border-t border-slate-100">
-              <button
+            <div className="bg-white px-6 py-5 flex gap-3 border-t border-slate-100 shadow-[0_-4px_15px_-10px_rgba(0,0,0,0.05)]">
+               <button
                 onClick={() => setIsMappingModalOpen(false)}
-                className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors pointer cursor-pointer"
-              >
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer shadow-xs active:scale-95"
+               >
                 Cancelar
-              </button>
-              <button
+               </button>
+               <button
                 onClick={handleSaveMapping}
                 disabled={isFetchingGroups}
-                className="flex-1 rounded-lg bg-teal-600 hover:bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition-colors pointer cursor-pointer disabled:opacity-50"
-              >
-                Salvar Mapeamento
-              </button>
+                className="flex-1 rounded-xl bg-[#186b77] hover:bg-[#12555f] px-4 py-2.5 text-sm font-bold text-white transition-all cursor-pointer disabled:opacity-50 shadow-sm hover:shadow-md active:scale-95"
+               >
+                Salvar Associações
+               </button>
             </div>
           </div>
         </div>

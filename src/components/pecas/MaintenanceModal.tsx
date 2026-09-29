@@ -70,8 +70,8 @@ export default function MaintenanceModal({
     prazoEntrega: '',
     mecanico: '',
     orcamento: 0,
-    orcamentoAprovado: false,
-    status: 'fila_espera',
+    orcamentoStatus: 'pendente',
+    status: 'aguardando_orcamento',
     localizacao: 'marina',
     descricaoServico: '',
     horasMotorAtual: 0,
@@ -116,8 +116,8 @@ export default function MaintenanceModal({
         prazoEntrega: '',
         mecanico: '',
         orcamento: 0,
-        orcamentoAprovado: false,
-        status: 'fila_espera',
+        orcamentoStatus: 'pendente',
+        status: 'aguardando_orcamento',
         localizacao: 'marina',
         descricaoServico: '',
         horasMotorAtual: 0,
@@ -178,11 +178,11 @@ export default function MaintenanceModal({
   }, [mecanicosList]);
 
   const statusOptions = [
-    { value: 'fila_espera', label: '1. Triagem & Chamado' },
-    { value: 'orcamento_pendente', label: '2. Orçamento (Aprovação)' },
-    { value: 'em_andamento', label: '3. Em Manutenção' },
+    { value: 'aguardando_orcamento', label: '1. Aguardando Orçamento' },
+    { value: 'aguardando_aprovacao', label: '2. Aguardando Aprovação Cliente' },
+    { value: 'em_execucao', label: '3. Execução da OS' },
     { value: 'concluido', label: '4. Concluído & Liberado' },
-    { value: 'cancelado', label: 'Cancelado' }
+    { value: 'reprovado', label: 'Cancelado / Reprovado' }
   ];
 
   // Custom Select Style
@@ -263,7 +263,55 @@ export default function MaintenanceModal({
     setFormData(prev => ({ ...prev, pecas: newPecas }));
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const generateLazyFinance = async (osId: string, itemData: any) => {
+    const token = localStorage.getItem('admin_token');
+    const generatedCodigoOS = itemData.codigoOS || `OS-${Date.now()}`;
+
+    // 1. Gera Despesa se houver Custo Interno pago a terceiro
+    if (itemData.custo && itemData.custo > 0 && itemData.mecanico) {
+      const transacaoDespesa = {
+        id: `fin_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        tipo: 'despesa',
+        categoria: 'Mão de Obra / Serviços Terceirizados',
+        valor: itemData.custo,
+        descricao: `Serviço Terceirizado: ${itemData.tipoManutencaoNome || itemData.tituloChamado || 'Manutenção'} - ${generatedCodigoOS}`,
+        fornecedorId: itemData.mecanico,
+        status: 'lancado',
+        dataVencimento: new Date().toISOString().split('T')[0],
+        empresa: 'Mexicano',
+        embarcacaoId: itemData.embarcacaoId,
+        createdAt: new Date().toISOString()
+      };
+      await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: 'upsert', data: transacaoDespesa })
+      }).catch(e => console.error('Erro na geração de despesa:', e));
+    }
+
+    // 2. Gera Receita se estiver assinalado gerarFinanceiro
+    if (itemData.gerarFinanceiro && itemData.orcamento && itemData.orcamento > 0) {
+      const transacaoReceita = {
+        id: `fin_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        tipo: 'receita',
+        categoria: 'Manutenção',
+        valor: itemData.orcamento,
+        descricao: `OS Concluída: ${itemData.tipoManutencaoNome || itemData.tituloChamado || 'Manutenção'} - ${generatedCodigoOS}`,
+        status: 'lancado',
+        dataVencimento: new Date().toISOString().split('T')[0],
+        empresa: 'Mexicano',
+        embarcacaoId: itemData.embarcacaoId,
+        createdAt: new Date().toISOString()
+      };
+      await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: 'upsert', data: transacaoReceita })
+      }).catch(e => console.error('Erro na geração de receita:', e));
+    }
+  };
+
+  const handleSave = async (e?: React.FormEvent) => {
     e.preventDefault();
     if (!formData.embarcacaoId) {
       alert("Selecione uma embarcação.");
@@ -271,12 +319,12 @@ export default function MaintenanceModal({
     }
 
     // Validation matching Kanban standards
-    if (formData.status === 'orcamento_pendente') {
+    if (formData.status === 'aguardando_aprovacao') {
       if (!formData.mecanico) {
         alert("Para o estágio 'Orçamento (Aprovação)', é obrigatório definir o Mecânico ou Oficina responsável.");
         return;
       }
-    } else if (formData.status === 'em_andamento') {
+    } else if (formData.status === 'em_execucao') {
       const needsBudgetConf = (!formData.orcamento && formData.orcamento !== 0) || formData.orcamentoStatus !== 'aprovado';
       if (needsBudgetConf || !formData.mecanico) {
         alert("Para o estágio 'Em Manutenção', é obrigatório definir Mecânico/Oficina, Valor do Orçamento e marcar como 'Aprovado'. (Se for cortesia/garantia, coloque o valor como 0).");
@@ -296,10 +344,21 @@ export default function MaintenanceModal({
     try {
       if (isEditing && editingItem?.id) {
         await maintenanceDB.update(editingItem.id, formData);
+
+        if (formData.status === 'concluido' && editingItem.status !== 'concluido') {
+           // Lazy finance generation is handled directly here if changed in modal
+           await generateLazyFinance(formData.id, formData);
+        }
       } else {
         const created = await maintenanceDB.create(formData as any);
+        if (created.status === 'concluido') {
+           await generateLazyFinance(created.id, created);
+        }
+
+        
+
         if (formData.chamadoId) {
-          const chamado = chamadoDB.findById(formData.chamadoId);
+          const chamado = chamadoDB.getById(formData.chamadoId);
           if (chamado) {
             const newOsIds = [...(chamado.osIds || [])];
             if (!newOsIds.includes(created.id)) {
@@ -542,9 +601,15 @@ export default function MaintenanceModal({
                       }
                     }}
                     placeholder="Selecione o estágio..."
+                    isDisabled={!isEditing && !!formData.chamadoId}
                     isSearchable={true}
                     styles={customSelectStyles}
                   />
+                  {!isEditing && !!formData.chamadoId && (
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      OS gerada a partir de chamado inicia obrigatoriamente na Fila.
+                    </p>
+                  )}
                 </div>
 
               </div>
@@ -739,7 +804,7 @@ export default function MaintenanceModal({
                   <input
                     type="checkbox"
                     checked={formData.orcamentoStatus === 'aprovado' || false}
-                    onChange={(e) => setFormData(prev => ({ ...prev, orcamentoAprovado: e.target.checked }))}
+                    onChange={(e) => setFormData(prev => ({ ...prev, orcamentoStatus: e.target.checked ? 'aprovado' : 'pendente' }))}
                     className="w-4 h-4 accent-[#186b77] rounded"
                   />
                   <span>Orçamento Aprovado pelo Cliente</span>

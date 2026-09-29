@@ -34,8 +34,8 @@ export default function MaintenanceOverview({
   // KPI Calculations
   const metrics = useMemo(() => {
     const total = manutencoes.length;
-    const emManutencao = manutencoes.filter(m => m.status === 'em_andamento' || m.status === 'na_oficina' || m.status === 'aguardando_pecas').length;
-    const orcamentosPendentes = manutencoes.filter(m => m.status === 'orcamento_pendente' || (m.orcamento && m.orcamentoStatus !== 'aprovado')).length;
+    const emManutencao = manutencoes.filter(m => m.status === 'aguardando_orcamento' || m.status === 'aguardando_aprovacao' || m.status === 'em_execucao').length;
+    const orcamentosPendentes = manutencoes.filter(m => m.status === 'aguardando_aprovacao').length;
     const concluidos = manutencoes.filter(m => m.status === 'concluido').length;
     
     const valorTotalOrcado = manutencoes.reduce((acc, m) => acc + (m.orcamento || 0), 0);
@@ -54,16 +54,16 @@ export default function MaintenanceOverview({
   // Stage distribution
   const stageDistribution = useMemo(() => {
     const counts = {
-      chamado_aberto: manutencoes.filter(m => m.status === 'fila_espera').length,
-      orcamento_pendente: manutencoes.filter(m => m.status === 'orcamento_pendente').length,
-      em_manutencao: manutencoes.filter(m => m.status === 'em_andamento' || m.status === 'na_oficina' || m.status === 'aguardando_pecas').length,
+      aguardando_orcamento: manutencoes.filter(m => m.status === 'aguardando_orcamento').length,
+      aguardando_aprovacao: manutencoes.filter(m => m.status === 'aguardando_aprovacao').length,
+      em_execucao: manutencoes.filter(m => m.status === 'em_execucao').length,
       concluido: manutencoes.filter(m => m.status === 'concluido').length
     };
     const total = manutencoes.length || 1;
     return [
-      { label: '1. Triagem & Chamado', count: counts.chamado_aberto, pct: Math.round((counts.chamado_aberto / total) * 100), color: 'bg-pink-500', barBg: 'bg-pink-100' },
-      { label: '2. Orçamento (Aprovação)', count: counts.orcamento_pendente, pct: Math.round((counts.orcamento_pendente / total) * 100), color: 'bg-amber-500', barBg: 'bg-amber-100' },
-      { label: '3. Em Manutenção', count: counts.em_manutencao, pct: Math.round((counts.em_manutencao / total) * 100), color: 'bg-blue-500', barBg: 'bg-blue-100' },
+      { label: '1. Aguardando Orçamento', count: counts.aguardando_orcamento, pct: Math.round((counts.aguardando_orcamento / total) * 100), color: 'bg-pink-500', barBg: 'bg-pink-100' },
+      { label: '2. Aguardando Aprovação', count: counts.aguardando_aprovacao, pct: Math.round((counts.aguardando_aprovacao / total) * 100), color: 'bg-amber-500', barBg: 'bg-amber-100' },
+      { label: '3. Execução da OS', count: counts.em_execucao, pct: Math.round((counts.em_execucao / total) * 100), color: 'bg-blue-500', barBg: 'bg-blue-100' },
       { label: '4. Concluído & Liberado', count: counts.concluido, pct: Math.round((counts.concluido / total) * 100), color: 'bg-purple-500', barBg: 'bg-purple-100' }
     ];
   }, [manutencoes]);
@@ -82,7 +82,7 @@ export default function MaintenanceOverview({
   // Boats currently unavailable/in maintenance
   const boatsInMaintenance = useMemo(() => {
     return manutencoes
-      .filter(m => m.status === 'em_andamento' || m.status === 'na_oficina' || m.status === 'aguardando_pecas')
+      .filter(m => m.status === 'aguardando_orcamento' || m.status === 'aguardando_aprovacao' || m.status === 'em_execucao')
       .map(m => {
         const boat = embarcacoes.find(b => b.id === m.embarcacaoId);
         const mecanicoObj = mecanicos.find(mec => mec.id === m.mecanico);
@@ -216,25 +216,21 @@ export default function MaintenanceOverview({
             <div className="p-4 rounded-2xl bg-red-50 border border-red-200/80 text-center space-y-1">
               <span className="text-[10px] font-black text-red-700 uppercase tracking-wider block">Crítica</span>
               <span className="text-2xl font-black text-red-900">{urgencyDistribution.critica}</span>
-              <span className="text-[10px] font-bold text-red-600 block">Fora de Operação</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-orange-50 border border-orange-200/80 text-center space-y-1">
               <span className="text-[10px] font-black text-orange-700 uppercase tracking-wider block">Alta</span>
               <span className="text-2xl font-black text-orange-900">{urgencyDistribution.alta}</span>
-              <span className="text-[10px] font-bold text-orange-600 block">Impedimento Parcial</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 text-center space-y-1">
               <span className="text-[10px] font-black text-amber-700 uppercase tracking-wider block">Média</span>
               <span className="text-2xl font-black text-amber-900">{urgencyDistribution.media}</span>
-              <span className="text-[10px] font-bold text-amber-600 block">Ajustes & Trocas</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-center space-y-1">
               <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider block">Baixa</span>
               <span className="text-2xl font-black text-emerald-900">{urgencyDistribution.baixa}</span>
-              <span className="text-[10px] font-bold text-emerald-600 block">Revisão / Rotina</span>
             </div>
           </div>
         </div>

@@ -25,7 +25,6 @@ import { getBoatCode } from '../utils/boatUtils';
 import { chamadoDB, boatDB, clientDB, maintenanceDB, mecanicoDB } from '../db';
 import MaintenanceModal from './pecas/MaintenanceModal';
 import UserAvatarMenu from './header/UserAvatarMenu';
-import SystemSettingsModal from './header/SystemSettingsModal';
 
 interface ChamadosPageProps {
   onNavigateToOS?: () => void;
@@ -45,7 +44,6 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
 
   // Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedChamadoForAnalysis, setSelectedChamadoForAnalysis] = useState<Chamado | null>(null);
   const [analiseNotes, setAnaliseNotes] = useState<string>('');
   const [analiseMecanicoId, setAnaliseMecanicoId] = useState<string>('');
@@ -186,7 +184,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
       tituloChamado: `[${chamado.codigoChamado}] ${chamado.titulo}`,
       descricaoServico: `Chamado de Origem: ${chamado.codigoChamado}\nSolicitante: ${chamado.solicitanteNome}\n\nDescrição da Avaria:\n${chamado.descricaoAvaria}${analiseNotes ? `\n\nObservações da Análise:\n${analiseNotes}` : ''}`,
       chamadoId: chamado.id,
-      status: 'fila_espera',
+      status: 'aguardando_orcamento',
       mecanico: analiseMecanicoId, // Pass assigned mechanic if any
       dataChamado: new Date().toISOString().split('T')[0],
       horasMotorAtual: boat?.horasMotor || 0
@@ -274,15 +272,7 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
               <Search className="w-4 h-4" />
             </button>
 
-            <button 
-              onClick={() => setIsSettingsOpen(true)}
-              className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
-              title="Configurações do Sistema"
-            >
-              <Filter className="w-4 h-4" />
-            </button>
-
-            <button 
+            <button
               onClick={loadData}
               className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-2xs flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
               title="Atualizar Chamados"
@@ -658,10 +648,10 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
                     onChange={(e) => setNewChamadoForm(prev => ({ ...prev, urgencia: e.target.value as any }))}
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none"
                   >
-                    <option value="baixa">Baixa (Rotina)</option>
-                    <option value="media">Média (Ajuste)</option>
-                    <option value="alta">Alta (Impedimento parcial)</option>
-                    <option value="critica">Crítica (Fora de Operação)</option>
+                    <option value="baixa">Baixa</option>
+                    <option value="media">Média</option>
+                    <option value="alta">Alta</option>
+                    <option value="critica">Crítica</option>
                   </select>
                 </div>
               </div>
@@ -966,15 +956,6 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
           editingItem={prefilledOSData}
           embarcacoes={embarcacoes}
           mecanicos={mecanicos}
-          onRefresh={loadData}
-        />
-      )}
-
-      {/* System Settings & Horímetro Modal */}
-      {isSettingsOpen && (
-        <SystemSettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
           onRefresh={loadData}
         />
       )}

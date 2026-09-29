@@ -5,7 +5,7 @@ import { maintenanceDB } from '../../db';
 
 interface MaintenanceTransitionModalProps {
   item: Manutencao;
-  targetStatus: 'orcamento_pendente' | 'em_andamento';
+  targetStatus: 'aguardando_aprovacao' | 'em_execucao';
   mecanicos: Mecanico[];
   onClose: () => void;
   onSuccess: () => void;
@@ -26,20 +26,20 @@ export default function MaintenanceTransitionModal({
   const [descricao, setDescricao] = useState(item.descricaoServico || '');
 
   // Status mapping
-  const title = targetStatus === 'orcamento_pendente'
+  const title = targetStatus === 'aguardando_aprovacao'
     ? 'Avançar para Orçamento'
     : 'Iniciar Manutenção';
 
   const getSubTitle = () => {
-    if (targetStatus === 'orcamento_pendente') return 'Defina o mecânico ou a oficina responsável para seguir.';
+    if (targetStatus === 'aguardando_aprovacao') return 'Defina o mecânico ou a oficina responsável para seguir.';
     return 'Confirme o orçamento e aprovação para iniciar o serviço.';
   };
 
   const isFormValid = () => {
-    if (targetStatus === 'orcamento_pendente') {
+    if (targetStatus === 'aguardando_aprovacao') {
       return mecanico.length > 0;
     }
-    if (targetStatus === 'em_andamento') {
+    if (targetStatus === 'em_execucao') {
       // Se não precisa de orçamento (zero) e foi aprovado, ou se tem valor
       return orcamentoStatus === 'aprovado' && mecanico.length > 0;
     }
@@ -61,7 +61,7 @@ export default function MaintenanceTransitionModal({
 
       if (mecanico) updates.mecanico = mecanico;
       if (descricao) updates.descricaoServico = descricao;
-      if (targetStatus === 'em_andamento') {
+      if (targetStatus === 'em_execucao') {
         updates.orcamento = orcamento;
         updates.orcamentoStatus = orcamentoStatus;
       }
@@ -82,8 +82,8 @@ export default function MaintenanceTransitionModal({
         {/* Header */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${targetStatus === 'orcamento_pendente' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
-              {targetStatus === 'orcamento_pendente' ? <DollarSign className="w-5 h-5" /> : <Wrench className="w-5 h-5" />}
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${targetStatus === 'aguardando_aprovacao' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+              {targetStatus === 'aguardando_aprovacao' ? <DollarSign className="w-5 h-5" /> : <Wrench className="w-5 h-5" />}
             </div>
             <div>
               <h2 className="text-[15px] font-black tracking-tight text-slate-800 uppercase">
@@ -128,7 +128,7 @@ export default function MaintenanceTransitionModal({
               </div>
             </div>
 
-            {targetStatus === 'em_andamento' && (
+            {targetStatus === 'em_execucao' && (
               <>
                 <div>
                   <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">

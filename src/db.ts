@@ -14,6 +14,8 @@ let memoryCatalogoEpis: CatalogoEpi[] = [];
 let memoryHistoricoEpis: HistoricoEPIMensal[] = [];
 let memoryRegistrosAtividades: any[] = [];
 
+export let isDbLoaded = false;
+export let isDbLoadAttempted = false;
 
 // Helper: Get admin JWT token for authenticated API calls
 export function getAdminToken(): string | null {
@@ -885,13 +887,19 @@ export async function loadFromRemote() {
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const statusRes = await fetch('/api/db/status', { headers });
-    if (!statusRes.ok) return { success: false, message: "Não foi possível verificar conexão com a VPS." };
+    if (!statusRes.ok) {
+        isDbLoadAttempted = true;
+        isDbLoaded = true;
+        return { success: false, message: "Não foi possível verificar conexão com a VPS." };
+    }
     const status = await statusRes.json();
     
     if (!status.connected) {
-      return { 
+      isDbLoadAttempted = true;
+      isDbLoaded = true;
+      return {
         connected: false,
-        success: false, 
+        success: false,
         vpsHost: status.vpsHost,
         message: status.error || "Banco de dados da VPS desconectado. O sistema operará sem dados."
       };
@@ -899,7 +907,11 @@ export async function loadFromRemote() {
 
     // Pull remote records
     const pullRes = await fetch('/api/db/pull', { headers });
-    if (!pullRes.ok) return { success: false, message: "Acesso de leitura remota falhou." };
+    if (!pullRes.ok) {
+        isDbLoadAttempted = true;
+        isDbLoaded = true;
+        return { success: false, message: "Acesso de leitura remota falhou." };
+    }
     const remoteData = await pullRes.json();
 
     memoryClients = remoteData.clients || [];
@@ -932,19 +944,24 @@ export async function loadFromRemote() {
       return m;
     });
 
-    return { 
+    isDbLoadAttempted = true;
+    isDbLoaded = true;
+
+    return {
       connected: true,
-      success: true, 
+      success: true,
       vpsHost: status.vpsHost,
       database: status.database,
-      message: "Dados carregados com sucesso da VPS!" 
+      message: "Dados carregados com sucesso da VPS!"
     };
   } catch (err: any) {
     console.error("loadFromRemote failure:", err);
-    return { 
+    isDbLoadAttempted = true;
+    isDbLoaded = true;
+    return {
       connected: false,
-      success: false, 
-      message: `Erro ao buscar dados na VPS: ${err.message || err}` 
+      success: false,
+      message: `Erro ao buscar dados na VPS: ${err.message || err}`
     };
   }
 }

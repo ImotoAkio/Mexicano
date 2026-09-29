@@ -214,19 +214,6 @@ export default function PecasKanbanPage() {
               </select>
             </div>
 
-            {/* Filtro de Urgência */}
-            <button 
-              onClick={() => setFilterUrgency(prev => prev === 'todos' ? 'alta' : 'todos')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                filterUrgency !== 'todos'
-                  ? 'bg-amber-50 text-amber-900 border-amber-300'
-                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5 text-slate-500" />
-              <span>{filterUrgency !== 'todos' ? `Filtrando: ${filterUrgency}` : 'Filtro Status'}</span>
-            </button>
-
             {/* Botão de Ação Primário Padronizado (Teal #186b77) */}
             <button
               onClick={() => handleOpenModal()}

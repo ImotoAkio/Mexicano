@@ -857,11 +857,41 @@ export default function SchedulesPage() {
       reconnectionAttempts: 5
     });
     
-    socket.on('marina_update', async () => {
+    socket.on('marina_update', async (payload: any) => {
       // Data changed in backend, re-fetch and update UI
       if (loadScheduleDataRef.current) {
         await loadScheduleDataRef.current();
       }
+
+      // Show notification toast for real-time updates
+      const action = payload?.action;
+      const reservation = payload?.reservation;
+      const boatLabel = reservation?.embarcacaoNome || reservation?.embarcacaoId || 'Embarcação';
+      const clientLabel = reservation?.clienteNome ? ` por ${reservation.clienteNome}` : '';
+      const messages: Record<string, { msg: string; type: 'success' | 'error' }> = {
+        new:     { msg: `📩 Nova reserva recebida: ${boatLabel}${clientLabel}`, type: 'success' },
+        checkin: { msg: `✅ Check-in confirmado: ${boatLabel}`, type: 'success' },
+        cancel:  { msg: `❌ Reserva cancelada: ${boatLabel}`, type: 'error' },
+        upsert:  { msg: `🔄 Reserva atualizada: ${boatLabel}`, type: 'success' },
+        delete:  { msg: `🗑️ Reserva removida`, type: 'error' },
+      };
+      const info = messages[action] || { msg: '🔔 Atualização no sistema recebida', type: 'success' as const };
+      showToast(info.msg, info.type);
+
+      // Play notification sound (Web Audio API beep)
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.5);
+      } catch {}
     });
 
     return () => {

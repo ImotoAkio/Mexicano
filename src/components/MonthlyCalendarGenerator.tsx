@@ -28,6 +28,10 @@ interface MonthlyCalendarGeneratorProps {
   onClose?: () => void;
   autoExport?: boolean;
   onExport?: (base64: string) => void;
+  // Make it usable by client dashboard
+  providedBoats?: Embarcacao[];
+  providedReservations?: any[];
+  providedClients?: Cliente[];
 }
 
 // Utility to get 1st and 2nd word from name
@@ -64,8 +68,11 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
-export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, onClose, autoExport, onExport }: MonthlyCalendarGeneratorProps) {
-  const [boats] = useState<Embarcacao[]>(() => [...boatDB.getAll()].sort((a, b) => a.nome.localeCompare(b.nome)));
+export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, onClose, autoExport, onExport, providedBoats, providedReservations, providedClients }: MonthlyCalendarGeneratorProps) {
+  const [boats] = useState<Embarcacao[]>(() => {
+    if (providedBoats) return [...providedBoats].sort((a, b) => a.nome.localeCompare(b.nome));
+    return [...boatDB.getAll()].sort((a, b) => a.nome.localeCompare(b.nome));
+  });
   const [selectedBoatId, setSelectedBoatId] = useState(initialBoatId || boats[0]?.id || '');
   const [logoImage, setLogoImage] = useState<HTMLImageElement | null>(null);
 
@@ -176,9 +183,11 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
     }
   }, [initialBoatId]);
 
+  const provResStr = providedReservations ? JSON.stringify(providedReservations.map(r => ({ id: r.id, status: r.status, data: r.data }))) : '';
+
   useEffect(() => {
     loadEvents();
-  }, [currentDate]);
+  }, [currentDate, provResStr]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -197,18 +206,27 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
       // Fetch local reservations in the 38-day range
       const dStart = new Date(startOfGrid);
       const dEnd = new Date(startOfGrid);
-      dEnd.setDate(dEnd.getDate() + 38);
+      dEnd.setDate(dEnd.getDate() + 41);
       const startStr = dStart.toISOString().split('T')[0];
       const endStr = dEnd.toISOString().split('T')[0];
 
-      const localResRange = reservationDB.getAll().filter(r => 
-        (r.status === 'confirmado' || r.status === 'agendado') && 
-        r.data >= startStr && 
-        r.data <= endStr
-      );
+      let localResRange;
+      if (providedReservations) {
+        localResRange = providedReservations.filter(r =>
+          (r.status === 'confirmado' || r.status === 'agendado') &&
+          r.data >= startStr &&
+          r.data <= endStr
+        );
+      } else {
+        localResRange = reservationDB.getAll().filter(r =>
+          (r.status === 'confirmado' || r.status === 'agendado') &&
+          r.data >= startStr &&
+          r.data <= endStr
+        );
+      }
 
-      const boatsList = boatDB.getAll();
-      const clientsList = clientDB.getAll();
+      const boatsList = providedBoats || boatDB.getAll();
+      const clientsList = providedClients || clientDB.getAll();
       
       // Converte apenas as reservas locais (sem precisar consultar o Google Calendar)
       const mappedLocalEvents: CalendarEvent[] = localResRange.map(res => {
