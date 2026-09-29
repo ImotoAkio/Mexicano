@@ -2,6 +2,7 @@
 import autoTable from 'jspdf-autotable';
 // @ts-ignore
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
+import logoValeSrc from '../assets/images/logo_vale.png';
 
 interface PDFData {
   data: string;          // DD / MM / YYYY
@@ -256,10 +257,12 @@ export async function generateAvisoSaidaPDF(
 }
 
 
+
 export async function generateOrcamentoOSPDF(
   manutencao: any,
   embarcacao?: any,
-  cliente?: any
+  cliente?: any,
+  silentMode: boolean = false
 ) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -270,19 +273,31 @@ export async function generateOrcamentoOSPDF(
   const leftMargin = 20;
   let currentY = 15;
 
+  try {
+    const logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.src = logoValeSrc;
+      img.onload = () => resolve(img);
+      img.onerror = (err) => reject(err);
+    });
+    doc.addImage(logoImg, 'PNG', leftMargin, 8, 25, 25);
+  } catch (err) {
+    console.error('Erro ao carregar a logo para o PDF:', err);
+  }
+
   // Header Title
   doc.setFont('Helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(24, 107, 119); // #186b77
-  doc.text('VILA NÁUTICA - ORÇAMENTO DE MANUTENÇÃO', leftMargin, currentY);
+  doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0); // Black
+  doc.text('VALE ADMINISTRADORA NÁUTICA - ORÇAMENTO', leftMargin + 30, currentY + 4);
 
-  currentY += 7;
+  currentY += 10;
   doc.setFontSize(10);
   doc.setTextColor(100, 116, 139);
   const osCode = manutencao.codigoOS || ('OS-' + (manutencao.id || '').substring(0, 6).toUpperCase());
-  doc.text(`Documento Oficial • Ordem de Serviço: ${osCode}`, leftMargin, currentY);
+  doc.text(`Documento Oficial • Ordem de Serviço: ${osCode}`, leftMargin + 30, currentY);
 
-  currentY += 5;
+  currentY += 10;
   doc.setLineWidth(0.5);
   doc.setDrawColor(226, 232, 240);
   doc.line(leftMargin, currentY, 190, currentY);
@@ -310,6 +325,15 @@ export async function generateOrcamentoOSPDF(
   boxY += 5.5;
   doc.text(`Proprietário / Cliente: ${cliente?.nome || 'Proprietário Registrado'}`, leftMargin + 5, boxY);
 
+  // Show all cotistas if many
+  const isCotasInfo = (embarcacao?.donos?.length || embarcacao?.cotistas?.length) > 1;
+  const nomesCotistas = isCotasInfo ? 
+    (embarcacao.cotistas ? embarcacao.cotistas.map((c:any) => c.nome || '').join(', ') : 'Vários (ver cadastro)') : '';
+  if (isCotasInfo) {
+    boxY += 5.5;
+    doc.text(`Cotistas: ${nomesCotistas.substring(0, 75)}${nomesCotistas.length > 75 ? '...' : ''}`, leftMargin + 5, boxY);
+  }
+
   boxY += 5.5;
   doc.text(`Data de Abertura: ${manutencao.dataChamado ? new Date(manutencao.dataChamado).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')} • Horímetro Entrada: ${manutencao.horasMotorAtual || embarcacao?.horasMotor || 0} h`, leftMargin + 5, boxY);
 
@@ -318,7 +342,7 @@ export async function generateOrcamentoOSPDF(
   // OS Details & Title
   doc.setFont('Helvetica', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
+  doc.setTextColor(0, 0, 0);
   doc.text(`Descrição do Serviço / Chamado: ${manutencao.tituloChamado || 'Manutenção Geral'}`, leftMargin, currentY);
 
   if (manutencao.descricaoServico) {
@@ -336,7 +360,7 @@ export async function generateOrcamentoOSPDF(
   // Table of Items / Parts
   doc.setFont('Helvetica', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(24, 107, 119);
+  doc.setTextColor(0, 0, 0);
   doc.text('Detalhamento das Peças & Materiais', leftMargin, currentY);
   currentY += 5;
 
@@ -390,25 +414,53 @@ export async function generateOrcamentoOSPDF(
 
   currentY += 5;
   doc.setLineWidth(0.5);
-  doc.setDrawColor(24, 107, 119);
+  doc.setDrawColor(0, 0, 0); // Black line
   doc.line(leftMargin, currentY, 190, currentY);
 
   currentY += 8;
 
-  // Total Display Box
-  doc.setFillColor(240, 253, 250);
-  doc.roundedRect(120, currentY, 70, 16, 2, 2, 'F');
-  doc.setDrawColor(153, 246, 228);
-  doc.roundedRect(120, currentY, 70, 16, 2, 2, 'D');
+  const numCotistas = embarcacao?.donos?.length || embarcacao?.cotistas?.length || 1;
+  const isCotas = numCotistas > 1;
+  const valorPorCota = totalGeral / numCotistas;
 
-  doc.setFont('Helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(20, 83, 91);
-  doc.text('VALOR TOTAL:', 125, currentY + 6);
-  doc.setFontSize(12);
-  doc.text(totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), 185, currentY + 11, { align: 'right' });
+  const boxHeight = isCotas ? 28 : 16;
 
-  currentY += 28;
+  // Total Display Box (Grays)
+  doc.setFillColor(244, 244, 245); // zinc-100
+  doc.roundedRect(110, currentY, 80, boxHeight, 2, 2, 'F');
+  doc.setDrawColor(161, 161, 170); // zinc-400
+  doc.roundedRect(110, currentY, 80, boxHeight, 2, 2, 'D');
+
+  if (isCotas) {
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(82, 82, 91); // zinc-600
+    doc.text('CUSTO TOTAL:', 115, currentY + 6);
+    doc.text(totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), 185, currentY + 6, { align: 'right' });
+
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(`Dividido por ${numCotistas} cotistas`, 115, currentY + 13);
+
+    doc.setDrawColor(212, 212, 216); // zinc-300
+    doc.line(115, currentY + 16, 185, currentY + 16);
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0); // Black
+    doc.text('VALOR POR COTISTA:', 115, currentY + 23);
+    doc.setFontSize(12);
+    doc.text(valorPorCota.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), 185, currentY + 23, { align: 'right' });
+  } else {
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0); // Black
+    doc.text('VALOR TOTAL:', 115, currentY + 11);
+    doc.setFontSize(12);
+    doc.text(totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), 185, currentY + 11, { align: 'right' });
+  }
+
+  currentY += (boxHeight + 12);
 
   // Terms & Approval Signature
   doc.setFont('Helvetica', 'bold');
@@ -432,10 +484,12 @@ export async function generateOrcamentoOSPDF(
   doc.setTextColor(15, 23, 42);
   doc.text('Assinatura do Proprietário / Responsável', 105, currentY, { align: 'center' });
 
-  // Open PDF Blob URL
-  const pdfBlob = doc.output('blob');
-  const pdfUrl = URL.createObjectURL(pdfBlob);
-  window.open(pdfUrl, '_blank');
+  if (!silentMode) {
+    // Open PDF Blob URL
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    window.open(pdfUrl, '_blank');
+  }
 
   return doc;
 }
