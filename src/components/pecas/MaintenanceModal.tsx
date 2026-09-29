@@ -1,26 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  X, 
-  Wrench, 
-  Plus, 
-  Trash2, 
-  Send, 
-  Check, 
-  Calendar, 
-  FileText, 
-  DollarSign, 
-  UserPlus, 
-  Tag, 
-  Ship, 
-  Clock, 
+import {
+  X,
+  Wrench,
+  Plus,
+  Trash2,
+  Send,
+  Check,
+  Calendar,
+  FileText,
+  DollarSign,
+  UserPlus,
+  Tag,
+  Ship,
+  Clock,
   AlertCircle,
   Building2,
-  Sparkles
+  Sparkles,
+  ArrowRight,
+  ChevronLeft,
+  ClipboardCheck,
+  MessageCircle,
+  CheckCircle
 } from 'lucide-react';
 import Select from 'react-select';
 import { Embarcacao, Manutencao, Chamado, Mecanico, TipoManutencao, PecaItem } from '../../types';
 import { getBoatCode } from '../../utils/boatUtils';
-import { maintenanceDB, chamadoDB, mecanicoDB, tipoManutencaoDB } from '../../db';
+import { maintenanceDB, chamadoDB, mecanicoDB, tipoManutencaoDB, boatDB } from '../../db';
 import { generateOrcamentoOSPDF } from '../../utils/pdfGenerator';
 
 interface MaintenanceModalProps {
@@ -51,12 +56,16 @@ export default function MaintenanceModal({
   const [newTipoForm, setNewTipoForm] = useState({ nome: '', descricao: '' });
 
   const [showAddMecanicoModal, setShowAddMecanicoModal] = useState(false);
-  const [newMecanicoForm, setNewMecanicoForm] = useState({ 
-    nome: '', 
-    tipo: 'interno' as 'interno' | 'oficina_externa', 
-    telefone: '', 
-    cnpj: '' 
+  const [newMecanicoForm, setNewMecanicoForm] = useState({
+    nome: '',
+    tipo: 'interno' as 'interno' | 'oficina_externa',
+    telefone: '',
+    cnpj: ''
   });
+
+  // Budget review step — shown after filling budget on an "aguardando_orcamento" OS
+  const [showReviewStep, setShowReviewStep] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Main Form Data State
   const [formData, setFormData] = useState<Partial<Manutencao>>({
@@ -84,6 +93,21 @@ export default function MaintenanceModal({
   const isEditing = useMemo(() => {
     return Boolean(editingItem && editingItem.id && maintenanceDB.getAll().some(m => m.id === editingItem.id));
   }, [editingItem, isOpen]);
+
+  // When creating a new OS (not editing), show a simplified form: no parts table, no pricing, no SLA dates
+  const isSimpleCreation = !isEditing;
+
+  const handleDelete = async () => {
+    if (editingItem?.id && window.confirm('Tem certeza que deseja apagar esta OS permanentemente? A ação não pode ser desfeita.')) {
+      try {
+        await maintenanceDB.delete(editingItem.id);
+        onRefresh();
+        onClose();
+      } catch (e) {
+        console.error('Erro ao excluir a OS:', e);
+      }
+    }
+  };
 
   // Load lists
   const refreshAuxData = () => {
@@ -312,7 +336,7 @@ export default function MaintenanceModal({
   };
 
   const handleSave = async (e?: React.FormEvent) => {
-    e.preventDefault();
+    e?.preventDefault();
     if (!formData.embarcacaoId) {
       alert("Selecione uma embarcação.");
       return;
@@ -341,33 +365,44 @@ export default function MaintenanceModal({
       }
     }
 
+    // INTERCEPT: When formulating budget on an OS that's in aguardando_orcamento, show review first
+    if (isEditing && editingItem?.status === 'aguardando_orcamento' && !showReviewStep) {
+      setShowReviewStep(true);
+      return;
+    }
+
+    await executeSave();
+  };
+
+  // Actual save logic — called after review confirmation or directly for non-budget edits
+  const executeSave = async (overrideData?: Partial<typeof formData>) => {
+    const dataToSave = overrideData ? { ...formData, ...overrideData } : formData;
+
+    setIsSaving(true);
     try {
       if (isEditing && editingItem?.id) {
-        await maintenanceDB.update(editingItem.id, formData);
+        await maintenanceDB.update(editingItem.id, dataToSave);
 
-        if (formData.status === 'concluido' && editingItem.status !== 'concluido') {
-           // Lazy finance generation is handled directly here if changed in modal
-           await generateLazyFinance(formData.id, formData);
+        if (dataToSave.status === 'concluido' && editingItem.status !== 'concluido') {
+           await generateLazyFinance(dataToSave.id, dataToSave);
         }
       } else {
-        const created = await maintenanceDB.create(formData as any);
+        const created = await maintenanceDB.create(dataToSave as any);
+        if (created.embarcacaoId) {
+          boatDB.update(created.embarcacaoId, { emManutencao: true });
+        }
         if (created.status === 'concluido') {
            await generateLazyFinance(created.id, created);
         }
 
-        
-
-        if (formData.chamadoId) {
-          const chamado = chamadoDB.getById(formData.chamadoId);
+        if (dataToSave.chamadoId) {
+          const chamado = chamadoDB.getById(dataToSave.chamadoId);
           if (chamado) {
             const newOsIds = [...(chamado.osIds || [])];
             if (!newOsIds.includes(created.id)) {
               newOsIds.push(created.id);
             }
-            // For now, let's mark it as os_gerada automatically if it was pendente or em_analise.
-            // But doing it partially allows 1:N. We will set it to 'os_gerada' here to keep old behavior,
-            // or the user can manually re-open/add more in ChamadosPage.
-            chamadoDB.update(formData.chamadoId, { osIds: newOsIds, status: 'os_gerada' });
+            chamadoDB.update(dataToSave.chamadoId, { osIds: newOsIds, status: 'os_gerada' });
           }
         }
       }
@@ -375,6 +410,35 @@ export default function MaintenanceModal({
       onClose();
     } catch (err: any) {
       alert(err.message || 'Erro ao salvar manutenção');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save and advance to aguardando_aprovacao
+  const handleConfirmAndAdvance = async (sendWhatsApp: boolean) => {
+    setIsSaving(true);
+    let whatsappSuccess = false;
+
+    if (sendWhatsApp) {
+      whatsappSuccess = await enviarWhatsApp(true);
+      if (!whatsappSuccess) {
+        setIsSaving(false);
+        return; // Don't advance if WhatsApp failed to send
+      }
+    }
+
+    const advancedData = {
+      ...formData,
+      status: 'aguardando_aprovacao' as const,
+      orcamentoStatus: 'enviado' as const,
+      whatsappStatus: sendWhatsApp && whatsappSuccess ? 'orcamento_enviado' as const : formData.whatsappStatus
+    };
+
+    await executeSave(advancedData);
+
+    if (sendWhatsApp && whatsappSuccess) {
+      alert("Orçamento salvo e enviado no grupo de WhatsApp com sucesso!");
     }
   };
 
@@ -401,42 +465,69 @@ export default function MaintenanceModal({
     return encodeURIComponent(texto);
   };
 
-  const enviarWhatsApp = async () => {
+  const enviarWhatsApp = async (silentMode = false) => {
     const boat = embarcacoes.find(b => b.id === formData.embarcacaoId);
     if (!boat?.whatsappGroupId) {
       alert("Embarcação não possui grupo de WhatsApp cadastrado.");
-      return;
+      return false;
     }
 
     const texto = gerarTextoWhatsApp();
+
+    // Gerar PDF em base64 (sem abrir nova aba, silentMode = true no gerador)
+    let pdfBase64 = "";
+    try {
+      // Mock do objeto cliente (não temos acesso direto fácil se não for buscar, mas o pdfGenerator lida bem sem ele ou usa fallback)
+      const mockCliente = { nome: 'Proprietário Registrado' };
+      const pdfDoc = await generateOrcamentoOSPDF(formData, boat, mockCliente, true);
+      const dataUri = pdfDoc.output('datauristring');
+      // Remover prefixo "data:application/pdf;base64," se presente, o backend tbm limpa mas é bom garantir
+      pdfBase64 = dataUri;
+    } catch (e) {
+      console.warn("Erro ao gerar PDF para o WhatsApp:", e);
+    }
+
     try {
       const token = localStorage.getItem('admin_token');
+      const payload: any = {
+        number: boat.whatsappGroupId,
+        text: decodeURIComponent(texto)
+      };
+
+      if (pdfBase64) {
+        payload.media = pdfBase64;
+        payload.mimetype = 'application/pdf';
+        payload.fileName = formData.codigoOS ? `Orcamento_${formData.codigoOS}.pdf` : 'Orcamento_OS.pdf';
+      }
+
       const response = await fetch('/api/evolution/send-message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          number: boat.whatsappGroupId,
-          text: decodeURIComponent(texto)
-        })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
         setFormData(prev => ({ ...prev, whatsappStatus: 'orcamento_enviado' }));
-        if (isEditing && editingItem?.id) {
+        if (isEditing && editingItem?.id && !silentMode) {
           await maintenanceDB.update(editingItem.id, { whatsappStatus: 'orcamento_enviado' });
         }
-        alert("Orçamento enviado no grupo de WhatsApp com sucesso!");
-        onRefresh();
+        if (!silentMode) {
+          alert("Orçamento (PDF + Detalhes) enviado no grupo de WhatsApp com sucesso!");
+          onRefresh();
+        }
+        return true;
       } else {
         const errJson = await response.json().catch(() => ({}));
         alert(errJson.message || "Falha ao enviar mensagem.");
+        return false;
       }
     } catch (e) {
       console.error(e);
       alert("Erro ao enviar mensagem.");
+      return false;
     }
   };
 
@@ -444,7 +535,7 @@ export default function MaintenanceModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200/80 font-sans">
+      <div className="relative bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden border border-slate-200/80 font-sans">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
@@ -455,7 +546,7 @@ export default function MaintenanceModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-extrabold text-slate-900">
-                  {isEditing ? 'Editar Ordem de Serviço (OS)' : 'Nova Ordem de Serviço (OS)'}
+                  {isEditing ? 'Editar Ordem de Serviço (OS)' : 'Abertura de Ordem de Serviço'}
                 </h2>
                 {formData.codigoOS && (
                   <span className="font-mono text-xs font-black bg-[#186b77] text-white px-2 py-0.5 rounded-md">
@@ -464,7 +555,7 @@ export default function MaintenanceModal({
                 )}
               </div>
               <p className="text-xs text-slate-500 font-medium">
-                {isEditing ? 'Gerencie a manutenção, orçamento e baixa técnica da OS.' : 'Registre e encaminhe uma nova manutenção.'}
+                {isEditing ? 'Gerencie a manutenção, orçamento e baixa técnica da OS.' : 'Registre o problema e encaminhe para avaliação técnica.'}
               </p>
             </div>
           </div>
@@ -547,11 +638,11 @@ export default function MaintenanceModal({
             {/* BLOCO 2: TIPO DE MANUTENÇÃO & ESTÁGIO */}
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4">
               <h3 className="text-xs font-black text-[#186b77] uppercase tracking-wider flex items-center gap-2">
-                <Tag className="w-4 h-4" /> 2. Tipo de Serviço & Estágio Kanban
+                <Tag className="w-4 h-4" /> 2. Tipo de Serviço {!isSimpleCreation && '& Estágio Kanban'}
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                
+              <div className={`grid grid-cols-1 ${!isSimpleCreation ? 'md:grid-cols-2' : ''} gap-4`}>
+
                 {/* Tipo de Manutenção Select + Add Button */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
@@ -573,8 +664,8 @@ export default function MaintenanceModal({
                     value={tipoOptions.find(o => o.value === formData.tipoManutencaoId || (formData.tipoManutencaoNome && o.label.toLowerCase() === formData.tipoManutencaoNome.toLowerCase()) || (formData.tituloChamado && o.label.toLowerCase() === formData.tituloChamado.toLowerCase())) || null}
                     onChange={(option) => {
                       if (option?.value) {
-                        setFormData(prev => ({ 
-                          ...prev, 
+                        setFormData(prev => ({
+                          ...prev,
                           tipoManutencaoId: option.value,
                           tipoManutencaoNome: option.label,
                           tituloChamado: option.label
@@ -587,7 +678,8 @@ export default function MaintenanceModal({
                   />
                 </div>
 
-                {/* Status / Estágio Select */}
+                {/* Status / Estágio Select — hidden when creating a new OS */}
+                {!isSimpleCreation && (
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Estágio Atual (Kanban)
@@ -611,23 +703,32 @@ export default function MaintenanceModal({
                     </p>
                   )}
                 </div>
+                )}
 
               </div>
+
+              {/* Hint for new OS */}
+              {isSimpleCreation && (
+                <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  A OS será criada no estágio "Aguardando Orçamento". O orçamento e peças são definidos após a avaliação técnica.
+                </p>
+              )}
             </div>
 
             {/* BLOCO 3: MECÂNICO / OFICINA RESPONSÁVEL & HORÍMETRO */}
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4">
               <h3 className="text-xs font-black text-[#186b77] uppercase tracking-wider flex items-center gap-2">
-                <Building2 className="w-4 h-4" /> 3. Mecânico / Oficina & Horímetros
+                <Building2 className="w-4 h-4" /> 3. {isSimpleCreation ? 'Responsável & Detalhes' : 'Mecânico / Oficina & Horímetros'}
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                
+              <div className={`grid grid-cols-1 ${isSimpleCreation ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
+
                 {/* Mecânico / Oficina Select + Add Button */}
                 <div className="space-y-1.5 md:col-span-1">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Mecânico / Oficina <span className="text-[9px] font-normal text-slate-400 normal-case">(Requerido p/ orçamento)</span>
+                      Mecânico / Oficina <span className="text-[9px] font-normal text-slate-400 normal-case">(Opcional na abertura)</span>
                     </label>
                     <button
                       type="button"
@@ -645,8 +746,8 @@ export default function MaintenanceModal({
                     onChange={(option) => {
                       if (option?.value) {
                         const m = option.mecanico;
-                        setFormData(prev => ({ 
-                          ...prev, 
+                        setFormData(prev => ({
+                          ...prev,
                           mecanico: option.value,
                           localizacao: m.tipo === 'oficina_externa' ? 'oficina_externa' : 'marina'
                         }));
@@ -654,6 +755,7 @@ export default function MaintenanceModal({
                     }}
                     placeholder="Pesquisar mecânico ou oficina..."
                     isSearchable={true}
+                    isClearable={isSimpleCreation}
                     styles={customSelectStyles}
                   />
                 </div>
@@ -673,7 +775,8 @@ export default function MaintenanceModal({
                   />
                 </div>
 
-                {/* Próxima Revisão */}
+                {/* Próxima Revisão — hidden during new creation */}
+                {!isSimpleCreation && (
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Próxima Revisão (Horas)
@@ -687,11 +790,12 @@ export default function MaintenanceModal({
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#186b77]"
                   />
                 </div>
+                )}
 
               </div>
 
               {/* Data Saida & Prazo Entrega */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div className={`grid grid-cols-1 ${!isSimpleCreation ? 'md:grid-cols-2' : ''} gap-4 pt-2`}>
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Data do Chamado / Entrada
@@ -704,6 +808,8 @@ export default function MaintenanceModal({
                   />
                 </div>
 
+                {/* Prazo Entrega — hidden during new creation */}
+                {!isSimpleCreation && (
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Prazo Previsto de Conclusão (SLA)
@@ -715,6 +821,7 @@ export default function MaintenanceModal({
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none"
                   />
                 </div>
+                )}
               </div>
 
               {/* Descrição dos Serviços */}
@@ -733,7 +840,8 @@ export default function MaintenanceModal({
 
             </div>
 
-            {/* BLOCO 4: TABELA DE PEÇAS & ORÇAMENTO */}
+            {/* BLOCO 4: TABELA DE PEÇAS & ORÇAMENTO — hidden during new OS creation */}
+            {!isSimpleCreation && (
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-black text-[#186b77] uppercase tracking-wider flex items-center gap-2">
@@ -843,6 +951,7 @@ export default function MaintenanceModal({
               </div>
 
             </div>
+            )}
 
             {/* CHECKBOX FINANCEIRO AO CONCLUIR */}
             {formData.status === 'concluido' && (
@@ -866,6 +975,218 @@ export default function MaintenanceModal({
           </form>
         </div>
 
+        {/* ═══════════════ REVIEW STEP OVERLAY ═══════════════ */}
+        {showReviewStep && (
+          <div className="absolute inset-0 z-20 flex flex-col bg-white rounded-3xl overflow-hidden animate-in slide-in-from-right-4 fade-in duration-200">
+
+            {/* Review Header */}
+            <div className="relative px-6 py-5 border-b shrink-0 flex items-center justify-between bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200/60">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-white border border-emerald-200 shadow-sm flex items-center justify-center text-emerald-600">
+                  <ClipboardCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
+                    Revisão do Orçamento
+                  </span>
+                  <h2 className="text-lg font-black text-slate-900 tracking-tight mt-1">
+                    Confirmar e Enviar para Aprovação
+                  </h2>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowReviewStep(false)}
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 hover:bg-white text-slate-400 hover:text-slate-600 transition-colors cursor-pointer border border-slate-200/50"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Review Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
+
+              {/* OS Code + Service */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="px-3 py-1 rounded-lg bg-teal-50 border border-teal-200 text-[#186b77] text-xs font-black font-mono">
+                  {formData.codigoOS || ('OS-' + (editingItem?.id || '').substring(0, 6).toUpperCase())}
+                </span>
+                <span className="text-sm font-extrabold text-slate-900">
+                  {formData.tituloChamado || formData.tipoManutencaoNome || 'Manutenção Geral'}
+                </span>
+              </div>
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Embarcação */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex gap-3">
+                  <div className="p-2 h-max bg-white rounded-xl shadow-xs text-blue-600 border border-slate-100">
+                    <Ship className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Embarcação</span>
+                    <p className="text-sm font-extrabold text-slate-900 mt-0.5">
+                      {getBoatCode(embarcacoes.find(b => b.id === formData.embarcacaoId))}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mecânico */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex gap-3">
+                  <div className="p-2 h-max bg-white rounded-xl shadow-xs text-amber-600 border border-slate-100">
+                    <Wrench className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Técnico / Oficina</span>
+                    <p className="text-sm font-extrabold text-slate-900 mt-0.5">
+                      {mecanicosList.find(m => m.id === formData.mecanico)?.nome || 'Não definido'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Prazo */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex gap-3">
+                  <div className="p-2 h-max bg-white rounded-xl shadow-xs text-indigo-500 border border-slate-100">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Prazo de Entrega</span>
+                    <p className="text-sm font-extrabold text-slate-900 mt-0.5">
+                      {formData.prazoEntrega ? formData.prazoEntrega.split('-').reverse().join('/') : 'Não definido'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Valor Repassado */}
+                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex gap-3">
+                  <div className="p-2 h-max bg-white rounded-xl shadow-xs text-emerald-600 border border-emerald-100">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-emerald-600 tracking-wider">Valor Repassado ao Cliente</span>
+                    <p className="text-lg font-black text-emerald-900 mt-0.5">
+                      {(formData.orcamento || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Peças table */}
+              {formData.pecas && formData.pecas.length > 0 && (
+                <div>
+                  <h3 className="text-xs flex items-center gap-1.5 font-extrabold text-slate-800 uppercase tracking-tight mb-2">
+                    <CheckCircle className="w-3.5 h-3.5 text-slate-400" />
+                    Itens do Orçamento ({formData.pecas.length})
+                  </h3>
+                  <div className="border border-slate-200/80 rounded-xl overflow-hidden bg-white">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                          <th className="py-2.5 px-4 w-1/2">Item / Peça / Serviço</th>
+                          <th className="py-2.5 px-3 text-center w-16">Qtd</th>
+                          <th className="py-2.5 px-3 text-right">R$ Un.</th>
+                          <th className="py-2.5 px-4 text-right">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                        {formData.pecas.map((p, idx) => (
+                          <tr key={idx}>
+                            <td className="py-2.5 px-4">{p.nome || 'Item sem nome'}</td>
+                            <td className="py-2.5 px-3 text-center">{p.quantidade}</td>
+                            <td className="py-2.5 px-3 text-right">{(p.valorUnitario || 0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
+                            <td className="py-2.5 px-4 text-right font-black text-slate-900">
+                              {((p.quantidade || 0) * (p.valorUnitario || 0)).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="bg-slate-50 border-t-2 border-slate-200 border-dashed">
+                          <td colSpan={3} className="py-3 px-4 text-right font-extrabold text-slate-500 text-xs">Total Peças/Itens:</td>
+                          <td className="py-3 px-4 text-right font-black text-slate-900 text-sm">
+                            {(formData.pecas || []).reduce((acc, p) => acc + ((p.quantidade || 0) * (p.valorUnitario || 0)), 0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Descrição */}
+              {formData.descricaoServico && (
+                <div>
+                  <h3 className="text-xs flex items-center gap-1.5 font-extrabold text-slate-800 uppercase tracking-tight mb-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-slate-400" />
+                    Descrição do Serviço
+                  </h3>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-sm font-medium text-slate-600 whitespace-pre-wrap leading-relaxed">
+                    {formData.descricaoServico}
+                  </div>
+                </div>
+              )}
+
+              {/* Custo Interno (info only) */}
+              {formData.custo && formData.custo > 0 && (
+                <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-100 flex items-center gap-3">
+                  <Building2 className="w-4 h-4 text-amber-500 shrink-0" />
+                  <div className="text-xs">
+                    <span className="font-bold text-amber-800">Custo Interno (não aparece para o cliente): </span>
+                    <span className="font-black text-amber-900">
+                      {formData.custo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Status change notice */}
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex gap-3 items-start">
+                <ArrowRight className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+                <div className="text-xs text-blue-800">
+                  <p className="font-black mb-0.5">A OS será automaticamente avançada</p>
+                  <p className="font-medium opacity-80">
+                    De <strong>"Aguardando Orçamento"</strong> → <strong>"Aguardando Aprovação do Cliente"</strong>.
+                    O status do orçamento será marcado como <strong>"Enviado"</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Review Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 rounded-b-3xl">
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowReviewStep(false)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer border border-slate-200"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 inline mr-1" />
+                  Voltar e Editar
+                </button>
+
+                <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleConfirmAndAdvance(false)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-[#186b77] hover:bg-[#12555f] text-white text-xs font-black rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-60"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{isSaving ? 'Salvando...' : 'Salvar e Avançar'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleConfirmAndAdvance(true)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-60"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>{isSaving ? 'Enviando...' : 'Salvar e Enviar WhatsApp'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Footer Actions */}
         <div className="px-6 py-4 border-t border-slate-100 bg-white shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
 
@@ -888,7 +1209,7 @@ export default function MaintenanceModal({
 
                 <button
                   type="button"
-                  onClick={enviarWhatsApp}
+                  onClick={() => enviarWhatsApp(false)}
                   className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
                   title="Enviar os valores e itens pro grupo de WhatsApp do cliente"
                 >
@@ -901,6 +1222,16 @@ export default function MaintenanceModal({
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            {isEditing && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-600 transition-colors cursor-pointer mr-2 shrink-0"
+                title="Apagar Ordem de Serviço"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -914,7 +1245,9 @@ export default function MaintenanceModal({
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#186b77] hover:bg-[#12555f] text-white px-8 py-2.5 rounded-xl text-xs font-black shadow-sm transition-all active:scale-95 cursor-pointer"
             >
               <Check className="w-4 h-4" />
-              <span>{isEditing ? 'Salvar Ordem de Serviço' : 'Criar Ordem de Serviço'}</span>
+              <span>{isEditing
+                ? (editingItem?.status === 'aguardando_orcamento' ? 'Revisar Orçamento' : 'Salvar Ordem de Serviço')
+                : 'Abrir OS (Aguardando Orçamento)'}</span>
             </button>
           </div>
 

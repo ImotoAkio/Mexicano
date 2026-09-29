@@ -179,19 +179,28 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
       observacoesAnalise: analiseNotes || chamado.observacoesAnalise
     });
 
-    setPrefilledOSData({
+    const newOSData: Partial<Manutencao> = {
       embarcacaoId: chamado.embarcacaoId,
       tituloChamado: `[${chamado.codigoChamado}] ${chamado.titulo}`,
       descricaoServico: `Chamado de Origem: ${chamado.codigoChamado}\nSolicitante: ${chamado.solicitanteNome}\n\nDescrição da Avaria:\n${chamado.descricaoAvaria}${analiseNotes ? `\n\nObservações da Análise:\n${analiseNotes}` : ''}`,
       chamadoId: chamado.id,
       status: 'aguardando_orcamento',
       mecanico: analiseMecanicoId, // Pass assigned mechanic if any
-      dataChamado: new Date().toISOString().split('T')[0],
-      horasMotorAtual: boat?.horasMotor || 0
-    });
+      dataSaida: new Date().toISOString().split('T')[0], // Map to dataSaida
+      horasMotorAtual: boat?.horasMotor || 0,
+    };
 
-    setSelectedChamadoForAnalysis(null);
-    setShowOSModal(true);
+    try {
+      const createdOS = maintenanceDB.create(newOSData as Omit<Manutencao, 'id'>);
+      boatDB.update(chamado.embarcacaoId, { emManutencao: true });
+      alert(`✅ Ordem de Serviço gerada com sucesso!\n\nCódigo: ${createdOS.codigoOS}\nStatus: Aguardando Orçamento\n\nVá até o painel de peças e serviços para acompanhá-la.`);
+
+      setSelectedChamadoForAnalysis(null);
+      loadData();
+    } catch (err) {
+      console.error('Erro ao gerar OS:', err);
+      alert('Erro ao gerar Ordem de Serviço.');
+    }
   };
 
   const handleDescartarChamado = (chamado: Chamado) => {
