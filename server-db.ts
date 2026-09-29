@@ -2314,10 +2314,7 @@ async function updateBoatMaintenanceStatus(pool: any, boatId: string) {
      FROM Manutencoes
      WHERE embarcacaoId = ?
        AND status NOT IN ('concluido', 'cancelado')
-       AND (
-         urgencia IN ('alta', 'critica')
-         OR status IN ('em_andamento', 'na_oficina', 'aguardando_pecas')
-       )`,
+       `,
     [boatId]
   );
   const activeCount = (rows as any[])[0]?.activeCount || 0;
