@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, DollarSign, CheckCircle, AlertTriangle } from 'lucide-react';
 import { maintenanceDB } from '../../db';
 import { Manutencao } from '../../types';
@@ -20,74 +20,63 @@ export default function MaintenanceCheckoutModal({ item, onClose, onSuccess }: M
   const [horasMotorAtual, setHorasMotorAtual] = useState<number>(item.horasMotorAtual || 0);
   const [loading, setLoading] = useState(false);
 
+  // New fields
+  const [planoContasId, setPlanoContasId] = useState("");
+  const [centroCustoId, setCentroCustoId] = useState("");
+  const [contaBancariaId, setContaBancariaId] = useState("");
+
+  const [planosContas, setPlanosContas] = useState<any[]>([]);
+  const [centrosCusto, setCentrosCusto] = useState<any[]>([]);
+  const [contasBancarias, setContasBancarias] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchFinanceData = async () => {
+      const token = localStorage.getItem('token') || localStorage.getItem('admin_token');
+      const headers = { 'Authorization': `Bearer ${token}` };
+      try {
+        const [resPlanos, resCentros, resContas] = await Promise.all([
+          fetch('/api/financeiro/planos-contas', { headers }),
+          fetch('/api/financeiro/centros-custo', { headers }),
+          fetch('/api/financeiro/contas-bancarias', { headers })
+        ]);
+        if (resPlanos.ok) setPlanosContas(await resPlanos.json());
+        if (resCentros.ok) setCentrosCusto(await resCentros.json());
+        if (resContas.ok) setContasBancarias(await resContas.json());
+      } catch (err) {
+        console.error('Erro ao buscar dados financeiros:', err);
+      }
+    };
+    fetchFinanceData();
+  }, []);
+
   const handleSave = async () => {
     if (!horasMotorAtual || horasMotorAtual <= 0) {
       alert("Por favor, preencha o horímetro atual antes de finalizar a OS.");
       return;
     }
 
+    if (!planoContasId) {
+      alert("Por favor, selecione o Plano de Contas.");
+      return;
+    }
+
+    if (!contaBancariaId) {
+      alert("Por favor, selecione a Conta Bancária.");
+      return;
+    }
+
     setLoading(true);
     try {
-      
+
       await maintenanceDB.update(item.id, {
         status: 'concluido',
         horasMotorAtual,
         gerarFinanceiro,
-        valorRepassado: valor
+        valorRepassado: valor,
+        planoContasId,
+        centroCustoId,
+        contaBancariaId
       });
-      
-      const token = localStorage.getItem('admin_token');
-      const generatedCodigoOS = item.codigoOS || `OS-${Date.now()}`;
-      const itemData = {
-        ...item,
-        status: 'concluido',
-        horasMotorAtual,
-        gerarFinanceiro,
-        orcamento: valor // Map valor to budget logic since valorRepassado overrides it here contextually
-      };
-
-      // 1. Gera Despesa se houver Custo Interno pago a terceiro
-      if (itemData.custo && itemData.custo > 0 && itemData.mecanico) {
-        const transacaoDespesa = {
-          id: `fin_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-          tipo: 'despesa',
-          categoria: 'Mão de Obra / Serviços Terceirizados',
-          valor: itemData.custo,
-          descricao: `Serviço Terceirizado: ${itemData.tipoManutencaoNome || itemData.tituloChamado || 'Manutenção'} - ${generatedCodigoOS}`,
-          fornecedorId: itemData.mecanico,
-          status: 'lancado',
-          dataVencimento: new Date().toISOString().split('T')[0],
-          empresa: 'Mexicano',
-          embarcacaoId: itemData.embarcacaoId,
-          createdAt: new Date().toISOString()
-        };
-        await fetch('/api/financeiro/transacoes/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ action: 'upsert', data: transacaoDespesa })
-        }).catch(e => console.error('Erro na geração de despesa:', e));
-      }
-
-      // 2. Gera Receita se estiver assinalado gerarFinanceiro
-      if (itemData.gerarFinanceiro && itemData.orcamento && itemData.orcamento > 0) {
-        const transacaoReceita = {
-          id: `fin_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-          tipo: 'receita',
-          categoria: 'Manutenção',
-          valor: itemData.orcamento,
-          descricao: `OS Concluída: ${itemData.tipoManutencaoNome || itemData.tituloChamado || 'Manutenção'} - ${generatedCodigoOS}`,
-          status: 'lancado',
-          dataVencimento: new Date().toISOString().split('T')[0],
-          empresa: 'Mexicano',
-          embarcacaoId: itemData.embarcacaoId,
-          createdAt: new Date().toISOString()
-        };
-        await fetch('/api/financeiro/transacoes/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ action: 'upsert', data: transacaoReceita })
-        }).catch(e => console.error('Erro na geração de receita:', e));
-      }
 
       onSuccess();
       onClose();
@@ -129,7 +118,7 @@ export default function MaintenanceCheckoutModal({ item, onClose, onSuccess }: M
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
           <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
@@ -164,9 +153,9 @@ export default function MaintenanceCheckoutModal({ item, onClose, onSuccess }: M
                 <p className="text-xs text-slate-500 font-medium mt-0.5">Enviar cobrança para o Cliente ou Cotistas</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={gerarFinanceiro} 
+                <input
+                  type="checkbox"
+                  checked={gerarFinanceiro}
                   onChange={(e) => setGerarFinanceiro(e.target.checked)}
                   className="sr-only peer"
                 />
@@ -192,7 +181,7 @@ export default function MaintenanceCheckoutModal({ item, onClose, onSuccess }: M
                 </div>
               </div>
             )}
-            
+
             {!gerarFinanceiro && (
               <div className="bg-slate-100 p-3 rounded-lg border border-slate-200 border-dashed text-center">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
@@ -200,20 +189,70 @@ export default function MaintenanceCheckoutModal({ item, onClose, onSuccess }: M
                 </span>
               </div>
             )}
+
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
+                  Plano de Contas *
+                </label>
+                <select
+                  value={planoContasId}
+                  onChange={(e) => setPlanoContasId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-[#186b77]/20 focus:border-[#186b77] transition-all outline-none"
+                >
+                  <option value="">Selecione...</option>
+                  {planosContas.map((p) => (
+                    <option key={p.id} value={p.id}>{p.codigoContabil ? `${p.codigoContabil} - ${p.descricao}` : p.descricao}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
+                  Centro de Custo
+                </label>
+                <select
+                  value={centroCustoId}
+                  onChange={(e) => setCentroCustoId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-[#186b77]/20 focus:border-[#186b77] transition-all outline-none"
+                >
+                  <option value="">Selecione...</option>
+                  {centrosCusto.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
+                  Conta Bancária *
+                </label>
+                <select
+                  value={contaBancariaId}
+                  onChange={(e) => setContaBancariaId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-[#186b77]/20 focus:border-[#186b77] transition-all outline-none"
+                >
+                  <option value="">Selecione...</option>
+                  {contasBancarias.map((cb) => (
+                    <option key={cb.id} value={cb.id}>{cb.nome + (cb.banco ? ' - ' + cb.banco : '')}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3 justify-end items-center">
-          <button 
-            type="button" 
+          <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2.5 text-sm font-bold text-slate-500 uppercase hover:bg-slate-200/50 rounded-xl transition-colors"
             disabled={loading}
           >
             Cancelar
           </button>
-          <button 
+          <button
             onClick={handleSave}
             disabled={loading || (gerarFinanceiro && valor <= 0)}
             className="flex items-center gap-2 px-6 py-2.5 bg-[#186b77] text-white text-sm font-bold uppercase rounded-xl hover:bg-[#186b77]/90 active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100"
