@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Package, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Package, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock, MessageCircle } from 'lucide-react';
 import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
 // @ts-ignore
@@ -96,6 +96,36 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [pixPayload, setPixPayload] = useState<string | null>(null);
   const [pixError, setPixError] = useState<string | null>(null);
   const [copiedPix, setCopiedPix] = useState(false);
+
+  // Pagamentos online (configurável pelo admin). Quando desabilitado, direciona ao WhatsApp do financeiro.
+  const FINANCEIRO_WHATSAPP = '558791229333';
+  const [pagamentosHabilitados, setPagamentosHabilitados] = useState(false);
+
+  useEffect(() => {
+    const loadPagamentosFlag = () => {
+      fetch('/api/config/public?chaves=pagamentos_online_habilitado', { cache: 'no-store' })
+        .then(res => res.json())
+        .then(data => setPagamentosHabilitados(data?.configs?.pagamentos_online_habilitado === '1'))
+        .catch(() => setPagamentosHabilitados(false));
+    };
+    loadPagamentosFlag();
+    const onVisible = () => { if (document.visibilityState === 'visible') loadPagamentosFlag(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', loadPagamentosFlag);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', loadPagamentosFlag);
+    };
+  }, [activeTab]);
+
+  const buildFinanceiroWhatsAppUrl = (descricao: string, valor?: number) => {
+    const valorFmt = valor !== undefined
+      ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(valor) || 0)
+      : '';
+    const nome = client?.nome ? `, sou ${client.nome}` : '';
+    const msg = `Olá${nome}. Gostaria de realizar o pagamento de: ${descricao}${valorFmt ? ` (${valorFmt})` : ''}.`;
+    return `https://wa.me/${FINANCEIRO_WHATSAPP}?text=${encodeURIComponent(msg)}`;
+  };
 
   const handleOpenPixPayment = async (t: any) => {
     setSelectedTransactionForPix(t);
@@ -1481,15 +1511,31 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
             return (
               <div className="space-y-3">
-                {financeTab === 'fatura' && currentList.length > 1 && currentList.length > 0 && (
-                  <button 
-                    onClick={handleOpenBulkPixPayment}
-                    className="w-full mb-2 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-[#B69D74]/20 to-[#B69D74]/10 hover:from-[#B69D74]/30 hover:to-[#B69D74]/20 border border-[#B69D74]/20 rounded-2xl text-xs font-bold uppercase tracking-widest text-[#B69D74] transition-all duration-300 shadow-lg"
-                  >
-                    <QrCode className="w-4 h-4" />
-                    Pagar Fatura Atual ({new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentList.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0))})
-                  </button>
-                )}
+                {financeTab === 'fatura' && currentList.length > 1 && currentList.length > 0 && (() => {
+                  const totalAtual = currentList.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0);
+                  const totalFmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAtual);
+                  const bulkClass = "w-full mb-2 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-[#B69D74]/20 to-[#B69D74]/10 hover:from-[#B69D74]/30 hover:to-[#B69D74]/20 border border-[#B69D74]/20 rounded-2xl text-xs font-bold uppercase tracking-widest text-[#B69D74] transition-all duration-300 shadow-lg";
+                  return pagamentosHabilitados ? (
+                    <button 
+                      onClick={handleOpenBulkPixPayment}
+                      className={bulkClass}
+                    >
+                      <QrCode className="w-4 h-4" />
+                      Pagar Fatura Atual ({totalFmt})
+                    </button>
+                  ) : (
+                    <a
+                      id="btn-pagar-fatura-whatsapp"
+                      href={buildFinanceiroWhatsAppUrl('Fatura atual', totalAtual)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={bulkClass}
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Pagar Fatura via Financeiro ({totalFmt})
+                    </a>
+                  );
+                })()}
 
                 {currentList.map(renderTransaction)}
 
@@ -2791,7 +2837,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </div>
 
             <div className="flex flex-col gap-3">
-              {selectedTransactionDetails.status !== 'pago' && (
+              {selectedTransactionDetails.status !== 'pago' && (pagamentosHabilitados ? (
                 <button 
                   onClick={() => {
                     setSelectedTransactionDetails(null);
@@ -2802,7 +2848,21 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   <QrCode className="w-4 h-4" />
                   Pagar com PIX
                 </button>
-              )}
+              ) : (
+                <a
+                  id="btn-pagar-transacao-whatsapp"
+                  href={buildFinanceiroWhatsAppUrl(
+                    `${selectedTransactionDetails.descricao || selectedTransactionDetails.categoria || 'lançamento'}${selectedTransactionDetails.dataVencimento ? ` - venc. ${selectedTransactionDetails.dataVencimento.split('-').reverse().join('/')}` : ''}`,
+                    selectedTransactionDetails.valor
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-emerald-400 transition-all shadow-lg"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Pagar via WhatsApp do Financeiro
+                </a>
+              ))}
               
               {selectedTransactionDetails.boletoUrl && (
                 <a 

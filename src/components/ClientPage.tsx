@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
-import { User, Plus, Search, Ship, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download, List, LayoutGrid, ChevronDown, Zap, Building2, Cake, Power, PowerOff, UserCheck, UserX } from 'lucide-react';
+import { User, Plus, Search, Ship, Edit2, Phone, Mail, FileText, Calendar, X, Check, ShieldAlert, Anchor, Percent, MapPin, Loader2, AlertTriangle, CheckCircle2, SlidersHorizontal, ArrowUpDown, RotateCcw, Eye, Database, Save, Download, List, LayoutGrid, ChevronDown, Zap, Building2, Cake, Power, PowerOff, UserCheck, UserX, Trash2 } from 'lucide-react';
 import ClientProfileModal from './ClientProfileModal';
 import ClientModal from './ClientModal';
 import ClientBirthdayModal, { parseClientBirthday } from './ClientBirthdayModal';
@@ -202,6 +202,9 @@ export default function ClientPage() {
   // Deactivate Confirmation Modal State (Replaces permanent deletion to preserve all records)
   const [deactivateConfirmation, setDeactivateConfirmation] = useState<{ id: string; name: string } | null>(null);
 
+  // Permanent Delete Confirmation Modal State
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string; name: string } | null>(null);
+
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -385,6 +388,18 @@ export default function ClientPage() {
       handleRefresh();
     } catch (err: any) {
       showToast(err.message || 'Erro ao desativar cliente', 'error');
+    }
+  };
+
+  const executeDelete = () => {
+    if (!deleteConfirmation) return;
+    try {
+      clientDB.permanentDelete(deleteConfirmation.id);
+      showToast(`Cliente "${deleteConfirmation.name}" excluído permanentemente.`);
+      setDeleteConfirmation(null);
+      handleRefresh();
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao excluir cliente', 'error');
     }
   };
 
@@ -925,6 +940,15 @@ export default function ClientPage() {
                               <PowerOff className="w-4 h-4" />
                             </button>
                           )}
+                          <button
+                            id={`delete-client-${client.id}`}
+                            onClick={() => setDeleteConfirmation({ id: client.id, name: client.nome })}
+                            className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Excluir Permanentemente"
+                            aria-label="Excluir cliente permanentemente"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1030,6 +1054,14 @@ export default function ClientPage() {
                           <PowerOff className="w-4 h-4" />
                         </button>
                       )}
+                      <button
+                        id={`delete-client-grid-${client.id}`}
+                        onClick={() => setDeleteConfirmation({ id: client.id, name: client.nome })}
+                        className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                        title="Excluir Permanentemente"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
@@ -1220,6 +1252,50 @@ export default function ClientPage() {
                 className="flex-1 rounded-lg bg-amber-600 hover:bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition-colors outline-none cursor-pointer shadow-xs"
               >
                 Sim, Desativar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent Delete Confirmation Modal */}
+      {deleteConfirmation && (
+        <div id="delete-confirm-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-100">
+            <div className="p-6">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600 mb-4">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-bold text-center text-slate-900">Excluir Permanentemente</h3>
+              <p className="mt-2 text-sm text-center text-slate-600">
+                Tem certeza que deseja excluir permanentemente o cliente <span className="font-bold text-slate-900">"{deleteConfirmation.name}"</span>?
+              </p>
+
+              <div className="mt-4 p-3.5 bg-rose-50/70 border border-rose-100 rounded-xl space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Ação Irreversível</span>
+                </div>
+                <p className="text-[11px] text-rose-800/90 leading-relaxed">
+                  O cadastro do cliente será removido permanentemente do sistema. Essa ação <strong>não pode ser desfeita</strong>. Se deseja apenas ocultar o cliente, use a opção "Desativar" ao invés de excluir.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 flex gap-3 border-t border-slate-100">
+              <button
+                id="cancel-delete"
+                onClick={() => setDeleteConfirmation(null)}
+                className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors outline-none cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                id="confirm-delete"
+                onClick={executeDelete}
+                className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-700 px-4 py-2 text-sm font-semibold text-white transition-colors outline-none cursor-pointer shadow-xs"
+              >
+                Sim, Excluir
               </button>
             </div>
           </div>

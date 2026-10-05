@@ -14,3 +14,7 @@ uploads/
 
 .agents/
 tsc_output.txt
+.claude/
+clientes.*
+parsed_clientes.json
+parse_final.cjs

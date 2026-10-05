@@ -56,6 +56,8 @@ export default function FinanceLancamentoDrawer({
   const [modoRepeticao, setModoRepeticao] = useState<'parcelado' | 'recorrente'>('parcelado');
   const [qtdParcelas, setQtdParcelas] = useState<number>(2);
   const [frequencia, setFrequencia] = useState<'mensal' | 'semanal'>('mensal');
+  const [qtdRecorrencias, setQtdRecorrencias] = useState<number>(12);
+  const [diaVencimentoRecorrente, setDiaVencimentoRecorrente] = useState<number>(new Date().getDate());
 
   // Reset form when drawer opens
   useEffect(() => {
@@ -81,6 +83,8 @@ export default function FinanceLancamentoDrawer({
         setModoRepeticao('parcelado');
         setQtdParcelas(2);
         setFrequencia('mensal');
+        setQtdRecorrencias(12);
+        setDiaVencimentoRecorrente(new Date().getDate());
       } else {
         setTipo('receita');
         setEmpresa(defaultEmpresa === 'Todos' ? 'Mexicano' : defaultEmpresa);
@@ -98,11 +102,42 @@ export default function FinanceLancamentoDrawer({
         setModoRepeticao('parcelado');
         setQtdParcelas(2);
         setFrequencia('mensal');
+        setQtdRecorrencias(12);
+        setDiaVencimentoRecorrente(new Date().getDate());
       }
     }
   }, [open, defaultEmpresa, editingItem]);
 
   const rawValue = parseFloat(valor.replace(/\./g,'').replace(',','.')) || 0;
+
+  // Helper: create a date for a given month offset with a fixed day,
+  // clamping to the last day of the target month when needed (e.g. day 31 in February → 28/29)
+  const buildDateWithFixedDay = (baseDate: Date, monthOffset: number, fixedDay: number): Date => {
+    const d = new Date(baseDate);
+    d.setMonth(d.getMonth() + monthOffset);
+    // Clamp fixedDay to the last day of the resulting month
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(fixedDay, lastDay));
+    return d;
+  };
+
+  // Generate Preview for recurring mode
+  const recorrencias = React.useMemo(() => {
+    if (!isRepetir || modoRepeticao !== 'recorrente' || qtdRecorrencias < 1 || rawValue <= 0) return [];
+
+    const baseDate = new Date(vencimento + 'T12:00:00');
+    const parts = [];
+
+    for (let i = 0; i < qtdRecorrencias; i++) {
+      const pDate = buildDateWithFixedDay(baseDate, i, diaVencimentoRecorrente);
+      parts.push({
+        numero: i + 1,
+        dataVencimento: pDate.toISOString().split('T')[0],
+        valor: rawValue
+      });
+    }
+    return parts;
+  }, [isRepetir, modoRepeticao, qtdRecorrencias, diaVencimentoRecorrente, vencimento, rawValue]);
 
   // Generate Preview
   const parcelas = React.useMemo(() => {
@@ -174,19 +209,22 @@ export default function FinanceLancamentoDrawer({
     } else if (isRepetir && modoRepeticao === 'recorrente') {
       const lancamentos = [];
       const baseDate = new Date(vencimento + 'T12:00:00');
-      const maxLancs = 12; // Example pre-generate 12 months
+      const grupoId = `GRP-REC-${Date.now()}`;
 
-      for(let i=0; i<maxLancs; i++) {
-         let pDate = new Date(baseDate);
-         pDate.setMonth(pDate.getMonth() + i);
+      for(let i=0; i<qtdRecorrencias; i++) {
+         const pDate = buildDateWithFixedDay(baseDate, i, diaVencimentoRecorrente);
          lancamentos.push({
             tipo, empresa, valor: rawValue,
             dataVencimento: pDate.toISOString().split('T')[0],
-            categoria: "", planoContasId, centroCustoId, descricao: descricao,
+            categoria: "", planoContasId, centroCustoId,
+            descricao: `${descricao} (${i + 1}/${qtdRecorrencias})`,
             clienteId: tipo === 'receita' ? clienteId : undefined,
             fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
             embarcacaoId, contaBancariaId,
             status: 'lancado' as const,
+            numeroParcela: i + 1,
+            totalParcelas: qtdRecorrencias,
+            grupoParcelamentoId: grupoId
          });
       }
       onSave(lancamentos as any);
@@ -550,6 +588,37 @@ export default function FinanceLancamentoDrawer({
                              </div>
                            )}
 
+                           {modoRepeticao === 'recorrente' && (
+                             <div className="space-y-4 mb-5">
+                               <div>
+                                 <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Quantidade de Recorrências</label>
+                                 <div className="flex bg-white rounded-xl border border-[#0071e3]/20 overflow-hidden w-32">
+                                   <button onClick={() => setQtdRecorrencias(Math.max(1, qtdRecorrencias - 1))} className="px-3 hover:bg-[#f5f5f7] font-semibold text-[#1d1d1f] flex-1 border-r border-[#0071e3]/10">-</button>
+                                   <span className="flex-1 text-center py-2 text-[14px] font-semibold text-[#1d1d1f]">{qtdRecorrencias}</span>
+                                   <button onClick={() => setQtdRecorrencias(Math.min(48, qtdRecorrencias + 1))} className="px-3 hover:bg-[#f5f5f7] font-semibold text-[#1d1d1f] flex-1 border-l border-[#0071e3]/10">+</button>
+                                 </div>
+                               </div>
+                               <div>
+                                 <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Dia de Vencimento Fixo</label>
+                                 <div className="flex items-center gap-3">
+                                   <select
+                                     value={diaVencimentoRecorrente}
+                                     onChange={e => setDiaVencimentoRecorrente(Number(e.target.value))}
+                                     className="w-24 bg-white border border-[#0071e3]/20 rounded-xl px-4 py-2.5 text-[14px] font-semibold text-[#1d1d1f] text-center focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30 appearance-none"
+                                   >
+                                     {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                                       <option key={d} value={d}>{String(d).padStart(2, '0')}</option>
+                                     ))}
+                                   </select>
+                                   <span className="text-[13px] text-[#86868b] font-medium">de cada mês</span>
+                                 </div>
+                                 <p className="text-[12px] text-[#86868b] mt-1.5 ml-1">
+                                   Meses com menos dias terão vencimento no último dia (ex: dia 31 em fevereiro → dia 28/29)
+                                 </p>
+                               </div>
+                             </div>
+                           )}
+
                            {/* Preview Render */}
                            {(parcelas.length > 0 && rawValue > 0 && modoRepeticao === 'parcelado') && (
                              <div className="bg-white rounded-xl border border-[#0071e3]/20 overflow-hidden">
@@ -576,11 +645,28 @@ export default function FinanceLancamentoDrawer({
                              </div>
                            )}
 
-                           {(modoRepeticao === 'recorrente' && rawValue > 0) && (
-                             <div className="mt-2 bg-[#fff8e5] border border-[#ffcc00]/30 rounded-xl p-4">
-                                <p className="text-[13px] text-[#bf8c00] font-medium leading-relaxed mb-0">
-                                  No modo <strong>Recorrente</strong>, será criado um lançamento de <strong className="text-[#1d1d1f]">R$ {rawValue.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</strong> que se repetirá acompanhando a data de vencimento (por até 12 meses). O valor <strong>não é dividido</strong>.
-                                </p>
+                           {(modoRepeticao === 'recorrente' && recorrencias.length > 0 && rawValue > 0) && (
+                             <div className="bg-white rounded-xl border border-[#0071e3]/20 overflow-hidden">
+                               <div className="px-4 py-2 bg-[#f8fbff] border-b border-[#0071e3]/10 text-[12px] font-semibold text-[#0071e3] uppercase tracking-wider">
+                                 Pré-visualização ({recorrencias.length} recorrências — Dia {String(diaVencimentoRecorrente).padStart(2, '0')})
+                               </div>
+                               <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
+                                 {recorrencias.map((p, idx) => (
+                                   <div key={idx} className="flex justify-between items-center px-4 py-2 bg-white border-b border-[#f5f5f7] last:border-0">
+                                     <div className="flex items-center gap-3">
+                                       <span className="w-5 h-5 bg-[#e5fcf4] text-[#008f5d] rounded text-[11px] font-bold flex items-center justify-center">{p.numero}</span>
+                                       <span className="text-[14px] text-[#1d1d1f] font-medium">{new Date(p.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                                     </div>
+                                     <div className="text-[14px] font-semibold text-[#1d1d1f]">
+                                       R$ {p.valor.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}
+                                     </div>
+                                   </div>
+                                 ))}
+                               </div>
+                               <div className="px-4 py-3 bg-[#f5f5f7]/50 flex justify-between items-center border-t border-[#0071e3]/10">
+                                  <span className="text-[13px] font-medium text-[#86868b]">Total da Operação</span>
+                                  <span className="text-[15px] font-bold text-[#1d1d1f]">R$ {(rawValue * qtdRecorrencias).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                               </div>
                              </div>
                            )}
 

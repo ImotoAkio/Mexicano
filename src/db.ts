@@ -161,6 +161,33 @@ export const clientDB = {
   // Soft-delete to preserve 100% of historical reservations and financial records
   delete: (id: string): void => {
     clientDB.deactivate(id);
+  },
+  // Permanent delete — removes client record and cleans up boat ownership references
+  permanentDelete: (id: string): void => {
+    const client = memoryClients.find(c => c.id === id);
+    if (!client) throw new Error('Cliente não encontrado.');
+
+    // Remove client from memory
+    memoryClients = memoryClients.filter(c => c.id !== id);
+
+    // Clean up boat ownership references
+    const modifiedBoatIds = new Set<string>();
+    memoryBoats.forEach(b => {
+      if (b.donos.includes(id)) {
+        b.donos = b.donos.filter(d => d !== id);
+        modifiedBoatIds.add(b.id);
+      }
+    });
+
+    // Sync deletions to remote DB
+    saveToRemoteDB('clients', 'delete', { id });
+    if (modifiedBoatIds.size > 0) {
+      memoryBoats.forEach(b => {
+        if (modifiedBoatIds.has(b.id)) {
+          saveToRemoteDB('boats', 'update', b);
+        }
+      });
+    }
   }
 };
 

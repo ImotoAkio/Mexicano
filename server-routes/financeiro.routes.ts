@@ -46,6 +46,11 @@ function getGlobalEmpresaFromRole(role: string): string | null {
 
 const router = Router();
 
+const FINANCEIRO_WHATSAPP_MSG = "Pagamentos online estão temporariamente desativados. Entre em contato com o financeiro pelo WhatsApp +55 87 9122-9333.";
+async function isPagamentoOnlineHabilitado(): Promise<boolean> {
+  return (await getConfigValue("pagamentos_online_habilitado")) === "1";
+}
+
 router.get("/transacoes", requireAdminAuth, async (req, res) => {
   try {
     let transacoes = await getAllTransacoes();
@@ -78,11 +83,11 @@ router.post("/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, 
     } else if (action === 'upsert') {
       if (Array.isArray(data)) {
         for (const item of data) {
-          if (allowedEmpresa) item.empresa = allowedEmpresa;
+          if (allowedEmpresa && !item.empresa) item.empresa = allowedEmpresa;
           await upsertTransacao(item);
         }
       } else {
-        if (allowedEmpresa) data.empresa = allowedEmpresa;
+        if (allowedEmpresa && !data.empresa) data.empresa = allowedEmpresa;
         await upsertTransacao(data);
       }
     } else {
@@ -236,6 +241,10 @@ router.post("/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, asy
     return res.status(400).json({ error: true, message: "Tipo de cobrança inválido" });
   }
 
+  if ((req as any).user?.role === "client" && !(await isPagamentoOnlineHabilitado())) {
+    return res.status(403).json({ error: true, code: "PAYMENTS_DISABLED", message: FINANCEIRO_WHATSAPP_MSG });
+  }
+
   const currentPool = getDbPool();
   if (!currentPool) {
     return res.status(500).json({ error: true, message: "Banco de dados offline" });
@@ -316,6 +325,10 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
 
   if (billingType !== "PIX") {
     return res.status(400).json({ error: true, message: "Tipo de cobrança inválido para fatura completa. Use PIX." });
+  }
+
+  if (!(await isPagamentoOnlineHabilitado())) {
+    return res.status(403).json({ error: true, code: "PAYMENTS_DISABLED", message: FINANCEIRO_WHATSAPP_MSG });
   }
 
   const currentPool = getDbPool();

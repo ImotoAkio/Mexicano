@@ -23,7 +23,7 @@ import ClientLoginPage from './components/ClientLoginPage';
 const ClientDashboardPage = lazy(() => import('./components/ClientDashboardPage'));
 const MarinaDashboard = lazy(() => import('./components/MarinaDashboard'));
 const MarinaOperadorDashboard = lazy(() => import('./components/MarinaOperadorDashboard'));
-const ComercialDashboard = lazy(() => import('./components/ComercialDashboard'));
+const ComercialDashboard = lazy(() => import('./components/comercial/ComercialDashboard'));
 const UsersPage = lazy(() => import('./components/UsersPage'));
 const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
@@ -585,7 +585,7 @@ export default function App() {
     return (
       <div className="admin-panel h-full w-full">
         <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
-          <ComercialDashboard onLogout={handleLogout} />
+          <ComercialDashboard onLogout={handleLogout} operadorNome={adminName} />
         </Suspense>
       </div>
     );

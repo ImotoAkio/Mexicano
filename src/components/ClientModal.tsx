@@ -96,12 +96,14 @@ export default function ClientModal({
               observacoes: editingClient.acessorios?.observacoes || ''
             }
           })));
-        } else {
+        } else if (editingClient.embarcacaoId) {
           setClientBoats([{
             embarcacaoId: editingClient.embarcacaoId || '',
             cota: editingClient.cota || '',
             acessorios: editingClient.acessorios || undefined
           }]);
+        } else {
+          setClientBoats([]);
         }
         setEmail(editingClient.email || '');
         setPhone(editingClient.telefone || '');
@@ -212,28 +214,22 @@ export default function ClientModal({
       showToast('O nome é obrigatório.', 'error');
       return;
     }
-    if (clientBoats.length === 0) {
-      showToast('Por favor, adicione pelo menos um veículo vinculado.', 'error');
-      return;
-    }
-    if (clientBoats.some(cb => !cb.embarcacaoId)) {
-      showToast('Todas as embarcações selecionadas devem ser válidas.', 'error');
-      return;
-    }
-    if (clientBoats.some(cb => !cb.cota.trim())) {
+    // Filter out empty boat entries (no embarcacaoId selected)
+    const validBoats = clientBoats.filter(cb => cb.embarcacaoId);
+    if (validBoats.some(cb => !cb.cota.trim())) {
       showToast('O número da cota é obrigatório para todas as embarcações.', 'error');
       return;
     }
 
     try {
-      const primaryBoat = clientBoats[0];
+      const primaryBoat = validBoats[0];
       let saved: Cliente;
 
       const clientDataPayload = {
         nome: name.toUpperCase(),
-        embarcacaoId: primaryBoat.embarcacaoId,
-        cota: primaryBoat.cota.toUpperCase(),
-        embarcacoes: clientBoats.map(cb => ({
+        embarcacaoId: primaryBoat?.embarcacaoId || '',
+        cota: primaryBoat?.cota?.toUpperCase() || '',
+        embarcacoes: validBoats.map(cb => ({
           embarcacaoId: cb.embarcacaoId,
           cota: cb.cota.toUpperCase(),
           acessorios: boats.find(b => b.id === cb.embarcacaoId)?.tipo === 'lancha' ? cb.acessorios : undefined
@@ -497,25 +493,27 @@ export default function ClientModal({
                 </div>
 
                 <div className="space-y-3 max-h-[60vh] overflow-y-auto subtle-scrollbar pr-2">
+                  {clientBoats.length === 0 && (
+                    <div className="text-center py-4 text-xs text-slate-400">
+                      Nenhum veículo vinculado.
+                    </div>
+                  )}
                   {clientBoats.map((cb, idx) => (
                     <div key={idx} className="flex flex-col bg-white border border-slate-200 p-3 rounded-lg relative shadow-xs gap-3">
                       <div className="flex-1 w-full min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <div>
                           <div className="flex items-center justify-between mb-1">
                             <label className="block text-[10px] font-semibold text-slate-500 mb-0">Embarcação #{idx + 1}</label>
-                            {clientBoats.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => setClientBoats(clientBoats.filter((_, i) => i !== idx))}
-                                className="text-rose-600 hover:text-rose-800 transition-colors cursor-pointer"
-                                title="Remover veículo"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => setClientBoats(clientBoats.filter((_, i) => i !== idx))}
+                              className="text-rose-600 hover:text-rose-800 transition-colors cursor-pointer"
+                              title="Remover veículo"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                           <select
-                            required
                             tabIndex={6 + (idx * 2)}
                             value={cb.embarcacaoId}
                             onChange={(e) => {
@@ -538,7 +536,6 @@ export default function ClientModal({
                           <label className="block text-[10px] font-semibold text-slate-500 mb-1">Cota #{idx + 1}</label>
                           <input
                             type="text"
-                            required
                             tabIndex={7 + (idx * 2)}
                             placeholder="Ex: C1, C3"
                             value={cb.cota}

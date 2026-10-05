@@ -36,6 +36,8 @@ export default function IntegrationsPage() {
   const [asaasApiUrl, setAsaasApiUrl] = useState('https://api-sandbox.asaas.com/v3');
   const [asaasWebhookToken, setAsaasWebhookToken] = useState('');
   const [hasAsaasApiKey, setHasAsaasApiKey] = useState(false);
+  const [pagamentosHabilitados, setPagamentosHabilitados] = useState(false);
+  const [isSavingPagamentos, setIsSavingPagamentos] = useState(false);
 
   // Marina Configs
   const [checkinAntecedencia, setCheckinAntecedencia] = useState('40');
@@ -95,6 +97,7 @@ export default function IntegrationsPage() {
           setHasAsaasApiKey(!!data.has_asaas_api_key);
           setAsaasApiUrl(data.asaas_api_url || 'https://api-sandbox.asaas.com/v3');
           setAsaasWebhookToken(data.asaas_webhook_token || '');
+          setPagamentosHabilitados(!!data.pagamentos_online_habilitado);
           if (data.marina_checkin_antecedencia) setCheckinAntecedencia(data.marina_checkin_antecedencia);
           if (data.marina_horarios_semana) {
             setHorariosSemana(prev => ({ ...prev, ...data.marina_horarios_semana }));
@@ -107,6 +110,32 @@ export default function IntegrationsPage() {
       .catch(err => console.warn('Erro ao carregar configurações do Asaas:', err));
     }
   }, []);
+
+  const handleTogglePagamentos = async () => {
+    const next = !pagamentosHabilitados;
+    setIsSavingPagamentos(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ pagamentos_online_habilitado: next })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showToast(data.message || 'Falha ao atualizar pagamentos online.', 'error');
+      } else {
+        setPagamentosHabilitados(next);
+        showToast(next ? 'Pagamentos online habilitados.' : 'Pagamentos online desabilitados. Clientes serão direcionados ao WhatsApp do financeiro.');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao conectar ao servidor.', 'error');
+    } finally {
+      setIsSavingPagamentos(false);
+    }
+  };
 
   const handleSaveAsaasConfig = async () => {
     setIsLoading(true);
@@ -312,6 +341,31 @@ export default function IntegrationsPage() {
           </div>
 
           <div className="p-6 space-y-4">
+
+            <div className={`flex items-center justify-between gap-4 rounded-xl p-4 border ${pagamentosHabilitados ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div>
+                <p className={`text-xs font-bold ${pagamentosHabilitados ? 'text-emerald-800' : 'text-amber-800'}`}>
+                  Pagamentos online {pagamentosHabilitados ? 'habilitados' : 'desabilitados'}
+                </p>
+                <p className={`text-[10px] mt-0.5 leading-relaxed ${pagamentosHabilitados ? 'text-emerald-700/80' : 'text-amber-700/80'}`}>
+                  {pagamentosHabilitados
+                    ? 'Clientes podem gerar PIX pelo portal.'
+                    : 'O botão de pagamento do cliente abre o WhatsApp do financeiro (+55 87 9122-9333).'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                id="toggle-pagamentos-online"
+                aria-checked={pagamentosHabilitados}
+                aria-label="Habilitar pagamentos online"
+                disabled={isSavingPagamentos}
+                onClick={handleTogglePagamentos}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${pagamentosHabilitados ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pagamentosHabilitados ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
 
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
               <h5 className="font-bold text-blue-800 text-xs mb-2">Instruções de Configuração Asaas:</h5>

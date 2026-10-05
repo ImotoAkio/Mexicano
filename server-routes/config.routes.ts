@@ -105,7 +105,7 @@ router.post("/calendar/config", requireAdminAuth, async (req, res) => {
 // Route: Save an activity log (Audit)
 
 // Route: Public config (only safe/cosmetic keys, no auth required)
-const PUBLIC_CONFIG_KEYS = new Set(["custom_sidebar_logo", "marina_checkin_saida", "marina_checkin_chegada", "marina_checkin_antecedencia", "marina_abertura", "marina_fechamento", "marina_horarios_semana"]);
+const PUBLIC_CONFIG_KEYS = new Set(["custom_sidebar_logo", "marina_checkin_saida", "marina_checkin_chegada", "marina_checkin_antecedencia", "marina_abertura", "marina_fechamento", "marina_horarios_semana", "pagamentos_online_habilitado"]);
 router.get("/config/public", async (req, res) => {
   try {
     const chaves = (req.query.chaves as string || "").split(",").filter(k => PUBLIC_CONFIG_KEYS.has(k));
@@ -147,6 +147,7 @@ router.get("/config", requireAdminAuth, async (req, res) => {
     const dbAsaasApiKey = await getConfigValue("asaas_api_key");
     const dbAsaasApiUrl = await getConfigValue("asaas_api_url");
     const dbAsaasWebhookToken = await getConfigValue("asaas_webhook_token");
+    const pagamentos_online_habilitado = (await getConfigValue("pagamentos_online_habilitado")) === "1";
 
     const nautical_csv_mapping_str = await getConfigValue("nautical_csv_mapping");
     let nautical_csv_mapping = null;
@@ -187,7 +188,8 @@ router.get("/config", requireAdminAuth, async (req, res) => {
       nautical_csv_mapping,
       has_asaas_api_key: !!dbAsaasApiKey || !!process.env.ASAAS_API_KEY,
       asaas_api_url: dbAsaasApiUrl || process.env.ASAAS_API_URL || "https://api-sandbox.asaas.com/v3",
-      asaas_webhook_token: dbAsaasWebhookToken || process.env.ASAAS_WEBHOOK_TOKEN || ""
+      asaas_webhook_token: dbAsaasWebhookToken || process.env.ASAAS_WEBHOOK_TOKEN || "",
+      pagamentos_online_habilitado
     });
   } catch (error: any) {
     res.status(500).json({ error: true, message: error.message || "Could not retrieve central configurations from database." });
@@ -202,7 +204,8 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
             finance_whatsapp_instance, finance_whatsapp_custom_templates,
             nautical_csv_mapping, asaas_api_key, asaas_api_url, asaas_webhook_token,
             marina_checkin_saida, marina_checkin_chegada, marina_checkin_antecedencia,
-            marina_abertura, marina_fechamento, marina_horarios_semana } = req.body;
+            marina_abertura, marina_fechamento, marina_horarios_semana,
+            pagamentos_online_habilitado } = req.body;
 
     if (google_client_id !== undefined) {
       await setConfigValue("google_client_id", google_client_id);
@@ -279,6 +282,10 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
     }
     if (asaas_webhook_token !== undefined) {
       await setConfigValue("asaas_webhook_token", asaas_webhook_token.trim());
+    }
+    if (pagamentos_online_habilitado !== undefined) {
+      const enabled = pagamentos_online_habilitado === true || pagamentos_online_habilitado === "1";
+      await setConfigValue("pagamentos_online_habilitado", enabled ? "1" : "0");
     }
 
     res.json({ success: true });

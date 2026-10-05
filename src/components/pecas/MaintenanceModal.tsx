@@ -205,9 +205,12 @@ export default function MaintenanceModal({
     { value: 'aguardando_orcamento', label: '1. Aguardando Orçamento' },
     { value: 'aguardando_aprovacao', label: '2. Aguardando Aprovação Cliente' },
     { value: 'em_execucao', label: '3. Execução da OS' },
-    { value: 'concluido', label: '4. Concluído & Liberado' },
     { value: 'reprovado', label: 'Cancelado / Reprovado' }
   ];
+
+  if (formData.status === 'concluido') {
+    statusOptions.push({ value: 'concluido', label: '4. Concluído & Liberado' });
+  }
 
   // Custom Select Style
   const customSelectStyles = {
@@ -287,54 +290,6 @@ export default function MaintenanceModal({
     setFormData(prev => ({ ...prev, pecas: newPecas }));
   };
 
-  const generateLazyFinance = async (osId: string, itemData: any) => {
-    const token = localStorage.getItem('admin_token');
-    const generatedCodigoOS = itemData.codigoOS || `OS-${Date.now()}`;
-
-    // 1. Gera Despesa se houver Custo Interno pago a terceiro
-    if (itemData.custo && itemData.custo > 0 && itemData.mecanico) {
-      const transacaoDespesa = {
-        id: `fin_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        tipo: 'despesa',
-        categoria: 'Mão de Obra / Serviços Terceirizados',
-        valor: itemData.custo,
-        descricao: `Serviço Terceirizado: ${itemData.tipoManutencaoNome || itemData.tituloChamado || 'Manutenção'} - ${generatedCodigoOS}`,
-        fornecedorId: itemData.mecanico,
-        status: 'lancado',
-        dataVencimento: new Date().toISOString().split('T')[0],
-        empresa: 'Mexicano',
-        embarcacaoId: itemData.embarcacaoId,
-        createdAt: new Date().toISOString()
-      };
-      await fetch('/api/financeiro/transacoes/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ action: 'upsert', data: transacaoDespesa })
-      }).catch(e => console.error('Erro na geração de despesa:', e));
-    }
-
-    // 2. Gera Receita se estiver assinalado gerarFinanceiro
-    if (itemData.gerarFinanceiro && itemData.orcamento && itemData.orcamento > 0) {
-      const transacaoReceita = {
-        id: `fin_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        tipo: 'receita',
-        categoria: 'Manutenção',
-        valor: itemData.orcamento,
-        descricao: `OS Concluída: ${itemData.tipoManutencaoNome || itemData.tituloChamado || 'Manutenção'} - ${generatedCodigoOS}`,
-        status: 'lancado',
-        dataVencimento: new Date().toISOString().split('T')[0],
-        empresa: 'Mexicano',
-        embarcacaoId: itemData.embarcacaoId,
-        createdAt: new Date().toISOString()
-      };
-      await fetch('/api/financeiro/transacoes/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ action: 'upsert', data: transacaoReceita })
-      }).catch(e => console.error('Erro na geração de receita:', e));
-    }
-  };
-
   const handleSave = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!formData.embarcacaoId) {
@@ -382,17 +337,10 @@ export default function MaintenanceModal({
     try {
       if (isEditing && editingItem?.id) {
         await maintenanceDB.update(editingItem.id, dataToSave);
-
-        if (dataToSave.status === 'concluido' && editingItem.status !== 'concluido') {
-           await generateLazyFinance(dataToSave.id, dataToSave);
-        }
       } else {
         const created = await maintenanceDB.create(dataToSave as any);
         if (created.embarcacaoId) {
           boatDB.update(created.embarcacaoId, { emManutencao: true });
-        }
-        if (created.status === 'concluido') {
-           await generateLazyFinance(created.id, created);
         }
 
         if (dataToSave.chamadoId) {
