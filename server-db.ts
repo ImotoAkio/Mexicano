@@ -682,7 +682,14 @@ export async function initializeDatabase() {
       "ALTER TABLE Manutencoes ADD COLUMN acessorios TEXT;",
       "ALTER TABLE Manutencoes ADD COLUMN pecas TEXT;",
       "ALTER TABLE Manutencoes ADD COLUMN whatsappStatus VARCHAR(50);",
-      "ALTER TABLE Manutencoes ADD COLUMN clienteId VARCHAR(50);"
+      "ALTER TABLE Manutencoes ADD COLUMN clienteId VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN fornecedorId VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN oficinaNome VARCHAR(255);",
+      "ALTER TABLE Manutencoes ADD COLUMN custoReal DECIMAL(10, 2);",
+      "ALTER TABLE Manutencoes ADD COLUMN margemLucro DECIMAL(10, 2);",
+      "ALTER TABLE Manutencoes ADD COLUMN dataEnvioOrcamento VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN orcamentoStatus VARCHAR(50);",
+      "ALTER TABLE Manutencoes ADD COLUMN cotistasSelecionados TEXT;"
     ];
     for (const sql of manutCols) {
       try { await connection.query(sql); } catch (e) {}
@@ -1339,7 +1346,8 @@ export async function pullDatabase(forceFresh = false) {
       ...m,
       orcamentoAprovado: m.orcamentoAprovado === 1 || m.orcamentoAprovado === true,
       acessorios: m.acessorios ? JSON.parse(m.acessorios) : undefined,
-      pecas: m.pecas ? JSON.parse(m.pecas) : undefined
+      pecas: m.pecas ? JSON.parse(m.pecas) : undefined,
+      cotistasSelecionados: m.cotistasSelecionados ? JSON.parse(m.cotistasSelecionados) : undefined
     })),
     mecanicos: mecanicos as any[],
     tiposManutencao: tiposManutencao as any[],
@@ -2338,9 +2346,9 @@ export async function upsertManutencao(m: any) {
       previsaoTermino, dataTermino, concluidoEm, urgencia, custoTotal, orcamento,
       custo, valorRepassado, orcamentoAprovado, status, localizacao,
       descricaoServico, gerarFinanceiro, horasMotorAtual, proximaRevisaoHoras,
-      acessorios, pecas, whatsappStatus, createdAt
+      acessorios, pecas, whatsappStatus, fornecedorId, oficinaNome, custoReal, margemLucro, dataEnvioOrcamento, orcamentoStatus, createdAt
     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        codigoOS=VALUES(codigoOS),
        chamadoId=VALUES(chamadoId),
@@ -2375,7 +2383,14 @@ export async function upsertManutencao(m: any) {
        proximaRevisaoHoras=VALUES(proximaRevisaoHoras),
        acessorios=VALUES(acessorios),
        pecas=VALUES(pecas),
-       whatsappStatus=VALUES(whatsappStatus)`,
+       whatsappStatus=VALUES(whatsappStatus),
+       fornecedorId=VALUES(fornecedorId),
+       oficinaNome=VALUES(oficinaNome),
+       custoReal=VALUES(custoReal),
+       margemLucro=VALUES(margemLucro),
+       dataEnvioOrcamento=VALUES(dataEnvioOrcamento),
+       orcamentoStatus=VALUES(orcamentoStatus),
+       cotistasSelecionados=VALUES(cotistasSelecionados)`,
     [
       m.id,
       m.codigoOS || null,
@@ -2412,6 +2427,13 @@ export async function upsertManutencao(m: any) {
       m.acessorios ? (typeof m.acessorios === 'string' ? m.acessorios : JSON.stringify(m.acessorios)) : null,
       m.pecas ? (typeof m.pecas === 'string' ? m.pecas : JSON.stringify(m.pecas)) : null,
       m.whatsappStatus || 'nao_enviado',
+      m.fornecedorId || null,
+      m.oficinaNome || null,
+      m.custoReal !== undefined ? m.custoReal : null,
+      m.margemLucro !== undefined ? m.margemLucro : null,
+      m.dataEnvioOrcamento || null,
+      m.orcamentoStatus || null,
+      m.cotistasSelecionados ? (typeof m.cotistasSelecionados === 'string' ? m.cotistasSelecionados : JSON.stringify(m.cotistasSelecionados)) : null,
       createdAt
     ]
   );
@@ -3328,6 +3350,13 @@ export async function upsertFornecedor(f: any): Promise<void> {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
+  const id = f.id || `forn_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+  f.id = id;
+
+  const dadosBancariosStr = typeof f.dadosBancarios === 'string'
+    ? f.dadosBancarios
+    : (f.dadosBancarios ? JSON.stringify(f.dadosBancarios) : null);
+
   await currentPool.query(
     `INSERT INTO Fornecedores (id, nomeFantasia, razaoSocial, cnpjCpf, empresaId, dadosBancarios, status, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -3336,9 +3365,15 @@ export async function upsertFornecedor(f: any): Promise<void> {
        empresaId=VALUES(empresaId), dadosBancarios=VALUES(dadosBancarios), status=VALUES(status),
        updatedAt=VALUES(updatedAt)`,
     [
-      f.id || `forn_${Date.now()}_${Math.random().toString(36).substring(2,7)}`, f.nomeFantasia, f.razaoSocial || null, f.cnpjCpf || null, f.empresaId || null,
-      f.dadosBancarios ? JSON.stringify(f.dadosBancarios) : null, f.status || 'ativo',
-      f.createdAt || new Date().toISOString(), f.updatedAt || new Date().toISOString()
+      id,
+      f.nomeFantasia,
+      f.razaoSocial || null,
+      f.cnpjCpf || null,
+      f.empresaId || f.empresa || null,
+      dadosBancariosStr,
+      f.status || 'ativo',
+      f.createdAt || new Date().toISOString(),
+      f.updatedAt || new Date().toISOString()
     ]
   );
 }

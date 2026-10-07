@@ -1,4 +1,4 @@
-import { Cliente, Embarcacao, Reserva, Manutencao, Chamado, TipoManutencao, Funcionario, Folga, Mecanico, EpiEntrega, CatalogoEpi, HistoricoEPIMensal, RegistroHoras, RegistroAcessorios } from './types';
+import { Cliente, Embarcacao, Reserva, Manutencao, Chamado, TipoManutencao, Funcionario, Folga, Mecanico, EpiEntrega, CatalogoEpi, HistoricoEPIMensal, RegistroHoras, RegistroAcessorios, Fornecedor } from './types';
 
 // In-Memory Database Arrays (No LocalStorage)
 let memoryClients: Cliente[] = [];
@@ -7,6 +7,7 @@ let memoryReservations: Reserva[] = [];
 let memoryManutencoes: Manutencao[] = [];
 let memoryChamados: Chamado[] = [];
 let memoryMecanicos: Mecanico[] = [];
+let memoryFornecedores: Fornecedor[] = [];
 let memoryFuncionarios: Funcionario[] = [];
 let memoryFolgas: Folga[] = [];
 let memoryEpis: EpiEntrega[] = [];
@@ -756,6 +757,77 @@ export const mecanicoDB = {
   }
 };
 
+export const fornecedorDB = {
+  getAll: (): Fornecedor[] => {
+    return memoryFornecedores;
+  },
+  getById: (id: string): Fornecedor | undefined => {
+    return memoryFornecedores.find(f => f.id === id);
+  },
+  create: async (fornecedor: Partial<Fornecedor>): Promise<Fornecedor> => {
+    const newFornecedor: Fornecedor = {
+      ...fornecedor,
+      id: fornecedor.id || `forn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      nomeFantasia: fornecedor.nomeFantasia || '',
+      status: fornecedor.status || 'ativo',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    memoryFornecedores.unshift(newFornecedor);
+    const token = getAdminToken();
+    try {
+      const res = await fetch('/api/financeiro/fornecedores/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: 'upsert', data: newFornecedor })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.id && json.id !== newFornecedor.id) {
+          newFornecedor.id = json.id;
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao salvar fornecedor:', err);
+    }
+    return newFornecedor;
+  },
+  update: async (id: string, updatedFields: Partial<Fornecedor>): Promise<Fornecedor> => {
+    const idx = memoryFornecedores.findIndex(f => f.id === id);
+    if (idx === -1) throw new Error('Fornecedor não encontrado.');
+    const updated: Fornecedor = {
+      ...memoryFornecedores[idx],
+      ...updatedFields,
+      updatedAt: new Date().toISOString()
+    };
+    memoryFornecedores[idx] = updated;
+    const token = getAdminToken();
+    try {
+      await fetch('/api/financeiro/fornecedores/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: 'upsert', data: updated })
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar fornecedor:', err);
+    }
+    return updated;
+  },
+  delete: async (id: string): Promise<void> => {
+    memoryFornecedores = memoryFornecedores.filter(f => f.id !== id);
+    const token = getAdminToken();
+    try {
+      await fetch('/api/financeiro/fornecedores/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: 'delete', data: { id } })
+      });
+    } catch (err) {
+      console.error('Erro ao deletar fornecedor:', err);
+    }
+  }
+};
+
 export const funcionarioDB = {
   getAll: (): Funcionario[] => {
     return memoryFuncionarios.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -956,6 +1028,7 @@ export async function loadFromRemote(forceRefresh = false) {
     memoryCatalogoEpis = remoteData.catalogoEPIs || [];
     memoryHistoricoEpis = remoteData.historicoEpis || [];
     memoryRegistrosAtividades = remoteData.registrosAtividades || [];
+    memoryFornecedores = remoteData.fornecedores || [];
 
     // Migração em tempo de leitura para compatibilidade (1:1 -> 1:N)
     memoryChamados = (remoteData.chamados || []).map((ch: any) => {

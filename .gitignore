@@ -18,3 +18,10 @@ tsc_output.txt
 clientes.*
 parsed_clientes.json
 parse_final.cjs
+temp.cjs
+fix.cjs
+fix_server.cjs
+migrate_finance_ui.cjs
+auto_vencidos.js
+clear_finance.js
+fix_finance.js

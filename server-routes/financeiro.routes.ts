@@ -195,11 +195,19 @@ router.post("/planos-contas/save", requireAdminAuth, async (req, res) => {
 router.get("/fornecedores", requireAdminAuth, async (req, res) => {
   try {
     let fornecedores = await getAllFornecedores();
-    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
-    if (allowedEmpresa) {
-      fornecedores = fornecedores.filter((f: any) => f.empresa === allowedEmpresa);
-    } else if (req.query.empresa) {
-      fornecedores = fornecedores.filter((f: any) => f.empresa === req.query.empresa);
+    const userRole = ((req as any).user?.role || '').toLowerCase().trim();
+    // pecas_servicos needs access to all workshop/parts providers regardless of enterprise filter
+    if (userRole !== 'pecas_servicos') {
+      const allowedEmpresa = getGlobalEmpresaFromRole(userRole);
+      if (allowedEmpresa) {
+        fornecedores = fornecedores.filter((f: any) =>
+          !f.empresaId || f.empresaId === allowedEmpresa || f.empresaId === 'Todos' || f.empresa === allowedEmpresa
+        );
+      } else if (req.query.empresa && req.query.empresa !== 'Todos') {
+        fornecedores = fornecedores.filter((f: any) =>
+          !f.empresaId || f.empresaId === req.query.empresa || f.empresaId === 'Todos' || f.empresa === req.query.empresa
+        );
+      }
     }
     res.json(fornecedores);
   } catch (err: any) {
@@ -210,24 +218,25 @@ router.get("/fornecedores", requireAdminAuth, async (req, res) => {
 router.post("/fornecedores/save", requireAdminAuth, async (req, res) => {
   const { action, data } = req.body;
   try {
-    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    const userRole = ((req as any).user?.role || '').toLowerCase().trim();
+    const allowedEmpresa = userRole !== 'pecas_servicos' ? getGlobalEmpresaFromRole(userRole) : null;
     if (action === 'delete') {
       await deleteFornecedor(data.id || data);
     } else if (action === 'upsert') {
       if (Array.isArray(data)) {
         for (const item of data) {
-          if (allowedEmpresa) item.empresa = allowedEmpresa;
+          if (allowedEmpresa && !item.empresaId && !item.empresa) item.empresa = allowedEmpresa;
           await upsertFornecedor(item);
         }
       } else {
-        if (allowedEmpresa) data.empresa = allowedEmpresa;
+        if (allowedEmpresa && !data.empresaId && !data.empresa) data.empresa = allowedEmpresa;
         await upsertFornecedor(data);
       }
     } else {
       return res.status(400).json({ error: true, message: `Unsupported action: ${action}` });
     }
     invalidateDbCache();
-    res.json({ success: true });
+    res.json({ success: true, id: data?.id, data });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Failed to save fornecedor" });
   }

@@ -209,34 +209,49 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
 
         {/* === WELCOME VIEW === */}
         {view === 'welcome' && (
-          <div className="flex-1 flex flex-col justify-between animate-in fade-in duration-700">
-            <div className="pt-12 pb-8 flex justify-center">
-              <div className="w-16 h-16 opacity-80">
+          <div className="flex-1 flex flex-col justify-between animate-in fade-in duration-700 relative z-10">
+            {/* Ambient Background Glow (Discreet Luxury) */}
+            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-56 h-56 bg-[#B69D74]/10 rounded-full blur-[90px] pointer-events-none -z-10" />
+
+            {/* Brand Logo */}
+            <div className="pt-12 pb-6 flex justify-center">
+              <div className="w-16 h-16 opacity-85 transition-opacity duration-500 hover:opacity-100">
                 <Logo className="w-full h-full text-[#B69D74]" />
               </div>
             </div>
-            
+
+            {/* Hero Copy (Minimalist Luxury) */}
             <div className="flex-1 flex flex-col justify-center items-center text-center px-4">
-              <h1 className="text-2xl md:text-3xl font-light text-white tracking-wide leading-tight mb-4">
-                Sua embarcação, <br /><span className="font-medium text-[#B69D74]">seu controle.</span>
+              <h1 className="text-2xl md:text-3xl font-extralight text-white tracking-wide leading-tight mb-4">
+                Sua embarcação, <br />
+                <span className="font-normal text-[#B69D74]">seu controle.</span>
               </h1>
               <p className="text-white/40 text-sm font-light leading-relaxed max-w-[280px]">
-                Agendamentos, disponibilidade, status da lancha e painel financeiro.
+                Agendamentos, manutenções da cota e painel financeiro.
               </p>
             </div>
 
+            {/* Action & Legal */}
             <div className="mt-auto pb-6 flex flex-col items-center">
               <button
+                type="button"
                 onClick={() => setView('identifier')}
-                className="w-16 h-16 rounded-full border border-white/10 flex items-center justify-center hover:bg-white/5 hover:border-white/20 transition-all duration-300 group cursor-pointer relative overflow-hidden"
+                aria-label="Acessar conta"
+                className="w-16 h-16 rounded-full border border-white/10 flex items-center justify-center hover:bg-white/5 hover:border-white/20 active:scale-95 transition-all duration-300 group cursor-pointer relative overflow-hidden shadow-lg"
               >
                 <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <ArrowRight className="w-5 h-5 text-white/70 group-hover:text-white transition-colors" />
+                <ArrowRight className="w-5 h-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
               </button>
 
-              <div className="mt-12 text-center text-[10px] text-white/30 uppercase tracking-widest leading-loose">
+              <div className="mt-12 text-center text-[10px] text-white/30 uppercase tracking-widest leading-loose font-light">
                 Ao prosseguir, você aceita nossos <br />
-                <button onClick={() => setShowPrivacyModal(true)} className="hover:text-white transition-colors">Termos & Privacidade</button>
+                <button
+                  type="button"
+                  onClick={() => setShowPrivacyModal(true)}
+                  className="hover:text-white transition-colors cursor-pointer"
+                >
+                  Termos & Privacidade
+                </button>
               </div>
             </div>
           </div>
@@ -322,7 +337,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
 
             <form onSubmit={(e) => { e.preventDefault(); handleLogin(e); }} className="space-y-5">
               <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">Senha secreta</label>
+                <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">Senha</label>
                 <input
                   type="password"
                   value={password}
@@ -448,21 +463,27 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
 
         {/* Administrative Link at the top right if on welcome screen */}
         {view === 'welcome' && (
-          <div className="absolute top-[max(2rem,env(safe-area-inset-top))] right-[max(1.5rem,env(safe-area-inset-right))] z-50">
-             <a href="/admin" className="flex items-center justify-center gap-2 px-4 py-2 text-[10px] uppercase font-bold tracking-[0.1em] text-white/50 border border-white/10 rounded-full hover:text-white hover:border-white/30 hover:bg-white/5 transition-all shadow-sm cursor-pointer backdrop-blur-md">
-               <ShieldCheck className="w-4 h-4" /> <span>Acesso Admin</span>
-             </a>
+          <div className="absolute top-[max(1.5rem,env(safe-area-inset-top))] right-[max(1.5rem,env(safe-area-inset-right))] z-50">
+            <a
+              href="/admin"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] uppercase font-semibold tracking-[0.12em] text-white/50 border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl rounded-full hover:text-white hover:border-white/20 hover:bg-white/[0.06] active:scale-95 transition-all shadow-sm cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-[#B69D74]" />
+              <span>Acesso Admin</span>
+            </a>
           </div>
         )}
 
-        <div className="mt-auto pt-8 text-center">
-          <p className="text-[10px] text-white/20 uppercase tracking-widest">
-            Um portal do Grupo Vila Náutica
-          </p>
-          <p className="text-[9px] text-white/10 mt-1">
-            Desenvolvido por Echo
-          </p>
-        </div>
+        {view !== 'welcome' && (
+          <div className="mt-auto pt-8 text-center">
+            <p className="text-[10px] text-white/20 uppercase tracking-widest">
+              Um portal do Grupo Vila Náutica
+            </p>
+            <p className="text-[9px] text-white/10 mt-1">
+              Desenvolvido por Echo
+            </p>
+          </div>
+        )}
 
       </div>
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { JWT } from "google-auth-library";
-import { requireAdminAuth, requireAnyAuth, sensitiveLimiter } from "./middlewares";
+import { requireAdminAuth, requireAnyAuth, sensitiveLimiter, writeAuditLog } from "./middlewares";
 import { getConfigValue, setConfigValue } from "../server-db";
 
 const router = Router();
@@ -108,6 +108,7 @@ router.post("/calendar/config", requireAdminAuth, async (req, res) => {
 const PUBLIC_CONFIG_KEYS = new Set(["custom_sidebar_logo", "marina_checkin_saida", "marina_checkin_chegada", "marina_checkin_antecedencia", "marina_abertura", "marina_fechamento", "marina_horarios_semana", "pagamentos_online_habilitado"]);
 router.get("/config/public", async (req, res) => {
   try {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const chaves = (req.query.chaves as string || "").split(",").filter(k => PUBLIC_CONFIG_KEYS.has(k));
     if (!chaves.length) return res.json({ configs: {} });
     const configs: Record<string, string | null> = {};
@@ -123,6 +124,7 @@ router.get("/config/public", async (req, res) => {
 // Route: Get central configuration details from database
 router.get("/config", requireAdminAuth, async (req, res) => {
   try {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const google_client_id = await getConfigValue("google_client_id");
     const mappingsStr = await getConfigValue("calendar_mappings");
     let calendar_mappings = null;
@@ -283,12 +285,30 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
     if (asaas_webhook_token !== undefined) {
       await setConfigValue("asaas_webhook_token", asaas_webhook_token.trim());
     }
+    let updatedPagamentosOnline: boolean | undefined = undefined;
     if (pagamentos_online_habilitado !== undefined) {
       const enabled = pagamentos_online_habilitado === true || pagamentos_online_habilitado === "1";
       await setConfigValue("pagamentos_online_habilitado", enabled ? "1" : "0");
+      updatedPagamentosOnline = enabled;
+
+      const io = (req.app as any).locals?.io;
+      if (io) {
+        io.emit('config_updated', {
+          pagamentos_online_habilitado: enabled
+        });
+      }
+
+      const user = (req as any).user;
+      writeAuditLog(
+        user?.username || user?.id || "admin",
+        user?.role || "admin",
+        "ALTERAR_STATUS_PAGAMENTOS_ONLINE",
+        req.ip || "unknown",
+        `Status alterado para: ${enabled ? "HABILITADO (PIX Portal)" : "DESABILITADO (WhatsApp Financeiro)"}`
+      );
     }
 
-    res.json({ success: true });
+    res.json({ success: true, pagamentos_online_habilitado: updatedPagamentosOnline });
   } catch (error: any) {
     res.status(500).json({ error: true, message: error.message || "Could not save central configurations to database." });
   }

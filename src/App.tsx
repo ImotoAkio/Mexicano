@@ -27,7 +27,7 @@ const ComercialDashboard = lazy(() => import('./components/comercial/ComercialDa
 const UsersPage = lazy(() => import('./components/UsersPage'));
 const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
-const PecasKanbanPage = lazy(() => import('./components/PecasKanbanPage'));
+const PecasServicosPage = lazy(() => import('./components/PecasServicosPage'));
 const ChamadosPage = lazy(() => import('./components/ChamadosPage'));
 const PierTvDisplay = lazy(() => import('./components/MarinaOperador/PierTvDisplay'));
 const PecasHorimetrosPage = lazy(() => import('./components/pecas/PecasHorimetrosPage'));
@@ -303,6 +303,7 @@ export default function App() {
   const isPecasServicos = effectiveRole === 'pecas_servicos';
   const isFinanceiro = effectiveRole === 'financeiro';
   const isComercial = effectiveRole === 'comercial';
+  const isFullWidthPage = ['manutencoes', 'pecas-atividades', 'pecas-acessorios', 'pecas-horimetros', 'pecas-whatsapp'].includes(activeTab);
 
   const menuGroups = [
     {
@@ -698,8 +699,8 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full relative overflow-hidden pt-14 md:pt-0">
-        <div className="flex-1 overflow-y-auto subtle-scrollbar w-full relative">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full pb-24">
+        <div className={`flex-1 w-full relative ${isFullWidthPage ? 'h-full overflow-hidden' : 'overflow-y-auto subtle-scrollbar'}`}>
+          <div className={isFullWidthPage ? 'w-full h-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full pb-24'}>
             <ErrorBoundary>
               <Suspense fallback={<div className="h-full w-full min-h-[400px] flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
                 {activeTab === 'dashboard' && adminRole !== 'financeiro' && adminRole !== 'pecas_servicos' && <Dashboard onNavigate={handleTabChange} />}
@@ -714,7 +715,7 @@ export default function App() {
                 {activeTab === 'contratos' && <ContractGeneratorPage />}
                 {activeTab === 'sound' && <SoundControlsPage />}
                 {activeTab === 'chamados' && <ChamadosPage onNavigateToOS={() => setActiveTab('manutencoes')} />}
-                {activeTab === 'manutencoes' && <PecasKanbanPage />}
+                {activeTab === 'manutencoes' && <PecasServicosPage />}
                 {activeTab === 'pecas-horimetros' && <PecasHorimetrosPage />}
                 {activeTab === 'pecas-acessorios' && <PecasAcessoriosPage />}
                 {activeTab === 'pecas-whatsapp' && <PecasWhatsAppPage />}

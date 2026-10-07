@@ -23,7 +23,7 @@ import Select from 'react-select';
 import { Chamado, Embarcacao, Cliente, Manutencao, Mecanico } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
 import { chamadoDB, boatDB, clientDB, maintenanceDB, mecanicoDB } from '../db';
-import MaintenanceModal from './pecas/MaintenanceModal';
+import ServicoDetalhesModal from './pecas/ServicoDetalhesModal';
 import UserAvatarMenu from './header/UserAvatarMenu';
 
 interface ChamadosPageProps {
@@ -953,18 +953,21 @@ export default function ChamadosPage({ onNavigateToOS }: ChamadosPageProps) {
         );
       })()}
 
-      {/* Maintenance Modal for OS Creation from Chamado */}
-      {showOSModal && (
-        <MaintenanceModal
-          isOpen={showOSModal}
+      {/* Detalhes da OS vinculada ao Chamado */}
+      {showOSModal && prefilledOSData && (
+        <ServicoDetalhesModal
+          chamado={null}
+          os={prefilledOSData}
+          embarcacoes={embarcacoes}
+          clientes={clientes}
+          chamados={chamados}
+          manutencoes={manutencoes}
+          mecanicos={mecanicos}
           onClose={() => {
             setShowOSModal(false);
             setPrefilledOSData(null);
             loadData();
           }}
-          editingItem={prefilledOSData}
-          embarcacoes={embarcacoes}
-          mecanicos={mecanicos}
           onRefresh={loadData}
         />
       )}

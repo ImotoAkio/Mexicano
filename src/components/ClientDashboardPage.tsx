@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Package, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock, MessageCircle } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock, MessageCircle } from 'lucide-react';
 import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
 // @ts-ignore
@@ -52,6 +52,36 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [contestationTarget, setContestationTarget] = useState<any>(null);
   const [isContesting, setIsContesting] = useState(false);
 
+  // Documentos da embarcação (visualizador integrado PWA)
+  const [docModalBoat, setDocModalBoat] = useState<any>(null);
+  const [docModalTab, setDocModalTab] = useState<'documento' | 'seguro'>('documento');
+  const [isDocLoading, setIsDocLoading] = useState(true);
+
+  const handleOpenDocModal = (boat: any, tab: 'documento' | 'seguro' = 'documento') => {
+    setDocModalBoat(boat);
+    setDocModalTab(tab);
+    setIsDocLoading(true);
+  };
+
+  const handleShareDoc = async () => {
+    if (!docModalBoat) return;
+    const currentDocUrl = docModalTab === 'seguro' ? docModalBoat.seguroUrl : docModalBoat.documentoUrl;
+    if (!currentDocUrl) return;
+
+    const title = `${docModalTab === 'seguro' ? 'Apólice de Seguro' : 'Documento da Embarcação'} - ${getBoatCode(docModalBoat)}`;
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title,
+          text: `Documentação da embarcação ${getBoatCode(docModalBoat)}`,
+          url: currentDocUrl,
+        });
+      } catch (e) {
+        // Ignora cancelamento do usuário
+      }
+    }
+  };
+
   // Real-time & Refresh states
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -83,6 +113,14 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       if (onRefresh) onRefresh();
     });
 
+    socket.on('config_updated', (data: any) => {
+      if (data && data.pagamentos_online_habilitado !== undefined) {
+        const isHab = !!data.pagamentos_online_habilitado;
+        setPagamentosHabilitados(isHab);
+        try { localStorage.setItem('pagamentos_online_habilitado_cache', isHab ? '1' : '0'); } catch {}
+      }
+    });
+
     return () => {
       socket.disconnect();
     };
@@ -97,16 +135,29 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [pixError, setPixError] = useState<string | null>(null);
   const [copiedPix, setCopiedPix] = useState(false);
 
-  // Pagamentos online (configurável pelo admin). Quando desabilitado, direciona ao WhatsApp do financeiro.
+  // Contatos de WhatsApp
   const FINANCEIRO_WHATSAPP = '558791229333';
-  const [pagamentosHabilitados, setPagamentosHabilitados] = useState(false);
+  const VALE_ADMINISTRADORA_WHATSAPP = '558791090051';
+  const [pagamentosHabilitados, setPagamentosHabilitados] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pagamentos_online_habilitado_cache') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     const loadPagamentosFlag = () => {
       fetch('/api/config/public?chaves=pagamentos_online_habilitado', { cache: 'no-store' })
         .then(res => res.json())
-        .then(data => setPagamentosHabilitados(data?.configs?.pagamentos_online_habilitado === '1'))
-        .catch(() => setPagamentosHabilitados(false));
+        .then(data => {
+          if (data?.configs?.pagamentos_online_habilitado !== undefined) {
+            const isHab = data.configs.pagamentos_online_habilitado === '1';
+            setPagamentosHabilitados(isHab);
+            try { localStorage.setItem('pagamentos_online_habilitado_cache', isHab ? '1' : '0'); } catch {}
+          }
+        })
+        .catch(() => {});
     };
     loadPagamentosFlag();
     const onVisible = () => { if (document.visibilityState === 'visible') loadPagamentosFlag(); };
@@ -730,23 +781,39 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                         )}
                       </div>
 
-                      {/* Documentos e Seguro */}
-                      {(boat.documentoUrl || boat.seguroUrl) && (
-                        <div className="mt-4 pt-4 border-t border-white/5 flex gap-3">
-                          {boat.documentoUrl && (
-                            <a href={boat.documentoUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-white/80 transition-colors">
-                              <FileText className="w-4 h-4 text-indigo-400" />
-                              <span className="font-semibold">Doc. Embarcação</span>
-                            </a>
-                          )}
-                          {boat.seguroUrl && (
-                            <a href={boat.seguroUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-white/80 transition-colors">
-                              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                              <span className="font-semibold">Apólice Seguro</span>
-                            </a>
-                          )}
+                      {/* Documentos da Embarcação (Padrão: Documento e Seguro) */}
+                      <div className="mt-4 pt-4 border-t border-white/5">
+                        <div className="flex items-center justify-between mb-2.5">
+                          <span className="text-[10px] uppercase tracking-wider text-white/40 font-medium">Documentos da Embarcação</span>
+                          <span className="text-[10px] text-[#B69D74] font-medium flex items-center gap-1">
+                            <Lock className="w-3 h-3" /> Acesso Integrado
+                          </span>
                         </div>
-                      )}
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDocModal(boat, 'documento')}
+                            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-xs text-white/90 font-medium transition-all cursor-pointer group"
+                          >
+                            <FileText className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+                            <span className="truncate">Documento</span>
+                            {boat.documentoUrl && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" title="Disponível" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDocModal(boat, 'seguro')}
+                            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-xs text-white/90 font-medium transition-all cursor-pointer group"
+                          >
+                            <ShieldCheck className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                            <span className="truncate">Seguro</span>
+                            {boat.seguroUrl && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" title="Disponível" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                   </div>
@@ -1812,12 +1879,44 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                       )}
 
                       {/* Financial info if it is finalized / approved / budget generated */}
-                      {(s.custoTotal > 0 || (s.orcamento && s.orcamento > 0)) && s.orcamentoStatus !== 'reprovado' && (
-                        <div className="mb-3 p-2.5 bg-white/[0.02] rounded-xl border border-white/[0.02] flex items-center justify-between">
-                          <span className="text-xs text-white/50 flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-white/30"/> Orçamento</span>
+                      {(s.custoTotal > 0 || (s.orcamento && s.orcamento > 0) || (s.valorRepassado && s.valorRepassado > 0)) && s.orcamentoStatus !== 'reprovado' && (
+                        <div className="mb-3 p-2.5 bg-white/[0.02] rounded-xl border border-white/[0.04] flex items-center justify-between">
+                          <span className="text-xs text-white/50 flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-white/30"/> Custo Total Orçado</span>
                           <span className="text-sm font-bold text-white tracking-wide">
                             {(s.valorRepassado || s.orcamento || s.custoTotal).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </span>
+                        </div>
+                      )}
+
+                      {/* Detalhamento dos itens do orçamento para o cliente */}
+                      {s.pecas && Array.isArray(s.pecas) && s.pecas.length > 0 && s.orcamentoStatus !== 'reprovado' && (
+                        <div className="mb-3 p-3 bg-white/[0.02] rounded-xl border border-white/[0.04] space-y-2">
+                          <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-white/40 pb-1 border-b border-white/[0.04]">
+                            <span>Itens & Serviços Orçados ({s.pecas.length})</span>
+                            <span>Subtotal</span>
+                          </div>
+                          <div className="space-y-1.5 max-h-40 overflow-y-auto subtle-scrollbar">
+                            {s.pecas.map((item: any, itIdx: number) => {
+                              const itemQtd = Number(item.quantidade) || 1;
+                              const itemVal = Number(item.valorUnitario) || 0;
+                              const sub = itemQtd * itemVal;
+                              return (
+                                <div key={itIdx} className="flex items-center justify-between text-xs text-white/80">
+                                  <span className="truncate pr-2">
+                                    <span className="font-bold text-[#B69D74]">{itemQtd}x</span> {item.nome}
+                                    {itemQtd > 1 && itemVal > 0 && (
+                                      <span className="text-[10px] text-white/40 ml-1">
+                                        ({itemVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} un.)
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="font-semibold text-white/95 whitespace-nowrap">
+                                    {sub.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
 
@@ -2206,56 +2305,83 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   <p className="text-sm text-white/80 mt-1">{client.telefone || 'Não informado'}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <Anchor className="w-4 h-4 text-white/30" />
+              <div className="flex items-start gap-4">
+                <Anchor className="w-4 h-4 text-white/30 mt-1 shrink-0" />
                 <div className="flex-1">
-                  <p className="text-[10px] uppercase tracking-wider text-white/30">Cota Principal</p>
-                  <p className="text-sm text-[#B69D74] font-medium mt-1 uppercase tracking-widest">{client.cota || 'Padrão'}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2.5">
+                    {(boats && boats.length > 1) || (client.embarcacoes && client.embarcacoes.length > 1) ? 'Embarcações Vinculadas' : 'Embarcação Vinculada'}
+                  </p>
+                  {(() => {
+                    const clientBoatsToDisplay = (boats && boats.length > 0)
+                      ? boats
+                      : (client.embarcacoes && client.embarcacoes.length > 0
+                          ? client.embarcacoes.map((eb: any) => ({
+                              id: eb.embarcacaoId,
+                              nome: eb.embarcacaoId,
+                              numero: eb.embarcacaoId,
+                              tipo: 'lancha',
+                              cota: eb.cota
+                            }))
+                          : (client.embarcacaoId ? [{
+                              id: client.embarcacaoId,
+                              nome: client.embarcacaoId,
+                              numero: client.embarcacaoId,
+                              tipo: 'lancha',
+                              cota: client.cota
+                            }] : []));
+
+                    if (clientBoatsToDisplay.length === 0) {
+                      return <p className="text-sm text-white/50 mt-1">Nenhuma embarcação vinculada</p>;
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        {clientBoatsToDisplay.map((boat: any) => {
+                          const boatCode = getBoatCode(boat);
+                          const isJet = boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet');
+                          const linkedCota = boat.cota
+                            || client.embarcacoes?.find((eb: any) => eb.embarcacaoId === boat.id)?.cota
+                            || (boat.id === client.embarcacaoId ? client.cota : null);
+
+                          return (
+                            <div
+                              key={boat.id}
+                              className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.02] border border-white/5"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center shrink-0">
+                                  {isJet ? (
+                                    <JetSkiIcon className="w-3.5 h-3.5 text-[#B69D74]" />
+                                  ) : (
+                                    <Ship className="w-3.5 h-3.5 text-[#B69D74]" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-medium text-white/90 truncate">
+                                    {boatCode}
+                                  </p>
+                                  {(boat.modelo || (boat.nome && boat.nome !== boatCode)) && (
+                                    <p className="text-[10px] text-white/40 truncate">
+                                      {boat.modelo || boat.nome}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {linkedCota && (
+                                <span className="shrink-0 text-[10px] font-medium text-[#B69D74] bg-[#B69D74]/10 border border-[#B69D74]/20 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                  {String(linkedCota).toLowerCase().startsWith('cota') ? linkedCota : `Cota ${linkedCota}`}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
-
-            {/* Acessórios da Lancha (Cotista) */}
-            {client.acessorios && (
-              <div className="bg-white/[0.03] border border-[#B69D74]/20 rounded-3xl p-5 space-y-4">
-                <div className="flex items-center gap-3 border-b border-white/5 pb-3">
-                  <Package className="w-4 h-4 text-[#B69D74]" />
-                  <h3 className="text-xs font-semibold text-white/90 uppercase tracking-widest">Acessórios da Embarcação</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-y-4 gap-x-2">
-                  <div>
-                    <p className="text-[9px] uppercase tracking-wider text-white/30">Tenda</p>
-                    <p className={`text-xs mt-1 font-medium ${client.acessorios.tenda ? 'text-emerald-400' : 'text-white/40'}`}>
-                      {client.acessorios.tenda ? 'Possui' : 'Não possui'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] uppercase tracking-wider text-white/30">Mesa</p>
-                    <p className={`text-xs mt-1 font-medium ${client.acessorios.mesa ? 'text-emerald-400' : 'text-white/40'}`}>
-                      {client.acessorios.mesa ? 'Possui' : 'Não possui'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] uppercase tracking-wider text-white/30">Bancos / Cadeiras</p>
-                    <p className={`text-xs mt-1 font-medium ${client.acessorios.bancosCadeiras ? 'text-emerald-400' : 'text-white/40'}`}>
-                      {client.acessorios.bancosCadeiras ? 'Possui' : 'Não possui'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] uppercase tracking-wider text-white/30">Churrasqueira</p>
-                    <p className={`text-xs mt-1 font-medium ${client.acessorios.churrasqueira ? 'text-emerald-400' : 'text-white/40'}`}>
-                      {client.acessorios.churrasqueira ? 'Possui' : 'Não possui'}
-                    </p>
-                  </div>
-                </div>
-                {client.acessorios.observacoes && (
-                  <div className="pt-2 border-t border-white/5">
-                    <p className="text-[9px] uppercase tracking-wider text-white/30 mb-1">Observações</p>
-                    <p className="text-xs text-white/70 italic leading-relaxed">{client.acessorios.observacoes}</p>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Install App Banner */}
             {showInstallBanner && !isStandalone && (
@@ -2982,13 +3108,203 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </div>
 
             <div className="mt-6 pt-4 border-t border-white/5 text-center">
-              <button 
+              <button
                 onClick={() => setSelectedTransactionForPix(null)}
                 className="text-xs text-white/40 hover:text-white transition-colors"
               >
                 Voltar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Documentos da Embarcação (Integrado PWA) */}
+      {docModalBoat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-6 bg-black/85 backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="w-full h-full md:max-w-3xl md:h-[90vh] md:rounded-[2rem] bg-[#090909] border border-white/10 flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 pt-[max(env(safe-area-inset-top),0px)] pb-[max(env(safe-area-inset-bottom),0px)]">
+
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-[#111] shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center shrink-0">
+                  {docModalTab === 'seguro' ? (
+                    <ShieldCheck className="w-5 h-5 text-[#B69D74]" />
+                  ) : (
+                    <FileText className="w-5 h-5 text-[#B69D74]" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+                    {docModalTab === 'seguro' ? 'Apólice de Seguro' : 'Documento da Embarcação'}
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-[#B69D74] border border-white/10 font-mono">
+                      {getBoatCode(docModalBoat)}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-white/40">
+                    {docModalBoat.nome || docModalBoat.modelo || 'Embarcação'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {((docModalTab === 'seguro' ? docModalBoat.seguroUrl : docModalBoat.documentoUrl)) && (
+                  <>
+                    {typeof navigator !== 'undefined' && !!navigator.share && (
+                      <button
+                        type="button"
+                        onClick={handleShareDoc}
+                        title="Compartilhar documento"
+                        className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-all cursor-pointer"
+                      >
+                        <Share className="w-4 h-4" />
+                      </button>
+                    )}
+                    <a
+                      href={docModalTab === 'seguro' ? docModalBoat.seguroUrl : docModalBoat.documentoUrl}
+                      download
+                      title="Baixar PDF"
+                      className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-all cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDocModalBoat(null)}
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Tab Selector: Documento vs Seguro */}
+            <div className="p-3 bg-black/40 border-b border-white/5 grid grid-cols-2 gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => { setDocModalTab('documento'); setIsDocLoading(true); }}
+                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                  docModalTab === 'documento'
+                    ? 'bg-[#B69D74] text-black shadow-lg font-semibold'
+                    : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Documento</span>
+                {docModalBoat.documentoUrl ? (
+                  <span className={`w-1.5 h-1.5 rounded-full ${docModalTab === 'documento' ? 'bg-black' : 'bg-emerald-400'}`} />
+                ) : (
+                  <span className="text-[9px] opacity-60">(Pendente)</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setDocModalTab('seguro'); setIsDocLoading(true); }}
+                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                  docModalTab === 'seguro'
+                    ? 'bg-[#B69D74] text-black shadow-lg font-semibold'
+                    : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Seguro</span>
+                {docModalBoat.seguroUrl ? (
+                  <span className={`w-1.5 h-1.5 rounded-full ${docModalTab === 'seguro' ? 'bg-black' : 'bg-emerald-400'}`} />
+                ) : (
+                  <span className="text-[9px] opacity-60">(Pendente)</span>
+                )}
+              </button>
+            </div>
+
+            {/* Document Viewer Body */}
+            <div className="flex-1 w-full relative bg-[#151515] overflow-hidden flex flex-col">
+              {(() => {
+                const currentDocUrl = docModalTab === 'seguro' ? docModalBoat.seguroUrl : docModalBoat.documentoUrl;
+
+                if (!currentDocUrl) {
+                  return (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#111] to-[#090909]">
+                      <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-white/30 mb-4 shadow-inner">
+                        {docModalTab === 'seguro' ? (
+                          <ShieldAlert className="w-8 h-8 text-amber-400/60" />
+                        ) : (
+                          <FileText className="w-8 h-8 text-indigo-400/60" />
+                        )}
+                      </div>
+                      <h4 className="text-base font-medium text-white mb-1.5">
+                        {docModalTab === 'seguro' ? 'Apólice de Seguro Pendente' : 'Documento da Embarcação Pendente'}
+                      </h4>
+                      <p className="text-xs text-white/40 max-w-sm mb-6 leading-relaxed">
+                        {docModalTab === 'seguro'
+                          ? `A apólice de seguro de ${getBoatCode(docModalBoat)} ainda não foi disponibilizada nos arquivos digitais da Vale Administradora.`
+                          : `O documento oficial (TIE/TIEM) de ${getBoatCode(docModalBoat)} ainda não foi digitalizado nos registros da Vale Administradora.`
+                        }
+                      </p>
+                      <a
+                        href={`https://wa.me/${VALE_ADMINISTRADORA_WHATSAPP}?text=${encodeURIComponent(
+                          `Olá! Gostaria de consultar sobre o ${docModalTab === 'seguro' ? 'Seguro' : 'Documento'} da embarcação ${getBoatCode(docModalBoat)} com a Vale Administradora.`
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <MessageCircle className="w-4 h-4 text-[#25D366]" />
+                        <span>Solicitar à Vale Administradora via WhatsApp</span>
+                      </a>
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    {isDocLoading && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#090909] z-10 gap-3">
+                        <div className="w-8 h-8 border-2 border-[#B69D74] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs text-white/50">Carregando visualização integrada...</span>
+                      </div>
+                    )}
+                    <iframe
+                      key={currentDocUrl}
+                      src={`${currentDocUrl}#toolbar=0&navpanes=0`}
+                      className="w-full flex-1 border-0 bg-white"
+                      title={docModalTab === 'seguro' ? 'Apólice de Seguro' : 'Documento da Embarcação'}
+                      onLoad={() => setIsDocLoading(false)}
+                    />
+
+                    {/* Bottom bar with integrated options */}
+                    <div className="p-3 bg-[#0d0d0d] border-t border-white/5 flex items-center justify-between text-xs shrink-0">
+                      <span className="text-white/40 text-[11px] flex items-center gap-1.5">
+                        <Lock className="w-3 h-3 text-emerald-400" /> Visualização segura integrada
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {typeof navigator !== 'undefined' && !!navigator.share && (
+                          <button
+                            type="button"
+                            onClick={handleShareDoc}
+                            className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Share className="w-3 h-3 text-[#B69D74]" />
+                            <span>Compartilhar</span>
+                          </button>
+                        )}
+                        <a
+                          href={currentDocUrl}
+                          download
+                          className="px-3 py-1.5 rounded-lg bg-[#B69D74]/15 hover:bg-[#B69D74]/25 text-[#B69D74] border border-[#B69D74]/30 text-[11px] flex items-center gap-1.5 font-medium transition-colors cursor-pointer"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Baixar Arquivo</span>
+                        </a>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
           </div>
         </div>
       )}

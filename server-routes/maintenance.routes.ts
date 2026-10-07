@@ -86,17 +86,21 @@ router.post("/save", requireAdminAuth, sensitiveLimiter, async (req, res) => {
             const boat = dbData.boats.find((b: any) => b.id === data.embarcacaoId);
 
             if (baseValor > 0) {
-              if (boat && boat.donos && boat.donos.length > 0) {
-                const numDonos = boat.donos.length;
+              const targetDonos = Array.isArray(data.cotistasSelecionados) && data.cotistasSelecionados.length > 0
+                ? data.cotistasSelecionados
+                : (boat && boat.donos && boat.donos.length > 0 ? boat.donos : []);
+
+              if (targetDonos.length > 0) {
+                const numDonos = targetDonos.length;
                 const valorRateado = Number((baseValor / numDonos).toFixed(2));
 
-                for (const donoId of boat.donos) {
+                for (const donoId of targetDonos) {
                   const splitData = {
                     ...transacaoBase,
                     id: `${transacaoBaseId}_${donoId}`,
                     clienteId: donoId,
                     valor: valorRateado,
-                    descricao: `${transacaoBase.descricao} | Rateio (1/${numDonos})`
+                    descricao: `${transacaoBase.descricao} | Rateio (${numDonos === 1 ? 'Integral' : `1/${numDonos}`})`
                   };
                   await upsertTransacao(splitData, connection);
                   clientsToSync.add(donoId);

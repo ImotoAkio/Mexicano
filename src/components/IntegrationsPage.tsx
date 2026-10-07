@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Compass, CalendarDays, CheckCircle2, X, CreditCard, Key, Shield } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Compass, CalendarDays, CheckCircle2, X, CreditCard, Key, Shield,
+  ShieldCheck, AlertTriangle, RefreshCw, MessageSquare, QrCode, Loader2, Check
+} from 'lucide-react';
+import { io } from 'socket.io-client';
 import { Cliente } from '../types';
-import { 
-  initiateOAuthLogin, 
-  isServiceAccountMode, 
-  getServiceAccountEmail, 
-  getCalendarMappings, 
-  saveCalendarMappings, 
-  fetchCalendarList, 
-  saveGoogleServiceAccount, 
-  getGoogleClientId, 
+import {
+  initiateOAuthLogin,
+  isServiceAccountMode,
+  getServiceAccountEmail,
+  getCalendarMappings,
+  saveCalendarMappings,
+  fetchCalendarList,
+  saveGoogleServiceAccount,
+  getGoogleClientId,
   setGoogleClientId,
   getCachedToken,
   setCachedToken,
@@ -36,8 +40,21 @@ export default function IntegrationsPage() {
   const [asaasApiUrl, setAsaasApiUrl] = useState('https://api-sandbox.asaas.com/v3');
   const [asaasWebhookToken, setAsaasWebhookToken] = useState('');
   const [hasAsaasApiKey, setHasAsaasApiKey] = useState(false);
-  const [pagamentosHabilitados, setPagamentosHabilitados] = useState(false);
+
+  // Status de pagamentos online (com cache local imediato para evitar pulo de estado ao recarregar)
+  const [pagamentosHabilitados, setPagamentosHabilitados] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('pagamentos_online_habilitado_cache');
+      return cached === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [isSavingPagamentos, setIsSavingPagamentos] = useState(false);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
+  const [lastSavedTimestamp, setLastSavedTimestamp] = useState<string | null>(null);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [pendingToggleStatus, setPendingToggleStatus] = useState<boolean | null>(null);
 
   // Marina Configs
   const [checkinAntecedencia, setCheckinAntecedencia] = useState('40');
@@ -69,66 +86,148 @@ export default function IntegrationsPage() {
 
   const [isSAMode, setIsSAMode] = useState(isServiceAccountMode());
 
+  const loadServerConfigs = useCallback(async (showNotification = false) => {
+    setIsConfigLoading(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      if (!token) {
+        setIsConfigLoading(false);
+        return;
+      }
+
+      const res = await fetch('/api/config', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Cache-Control': 'no-cache'
+        },
+        cache: 'no-store'
+      });
+
+      if (!res.ok) {
+        console.warn('Erro ao carregar configurações do servidor:', res.status);
+        if (showNotification) showToast('Não foi possível verificar status com o servidor.', 'error');
+        setIsConfigLoading(false);
+        return;
+      }
+
+      const data = await res.json();
+      if (data && !data.error) {
+        setHasAsaasApiKey(!!data.has_asaas_api_key);
+        setAsaasApiUrl(data.asaas_api_url || 'https://api-sandbox.asaas.com/v3');
+        setAsaasWebhookToken(data.asaas_webhook_token || '');
+
+        const isHabilitado = !!data.pagamentos_online_habilitado;
+        setPagamentosHabilitados(isHabilitado);
+        try {
+          localStorage.setItem('pagamentos_online_habilitado_cache', String(isHabilitado));
+        } catch {}
+        const nowStr = new Date().toLocaleTimeString('pt-BR');
+        setLastSavedTimestamp(nowStr);
+
+        if (data.marina_checkin_antecedencia) setCheckinAntecedencia(data.marina_checkin_antecedencia);
+        if (data.marina_horarios_semana) {
+          setHorariosSemana(prev => ({ ...prev, ...data.marina_horarios_semana }));
+        }
+        if (data.has_asaas_api_key) {
+          setAsaasApiKey('__UNCHANGED__');
+        }
+        if (showNotification) {
+          showToast(`Status sincronizado com o banco de dados (${nowStr})!`, 'success');
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar configurações:', err);
+      if (showNotification) showToast('Erro de conexão ao verificar status no servidor.', 'error');
+    } finally {
+      setIsConfigLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setClientId(getGoogleClientId());
     setGcalConnected(!!getCachedToken());
-    
+
     const mappings = getCalendarMappings();
     setCalendarMappingsState(mappings);
     const bulkLines = Object.entries(mappings).map(([k, v]) => `${k} = ${v}`).join('\n');
     setBulkMappingsInput(bulkLines);
-
-    
 
     // Verify service account config asynchronously on mount
     checkServerConfig().then(isActive => {
       setIsSAMode(isActive);
     });
 
-    // Fetch Asaas config status on mount
-    const token = localStorage.getItem('admin_token');
-    if (token) {
-      fetch('/api/config', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data) {
-          setHasAsaasApiKey(!!data.has_asaas_api_key);
-          setAsaasApiUrl(data.asaas_api_url || 'https://api-sandbox.asaas.com/v3');
-          setAsaasWebhookToken(data.asaas_webhook_token || '');
-          setPagamentosHabilitados(!!data.pagamentos_online_habilitado);
-          if (data.marina_checkin_antecedencia) setCheckinAntecedencia(data.marina_checkin_antecedencia);
-          if (data.marina_horarios_semana) {
-            setHorariosSemana(prev => ({ ...prev, ...data.marina_horarios_semana }));
-          }
-          if (data.has_asaas_api_key) {
-            setAsaasApiKey('__UNCHANGED__');
-          }
-        }
-      })
-      .catch(err => console.warn('Erro ao carregar configurações do Asaas:', err));
-    }
-  }, []);
+    // Fetch config status on mount
+    loadServerConfigs(false);
 
-  const handleTogglePagamentos = async () => {
-    const next = !pagamentosHabilitados;
+    // Socket.io real-time listener for updates
+    let socket: any;
+    try {
+      socket = io('/', { path: '/socket.io' });
+      socket.on('config_updated', (data: any) => {
+        if (data && data.pagamentos_online_habilitado !== undefined) {
+          const val = !!data.pagamentos_online_habilitado;
+          setPagamentosHabilitados(val);
+          try {
+            localStorage.setItem('pagamentos_online_habilitado_cache', String(val));
+          } catch {}
+          setLastSavedTimestamp(new Date().toLocaleTimeString('pt-BR'));
+        }
+      });
+    } catch (e) {
+      console.warn('Socket connection error in IntegrationsPage:', e);
+    }
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
+  }, [loadServerConfigs]);
+
+  const handleRequestTogglePagamentos = (targetValue?: boolean) => {
+    const nextVal = targetValue !== undefined ? targetValue : !pagamentosHabilitados;
+    setPendingToggleStatus(nextVal);
+    setIsConfirmModalOpen(true);
+  };
+
+  const handleConfirmTogglePagamentos = async () => {
+    if (pendingToggleStatus === null) return;
+    const next = pendingToggleStatus;
     setIsSavingPagamentos(true);
     try {
       const token = localStorage.getItem('admin_token');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (!token) {
+        showToast('Sessão expirada. Faça login novamente.', 'error');
+        setIsConfirmModalOpen(false);
+        return;
+      }
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+
       const res = await fetch('/api/config', {
         method: 'POST',
         headers,
+        cache: 'no-store',
         body: JSON.stringify({ pagamentos_online_habilitado: next })
       });
       const data = await res.json();
       if (!res.ok || data.error) {
-        showToast(data.message || 'Falha ao atualizar pagamentos online.', 'error');
+        showToast(data.message || 'Falha ao atualizar status de pagamentos no servidor.', 'error');
       } else {
         setPagamentosHabilitados(next);
-        showToast(next ? 'Pagamentos online habilitados.' : 'Pagamentos online desabilitados. Clientes serão direcionados ao WhatsApp do financeiro.');
+        try {
+          localStorage.setItem('pagamentos_online_habilitado_cache', String(next));
+        } catch {}
+        const nowStr = new Date().toLocaleTimeString('pt-BR');
+        setLastSavedTimestamp(nowStr);
+        showToast(
+          next
+            ? 'Pagamentos online ativados e gravados com sucesso no banco de dados!'
+            : 'Pagamentos online desativados. Clientes agora serão direcionados ao WhatsApp do financeiro.',
+          'success'
+        );
+        setIsConfirmModalOpen(false);
       }
     } catch (err: any) {
       showToast(err.message || 'Erro ao conectar ao servidor.', 'error');
@@ -147,10 +246,12 @@ export default function IntegrationsPage() {
       const res = await fetch('/api/config', {
         method: 'POST',
         headers,
+        cache: 'no-store',
         body: JSON.stringify({
           asaas_api_key: asaasApiKey,
           asaas_api_url: asaasApiUrl,
-          asaas_webhook_token: asaasWebhookToken
+          asaas_webhook_token: asaasWebhookToken,
+          pagamentos_online_habilitado: pagamentosHabilitados
         })
       });
       const data = await res.json();
@@ -158,6 +259,7 @@ export default function IntegrationsPage() {
         showToast(data.message || 'Falha ao salvar configurações do Asaas.', 'error');
       } else {
         showToast('Configurações do Asaas salvas com sucesso!');
+        setLastSavedTimestamp(new Date().toLocaleTimeString('pt-BR'));
         if (asaasApiKey && asaasApiKey !== '__UNCHANGED__') {
           setHasAsaasApiKey(true);
           setAsaasApiKey('__UNCHANGED__');
@@ -342,29 +444,108 @@ export default function IntegrationsPage() {
 
           <div className="p-6 space-y-4">
 
-            <div className={`flex items-center justify-between gap-4 rounded-xl p-4 border ${pagamentosHabilitados ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
-              <div>
-                <p className={`text-xs font-bold ${pagamentosHabilitados ? 'text-emerald-800' : 'text-amber-800'}`}>
-                  Pagamentos online {pagamentosHabilitados ? 'habilitados' : 'desabilitados'}
-                </p>
-                <p className={`text-[10px] mt-0.5 leading-relaxed ${pagamentosHabilitados ? 'text-emerald-700/80' : 'text-amber-700/80'}`}>
-                  {pagamentosHabilitados
-                    ? 'Clientes podem gerar PIX pelo portal.'
-                    : 'O botão de pagamento do cliente abre o WhatsApp do financeiro (+55 87 9122-9333).'}
-                </p>
+            {/* PAINEL DE CONTROLE DE PAGAMENTO E TRANSAÇÕES DO PORTAL */}
+            <div className={`rounded-2xl p-4.5 border transition-all duration-300 ${
+              pagamentosHabilitados
+                ? 'bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border-emerald-500/30'
+                : 'bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-amber-500/30'
+            }`}>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 font-mono">
+                    Modo do Portal do Cliente
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {isConfigLoading ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full font-medium">
+                        <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                        Verificando servidor...
+                      </span>
+                    ) : (
+                      <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                        pagamentosHabilitados
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : 'bg-amber-100 text-amber-800 border border-amber-200'
+                      }`}>
+                        <span className={`w-2 h-2 rounded-full ${pagamentosHabilitados ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                        {pagamentosHabilitados ? 'PIX ATIVO NO PORTAL' : 'REDIRECIONAMENTO WHATSAPP'}
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      title="Sincronizar status gravado no banco de dados agora"
+                      onClick={() => loadServerConfigs(true)}
+                      disabled={isConfigLoading || isSavingPagamentos}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isConfigLoading ? 'animate-spin text-blue-600' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    {pagamentosHabilitados ? (
+                      <>
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        <span>Pagamentos Online via PIX Habilitados</span>
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare className="w-4 h-4 text-amber-600" />
+                        <span>Pagamentos Online Desativados (WhatsApp)</span>
+                      </>
+                    )}
+                  </h4>
+                  <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                    {pagamentosHabilitados
+                      ? 'Clientes visualizam o botão "Pagar com PIX" e geram o QR Code instantâneo diretamente pelo portal.'
+                      : 'O botão de pagamento no portal do cliente foi substituído pelo encaminhamento direto para o WhatsApp do Financeiro (+55 87 9122-9333).'}
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
+                  <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                    {lastSavedTimestamp ? (
+                      <>
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                        <span>Gravado no MySQL às {lastSavedTimestamp}</span>
+                      </>
+                    ) : (
+                      <span>Carregando persistência...</span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isSavingPagamentos || isConfigLoading}
+                    onClick={() => handleRequestTogglePagamentos()}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
+                      pagamentosHabilitados
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                    }`}
+                  >
+                    {isSavingPagamentos ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Gravando...</span>
+                      </>
+                    ) : pagamentosHabilitados ? (
+                      <>
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>Mudar para WhatsApp</span>
+                      </>
+                    ) : (
+                      <>
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>Habilitar PIX no Portal</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                role="switch"
-                id="toggle-pagamentos-online"
-                aria-checked={pagamentosHabilitados}
-                aria-label="Habilitar pagamentos online"
-                disabled={isSavingPagamentos}
-                onClick={handleTogglePagamentos}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${pagamentosHabilitados ? 'bg-emerald-500' : 'bg-slate-300'}`}
-              >
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pagamentosHabilitados ? 'translate-x-5' : 'translate-x-0.5'}`} />
-              </button>
             </div>
 
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
@@ -567,6 +748,127 @@ export default function IntegrationsPage() {
               <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
                 <button onClick={() => setIsGCalModalOpen(false)} className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200">Cancelar</button>
                 <button onClick={handleSaveBulkMappings} className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700">Salvar Mapeamento</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE CONFIRMAÇÃO E SEGURANÇA DE PAGAMENTOS ONLINE */}
+        {isConfirmModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden transform transition-all p-6 space-y-5">
+              <div className="flex items-start gap-4">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                  pendingToggleStatus
+                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                    : 'bg-amber-50 text-amber-600 border border-amber-100'
+                }`}>
+                  {pendingToggleStatus ? (
+                    <ShieldCheck className="w-6 h-6" />
+                  ) : (
+                    <AlertTriangle className="w-6 h-6" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">
+                    {pendingToggleStatus
+                      ? 'Habilitar Pagamentos Online (PIX no Portal)?'
+                      : 'Desativar Pagamentos e Encaminhar ao WhatsApp?'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Esta alteração afeta imediatamente a experiência de todos os clientes no portal.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isSavingPagamentos) {
+                      setIsConfirmModalOpen(false);
+                      setPendingToggleStatus(null);
+                    }
+                  }}
+                  disabled={isSavingPagamentos}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className={`p-4 rounded-2xl border text-xs space-y-2 ${
+                pendingToggleStatus
+                  ? 'bg-emerald-50/60 border-emerald-100 text-emerald-900'
+                  : 'bg-amber-50/60 border-amber-100 text-amber-900'
+              }`}>
+                <p className="font-semibold">O que acontecerá após confirmar:</p>
+                <ul className="space-y-1.5 text-[11px] opacity-90">
+                  {pendingToggleStatus ? (
+                    <>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-emerald-600 font-bold">✓</span>
+                        Clientes poderão gerar QR Code PIX instantaneamente no portal do cliente.
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-emerald-600 font-bold">✓</span>
+                        O Asaas processará e liquidará as cobranças de forma automatizada.
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-emerald-600 font-bold">✓</span>
+                        O status é gravado imediatamente e com segurança no banco de dados central (MySQL).
+                      </li>
+                    </>
+                  ) : (
+                    <>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-amber-600 font-bold">⚠</span>
+                        O botão de pagamento no portal do cliente abrirá diretamente o WhatsApp do Financeiro (+55 87 9122-9333).
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-amber-600 font-bold">⚠</span>
+                        Nenhuma cobrança PIX automática será gerada pelo portal até reativação.
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-amber-600 font-bold">⚠</span>
+                        O status é gravado imediatamente e com segurança no banco de dados central (MySQL).
+                      </li>
+                    </>
+                  )}
+                </ul>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isSavingPagamentos}
+                  onClick={() => {
+                    setIsConfirmModalOpen(false);
+                    setPendingToggleStatus(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPagamentos}
+                  onClick={handleConfirmTogglePagamentos}
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-sm flex items-center gap-2 cursor-pointer ${
+                    pendingToggleStatus
+                      ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                      : 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
+                  }`}
+                >
+                  {isSavingPagamentos ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Gravando no Banco...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>{pendingToggleStatus ? 'Confirmar e Habilitar' : 'Confirmar e Desativar'}</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

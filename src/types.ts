@@ -126,7 +126,27 @@ export interface Embarcacao {
     observacoes?: string;
     ultimaConferencia?: string;
     historico?: RegistroAcessorios[];
+    statusInfo?: any;
   };
+  statusOperacional?: 'disponivel' | 'em_manutencao' | 'pendencia';
+  motivoStatus?: string;
+  observacaoStatus?: string;
+  dataAlteracaoStatus?: string;
+  alteradoPorStatus?: string;
+  previsaoLiberacao?: string;
+  historicoStatus?: StatusHistoricoItem[];
+}
+
+export interface StatusHistoricoItem {
+  id: string;
+  status: 'disponivel' | 'em_manutencao' | 'pendencia';
+  emManutencao: boolean;
+  motivo?: string;
+  observacoes?: string;
+  dataAlteracao: string;
+  alteradoPor: string;
+  previsaoLiberacao?: string;
+  horasMotor?: number;
 }
 
 export interface Reserva {
@@ -211,6 +231,19 @@ export interface Usuario {
   createdAt: string;
 }
 
+export interface Fornecedor {
+  id: string;
+  nomeFantasia: string;
+  razaoSocial?: string;
+  cnpjCpf?: string;
+  empresaId?: string;
+  empresa?: string;
+  dadosBancarios?: any;
+  status?: 'ativo' | 'inativo';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface TransacaoFinanceira {
   id: string;
   tipo: 'receita' | 'despesa';
@@ -273,13 +306,19 @@ export interface Chamado {
   osIds?: string[];
   dataAbertura: string;
   observacoesAnalise?: string;
+  bloqueouEmbarcacao?: boolean;
+  dataBloqueio?: string;
+  dataResolucao?: string;
   createdAt: string;
 }
 
 export interface PecaItem {
+  id?: string;
   nome: string;
   quantidade: number;
   valorUnitario: number;
+  custoUnitario?: number;
+  tipo?: 'peca' | 'servico' | 'material' | 'outro';
 }
 
 export interface Manutencao {
@@ -325,6 +364,21 @@ export interface Manutencao {
   };
   pecas?: PecaItem[];
   whatsappStatus?: 'nao_enviado' | 'orcamento_enviado' | 'aprovado' | 'concluido';
+  cotistasSelecionados?: string[]; // IDs dos cotistas selecionados para pagamento/rateio
+  // === Campos do Fluxo Controlado ===
+  fornecedorId?: string;
+  custoReal?: number;
+  margemLucro?: number;
+  oficinaNome?: string;
+  oficinaCnpj?: string;
+  dataEnvioOrcamento?: string;
+  dataAprovacao?: string;
+  aprovadoPor?: string;
+  dataInicioServico?: string;
+  dataConclusao?: string;
+  concluidoPor?: string;
+  transacoesGeradas?: string[];
+  fotosConclusao?: string[];
   createdAt: string;
 }
 

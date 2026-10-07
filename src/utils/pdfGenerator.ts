@@ -3,6 +3,9 @@ import autoTable from 'jspdf-autotable';
 // @ts-ignore
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
 import logoValeSrc from '../assets/images/logo_vale.png';
+import { Manutencao, Embarcacao, Cliente } from '../types';
+import { getBoatCode } from './boatUtils';
+
 
 interface PDFData {
   data: string;          // DD / MM / YYYY
@@ -963,4 +966,239 @@ export async function generateFinanceReportPDF(params: {
   });
 
   doc.save(`Relatorio_Finance_${params.empresa.replace(/\s+/g,'_')}.pdf`);
+}
+
+export async function generateOrcamentoPDF(os: Manutencao, boat?: Embarcacao, donos?: Cliente[]) {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const leftMargin = 15;
+  let currentY = 18;
+
+  // Header Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42);
+  doc.text('ORÇAMENTO DE PEÇAS & SERVIÇOS NÁUTICOS', leftMargin, currentY);
+
+  currentY += 6;
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Ordem de Serviço: ${os.codigoOS || '—'} • Data de Emissão: ${new Date().toLocaleDateString('pt-BR')}`, leftMargin, currentY);
+
+  if (os.oficinaNome) {
+    currentY += 5;
+    doc.text(`Oficina / Fornecedor Parceiro: ${os.oficinaNome}`, leftMargin, currentY);
+  }
+
+  currentY += 4;
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(leftMargin, currentY, 195, currentY);
+  currentY += 6;
+
+  // Boat & Cotistas Box
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(leftMargin, currentY, 180, 26, 2.5, 2.5, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(leftMargin, currentY, 180, 26, 2.5, 2.5, 'D');
+
+  let boxY = currentY + 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Embarcação: ${boat ? getBoatCode(boat) : '—'}`, leftMargin + 5, boxY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  boxY += 5;
+  doc.text(`Modelo / Tipo: ${boat?.modelo || '—'} (${boat?.tipo === 'jet' ? 'Jet Ski' : 'Lancha'}) • Horímetro: ${os.horasMotorAtual || boat?.horasMotor || 0} h`, leftMargin + 5, boxY);
+
+  boxY += 5;
+  const nomesDonos = donos && donos.length > 0 ? donos.map(d => d.nome).join(', ') : 'Proprietário(s) cadastrado(s)';
+  doc.text(`Cotistas: ${nomesDonos.substring(0, 85)}${nomesDonos.length > 85 ? '...' : ''}`, leftMargin + 5, boxY);
+
+  currentY += 32;
+
+  // Descrição do Serviço
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Serviço / Manutenção: ${os.tituloChamado || os.titulo || 'Serviço Náutico'}`, leftMargin, currentY);
+
+  if (os.descricaoServico) {
+    currentY += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    const splitDesc = doc.splitTextToSize(os.descricaoServico, 180);
+    doc.text(splitDesc, leftMargin, currentY);
+    currentY += (splitDesc.length * 4.2);
+  }
+
+  currentY += 6;
+
+  // TABELA DE ITENS, PEÇAS E MATERIAIS
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Detalhamento de Peças, Materiais & Mão de Obra', leftMargin, currentY);
+  currentY += 5;
+
+  // Cabeçalho da Tabela
+  doc.setFillColor(241, 245, 249);
+  doc.rect(leftMargin, currentY, 180, 7, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  doc.text('Item / Peça / Serviço', leftMargin + 3, currentY + 4.8);
+  doc.text('Qtd.', leftMargin + 115, currentY + 4.8, { align: 'right' });
+  doc.text('Val. Unitário', leftMargin + 148, currentY + 4.8, { align: 'right' });
+  doc.text('Subtotal', leftMargin + 177, currentY + 4.8, { align: 'right' });
+
+  currentY += 7;
+
+  const pecasList = os.pecas || [];
+  let somaItens = 0;
+
+  if (pecasList.length === 0) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text('Serviço Geral / Manutenção Mecânica Unificada', leftMargin + 3, currentY + 5);
+    doc.text('1', leftMargin + 115, currentY + 5, { align: 'right' });
+    const valorPadrao = os.valorRepassado || os.orcamento || 0;
+    doc.text(valorPadrao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), leftMargin + 148, currentY + 5, { align: 'right' });
+    doc.text(valorPadrao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), leftMargin + 177, currentY + 5, { align: 'right' });
+    somaItens = valorPadrao;
+    currentY += 7;
+  } else {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+
+    pecasList.forEach((item: any, idx: number) => {
+      const qtd = Number(item.quantidade) || 1;
+      const unit = Number(item.valorUnitario) || 0;
+      const lineTotal = qtd * unit;
+      somaItens += lineTotal;
+
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(leftMargin, currentY, 180, 6, 'F');
+      }
+
+      doc.text(String(item.nome || 'Item'), leftMargin + 3, currentY + 4.2);
+      doc.text(String(qtd), leftMargin + 115, currentY + 4.2, { align: 'right' });
+      doc.text(unit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), leftMargin + 148, currentY + 4.2, { align: 'right' });
+      doc.text(lineTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), leftMargin + 177, currentY + 4.2, { align: 'right' });
+
+      currentY += 6;
+    });
+  }
+
+  // Linha separadora
+  currentY += 2;
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(203, 213, 225);
+  doc.line(leftMargin, currentY, 195, currentY);
+  currentY += 6;
+
+  // Total Geral e Rateio
+  const valorTotalFinal = os.valorRepassado && os.valorRepassado > 0 ? os.valorRepassado : somaItens;
+  const numCotistas = donos && donos.length > 0 ? donos.length : (boat?.donos?.length || 1);
+  const valorPorCotista = valorTotalFinal / Math.max(numCotistas, 1);
+
+  // Box de Totais
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(leftMargin + 90, currentY, 90, numCotistas > 1 ? 24 : 14, 2, 2, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(leftMargin + 90, currentY, 90, numCotistas > 1 ? 24 : 14, 2, 2, 'D');
+
+  let totalY = currentY + 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('CUSTO TOTAL DO CLIENTE:', leftMargin + 94, totalY);
+  doc.setFontSize(11);
+  doc.setTextColor(24, 107, 119);
+  doc.text(valorTotalFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), leftMargin + 177, totalY, { align: 'right' });
+
+  if (numCotistas > 1) {
+    totalY += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`VALOR POR COTISTA (${numCotistas} sócios):`, leftMargin + 94, totalY);
+    doc.setFontSize(10.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(valorPorCotista.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), leftMargin + 177, totalY, { align: 'right' });
+  }
+
+  currentY += (numCotistas > 1 ? 34 : 24);
+
+  // Termos e Linha de Assinatura
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Termos de Aprovação:', leftMargin, currentY);
+
+  currentY += 4;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Orçamento válido por 15 dias a contar da data de emissão. A aprovação autoriza o início imediato dos reparos.', leftMargin, currentY);
+
+  currentY += 18;
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(148, 163, 184);
+  doc.line(leftMargin + 25, currentY, leftMargin + 155, currentY);
+
+  currentY += 4.5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Assinatura do Proprietário / De Acordo dos Cotistas', 105, currentY, { align: 'center' });
+
+  const pdfBlob = doc.output('blob');
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  window.open(pdfUrl, '_blank');
+}
+
+export async function generateOrdemServicoPDF(os: Manutencao, boat?: Embarcacao) {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text('Ordem de Serviço (Autorização)', 14, 22);
+  
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 14, 30);
+  doc.text(`Nº OS: ${os.codigoOS || '—'}`, 14, 35);
+  doc.text(`Oficina Autorizada: ${os.oficinaNome || '—'}`, 14, 40);
+  
+  doc.setFont('helvetica', 'bold');
+  doc.text('Dados da Embarcação:', 14, 50);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Embarcação: ${boat ? getBoatCode(boat) : '—'}`, 14, 55);
+  doc.text(`Modelo: ${boat?.modelo || '—'}`, 14, 60);
+  
+  doc.setFont('helvetica', 'bold');
+  doc.text('Serviço Autorizado:', 14, 75);
+  doc.setFont('helvetica', 'normal');
+  const splitDesc = doc.splitTextToSize(os.descricaoServico || 'Sem descrição.', 180);
+  doc.text(splitDesc, 14, 80);
+  
+  const startY = 85 + (splitDesc.length * 5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Aprovado pelo setor Peças & Serviços', 14, startY + 10);
+  
+  doc.line(14, startY + 30, 80, startY + 30);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Responsável pela Oficina', 14, startY + 35);
+
+  const pdfBlob = doc.output('blob');
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  window.open(pdfUrl, '_blank');
 }
