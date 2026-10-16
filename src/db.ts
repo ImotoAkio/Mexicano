@@ -18,6 +18,31 @@ let memoryRegistrosAtividades: any[] = [];
 export let isDbLoaded = false;
 export let isDbLoadAttempted = false;
 
+// Event / Listener system for reactive DB updates
+export type DbUpdateListener = (reason?: string) => void;
+const dbUpdateListeners = new Set<DbUpdateListener>();
+
+export function onDbUpdate(listener: DbUpdateListener): () => void {
+  dbUpdateListeners.add(listener);
+  return () => {
+    dbUpdateListeners.delete(listener);
+  };
+}
+
+export function notifyDbUpdate(reason = 'update') {
+  dbUpdateListeners.forEach(fn => {
+    try {
+      fn(reason);
+    } catch (e) {
+      console.warn('[DB Event Listener Error]:', e);
+    }
+  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('db_updated', { detail: { reason } }));
+    window.dispatchEvent(new CustomEvent('db_synced', { detail: { reason } }));
+  }
+}
+
 // Helper: Get admin JWT token for authenticated API calls
 export function getAdminToken(): string | null {
   return localStorage.getItem('admin_token') || localStorage.getItem('client_token');
@@ -101,6 +126,7 @@ export const clientDB = {
       });
     }
 
+    notifyDbUpdate('client_created');
     return newClient;
   },
   update: (id: string, updatedFields: Partial<Omit<Cliente, 'id' | 'dataCadastro'>>): Cliente => {
@@ -146,6 +172,7 @@ export const clientDB = {
       }
     });
 
+    notifyDbUpdate('client_updated');
     return updatedClient;
   },
   activate: (id: string): Cliente => {
@@ -189,6 +216,7 @@ export const clientDB = {
         }
       });
     }
+    notifyDbUpdate('client_deleted');
   }
 };
 
@@ -236,6 +264,7 @@ export const boatDB = {
       });
     }
 
+    notifyDbUpdate('boat_created');
     return newBoat;
   },
   update: (id: string, updatedFields: Partial<Omit<Embarcacao, 'id'>>): Embarcacao => {
@@ -277,6 +306,7 @@ export const boatDB = {
       });
     }
 
+    notifyDbUpdate('boat_updated');
     return updatedBoat;
   },
   registrarHoras: (
@@ -969,109 +999,124 @@ export const epiDB = {
 };
 
 
+let inFlightLoadPromise: Promise<any> | null = null;
+
 // Carrega os dados remotamente e preenche a memoria
 export async function loadFromRemote(forceRefresh = false) {
-  if (!localStorage.getItem('admin_token')) {
-    return { success: false, connected: false, message: "Apenas administradores podem acessar." };
+  if (inFlightLoadPromise && !forceRefresh) {
+    return inFlightLoadPromise;
   }
 
-  try {
-    // Wait for any in-flight saves to finish before fetching, to avoid race condition where we fetch old data
-    if (pendingSaves.length > 0) {
-      await Promise.allSettled(pendingSaves);
+  const runLoad = async () => {
+    if (!localStorage.getItem('admin_token')) {
+      return { success: false, connected: false, message: "Apenas administradores podem acessar." };
     }
 
-    const token = getAdminToken();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    try {
+      // Wait for any in-flight saves to finish before fetching, to avoid race condition where we fetch old data
+      if (pendingSaves.length > 0) {
+        await Promise.allSettled(pendingSaves);
+      }
 
-    const statusRes = await fetch('/api/db/status', { headers });
-    if (!statusRes.ok) {
+      const token = getAdminToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const statusRes = await fetch('/api/db/status', { headers });
+      if (!statusRes.ok) {
+          isDbLoadAttempted = true;
+          isDbLoaded = true;
+          return { success: false, message: "Não foi possível verificar conexão com a VPS." };
+      }
+      const status = await statusRes.json();
+
+      if (!status.connected) {
         isDbLoadAttempted = true;
         isDbLoaded = true;
-        return { success: false, message: "Não foi possível verificar conexão com a VPS." };
-    }
-    const status = await statusRes.json();
+        return {
+          connected: false,
+          success: false,
+          vpsHost: status.vpsHost,
+          message: status.error || "Banco de dados da VPS desconectado. O sistema operará sem dados."
+        };
+      }
 
-    if (!status.connected) {
+      // Pull remote records
+      const url = forceRefresh ? '/api/db/pull?forceRefresh=true' : '/api/db/pull';
+      const pullRes = await fetch(url, { headers });
+      if (!pullRes.ok) {
+          isDbLoadAttempted = true;
+          isDbLoaded = true;
+          return { success: false, message: "Acesso de leitura remota falhou." };
+      }
+      const remoteData = await pullRes.json();
+
+      memoryClients = remoteData.clients || [];
+      memoryBoats = remoteData.boats || [];
+      memoryReservations = remoteData.reservations || [];
+      memoryManutencoes = remoteData.manutencoes || [];
+      memoryMecanicos = remoteData.mecanicos || [];
+      if (remoteData.tiposManutencao && remoteData.tiposManutencao.length > 0) {
+        memoryTiposManutencao = remoteData.tiposManutencao;
+      }
+      memoryFuncionarios = remoteData.funcionarios || [];
+      memoryFolgas = remoteData.folgas || [];
+      memoryEpis = remoteData.epis || [];
+      memoryCatalogoEpis = remoteData.catalogoEPIs || [];
+      memoryHistoricoEpis = remoteData.historicoEpis || [];
+      memoryRegistrosAtividades = remoteData.registrosAtividades || [];
+      memoryFornecedores = remoteData.fornecedores || [];
+
+      // Migração em tempo de leitura para compatibilidade (1:1 -> 1:N)
+      memoryChamados = (remoteData.chamados || []).map((ch: any) => {
+        if (ch.manutencaoId && (!ch.osIds || ch.osIds.length === 0)) {
+          ch.osIds = [ch.manutencaoId];
+        }
+        return ch;
+      });
+
+      memoryManutencoes = (remoteData.manutencoes || []).map((m: any) => {
+        // Auto-migrate legacy statuses cleanly to the 4 funicular stages
+        if (['chamado_aberto', 'fila_espera'].includes(m.status)) {
+          m.status = 'aguardando_orcamento';
+        } else if (m.status === 'orcamento_pendente') {
+          m.status = 'aguardando_aprovacao';
+        } else if (['na_oficina', 'em_execucao', 'aguardando_pecas'].includes(m.status)) {
+          m.status = 'em_execucao';
+        } else if (m.status === 'cancelado') {
+          m.status = 'reprovado';
+        }
+        return m;
+      });
+
+      isDbLoadAttempted = true;
+      isDbLoaded = true;
+      notifyDbUpdate('remote_synced');
+
+      return {
+        connected: true,
+        success: true,
+        vpsHost: status.vpsHost,
+        database: status.database,
+        message: "Dados carregados com sucesso da VPS!"
+      };
+    } catch (err: any) {
+      console.error("loadFromRemote failure:", err);
       isDbLoadAttempted = true;
       isDbLoaded = true;
       return {
         connected: false,
         success: false,
-        vpsHost: status.vpsHost,
-        message: status.error || "Banco de dados da VPS desconectado. O sistema operará sem dados."
+        message: `Erro ao buscar dados na VPS: ${err.message || err}`
       };
     }
+  };
 
-    // Pull remote records
-    const url = forceRefresh ? '/api/db/pull?forceRefresh=true' : '/api/db/pull';
-    const pullRes = await fetch(url, { headers });
-    if (!pullRes.ok) {
-        isDbLoadAttempted = true;
-        isDbLoaded = true;
-        return { success: false, message: "Acesso de leitura remota falhou." };
-    }
-    const remoteData = await pullRes.json();
+  inFlightLoadPromise = runLoad().finally(() => {
+    inFlightLoadPromise = null;
+  });
 
-    memoryClients = remoteData.clients || [];
-    memoryBoats = remoteData.boats || [];
-    memoryReservations = remoteData.reservations || [];
-    memoryManutencoes = remoteData.manutencoes || [];
-    memoryMecanicos = remoteData.mecanicos || [];
-    if (remoteData.tiposManutencao && remoteData.tiposManutencao.length > 0) {
-      memoryTiposManutencao = remoteData.tiposManutencao;
-    }
-    memoryFuncionarios = remoteData.funcionarios || [];
-    memoryFolgas = remoteData.folgas || [];
-    memoryEpis = remoteData.epis || [];
-    memoryCatalogoEpis = remoteData.catalogoEPIs || [];
-    memoryHistoricoEpis = remoteData.historicoEpis || [];
-    memoryRegistrosAtividades = remoteData.registrosAtividades || [];
-    memoryFornecedores = remoteData.fornecedores || [];
-
-    // Migração em tempo de leitura para compatibilidade (1:1 -> 1:N)
-    memoryChamados = (remoteData.chamados || []).map((ch: any) => {
-      if (ch.manutencaoId && (!ch.osIds || ch.osIds.length === 0)) {
-        ch.osIds = [ch.manutencaoId];
-      }
-      return ch;
-    });
-
-    memoryManutencoes = (remoteData.manutencoes || []).map((m: any) => {
-      // Auto-migrate legacy statuses cleanly to the 4 funicular stages
-      if (['chamado_aberto', 'fila_espera'].includes(m.status)) {
-        m.status = 'aguardando_orcamento';
-      } else if (m.status === 'orcamento_pendente') {
-        m.status = 'aguardando_aprovacao';
-      } else if (['na_oficina', 'em_execucao', 'aguardando_pecas'].includes(m.status)) {
-        m.status = 'em_execucao';
-      } else if (m.status === 'cancelado') {
-        m.status = 'reprovado';
-      }
-      return m;
-    });
-
-    isDbLoadAttempted = true;
-    isDbLoaded = true;
-
-    return {
-      connected: true,
-      success: true,
-      vpsHost: status.vpsHost,
-      database: status.database,
-      message: "Dados carregados com sucesso da VPS!"
-    };
-  } catch (err: any) {
-    console.error("loadFromRemote failure:", err);
-    isDbLoadAttempted = true;
-    isDbLoaded = true;
-    return {
-      connected: false,
-      success: false,
-      message: `Erro ao buscar dados na VPS: ${err.message || err}`
-    };
-  }
+  return inFlightLoadPromise;
 }
 
 // Mantendo o nome antigo temporariamente para não quebrar componentes não atualizados, mas chamando a versão nova

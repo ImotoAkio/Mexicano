@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { clientDB, boatDB, reservationDB } from '../db';
 import { createGoogleCalendarEvent, CalendarSyncResult } from '../googleCalendar';
 import { Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
 import { X, Calendar, User, Clock, Check, FileText, CheckCircle2, Copy, Search, Wrench, AlertTriangle } from 'lucide-react';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
+import SearchableSelect, { SelectOption } from './shared/SearchableSelect';
 
 interface ReservationModalProps {
   onClose: () => void;
@@ -31,7 +32,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
   const [boatSearchQuery, setBoatSearchQuery] = useState('');
   const [isBoatDropdownOpen, setIsBoatDropdownOpen] = useState(false);
   
-  const [bookingType, setBookingType] = useState<'single' | 'range' | 'distinct'>('single');
+  const [bookingType, setBookingType] = useState<'single' | 'distinct'>('single');
   const [distinctDates, setDistinctDates] = useState<string[]>([]);
   const [distinctInput, setDistinctInput] = useState(() => new Date().toISOString().split('T')[0]);
   const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);

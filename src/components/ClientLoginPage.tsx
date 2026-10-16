@@ -425,24 +425,39 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
                 </div>
               )}
 
-              <div className="flex items-start space-x-4 pt-2 pb-4">
-                <div className="relative flex items-start pt-0.5">
+              <div className="flex items-start gap-3 pt-2 pb-3">
+                <div className="relative flex items-center justify-center mt-0.5 shrink-0">
                   <input
                     type="checkbox"
                     id="consent"
                     checked={consent}
                     onChange={(e) => setConsent(e.target.checked)}
-                    className="w-4 h-4 border-white/20 rounded bg-transparent checked:bg-[#B69D74] checked:border-[#B69D74] cursor-pointer appearance-none transition-colors"
+                    className="peer appearance-none w-5 h-5 rounded-md border-2 border-white/40 bg-white/5 checked:bg-[#B69D74] checked:border-[#B69D74] focus:outline-none focus:ring-2 focus:ring-[#B69D74]/40 hover:border-white/70 transition-all cursor-pointer"
                     required
                   />
-                  {consent && (
-                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center text-black top-0.5">
-                      <svg className="w-2.5 h-2.5" viewBox="0 0 14 14" fill="none"><path d="M2 7.5L5.5 11L12 3" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </div>
-                  )}
+                  <svg 
+                    className="w-3.5 h-3.5 text-black pointer-events-none absolute opacity-0 peer-checked:opacity-100 transition-opacity stroke-[3]"
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
                 </div>
-                <label htmlFor="consent" className="text-xs text-white/40 font-light cursor-pointer leading-relaxed">
-                  Estou ciente e concordo com a <button type="button" onClick={() => setShowPrivacyModal(true)} className="text-white hover:text-[#B69D74] transition-colors">Política de Privacidade</button>.
+                <label htmlFor="consent" className="text-xs text-white/60 font-light cursor-pointer leading-relaxed select-none">
+                  Estou ciente e concordo com a{' '}
+                  <button 
+                    type="button" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPrivacyModal(true);
+                    }} 
+                    className="text-white underline underline-offset-2 hover:text-[#B69D74] transition-colors font-medium cursor-pointer"
+                  >
+                    Política de Privacidade
+                  </button>.
                 </label>
               </div>
 

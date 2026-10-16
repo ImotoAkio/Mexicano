@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Camera, X, Search, Ship, Check, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
-import { getBoatCode } from '../../utils/boatUtils';
+import { getBoatCode, matchesBoatSearch } from '../../utils/boatUtils';
 
 export interface AvulsoChecklistModalProps {
   isOpen: boolean;
@@ -74,8 +74,8 @@ export const AvulsoChecklistModal: React.FC<AvulsoChecklistModalProps> = ({
               {(data?.boats || [])
                 .filter((b: any) => {
                   if (!searchTerm.trim()) return true;
-                  const q = searchTerm.trim().toLowerCase();
-                  return (b.nome || '').toLowerCase().includes(q) || (b.numero || '').toString().toLowerCase().includes(q) || (b.vaga || '').toLowerCase().includes(q);
+                  const client = getCliente(b.clienteId);
+                  return matchesBoatSearch(searchTerm, b, client);
                 })
                 .map((b: any) => {
                   const isSelected = selectedBoat?.id === b.id;

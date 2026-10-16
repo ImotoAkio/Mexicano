@@ -57,10 +57,10 @@
     <!-- Steering wheel silhouette -->
     <circle cx="275" cy="180" r="10" fill="none" stroke="#e2e8f0" stroke-width="3"/>
 
-    <!-- Main Deck / Foredeck (Proa / Solário) -->
+    <!-- Main Deck / Foredeck (Proa / SolÃ¡rio) -->
     <path d="M 120 280 Q 300 210 480 280 L 460 215 Q 300 160 140 215 Z" fill="url(#lanchaHullFront)" stroke="#cbd5e1" stroke-width="2"/>
 
-    <!-- Solário Cushions / Sunbed on Bow -->
+    <!-- SolÃ¡rio Cushions / Sunbed on Bow -->
     <path d="M 240 230 Q 300 205 360 230 L 350 255 Q 300 235 250 255 Z" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
     <line x1="300" y1="215" x2="300" y2="245" stroke="#94a3b8" stroke-width="1.5"/>
 
@@ -72,7 +72,7 @@
     <path d="M 390 225 L 388 245" stroke="#64748b" stroke-width="3"/>
     <path d="M 470 260 L 465 275" stroke="#64748b" stroke-width="3"/>
 
-    <!-- Anchor Pulpit & Electric Winch (Púlpito de Proa e Guincho) -->
+    <!-- Anchor Pulpit & Electric Winch (PÃºlpito de Proa e Guincho) -->
     <path d="M 285 240 L 300 200 L 315 240 Z" fill="#64748b" stroke="#334155" stroke-width="2"/>
     <polygon points="296,195 304,195 302,215 298,215" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
     <!-- Anchor Roller & Anchor Shank -->
@@ -89,14 +89,14 @@
     <path d="M 140 295 Q 300 355 460 295" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.9"/>
     <path d="M 175 320 Q 300 370 425 320" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
 
-    <!-- Rub Rail (Friso de Proteção em Inox) -->
+    <!-- Rub Rail (Friso de ProteÃ§Ã£o em Inox) -->
     <path d="M 115 280 Q 300 240 485 280" fill="none" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
     <path d="M 115 280 Q 300 240 485 280" fill="none" stroke="#e2e8f0" stroke-width="2.5" stroke-linecap="round"/>
 
     <!-- Bow Eyes / Tow Ring -->
     <circle cx="300" cy="330" r="5" fill="#e2e8f0" stroke="#0f172a" stroke-width="2"/>
 
-    <!-- Navigation Bow Lights (Luzes de Navegação Verde e Vermelha) -->
+    <!-- Navigation Bow Lights (Luzes de NavegaÃ§Ã£o Verde e Vermelha) -->
     <circle cx="280" cy="235" r="4" fill="#ef4444" stroke="#991b1b" stroke-width="1"/>
     <circle cx="320" cy="235" r="4" fill="#22c55e" stroke="#166534" stroke-width="1"/>
   </g>

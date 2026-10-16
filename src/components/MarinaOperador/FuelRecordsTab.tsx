@@ -19,6 +19,8 @@ export interface FuelRecordsTabProps {
   getCliente: (id: string) => any;
   handleOpenFuelModal: (reserva: any) => void;
   onOpenAvulsoFuel: () => void;
+  selectedDate?: string;
+  formatDisplayDate?: (date: string) => string;
 }
 
 export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
@@ -26,7 +28,9 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
   getEmbarcacao,
   getCliente,
   handleOpenFuelModal,
-  onOpenAvulsoFuel
+  onOpenAvulsoFuel,
+  selectedDate,
+  formatDisplayDate
 }) => {
   const dayFuelReservations = totalDayReservations.filter((r: any) => Number(r.abastecimentoLitros) > 0);
   const totalLitersDay = totalDayReservations.reduce((sum: number, r: any) => sum + (Number(r.abastecimentoLitros) || 0), 0);
@@ -40,7 +44,9 @@ export const FuelRecordsTab: React.FC<FuelRecordsTabProps> = ({
             <Droplets className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">VOLUME TOTAL HOJE</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              VOLUME TOTAL {selectedDate && formatDisplayDate ? `· ${formatDisplayDate(selectedDate).toUpperCase()}` : 'HOJE'}
+            </span>
             <p className="text-2xl font-black text-white">
               {totalLitersDay.toFixed(1)} <span className="text-blue-400">Litros</span>
             </p>

@@ -15,7 +15,9 @@ import {
   Circle,
   MapPin,
   Users,
-  Droplets
+  Droplets,
+  Plus,
+  Ban
 } from 'lucide-react';
 import { getBoatCode } from '../../utils/boatUtils';
 
@@ -25,6 +27,11 @@ export interface OperationsTabProps {
   getCliente: (id: string) => any;
   selectedDate: string;
   formatDisplayDate: (date: string) => string;
+  onPrevDay?: () => void;
+  onNextDay?: () => void;
+  onSetToday?: () => void;
+  onSelectDate?: (dateStr: string) => void;
+  totalDayReservationsCount?: number;
 
   onChecklistDescida: (reserva: any) => void;
   onMarcarSaida: (reserva: any) => void;
@@ -38,6 +45,7 @@ export interface OperationsTabProps {
   setSortOrder: (val: 'hora' | 'az') => void;
   searchTerm: string;
   setSearchTerm: (val: string) => void;
+  onAdicionarFila?: () => void;
 }
 
 // Removed generateAvatar as it's no longer used
@@ -48,6 +56,11 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
   getCliente,
   selectedDate,
   formatDisplayDate,
+  onPrevDay,
+  onNextDay,
+  onSetToday,
+  onSelectDate,
+  totalDayReservationsCount,
   onChecklistDescida,
   onMarcarSaida,
   onChegadaEAbastecimento,
@@ -58,11 +71,12 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
   sortOrder,
   setSortOrder,
   searchTerm,
-  setSearchTerm
+  setSearchTerm,
+  onAdicionarFila
 }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [boatFilter, setBoatFilter] = useState<'todos' | 'jet' | 'lancha'>('todos');
-  const [opStatusFilter, setOpStatusFilter] = useState<'todos' | 'pendente_descida' | 'pronto' | 'navegando' | 'retornou' | 'guardado'>('todos');
+  const [opStatusFilter, setOpStatusFilter] = useState<'todos' | 'pendente_descida' | 'pronto' | 'navegando' | 'retornou' | 'guardado' | 'cancelado'>('todos');
   const filterRef = useRef<HTMLDivElement>(null);
 
   // Fechar o filtro ao clicar fora
@@ -93,15 +107,16 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
     }
 
     // Calcular flags de status
-    const isGuardado = reserva.statusMarina === 'guardada' || reserva.statusOperacional === 'guardado';
-    const isChegada = reserva.statusMarina === 'chegada' || reserva.statusOperacional === 'retornou';
-    const isPronto = reserva.statusMarina === 'pronta' || reserva.statusOperacional === 'pronto_na_agua' || (reserva.horaDescida && !reserva.horaSubida && !isGuardado && !isChegada);
-    const isSaidaMar = !!reserva.horaSaida;
+    const isCancelado = reserva.status === 'cancelado' || reserva.statusMarina === 'cancelada';
+    const isGuardado = !isCancelado && (reserva.statusMarina === 'guardada' || reserva.statusOperacional === 'guardado');
+    const isChegada = !isCancelado && (reserva.statusMarina === 'chegada' || reserva.statusOperacional === 'retornou');
+    const isPronto = !isCancelado && (reserva.statusMarina === 'pronta' || reserva.statusOperacional === 'pronto_na_agua' || (reserva.horaDescida && !reserva.horaSubida && !isGuardado && !isChegada));
+    const isSaidaMar = !isCancelado && !!reserva.horaSaida;
 
     // 2. OpStatus Filter
     if (opStatusFilter !== 'todos') {
       if (opStatusFilter === 'pendente_descida') {
-        if (isPronto || isSaidaMar || isChegada || isGuardado) return false;
+        if (isCancelado || isPronto || isSaidaMar || isChegada || isGuardado) return false;
       } else if (opStatusFilter === 'pronto') {
         if (!isPronto || isSaidaMar || isChegada || isGuardado) return false;
       } else if (opStatusFilter === 'navegando') {
@@ -110,14 +125,26 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
         if (!isChegada || isGuardado) return false;
       } else if (opStatusFilter === 'guardado') {
         if (!isGuardado) return false;
+      } else if (opStatusFilter === 'cancelado') {
+        if (!isCancelado) return false;
       }
     }
 
     return true;
   });
 
+  // Garantir que cancelados fiquem sempre no final da lista
+  const sortedReservas = [...filteredReservas].sort((a: any, b: any) => {
+    const isCanceladoA = a.status === 'cancelado' || a.statusMarina === 'cancelada';
+    const isCanceladoB = b.status === 'cancelado' || b.statusMarina === 'cancelada';
+    if (isCanceladoA !== isCanceladoB) {
+      return isCanceladoA ? 1 : -1;
+    }
+    return 0;
+  });
+
   return (
-    <main className="flex-1 p-3 pb-24 w-full mx-auto max-w-7xl text-slate-800 space-y-4">
+    <main className="flex-1 p-3 pb-24 w-full mx-auto max-w-7xl text-slate-800 space-y-3">
       {/* Search & Filter Header (Ligth, Clean) */}
       <div ref={filterRef} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative z-20">
         <div className="p-2 flex items-center gap-2">
@@ -140,6 +167,18 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
               </button>
             )}
           </div>
+
+          {/* Add to Queue Button */}
+          {onAdicionarFila && (
+            <button
+              onClick={onAdicionarFila}
+              className="p-3 sm:px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/20 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="Colocar barco na fila de descida"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Fila</span>
+            </button>
+          )}
 
           {/* Toggle Filters Button */}
           <button
@@ -263,6 +302,16 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                   >
                     <span>Guardado</span>
                   </button>
+                  <button
+                    onClick={() => setOpStatusFilter('cancelado')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.97] flex flex-col items-center justify-center gap-0.5 col-span-2 ${
+                      opStatusFilter === 'cancelado'
+                        ? 'bg-rose-600 border-rose-700 text-white shadow-md'
+                        : 'bg-white border-slate-200 text-rose-600 hover:bg-rose-50 shadow-sm'
+                    }`}
+                  >
+                    <span>Cancelados</span>
+                  </button>
                 </div>
               </div>
 
@@ -318,7 +367,7 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
       </div>
 
       {/* Resultados / Cards */}
-      {filteredReservas.length === 0 ? (
+      {sortedReservas.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm space-y-3 mt-4">
           <Ship className="w-12 h-12 text-slate-300 mx-auto stroke-1" />
           <h3 className="text-base font-bold text-slate-700">Nenhum agendamento encontrado</h3>
@@ -326,52 +375,84 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
         </div>
       ) : (
         <div className="space-y-4 relative z-10 block mt-2">
-          {filteredReservas.map((reserva: any) => {
+          {sortedReservas.map((reserva: any) => {
             const boat = getEmbarcacao(reserva.embarcacaoId);
             const client = getCliente(reserva.clienteId);
 
-            const isGuardado = reserva.statusMarina === 'guardada' || reserva.statusOperacional === 'guardado';
-            const isChegada = reserva.statusMarina === 'chegada' || reserva.statusOperacional === 'retornou';
-            const isPronto = reserva.statusMarina === 'pronta' || reserva.statusOperacional === 'pronto_na_agua' || (reserva.horaDescida && !reserva.horaSubida && !isGuardado && !isChegada);
-            const isSaidaMar = !!reserva.horaSaida;
-            const isConfirmado = !isGuardado && !isChegada && !isPronto && (reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada');
+            const isCancelado = reserva.status === 'cancelado' || reserva.statusMarina === 'cancelada';
+            const isGuardado = !isCancelado && (reserva.statusMarina === 'guardada' || reserva.statusOperacional === 'guardado');
+            const isChegada = !isCancelado && (reserva.statusMarina === 'chegada' || reserva.statusOperacional === 'retornou');
+            const isPronto = !isCancelado && (reserva.statusMarina === 'pronta' || reserva.statusOperacional === 'pronto_na_agua' || (reserva.horaDescida && !reserva.horaSubida && !isGuardado && !isChegada));
+            const isSaidaMar = !isCancelado && !!reserva.horaSaida;
+            const isConfirmado = !isCancelado && !isGuardado && !isChegada && !isPronto && (reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada');
 
-            const titleName = boat ? getBoatCode(boat) : (reserva.barcoNome || 'Embarcação');
-            const clientName = client?.nome || reserva.clienteNome || 'Cliente';
+            const titleName = boat ? getBoatCode(boat) : (reserva.modeloAvulso || reserva.barcoNome || reserva.embarcacaoNome || 'Embarcação');
+            const clientName = client?.nome || reserva.nomeAvulso || reserva.clienteNome || 'Cliente';
 
-            const isJet = boat?.tipo === 'jet';
+            const isJet = boat?.tipo === 'jet' || reserva.tipoAvulso === 'jet';
             const displaySizeText = isJet ? 'JET' : (boat?.tamanho ? `${boat.tamanho}'` : '');
 
             return (
               <div
                 key={reserva.id}
                 className={`rounded-2xl border p-4 shadow-sm relative overflow-hidden space-y-4 transition-all duration-300 ${
-                  isGuardado
+                  isCancelado
+                    ? 'bg-rose-50/25 border-rose-200/90 shadow-2xs'
+                    : isGuardado
                     ? 'bg-slate-50/70 border-slate-200 opacity-90'
                     : 'bg-white border-slate-200'
                 }`}
               >
                 {/* Left vertical status indicator */}
                 <div className={`absolute top-0 left-0 bottom-0 w-1.5 ${
-                  isGuardado ? 'bg-emerald-500' : isChegada ? 'bg-amber-500' : isSaidaMar ? 'bg-purple-500' : isPronto ? 'bg-cyan-500' : isConfirmado ? 'bg-green-500' : 'bg-blue-600'
+                  isCancelado ? 'bg-rose-600' : isGuardado ? 'bg-emerald-500' : isChegada ? 'bg-amber-500' : isSaidaMar ? 'bg-purple-500' : isPronto ? 'bg-cyan-500' : isConfirmado ? 'bg-green-500' : 'bg-blue-600'
                 }`} />
 
                 {/* Header */}
                 <div className="pl-2 flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-full bg-slate-100 flex shrink-0 items-center justify-center text-slate-500 border border-slate-200 shadow-sm">
+                    <div className={`w-11 h-11 rounded-full flex shrink-0 items-center justify-center border shadow-sm ${
+                      isCancelado
+                        ? 'bg-rose-50 text-rose-600 border-rose-200'
+                        : 'bg-slate-100 text-slate-500 border-slate-200'
+                    }`}>
                       {isJet ? (
-                        <JetSkiIcon className="w-6 h-6 text-slate-600" />
+                        <JetSkiIcon className={`w-6 h-6 ${isCancelado ? 'text-rose-600' : 'text-slate-600'}`} />
                       ) : boat?.tamanho ? (
                         <span className="font-extrabold text-[11px] tracking-widest">{boat.tamanho}'</span>
                       ) : (
-                        <Ship className="w-5 h-5 text-slate-400" />
+                        <Ship className={`w-5 h-5 ${isCancelado ? 'text-rose-600' : 'text-slate-400'}`} />
                       )}
                     </div>
                     <div>
-                      <h3 className="font-black text-slate-800 text-lg leading-tight uppercase tracking-tight">
-                        {titleName}
-                      </h3>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className={`font-black text-lg leading-tight uppercase tracking-tight ${
+                          isCancelado ? 'text-rose-950' : 'text-slate-800'
+                        }`}>
+                          {titleName}
+                        </h3>
+                        {isCancelado && (
+                          <span className="text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-300 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                            <Ban className="w-3 h-3 text-rose-600" /> Cancelado
+                          </span>
+                        )}
+                        {!isCancelado && reserva.posicaoFila ? (
+                          <span className="text-[10px] font-mono font-black bg-slate-900 text-white px-1.5 py-0.5 rounded shadow-2xs">
+                            #{reserva.posicaoFila} na Fila
+                          </span>
+                        ) : null}
+                        {reserva.origem === 'avulso' ? (
+                          <span className="text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded uppercase">
+                            Avulso
+                          </span>
+                        ) : (boat?.vaga || reserva.embarcacaoVaga) ? (
+                          <span className={`text-[10px] font-bold border px-1.5 py-0.5 rounded ${
+                            isCancelado ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                          }`}>
+                            Vaga {boat?.vaga || reserva.embarcacaoVaga}
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="text-xs text-slate-500 font-semibold uppercase flex items-center gap-1.5 mt-0.5">
                         <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="truncate max-w-[180px]">{clientName}</span>
@@ -380,7 +461,8 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                   </div>
 
                   {/* Status Badge */}
-                  <span className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border shrink-0 flex items-center justify-center ${
+                  <span className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border shrink-0 flex items-center justify-center gap-1.5 ${
+                    isCancelado ? 'bg-rose-100 text-rose-800 border-rose-300 shadow-2xs' :
                     isGuardado ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                     isChegada ? 'bg-amber-50 text-amber-700 border-amber-200' :
                     isSaidaMar ? 'bg-purple-50 text-purple-700 border-purple-200' :
@@ -388,18 +470,39 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                     isConfirmado ? 'bg-green-50 text-green-700 border-green-200' :
                     'bg-slate-100 text-slate-600 border-slate-200'
                   }`}>
-                    {isGuardado ? 'Guardado' : isChegada ? 'Chegou' : isSaidaMar ? 'Navegando' : isPronto ? 'Na Água' : isConfirmado ? 'Confirmado' : 'Agendado'}
+                    {isCancelado && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />}
+                    {isCancelado ? 'Cancelado' : isGuardado ? 'Guardado' : isChegada ? 'Chegou' : isSaidaMar ? 'Navegando' : isPronto ? 'Na Água' : isConfirmado ? 'Confirmado' : 'Agendado'}
                   </span>
                 </div>
 
+                {/* Fuel Prep alert if specified */}
+                {!isCancelado && (reserva.combustivelInicial === 'tanque_cheio' || (reserva.litrosAbastecerPrevio && Number(reserva.litrosAbastecerPrevio) > 0)) && !reserva.abastecimentoLitros && (
+                  <div className="ml-2 p-2 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-between text-xs font-bold text-amber-900">
+                    <div className="flex items-center gap-1.5">
+                      <Droplets className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>
+                        Abastecer {reserva.combustivelInicial === 'tanque_cheio' ? 'Tanque Cheio' : `${reserva.litrosAbastecerPrevio}L`} antes de descer
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => onAbastecer(reserva)}
+                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] rounded-lg transition-colors cursor-pointer"
+                    >
+                      Abastecer Agora
+                    </button>
+                  </div>
+                )}
+
                 {/* Info Bar (Prev Saida & Chegada & Tripulação) */}
                 <div className="pl-2">
-                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 flex items-center justify-between text-slate-600">
+                  <div className={`rounded-xl p-3 border flex items-center justify-between ${
+                    isCancelado ? 'bg-rose-50/40 border-rose-100 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'
+                  }`}>
                     <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                        <ArrowDownCircle className="w-3 h-3 text-cyan-500" /> Saída
+                      <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1 text-slate-400">
+                        <ArrowDownCircle className={`w-3 h-3 ${isCancelado ? 'text-slate-400' : 'text-cyan-500'}`} /> Saída
                       </span>
-                      <span className="font-mono text-sm font-bold text-slate-800 leading-none">
+                      <span className={`font-mono text-sm font-bold leading-none ${isCancelado ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                         {reserva.previsaoSaida || '--:--'}
                       </span>
                     </div>
@@ -407,10 +510,10 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                     <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mx-2" />
 
                     <div className="flex flex-col gap-1 items-start">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                        <ArrowUpCircle className="w-3 h-3 text-amber-500" /> Chegada
+                      <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1 text-slate-400">
+                        <ArrowUpCircle className={`w-3 h-3 ${isCancelado ? 'text-slate-400' : 'text-amber-500'}`} /> Chegada
                       </span>
-                      <span className="font-mono text-sm font-bold text-slate-800 leading-none">
+                      <span className={`font-mono text-sm font-bold leading-none ${isCancelado ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                         {reserva.previsaoChegada || '--:--'}
                       </span>
                     </div>
@@ -419,7 +522,7 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
 
                     <div className="flex flex-col gap-1 items-center">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">A Bordo</span>
-                      <span className="font-mono text-sm font-bold text-slate-800 leading-none flex items-center gap-1">
+                      <span className={`font-mono text-sm font-bold leading-none flex items-center gap-1 ${isCancelado ? 'text-slate-400' : 'text-slate-800'}`}>
                         <Users className="w-3.5 h-3.5 text-slate-400" />
                         {reserva.pessoasABordo || '-'}
                       </span>
@@ -430,8 +533,10 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
                 {/* Destino Box (Se houver) */}
                 {reserva.destino && (
                   <div className="pl-2">
-                    <p className="text-xs font-semibold text-slate-600 bg-slate-50/80 border border-slate-100 rounded-lg p-2.5 flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-blue-500 shrink-0" />
+                    <p className={`text-xs font-semibold rounded-lg p-2.5 flex items-center gap-2 border ${
+                      isCancelado ? 'bg-rose-50/30 border-rose-100 text-slate-500' : 'bg-slate-50/80 border-slate-100 text-slate-600'
+                    }`}>
+                      <MapPin className={`w-4 h-4 shrink-0 ${isCancelado ? 'text-rose-400' : 'text-blue-500'}`} />
                       <span className="truncate uppercase tracking-wider">{reserva.destino}</span>
                     </p>
                   </div>
@@ -439,71 +544,92 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({
 
                 {/* Big Action Buttons - Phase logic included, sized up for dirty fingers */}
                 <div className="pl-2 space-y-3 pt-1">
-
-                  {/* Phase 1: Agendado/Confirmado -> Descida Píer */}
-                  {(!isPronto && !isChegada && !isGuardado && !isSaidaMar) && (
-                    <button
-                      onClick={() => onChecklistDescida(reserva)}
-                      className="w-full py-4 sm:py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-md active:scale-[0.98] cursor-pointer"
-                    >
-                      <ArrowDownCircle className="w-6 h-6" />
-                      <span>Checklist Descida Píer</span>
-                    </button>
-                  )}
-
-                  {/* Phase 2: Na Água (Pronto) -> Marcar Saída */}
-                  {isPronto && !isSaidaMar && !isChegada && !isGuardado && (
-                    <button
-                      onClick={() => onMarcarSaida(reserva)}
-                      className="w-full py-4 sm:py-5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-md active:scale-[0.98] cursor-pointer"
-                    >
-                      <Navigation className="w-6 h-6" />
-                      <span>Marcar Saída / Partida</span>
-                    </button>
-                  )}
-
-                  {/* Phase 2.5/3: Na água (Pronto) OU Navegando (Saída) -> Chegada no Píer */}
-                  {(isPronto || isSaidaMar) && !isChegada && !isGuardado && (
-                    <button
-                      onClick={() => onChegadaEAbastecimento(reserva)}
-                      className={`w-full py-4 sm:py-5 rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-[0.98] cursor-pointer ${
-                        isSaidaMar
-                          ? "bg-amber-600 hover:bg-amber-700 text-white shadow-md"
-                          : "bg-white border-2 border-amber-500 text-amber-600 hover:bg-amber-50 shadow-sm"
-                      }`}
-                    >
-                      <Anchor className="w-6 h-6" />
-                      <span>Chegada no Píer</span>
-                    </button>
-                  )}
-
-                  {/* Phase 4: Chegada -> Subida Vaga & Combustível */}
-                  {isChegada && !isGuardado && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => onAbastecer(reserva)}
-                        className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all shadow-md active:scale-[0.98] cursor-pointer ${
-                          reserva.abastecimentoLitros ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-cyan-600 hover:bg-cyan-700 text-white"
-                        }`}
-                      >
-                        <Droplets className="w-5 h-5 mb-0.5" />
-                        <div className="flex flex-col items-center">
-                          <span>{reserva.abastecimentoLitros ? 'Re-Abastecer' : 'Abastecer'}</span>
-                          {reserva.abastecimentoLitros && (
-                            <span className="text-[9px] bg-black/20 px-1.5 py-0.5 rounded mt-0.5">{reserva.abastecimentoLitros}L Registrado</span>
-                          )}
+                  {isCancelado ? (
+                    <div className="w-full py-3.5 px-4 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-3 text-rose-800 shadow-2xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-rose-100 flex items-center justify-center shrink-0 text-rose-600 border border-rose-200">
+                          <Ban className="w-5 h-5 stroke-[2.5]" />
                         </div>
-                      </button>
-                      <button
-                        onClick={() => onChecklistSubida(reserva)}
-                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all shadow-md active:scale-[0.98] cursor-pointer"
-                      >
-                        <ArrowUpCircle className="w-5 h-5 mb-0.5" />
-                        <span>Subida / Vaga</span>
-                      </button>
+                        <div className="min-w-0">
+                          <p className="font-black text-xs uppercase tracking-wide text-rose-900 flex items-center gap-1.5">
+                            <span>Reserva Cancelada</span>
+                          </p>
+                          <p className="text-[11px] text-rose-700 font-medium truncate mt-0.5">
+                            {reserva.motivoCancelamento || reserva.observacoes || 'Cancelamento registrado no sistema administrativo'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-rose-200 text-rose-900 border border-rose-300 shrink-0">
+                        Não Descer
+                      </span>
                     </div>
-                  )}
+                  ) : (
+                    <>
+                      {/* Phase 1: Agendado/Confirmado -> Descida Píer */}
+                      {(!isPronto && !isChegada && !isGuardado && !isSaidaMar) && (
+                        <button
+                          onClick={() => onChecklistDescida(reserva)}
+                          className="w-full py-4 sm:py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                        >
+                          <ArrowDownCircle className="w-6 h-6" />
+                          <span>Checklist Descida Píer</span>
+                        </button>
+                      )}
 
+                      {/* Phase 2: Na Água (Pronto) -> Marcar Saída */}
+                      {isPronto && !isSaidaMar && !isChegada && !isGuardado && (
+                        <button
+                          onClick={() => onMarcarSaida(reserva)}
+                          className="w-full py-4 sm:py-5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                        >
+                          <Navigation className="w-6 h-6" />
+                          <span>Marcar Saída / Partida</span>
+                        </button>
+                      )}
+
+                      {/* Phase 2.5/3: Na água (Pronto) OU Navegando (Saída) -> Chegada no Píer */}
+                      {(isPronto || isSaidaMar) && !isChegada && !isGuardado && (
+                        <button
+                          onClick={() => onChegadaEAbastecimento(reserva)}
+                          className={`w-full py-4 sm:py-5 rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-[0.98] cursor-pointer ${
+                            isSaidaMar
+                              ? "bg-amber-600 hover:bg-amber-700 text-white shadow-md"
+                              : "bg-white border-2 border-amber-500 text-amber-600 hover:bg-amber-50 shadow-sm"
+                          }`}
+                        >
+                          <Anchor className="w-6 h-6" />
+                          <span>Chegada no Píer</span>
+                        </button>
+                      )}
+
+                      {/* Phase 4: Chegada -> Subida Vaga & Combustível */}
+                      {isChegada && !isGuardado && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => onAbastecer(reserva)}
+                            className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all shadow-md active:scale-[0.98] cursor-pointer ${
+                              reserva.abastecimentoLitros ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-cyan-600 hover:bg-cyan-700 text-white"
+                            }`}
+                          >
+                            <Droplets className="w-5 h-5 mb-0.5" />
+                            <div className="flex flex-col items-center">
+                              <span>{reserva.abastecimentoLitros ? 'Re-Abastecer' : 'Abastecer'}</span>
+                              {reserva.abastecimentoLitros && (
+                                <span className="text-[9px] bg-black/20 px-1.5 py-0.5 rounded mt-0.5">{reserva.abastecimentoLitros}L Registrado</span>
+                              )}
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => onChecklistSubida(reserva)}
+                            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                          >
+                            <ArrowUpCircle className="w-5 h-5 mb-0.5" />
+                            <span>Subida / Vaga</span>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             );

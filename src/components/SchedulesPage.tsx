@@ -1,75 +1,125 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { reservationDB, boatDB, clientDB, syncWithRemote } from '../db';
 import { io } from 'socket.io-client';
-import { 
-  deleteGoogleCalendarEvent, 
-  updateGoogleCalendarEvent,
-  isCalendarConnected, 
-  setSimulatedConnection, 
-  setDeveloperToken, 
-  getGoogleClientId, 
-  setGoogleClientId, 
-  initiateOAuthLogin, 
-  handleOAuthCallback, 
-  setCachedToken,
-  createGoogleCalendarEvent,
-  getCachedToken,
-  checkServerConfig,
-  isServiceAccountMode,
-  getServiceAccountEmail,
-  getCalendarMappings,
-  saveCalendarMappings,
-  fetchCalendarList,
-  saveGoogleServiceAccount,
-  fetchGoogleCalendarEventsRange
-} from '../googleCalendar';
 import { Reserva, Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
-import ReservationModal from './ReservationModal';
-import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
-import { 
-  Calendar, 
-  Clock, 
-  ChevronLeft, 
-  ChevronRight, 
-  Anchor, 
-  RefreshCw, 
-  Trash2, 
-  Plus, 
-  Search, 
-  Sparkles, 
-  ExternalLink, 
-  Ship, 
-  User, 
-  CalendarDays, 
-  ArrowRight,
-  Info,
-  Compass,
-  HelpCircle,
-  ClipboardList,
+import {
+  createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+  isCalendarConnected
+} from '../googleCalendar';
+import { JetSkiIcon } from './icons/JetSkiIcon';
+import {
+  Calendar as CalendarIcon,
+  CalendarDays,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Anchor,
+  RefreshCw,
+  Trash2,
+  Plus,
+  Search,
+  Sparkles,
   CheckCircle,
   XCircle,
   FileDown,
-  Printer,
   ShieldAlert,
   Wrench,
   AlertTriangle,
-  Check
+  LayoutGrid,
+  List,
+  Phone,
+  Navigation,
+  Tent,
+  Flame,
+  Armchair,
+  Table2,
+  Sun,
+  Sunset,
+  Sunrise,
+  User,
+  X,
+  Filter,
+  Check,
+  Send,
+  MessageCircle
 } from 'lucide-react';
-import SearchableClientSelect from './shared/SearchableClientSelect';
-import ScheduleCard from './Schedules/ScheduleCard';
+import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
+import SearchableSelect, { SelectOption } from './shared/SearchableSelect';
 
+export type PierStatusKey = 'todos' | 'agendado' | 'no_pier' | 'navegando' | 'retornou' | 'guardada' | 'cancelado';
 
-interface SyncDifference {
-  type: 'only_in_system' | 'only_in_calendar' | 'mismatch';
-  systemEvent?: any;
-  calendarEvent?: any;
-  [key: string]: any;
+export function getPierStatus(res: Reserva): {
+  id: 'agendado' | 'no_pier' | 'navegando' | 'retornou' | 'guardada' | 'cancelado';
+  label: string;
+  bg: string;
+  text: string;
+  dot: string;
+  timeLabel?: string;
+} {
+  const isCanceled = res.status === 'cancelado';
+  const isGuardado = res.statusMarina === 'guardada' || res.statusOperacional === 'guardado' || !!res.horaSubida;
+  const isChegada = res.statusMarina === 'chegada' || res.statusOperacional === 'retornou' || (!!res.horaChegada && !isGuardado);
+  const isNavegando = res.statusMarina === 'saida' || res.statusOperacional === 'navegando' || (!!res.horaSaida && !isChegada && !isGuardado);
+  const isNoPier = (res.statusMarina as string) === 'pronta' || res.statusMarina === 'descida' || res.statusMarina === 'pier' || res.statusOperacional === 'pronto_na_agua' || (!!res.horaDescida && !isNavegando && !isChegada && !isGuardado);
+
+  if (isCanceled) {
+    return { id: 'cancelado', label: 'Cancelado', bg: 'bg-[#FEF2F2]', text: 'text-[#DC2626]', dot: 'bg-[#EF4444]' };
+  }
+  if (isGuardado) {
+    return {
+      id: 'guardada',
+      label: 'Guardada (Hangar)',
+      bg: 'bg-[#F3F4F6]',
+      text: 'text-[#374151]',
+      dot: 'bg-[#6B7280]',
+      timeLabel: res.horaSubida ? `Subida: ${res.horaSubida}` : undefined
+    };
+  }
+  if (isChegada) {
+    return {
+      id: 'retornou',
+      label: 'No Píer (Retorno)',
+      bg: 'bg-[#FFFBEB]',
+      text: 'text-[#D97706]',
+      dot: 'bg-[#F59E0B]',
+      timeLabel: res.horaChegada ? `Chegada: ${res.horaChegada}` : undefined
+    };
+  }
+  if (isNavegando) {
+    return {
+      id: 'navegando',
+      label: 'Em Navegação',
+      bg: 'bg-[#F0F9FF]',
+      text: 'text-[#0284C7]',
+      dot: 'bg-[#0EA5E9] animate-pulse',
+      timeLabel: res.horaSaida ? `Saída: ${res.horaSaida}` : undefined
+    };
+  }
+  if (isNoPier) {
+    return {
+      id: 'no_pier',
+      label: 'Pronto no Píer',
+      bg: 'bg-[#F0FDF4]',
+      text: 'text-[#16A34A]',
+      dot: 'bg-[#22C55E]',
+      timeLabel: res.horaDescida ? `Descida: ${res.horaDescida}` : undefined
+    };
+  }
+  return {
+    id: 'agendado',
+    label: res.status === 'confirmado' ? 'Confirmado' : 'Agendado',
+    bg: res.status === 'confirmado' ? 'bg-[#EEF2FF]' : 'bg-[#F9FAFB]',
+    text: res.status === 'confirmado' ? 'text-[#3758F9]' : 'text-[#6B7280]',
+    dot: res.status === 'confirmado' ? 'bg-[#3758F9]' : 'bg-[#9CA3AF]'
+  };
 }
-import StatusModal from './Schedules/StatusModal';
 
 export default function SchedulesPage() {
+  // Helper for local YYYY-MM-DD string
   const getLocalDateStr = (d: Date = new Date()) => {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -77,1034 +127,324 @@ export default function SchedulesPage() {
     return `${year}-${month}-${day}`;
   };
 
+  // State Management
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateStr());
-  const parsedSelectedDate = (() => {
-    const d = new Date(selectedDate + 'T12:00:00');
-    return isNaN(d.getTime()) ? new Date() : d;
-  })();
-  const [activeReservations, setActiveReservations] = useState<Reserva[]>([]);
-  const [dailyReservations, setDailyReservations] = useState<Reserva[]>([]);
-  const [rangeReservations, setRangeReservations] = useState<Reserva[]>([]);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [calendarBoatFilter, setCalendarBoatFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'table' | 'calendar' | 'cards'>('table');
+
+  const [reservations, setReservations] = useState<Reserva[]>([]);
+  const [boats, setBoats] = useState<Embarcacao[]>([]);
+  const [clients, setClients] = useState<Cliente[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isResModalOpen, setIsResModalOpen] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Status Edit States
-  const [statusModalEvent, setStatusModalEvent] = useState<Reserva | null>(null);
-  const [editModalEvent, setEditModalEvent] = useState<Reserva | null>(null);
-  const [editFormData, setEditFormData] = useState({
-    clienteId: '',
-    data: '',
-    periodo: 'dia_inteiro' as 'dia_inteiro' | 'manha' | 'tarde',
-    observacoes: ''
-  });
-
-  // Resolution Modal States
-  const [differences, setDifferences] = useState<SyncDifference[]>([]);
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
-  const [isVerifyingSync, setIsVerifyingSync] = useState(false);
-
-  const [importClients, setImportClients] = useState<Record<string, string>>({});
-  const [isResolvingId, setIsResolvingId] = useState<string | null>(null);
-
-  // Sound system checklist control states
-  const [somRetirado, setSomRetirado] = useState(false);
-  const [somTesteSaida, setSomTesteSaida] = useState('nao_realizado');
-  const [somTesteRetorno, setSomTesteRetorno] = useState('nao_realizado');
-
-  // Search and Filter States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'Todos' | 'Agendado' | 'Confirmado' | 'Cancelado'>('Todos');
-  const [typeFilter, setTypeFilter] = useState<'Todos' | 'Lancha' | 'Jetski'>('Todos');
-
-  const filterEvent = (res: Reserva) => {
-    // 1. Status filter
-    const stStr = res.status === 'confirmado' ? 'Confirmado' : res.status === 'cancelado' ? 'Cancelado' : 'Agendado';
-
-    if (statusFilter !== 'Todos' && stStr !== statusFilter) {
-      return false;
-    }
-
-    // 2. Type filter
-    const boat = boatDB.getById(res.embarcacaoId);
-    const boatType = boat ? (boat.tipo === 'jet' ? 'Jetski' : 'Lancha') : 'Lancha';
-    
-    if (typeFilter !== 'Todos' && boatType !== typeFilter) {
-      return false;
-    }
-
-    // 3. Search query
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase().trim();
-      const client = clientDB.getById(res.clienteId);
-      
-      const boatMatch = boat ? boat.nome.toLowerCase().includes(q) : false;
-      const clientMatch = client ? client.nome.toLowerCase().includes(q) || (client.telefone && client.telefone.includes(q)) : false;
-      const obsMatch = res.observações ? res.observações.toLowerCase().includes(q) : false;
-      const dateMatch = res.data.includes(q);
-      
-      if (!boatMatch && !clientMatch && !obsMatch && !dateMatch) {
-        return false;
-      }
-    }
-
-    return true;
+  // Stepper functions for days
+  const stepDate = (offset: number) => {
+    const cur = new Date(selectedDate + 'T12:00:00');
+    cur.setDate(cur.getDate() + offset);
+    setSelectedDate(getLocalDateStr(cur));
   };
 
-  const filteredDailyReservations = dailyReservations.filter(filterEvent);
-  const filteredRangeReservations = rangeReservations.filter(filterEvent);
-
-  const openStatusModal = (res: Reserva) => {
-    setStatusModalEvent(res);
-  };
-
-  const handleGeneratePDFForEvent = async (res: Reserva) => {
-    try {
-      const boat = boatDB.getById(res.embarcacaoId);
-      const client = clientDB.getById(res.clienteId);
-      const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome.split(' ')[0]) : 'M00';
-      const boatType = boat ? (boat.tipo === 'jet' ? 'Jetski' : 'Lancha') : 'Lancha';
-      let ownerName = client ? client.nome : 'Desconhecido';
-      if (!client && res.observações?.includes('[NOME_RECUPERADO:')) {
-        const match = res.observações.match(/\[NOME_RECUPERADO:(.*?)\]/);
-        if (match) ownerName = match[1].trim();
-      }
-
-      let finalDate = res.data;
-      if (finalDate.includes('-')) {
-        const p = finalDate.split('-');
-        finalDate = `${p[2]} / ${p[1]} / ${p[0]}`;
-      }
-
-      await generateAvisoSaidaPDF({
-        data: finalDate,
-        nome: ownerName,
-        tipo: boatType,
-        nomeEmbarcacao: boatCode,
-        pessoasABordo: '02',
-        destino: 'Iate Club - Rodeadouro',
-        previsaoSaida: res.periodo === 'tarde' ? '13:00' : '08:00',
-        previsaoChegada: res.periodo === 'manha' ? '13:00' : '18:00',
-        observacao: res.observações || 'Nenhuma'
-      });
-
-      showToast('PDF "Aviso de Saída" gerado com sucesso!');
-    } catch (error: any) {
-      console.error(error);
-      showToast('Erro ao gerar o PDF.', 'error');
-    }
-  };
-
-  // Google Calendar Connection States
-  const [clientId, setClientId] = useState(() => getGoogleClientId());
-  const [simMode, setSimMode] = useState(() => {
-    const token = sessionStorage.getItem('nautical_google_access_token');
-    return token ? false : true;
-  });
-  const [gcalConnected, setGcalConnected] = useState(() => {
-    return !!sessionStorage.getItem('nautical_google_access_token');
-  });
-  const [devTokenInput, setDevTokenInput] = useState('');
-  const [showInstructions, setShowInstructions] = useState(false);
-  const [saJsonInput, setSaJsonInput] = useState('');
-
-  const handleSaveServiceAccount = async () => {
-    const trimmed = saJsonInput.trim();
-    if (!trimmed) {
-      showToast('Por favor, cole as credenciais JSON da sua Conta de Serviço.', 'error');
-      return;
-    }
-
-    try {
-      JSON.parse(trimmed); // Quick syntax validation
-    } catch {
-      showToast('O conteúdo fornecido não é um JSON válido. Verifique as credenciais e tente novamente.', 'error');
-      return;
-    }
-
-    setIsLoading(true);
-    const result = await saveGoogleServiceAccount(trimmed);
-    setIsLoading(false);
-
-    if (result.success) {
-      showToast(result.message, 'success');
-      setSaJsonInput('');
-      setSimMode(false);
-      setSimulatedConnection(false);
-      setGcalConnected(true);
-      loadScheduleData();
-    } else {
-      showToast(result.message, 'error');
-    }
-  };
-
-  // Calendar ID mapping states
-  const [showMappingsPanel, setShowMappingsPanel] = useState(false);
-  const [calendarMappings, setCalendarMappingsState] = useState<Record<string, string>>(() => getCalendarMappings());
-  const [bulkMappingsInput, setBulkMappingsInput] = useState('');
-  const [selectedMapBoat, setSelectedMapBoat] = useState('');
-  const [singleMapIdInput, setSingleMapIdInput] = useState('');
-
-  // Auto-init bulk input when mappings change
-  useEffect(() => {
-    const textLines = Object.entries(calendarMappings)
-      .map(([key, val]) => `${key} = ${val}`)
-      .join('\n');
-    setBulkMappingsInput(textLines);
-  }, [calendarMappings]);
-
-  const handleSaveBulkMappings = () => {
-    const parsed: Record<string, string> = {};
-    const lines = bulkMappingsInput.split('\n');
-    lines.forEach(line => {
-      const idx = line.indexOf('=');
-      if (idx !== -1) {
-        const key = line.substring(0, idx).trim().toLowerCase();
-        const val = line.substring(idx + 1).trim();
-        if (key && val) {
-          parsed[key] = val;
-        }
-      }
-    });
-
-    saveCalendarMappings(parsed);
-    setCalendarMappingsState(parsed);
-    showToast('Mapeamentos de agendas do Google Calendar salvos com sucesso!', 'success');
-  };
-
-  const handleSaveSingleMapping = () => {
-    if (!selectedMapBoat) {
-      showToast('Por favor, selecione para qual agenda deseja mapear.', 'error');
-      return;
-    }
-    const cleanId = singleMapIdInput.trim();
-    if (!cleanId) {
-      showToast('Por favor, informe um Google Calendar ID válido.', 'error');
-      return;
-    }
-
-    const updated = { ...calendarMappings, [selectedMapBoat.toLowerCase()]: cleanId };
-    saveCalendarMappings(updated);
-    setCalendarMappingsState(updated);
-    showToast(`Endereço da agenda para "${selectedMapBoat.toUpperCase()}" salvo com sucesso!`, 'success');
-    setSingleMapIdInput('');
-  };
-
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
-  
-  const pendingSyncReservations = reservationDB.getAll().filter(r => {
-    if (r.status !== 'confirmado') return false;
-    const boat = boatDB.getById(r.embarcacaoId);
-    const boatCode = boat ? boat.nome : '';
-    if (boatCode.toUpperCase() === 'M04') return false;
-    return (!r.googleEventId || r.googleEventId.startsWith('g_sim_') || r.googleEventId.startsWith('g_sim_err_') || r.googleEventId.startsWith('g_sim_fb_'));
-  });
-
-  const handleSyncSingleReservation = async (reservaId: string) => {
-    try {
-      setIsLoading(true);
-      const res = reservationDB.getById(reservaId);
-      if (!res) throw new Error('Reserva não encontrada no banco.');
-
-      const boat = boatDB.getById(res.embarcacaoId);
-      const client = clientDB.getById(res.clienteId);
-      if (!boat || !client) throw new Error('Informações de barco ou cliente corrompidas ou ausentes.');
-
-      const result = await createGoogleCalendarEvent(boat, client, {
-        embarcacaoId: res.embarcacaoId,
-        clienteId: res.clienteId,
-        data: res.data,
-        periodo: res.periodo,
-        observações: res.observações,
-        status: 'confirmado'
-      });
-
-      if (result.boatCalendarSynced || result.marinaCalendarSynced) {
-        reservationDB.update(res.id, { googleEventId: result.eventId });
-        showToast('Reserva sincronizada com o Google Calendar com sucesso!', 'success');
-      } else {
-        throw new Error('Não foi possível gravar na agenda do Google. Verifique a autenticação e permissões.');
-      }
-      loadScheduleData();
-    } catch (err: any) {
-      showToast(err.message || 'Erro ao sincronizar reserva.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSyncAllPending = async () => {
-    try {
-      setIsSyncingAll(true);
-      setIsLoading(true);
-      const pending = [...pendingSyncReservations];
-
-      if (pending.length === 0) {
-        showToast('Nenhum agendamento pendente de sincronização.', 'success');
-        return;
-      }
-
-      let successCount = 0;
-      let failCount = 0;
-
-      for (const res of pending) {
-        const boat = boatDB.getById(res.embarcacaoId);
-        const client = clientDB.getById(res.clienteId);
-        if (!boat || !client) {
-          failCount++;
-          continue;
-        }
-
-        try {
-          const result = await createGoogleCalendarEvent(boat, client, {
-            embarcacaoId: res.embarcacaoId,
-            clienteId: res.clienteId,
-            data: res.data,
-            periodo: res.periodo,
-            observações: res.observações,
-            status: 'confirmado'
-          });
-
-          if (result.boatCalendarSynced || result.marinaCalendarSynced) {
-            reservationDB.update(res.id, { googleEventId: result.eventId });
-            successCount++;
-          } else {
-            failCount++;
-          }
-        } catch (e) {
-          failCount++;
-        }
-      }
-
-      if (successCount > 0) {
-        showToast(`${successCount} agendamento(s) sincronizado(s) com sucesso no Google Agenda!`, 'success');
-      }
-      if (failCount > 0) {
-        showToast(`${failCount} agendamento(s) não puderam ser sincronizados. Certifique-se de que o Google está conectado e tente novamente.`, 'error');
-      }
-      
-      loadScheduleData();
-    } catch (err: any) {
-      showToast(err.message || 'Erro durante a sincronização.', 'error');
-    } finally {
-      setIsSyncingAll(false);
-      setIsLoading(false);
-    }
-  };
-
-  const getEventPeriod = (evt: any): 'dia_inteiro' | 'manha' | 'tarde' => {
-    const desc = (evt.description || '').toLowerCase();
-    if (desc.includes('período: manhã') || desc.includes('periodo: manha') || desc.includes('período: manha')) return 'manha';
-    if (desc.includes('período: tarde') || desc.includes('periodo: tarde')) return 'tarde';
-    if (desc.includes('período: dia inteiro') || desc.includes('periodo: dia inteiro')) return 'dia_inteiro';
-    if (evt.start?.dateTime) {
-      const time = evt.start.dateTime.split('T')[1]?.substring(0, 5);
-      if (time === '08:00') return 'manha';
-      if (time === '13:00') return 'tarde';
-    }
-    return 'dia_inteiro';
-  };
-
-  const getEventObs = (evt: any): string => {
-    const desc = evt.description || '';
-    const match = desc.match(/Obs:\s*(.*)/i);
-    return match ? match[1].trim() : '';
-  };
-
-  const isEventCancelled = (evt: any): boolean => {
-    const summary = (evt.summary || '').toUpperCase();
-    const desc = (evt.description || '').toLowerCase();
-    return summary.includes('(CANCELADO)') || summary.includes('(CANCELADA)') || desc.includes('status: cancelado');
-  };
-
-  const handleVerifySync = async () => {
-    setIsVerifyingSync(true);
-    setIsLoading(true);
-    try {
-      if (!isCalendarConnected()) {
-        showToast('Google Agenda não está conectado. Conecte-o nas configurações abaixo.', 'error');
-        setIsLoading(false);
-        setIsVerifyingSync(false);
-        return;
-      }
-
-      const dStart = new Date(selectedDate + 'T12:00:00');
-      dStart.setDate(dStart.getDate() - 7);
-      const startStr = dStart.toISOString().split('T')[0];
-
-      const dEnd = new Date(selectedDate + 'T12:00:00');
-      dEnd.setDate(dEnd.getDate() + 60);
-      const endStr = dEnd.toISOString().split('T')[0];
-
-      const localReservations = reservationDB.getAll().filter(r => r.data >= startStr && r.data <= endStr);
-      const gcalEvents = await fetchGoogleCalendarEventsRange(startStr, 68);
-
-      const boats = boatDB.getAll();
-      const clients = clientDB.getAll();
-
-      const detectedDiffs: SyncDifference[] = [];
-      const matchedEventIds = new Set<string>();
-
-      // Normalize observations to avoid false conflicts
-      const normalizeObs = (s: string) => {
-        const cleanVal = s.trim().toLowerCase();
-        if (
-          cleanVal === '' ||
-          cleanVal === 'nenhuma' ||
-          cleanVal === 'nenhuma.' ||
-          cleanVal === 'nenhuma observação' ||
-          cleanVal === 'nenhuma observacao' ||
-          cleanVal === 'nenhuma observação.' ||
-          cleanVal === 'nenhuma observacao.' ||
-          cleanVal === 'atualizado via google agenda' ||
-          cleanVal === 'atualizado via google agenda.' ||
-          cleanVal === 'nenhuma descrição relevante' ||
-          cleanVal === 'nenhuma descrição relevante.' ||
-          cleanVal === 'nenhuma descricao relevante' ||
-          cleanVal === 'nenhuma descricao relevante.' ||
-          /^m\d{2}\s*-/i.test(cleanVal)
-        ) {
-          return '';
-        }
-        return cleanVal.replace(/[^a-z0-9]/g, '');
-      };
-
-      for (const res of localReservations) {
-        const boat = boats.find(b => b.id === res.embarcacaoId);
-        const boatCode = boat ? boat.nome : 'M00';
-        if (boatCode.toUpperCase() === 'M04') continue;
-        const client = clients.find(c => c.id === res.clienteId);
-
-        let matchedEvt = gcalEvents.find(evt => {
-          if (res.googleEventId && evt.id === res.googleEventId) return true;
-
-          const evtDate = evt.start?.dateTime ? evt.start.dateTime.substring(0, 10) : (evt.start?.date || '');
-          if (evtDate !== res.data) return false;
-
-          const summaryUpper = evt.summary.toUpperCase();
-          const hasBoat = summaryUpper.includes(boatCode) || summaryUpper.replace(/\s+/g, '').includes(boatCode);
-          if (!hasBoat) return false;
-
-          const evtPeriod = getEventPeriod(evt);
-          return evtPeriod === res.periodo;
-        });
-
-        if (matchedEvt) {
-          matchedEventIds.add(matchedEvt.id);
-
-          if (!res.googleEventId || res.googleEventId.startsWith('g_sim_')) {
-            reservationDB.update(res.id, { googleEventId: matchedEvt.id });
-            res.googleEventId = matchedEvt.id;
-          }
-
-          const diffs: string[] = [];
-
-          const evtPeriod = getEventPeriod(matchedEvt);
-          if (res.periodo !== evtPeriod) {
-            const periodLabel = (p: string) => p === 'dia_inteiro' ? 'Dia Inteiro' : p === 'manha' ? 'Manhã' : 'Tarde';
-            diffs.push(`Período divergente: local é "${periodLabel(res.periodo)}" mas na agenda está "${periodLabel(evtPeriod)}".`);
-          }
-
-          const localStatus = res.status;
-          const calendarIsCancelled = isEventCancelled(matchedEvt);
-          if (localStatus === 'cancelado' && !calendarIsCancelled) {
-            diffs.push(`Status divergente: local está "Cancelado" mas na agenda o evento está ativo.`);
-          } else if (localStatus !== 'cancelado' && calendarIsCancelled) {
-            diffs.push(`Status divergente: local está ativo (${localStatus}) mas na agenda está "Cancelado".`);
-          }
-
-          const localObs = (res.observações || '').trim();
-          const evtObs = getEventObs(matchedEvt);
-          if (normalizeObs(localObs) !== normalizeObs(evtObs)) {
-            diffs.push(`Observações divergentes: local possui "${localObs || 'Nenhuma'}" e na agenda está "${evtObs || 'Nenhuma'}".`);
-          }
-
-          if (diffs.length > 0) {
-            detectedDiffs.push({
-              id: `diff_${res.id}_${matchedEvt.id}`,
-              type: 'mismatch',
-              reservation: res,
-              event: matchedEvt,
-              details: diffs,
-              date: res.data,
-              boatCode,
-              period: res.periodo
-            });
-          }
-        } else {
-          // Canceled local bookings don't need to be synced to Google Calendar if they don't exist there
-          if (res.status === 'cancelado') continue;
-
-          detectedDiffs.push({
-            id: `diff_local_${res.id}`,
-            type: 'only_in_system',
-            reservation: res,
-            event: null,
-            details: ['Esta reserva está registrada no sistema, mas não foi encontrada no Google Agenda.'],
-            date: res.data,
-            boatCode,
-            period: res.periodo
-          });
-        }
-      }
-
-      for (const evt of gcalEvents) {
-        if (matchedEventIds.has(evt.id)) continue;
-        // Canceled calendar events that don't exist locally do not need to be imported
-        if (isEventCancelled(evt)) continue;
-
-        const summary = evt.summary || '';
-        const boatMatch = summary.match(/\b(M\d{2})\b/i);
-        const boatCode = boatMatch ? boatMatch[1].toUpperCase() : '';
-
-        if (!boatCode || boatCode === 'M04') continue;
-
-        const boat = boats.find(b => b.nome === boatCode);
-        if (!boat) continue;
-
-        const parts = summary.split('-');
-        let clientName = parts.length > 1 ? parts[1].trim() : '';
-
-        let matchedClient = clients.find(c => c.nome.toUpperCase().includes(clientName.toUpperCase()));
-        if (!matchedClient && clientName) {
-          const clientNameParts = clientName.split(' ');
-          matchedClient = clients.find(c => {
-            const dbNameUpper = c.nome.toUpperCase();
-            return clientNameParts.some(p => p.length > 3 && dbNameUpper.includes(p.toUpperCase()));
-          });
-        }
-
-        const evtDate = evt.start?.dateTime ? evt.start.dateTime.substring(0, 10) : (evt.start?.date || '');
-        const evtPeriod = getEventPeriod(evt);
-
-        detectedDiffs.push({
-          id: `diff_gcal_${evt.id}`,
-          type: 'only_in_calendar',
-          reservation: null,
-          event: evt,
-          details: ['Este agendamento existe no Google Agenda, mas não está registrado no sistema local.'],
-          date: evtDate,
-          boatCode,
-          period: evtPeriod,
-          suggestedClientName: clientName || undefined,
-          suggestedClientId: matchedClient?.id || undefined
-        });
-      }
-
-      setDifferences(detectedDiffs);
-      
-      if (detectedDiffs.length === 0) {
-        showToast('Tudo sincronizado! Nenhuma divergência encontrada entre o sistema e o Google Agenda.', 'success');
-      } else {
-        setIsSyncModalOpen(true);
-      }
-
-      loadScheduleData();
-    } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'Erro ao verificar sincronia.', 'error');
-    } finally {
-      setIsVerifyingSync(false);
-      setIsLoading(false);
-    }
-  };
-
-  const handleResolveOnlyInSystem = async (diff: SyncDifference, action: 'send_to_gcal' | 'delete_local') => {
-    if (!diff.reservation) return;
-    setIsResolvingId(diff.id);
-    try {
-      const res = diff.reservation;
-      if (action === 'send_to_gcal') {
-        const boat = boatDB.getById(res.embarcacaoId);
-        const client = clientDB.getById(res.clienteId);
-        if (!boat || !client) throw new Error('Dados corrompidos ou ausentes do barco ou cliente.');
-
-        const result = await createGoogleCalendarEvent(boat, client, {
-          embarcacaoId: res.embarcacaoId,
-          clienteId: res.clienteId,
-          data: res.data,
-          periodo: res.periodo,
-          observações: res.observações,
-          status: res.status
-        });
-
-        if (result.boatCalendarSynced || result.marinaCalendarSynced) {
-          reservationDB.update(res.id, { googleEventId: result.eventId });
-          showToast('Reserva enviada para o Google Agenda!', 'success');
-          setDifferences(prev => prev.filter(d => d.id !== diff.id));
-        } else {
-          throw new Error('Falha ao sincronizar com Google Agenda.');
-        }
-      } else {
-        if (confirm('Deseja realmente excluir esta reserva do sistema local?')) {
-          reservationDB.delete(res.id);
-          showToast('Reserva removida do sistema local com sucesso.', 'success');
-          setDifferences(prev => prev.filter(d => d.id !== diff.id));
-        }
-      }
-      loadScheduleData();
-    } catch (e: any) {
-      showToast(e.message || 'Erro ao resolver pendência.', 'error');
-    } finally {
-      setIsResolvingId(null);
-    }
-  };
-
-  const handleResolveOnlyInCalendar = async (diff: SyncDifference, action: 'import_to_local' | 'delete_gcal') => {
-    if (!diff.event) return;
-    setIsResolvingId(diff.id);
-    try {
-      if (action === 'import_to_local') {
-        const selectedClientId = importClients[diff.id] || diff.suggestedClientId;
-        if (!selectedClientId) {
-          showToast('Por favor, selecione o cotista correspondente para a importação.', 'error');
-          setIsResolvingId(null);
-          return;
-        }
-
-        const boat = boatDB.getAll().find(b => b.nome === diff.boatCode);
-        if (!boat) throw new Error(`Barco com código ${diff.boatCode} não encontrado no sistema.`);
-
-        const obs = getEventObs(diff.event) || '';
-        const isCancelled = isEventCancelled(diff.event);
-        const status = isCancelled ? 'cancelado' : 'agendado';
-
-        // Check if a reservation with this googleEventId already exists to avoid duplicates
-        const existing = reservationDB.getAll().find(r => r.googleEventId === diff.event!.id);
-        if (existing) {
-          reservationDB.update(existing.id, {
-            embarcacaoId: boat.id,
-            clienteId: selectedClientId,
-            data: diff.date,
-            periodo: diff.period,
-            status: status,
-            observações: obs
-          });
-          showToast('Agendamento atualizado no sistema local com sucesso!', 'success');
-        } else {
-          reservationDB.create({
-            embarcacaoId: boat.id,
-            clienteId: selectedClientId,
-            data: diff.date,
-            periodo: diff.period,
-            status: status,
-            googleEventId: diff.event.id,
-            observações: obs
-          });
-          showToast('Agendamento importado para o sistema local com sucesso!', 'success');
-        }
-        setDifferences(prev => prev.filter(d => d.id !== diff.id));
-      } else {
-        if (confirm('Deseja realmente excluir este agendamento do Google Agenda?')) {
-          const success = await deleteGoogleCalendarEvent(diff.event.id, diff.boatCode);
-          if (success) {
-            showToast('Evento excluído do Google Agenda.', 'success');
-            setDifferences(prev => prev.filter(d => d.id !== diff.id));
-          } else {
-            throw new Error('Não foi possível excluir do Google Agenda.');
-          }
-        }
-      }
-      loadScheduleData();
-    } catch (e: any) {
-      showToast(e.message || 'Erro ao resolver pendência.', 'error');
-    } finally {
-      setIsResolvingId(null);
-    }
-  };
-
-  const handleResolveMismatch = async (diff: SyncDifference, action: 'overwrite_gcal' | 'overwrite_local') => {
-    if (!diff.reservation || !diff.event) return;
-    setIsResolvingId(diff.id);
-    try {
-      const res = diff.reservation;
-      const evt = diff.event;
-      const boat = boatDB.getById(res.embarcacaoId);
-      const client = clientDB.getById(res.clienteId);
-      const boatCode = boat ? boat.nome : 'M00';
-
-      if (action === 'overwrite_gcal') {
-        let ownerName = client ? client.nome : 'Desconhecido';
-        if (!client && res.observações?.includes('[NOME_RECUPERADO:')) {
-          const match = res.observações.match(/\[NOME_RECUPERADO:(.*?)\]/);
-          if (match) ownerName = match[1].trim();
-        }
-        const baseTitle = `${boatCode} - ${ownerName}`;
-        const finalTitle = res.status === 'cancelado' ? `${baseTitle} (CANCELADO)` : baseTitle;
-
-        const lines = [
-          'Reservado via Reservas Náuticas',
-          `Status: ${res.status === 'cancelado' ? 'Cancelado' : res.status === 'confirmado' ? 'Confirmado' : 'Agendado'}`,
-          `Embarcação: ${boat ? getBoatCode(boat) : 'N/A'}`,
-          `Proprietário: ${ownerName}`,
-          `Período: ${res.periodo === 'dia_inteiro' ? 'Dia Inteiro' : res.periodo === 'manha' ? 'Manhã' : 'Tarde'}`,
-          `Obs: ${res.observações || 'Nenhuma'}`
-        ];
-        const finalDescription = lines.join('\n');
-
-        const success = await updateGoogleCalendarEvent(res.googleEventId!, boatCode, {
-          summary: finalTitle,
-          description: finalDescription
-        });
-
-        if (success) {
-          showToast('Google Agenda atualizado com os dados locais.', 'success');
-          setDifferences(prev => prev.filter(d => d.id !== diff.id));
-        } else {
-          throw new Error('Não foi possível atualizar o Google Agenda.');
-        }
-      } else {
-        const evtPeriod = getEventPeriod(evt);
-        const evtObs = getEventObs(evt) || 'Atualizado via Google Agenda';
-        const isCancelled = isEventCancelled(evt);
-        const newStatus = isCancelled ? 'cancelado' : 'agendado';
-
-        reservationDB.update(res.id, {
-          periodo: evtPeriod,
-          observações: evtObs,
-          status: newStatus
-        });
-
-        showToast('Sistema local atualizado com os dados do Google Agenda.', 'success');
-        setDifferences(prev => prev.filter(d => d.id !== diff.id));
-      }
-      loadScheduleData();
-    } catch (e: any) {
-      showToast(e.message || 'Erro ao sincronizar dados.', 'error');
-    } finally {
-      setIsResolvingId(null);
-    }
-  };
-
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
-  };
-
-  const renderLocalData = (targetDate: string) => {
-    const boats = boatDB.getAll();
-    const isNotM04 = (r: Reserva) => {
-      const boat = boats.find(b => b.id === r.embarcacaoId);
-      const boatCode = boat ? boat.nome : '';
-      return boatCode.toUpperCase() !== 'M04';
-    };
-
-    // 1. Fetch Local DB Reservations for selected date (excluding M04)
-    const localRes = reservationDB.getByDate(targetDate).filter(isNotM04);
-    setActiveReservations(localRes);
-    setDailyReservations(localRes);
-
-    // 2. Fetch local reservations in the 14-day range (excluding M04)
-    const dStart = new Date(targetDate);
-    const dEnd = new Date(targetDate);
-    dEnd.setDate(dEnd.getDate() + 14);
-    const startStr = getLocalDateStr(dStart);
-    const endStr = getLocalDateStr(dEnd);
-
-    const localResRange = reservationDB.getAll().filter(r => 
-      r.status === 'confirmado' && 
-      r.data >= startStr && 
-      r.data <= endStr &&
-      isNotM04(r)
-    );
-
-    setRangeReservations(localResRange);
-  };
-
-  const loadScheduleData = async (isInitial = false) => {
-    if (isInitial || reservationDB.getAll().length === 0) {
-      setIsLoading(true);
-    }
-    try {
-      await syncWithRemote();
-      // Removed problematic frontend DB migration script that caused infinite update loops
-
-      renderLocalData(selectedDate);
-    } catch (err: any) {
-      console.error('Erro ao recarregar agenda:', err);
-      showToast('Erro ao recarregar agendamentos.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // Safeguard selectedDate from being empty, cleared, or invalid
-    if (!selectedDate || isNaN(new Date(selectedDate + 'T12:00:00').getTime())) {
-      setSelectedDate(getLocalDateStr());
-      return;
-    }
-    // Instant 0ms render from memory on date switch
-    renderLocalData(selectedDate);
-    // Background sync with remote
-    loadScheduleData(false);
-  }, [selectedDate, simMode]);
-
-  const loadScheduleDataRef = useRef(loadScheduleData);
-  useEffect(() => {
-    loadScheduleDataRef.current = loadScheduleData;
-  }, [loadScheduleData]);
-
-  useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token || token === 'null' || token === 'undefined') return;
-
-    const socket = io(window.location.origin, {
-      auth: { token },
-      transports: ['polling', 'websocket'],
-      reconnectionAttempts: 5
-    });
-    
-    socket.on('marina_update', async (payload: any) => {
-      // Data changed in backend, re-fetch and update UI
-      if (loadScheduleDataRef.current) {
-        await loadScheduleDataRef.current();
-      }
-
-      // Show notification toast for real-time updates
-      const action = payload?.action;
-      const reservation = payload?.reservation;
-      const boatLabel = reservation?.embarcacaoNome || reservation?.embarcacaoId || 'Embarcação';
-      const clientLabel = reservation?.clienteNome ? ` por ${reservation.clienteNome}` : '';
-      const messages: Record<string, { msg: string; type: 'success' | 'error' }> = {
-        new:     { msg: `📩 Nova reserva recebida: ${boatLabel}${clientLabel}`, type: 'success' },
-        checkin: { msg: `✅ Check-in confirmado: ${boatLabel}`, type: 'success' },
-        cancel:  { msg: `❌ Reserva cancelada: ${boatLabel}`, type: 'error' },
-        upsert:  { msg: `🔄 Reserva atualizada: ${boatLabel}`, type: 'success' },
-        delete:  { msg: `🗑️ Reserva removida`, type: 'error' },
-      };
-      const info = messages[action] || { msg: '🔔 Atualização no sistema recebida', type: 'success' as const };
-      showToast(info.msg, info.type);
-
-      // Play notification sound (Web Audio API beep)
-      try {
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
-        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-        oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.5);
-      } catch {}
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
-
-
-  useEffect(() => {
-    // Sync Service Account Mode from backend
-    const checkServiceAccountConfig = async () => {
-      const isSAActive = await checkServerConfig();
-      // Since it pulls and saves clientid and mappings to localStorage, lets update our React states!
-      setClientId(getGoogleClientId());
-      setCalendarMappingsState(getCalendarMappings());
-
-      if (isSAActive) {
-        setSimMode(false);
-        setSimulatedConnection(false);
-        setGcalConnected(true);
-        loadScheduleData();
-      }
-    };
-    checkServiceAccountConfig();
-
-    // Ensure state matches the auto-migrated client ID from localStorage
-    const currentId = getGoogleClientId();
-    if (clientId !== currentId) {
-      setClientId(currentId);
-    }
-
-    const parsedToken = handleOAuthCallback();
-    if (parsedToken) {
-      setSimMode(false);
-      setSimulatedConnection(false);
-      setGcalConnected(true);
-      showToast('Login com o Google realizado com sucesso! Conexão ativa com o Google Calendar.', 'success');
-      loadScheduleData();
-    }
-
-    // Capture OAuth success messages from popups
-    const handlePopupMessage = (event: MessageEvent) => {
-      if (event.data && event.data.type === 'nautical_oauth_success') {
-        const token = event.data.token;
-        setCachedToken(token);
-        setSimMode(false);
-        setSimulatedConnection(false);
-        setGcalConnected(true);
-        showToast('Login com o Google realizado com sucesso! Conexão ativa com o Google Calendar.', 'success');
-        loadScheduleData();
-      }
-    };
-
-    window.addEventListener('message', handlePopupMessage);
-    return () => {
-      window.removeEventListener('message', handlePopupMessage);
-    };
-  }, []);
-
-  const handleSimulateToggle = () => {
-    const nextMode = !simMode;
-    setSimMode(nextMode);
-    setSimulatedConnection(nextMode);
-    setGcalConnected(!nextMode);
-    showToast(nextMode ? 'Modo de Sincronização Simulado Ativo!' : 'Modo Simulado desligado. Pronto para chaves/token GCP.');
-  };
-
-  const handleApplyDeveloperToken = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!devTokenInput.trim()) {
-      showToast('Por favor, informe um token de desenvolvedor válido.', 'error');
-      return;
-    }
-    setDeveloperToken(devTokenInput.trim());
-    setSimMode(false);
-    setGcalConnected(true);
-    showToast('Token de Acesso Real Google configurado com sucesso! Próximas chamadas utilizarão o Google Developer Dashboard.');
-    setDevTokenInput('');
-  };
-
-  const handleSaveClientId = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clientId.trim()) {
-      showToast('Por favor, digite um Client ID válido.', 'error');
-      return;
-    }
-    setGoogleClientId(clientId.trim());
-    showToast('Google Client ID salvo localmente!', 'success');
-  };
-
-  const handleOAuthLoginClick = () => {
-    if (!clientId.trim()) {
-      showToast('Insira o ID do Cliente Google antes de tentar fazer login com o Google.', 'error');
-      return;
-    }
-    setGoogleClientId(clientId);
-    initiateOAuthLogin(clientId);
-  };
-
-  const handleLogout = () => {
-    setCachedToken(null);
-    setSimMode(true);
-    setSimulatedConnection(true);
-    setGcalConnected(false);
-    showToast('Desconectado do Google com sucesso.', 'success');
-  };
-
-  // Navigate Days
-  const stepDate = (amount: number) => {
-    let d = new Date(selectedDate + 'T12:00:00');
-    if (isNaN(d.getTime())) {
-      d = new Date();
-    }
-    d.setDate(d.getDate() + amount);
-    setSelectedDate(getLocalDateStr(d));
-  };
-
-  const setToday = () => {
-    setSelectedDate(getLocalDateStr());
-  };
-
-  // Delete Reservation (Local + GCal)
-  const handleDeleteReservation = async (res: Reserva) => {
-    if (!confirm('Deseja realmente excluir esta reserva do sistema e do Google Calendar? Esta ação é irreversível.')) return;
-    
-    setIsLoading(true);
-    try {
-      if (res.googleEventId) {
-        try {
-          const boat = boatDB.getById(res.embarcacaoId);
-          const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome.split(' ')[0]) : undefined;
-          await deleteGoogleCalendarEvent(res.googleEventId, boatCode);
-        } catch (e) {
-          console.warn('Erro ao excluir do GCal (pode já ter sido excluído na nuvem):', e);
-        }
-      }
-      reservationDB.delete(res.id);
-      showToast('Reserva excluída do sistema e Google Calendar com sucesso!', 'success');
-      loadScheduleData();
-    } catch (err: any) {
-      showToast('Erro ao excluir reserva: ' + err.message, 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Generate subsequent dates list for buttons (next 5 days)
   const getSubsequentDays = () => {
-    const dates: { dateStr: string; label: string; weekday: string }[] = [];
-    let base = new Date(selectedDate + 'T12:00:00');
-    if (isNaN(base.getTime())) {
-      base = new Date();
-    }
-    
-    for (let i = 1; i <= 5; i++) {
-      const next = new Date(base);
-      next.setDate(base.getDate() + i);
-      const isDateToday = getLocalDateStr(next) === getLocalDateStr();
-      
+    const cur = new Date(selectedDate + 'T12:00:00');
+    const dates = [];
+    const todayStr = getLocalDateStr(new Date());
+    for (let i = -2; i <= 4; i++) {
+      const d = new Date(cur);
+      d.setDate(d.getDate() + i);
+      const dStr = getLocalDateStr(d);
       dates.push({
-        dateStr: getLocalDateStr(next),
-        label: next.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        weekday: isDateToday ? 'Hoje' : next.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+        dateStr: dStr,
+        label: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        weekday: dStr === todayStr ? 'Hoje' : d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
       });
     }
     return dates;
   };
 
+  // Search & Filters (including Pier and Overdue)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [pierStatusFilter, setPierStatusFilter] = useState<PierStatusKey>('todos');
+  const [typeFilter, setTypeFilter] = useState<'Todos' | 'Lancha' | 'Jetski'>('Todos');
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
+
+  // Modals
+  const [isNewBookingModalOpen, setIsNewBookingModalOpen] = useState(false);
+  const [statusModalEvent, setStatusModalEvent] = useState<Reserva | null>(null);
+
+  // Toast feedback
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3500);
+  };
+
+  // Load Data
+  const loadData = async (isInitial = false) => {
+    // 1. Instant display from in-memory cache if available
+    const cachedRes = reservationDB.getAll();
+    if (cachedRes.length > 0) {
+      setReservations([...cachedRes]);
+      setBoats([...boatDB.getAll()]);
+      setClients([...clientDB.getAll()]);
+    }
+
+    if (isInitial || cachedRes.length === 0) {
+      setIsLoading(true);
+    }
+
+    try {
+      // 2. Fetch full remote database from server
+      await syncWithRemote();
+      setReservations([...reservationDB.getAll()]);
+      setBoats([...boatDB.getAll()]);
+      setClients([...clientDB.getAll()]);
+    } catch (err) {
+      console.error('Erro ao sincronizar com servidor:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData(true);
+
+    const token = localStorage.getItem('admin_token');
+    let socket: any = null;
+    if (token && token !== 'null' && token !== 'undefined') {
+      try {
+        socket = io(window.location.origin, {
+          auth: { token },
+          transports: ['polling', 'websocket'],
+          reconnectionAttempts: 5
+        });
+
+        socket.on('marina_update', async () => {
+          await syncWithRemote();
+          setReservations([...reservationDB.getAll()]);
+          setBoats([...boatDB.getAll()]);
+          setClients([...clientDB.getAll()]);
+        });
+      } catch (e) {
+        console.warn('Socket connection warning:', e);
+      }
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        await syncWithRemote();
+        setReservations([...reservationDB.getAll()]);
+        setBoats([...boatDB.getAll()]);
+        setClients([...clientDB.getAll()]);
+      } catch (e) {
+        // silent sync
+      }
+    }, 12000);
+
+    return () => {
+      clearInterval(interval);
+      if (socket) socket.disconnect();
+    };
+  }, []);
+
+  // Filtered reservations for selected day
+  const dailyReservations = useMemo(() => {
+    return reservations.filter(r => r.data === selectedDate);
+  }, [reservations, selectedDate]);
+
+  const filteredDailyReservations = useMemo(() => {
+    return dailyReservations.filter((res) => {
+      // 1. Pier Status Filter
+      if (pierStatusFilter !== 'todos') {
+        const pStatus = getPierStatus(res);
+        if (pStatus.id !== pierStatusFilter) return false;
+      }
+
+      // 2. Type Filter
+      const boat = boatDB.getById(res.embarcacaoId);
+      const boatType = boat?.tipo === 'jet' ? 'Jetski' : 'Lancha';
+      if (typeFilter !== 'Todos' && boatType !== typeFilter) return false;
+
+      // 3. Overdue / Financial Filter
+      if (onlyOverdue) {
+        const client = clientDB.getById(res.clienteId);
+        if (client?.statusFinanceiro !== 'inadimplente') return false;
+      }
+
+      // 4. Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const client = clientDB.getById(res.clienteId);
+        const boatMatch = boat ? boat.nome.toLowerCase().includes(q) || getBoatCode(boat).toLowerCase().includes(q) : false;
+        const clientMatch = client ? client.nome.toLowerCase().includes(q) || (client.telefone && client.telefone.includes(q)) : false;
+        const obsMatch = res.observações ? res.observações.toLowerCase().includes(q) : false;
+        if (!boatMatch && !clientMatch && !obsMatch) return false;
+      }
+
+      return true;
+    });
+  }, [dailyReservations, pierStatusFilter, typeFilter, onlyOverdue, searchQuery]);
+
+  const jumpToToday = () => {
+    const today = new Date();
+    setSelectedDate(getLocalDateStr(today));
+    setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
+
+  // Actions
+  const handleDeleteReservation = async (res: Reserva) => {
+    const boat = boatDB.getById(res.embarcacaoId);
+    const client = clientDB.getById(res.clienteId);
+    const confirmText = `Deseja realmente excluir o agendamento de ${boat ? getBoatCode(boat) : 'embarcação'} para ${client ? client.nome : 'cliente'} em ${res.data}?`;
+    if (!window.confirm(confirmText)) return;
+
+    try {
+      if (res.googleEventId && isCalendarConnected()) {
+        try {
+          await deleteGoogleCalendarEvent(res.googleEventId, res.embarcacaoId);
+        } catch (e) {
+          console.warn('Google event delete warning:', e);
+        }
+      }
+      reservationDB.delete(res.id);
+      loadData();
+      showToast('Agendamento excluído com sucesso.');
+    } catch (err: any) {
+      console.error(err);
+      showToast('Erro ao excluir agendamento.', 'error');
+    }
+  };
+
+  const handleGeneratePDF = async (res: Reserva) => {
+    try {
+      const boat = boatDB.getById(res.embarcacaoId);
+      const client = clientDB.getById(res.clienteId);
+      const boatCode = boat ? (boat.numero ? `M${boat.numero}` : boat.nome.split(' ')[0]) : 'M00';
+      const boatType = boat ? (boat.tipo === 'jet' ? 'Jetski' : 'Lancha') : 'Lancha';
+      const ownerName = client ? client.nome : 'Desconhecido';
+
+      let formattedDate = res.data;
+      if (formattedDate.includes('-')) {
+        const [y, m, d] = formattedDate.split('-');
+        formattedDate = `${d} / ${m} / ${y}`;
+      }
+
+      await generateAvisoSaidaPDF({
+        data: formattedDate,
+        nome: ownerName,
+        tipo: boatType,
+        nomeEmbarcacao: boatCode,
+        pessoasABordo: String(res.pessoasABordo || '02'),
+        destino: res.destino || 'Iate Club - Rodeadouro',
+        previsaoSaida: res.previsaoSaida || (res.periodo === 'tarde' ? '13:00' : '08:00'),
+        previsaoChegada: res.previsaoChegada || (res.periodo === 'manha' ? '13:00' : '18:00'),
+        observacao: res.observações || 'Nenhuma'
+      });
+
+      showToast('Aviso de Saída (PDF) gerado com sucesso!');
+    } catch (err) {
+      console.error(err);
+      showToast('Erro ao gerar PDF.', 'error');
+    }
+  };
+
+  // Metrics for Top Bento Cards
+  const metrics = useMemo(() => {
+    const curYear = calendarMonth.getFullYear();
+    const curMonth = calendarMonth.getMonth();
+    const monthPrefix = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+
+    const monthReservations = reservations.filter(r => r.data.startsWith(monthPrefix) && r.status !== 'cancelado');
+    const dayConfirmed = dailyReservations.filter(r => r.status === 'confirmado' || (r.statusMarina as string) === 'confirmada').length;
+    const dayLanchas = dailyReservations.filter(r => {
+      const b = boatDB.getById(r.embarcacaoId);
+      return b?.tipo !== 'jet';
+    }).length;
+    const dayJets = dailyReservations.filter(r => {
+      const b = boatDB.getById(r.embarcacaoId);
+      return b?.tipo === 'jet';
+    }).length;
+
+    const overdueCount = dailyReservations.filter(r => {
+      const c = clientDB.getById(r.clienteId);
+      return c?.statusFinanceiro === 'inadimplente';
+    }).length;
+
+    return {
+      monthTotal: monthReservations.length,
+      dayTotal: dailyReservations.length,
+      dayConfirmed,
+      dayLanchas,
+      dayJets,
+      overdueCount
+    };
+  }, [reservations, dailyReservations, calendarMonth]);
+
+  const parsedSelectedDate = useMemo(() => {
+    const d = new Date(selectedDate + 'T12:00:00');
+    return isNaN(d.getTime()) ? new Date() : d;
+  }, [selectedDate]);
+
   return (
-    <div id="schedules-page-section" className="space-y-6">
+    <div className="space-y-6">
       {/* Toast Feedback */}
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 border animate-in fade-in slide-in-from-bottom-2 ${
-          toast.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-800 border-rose-200'
+        <div className={`fixed bottom-5 right-5 z-[999] px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 border animate-in fade-in slide-in-from-bottom-2 ${
+          toast.type === 'success' ? 'bg-[#F0FDF4] text-[#16A34A] border-[#22C55E]/30' : 'bg-[#FEF2F2] text-[#DC2626] border-[#EF4444]/30'
         }`}>
+          {toast.type === 'success' ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
           <span className="text-sm font-medium">{toast.message}</span>
         </div>
       )}
 
-      {/* Header and Controls */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Consulta de Agendamentos</h2>
-          <p className="text-sm text-slate-500 font-sans">Visualização integrada em tempo real da marina e das saídas de embarcações.</p>
+      {/* 1. TailGrids Application Header */}
+      <div className="bg-white border border-[#E5E7EB] rounded-lg p-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-[#6B7280]">
+            <span className="px-2.5 py-0.5 rounded-full bg-[#EEF2FF] text-[#3758F9] font-medium text-xs">
+              Módulo Náutico
+            </span>
+            <span>/</span>
+            <span>Administração</span>
+            <span>/</span>
+            <span className="text-[#111827] font-semibold">Agendamentos de Cotas</span>
+          </div>
+          <h1 className="text-2xl font-bold text-[#111827] tracking-tight">
+            Calendário e Agendamentos de Cotas
+          </h1>
+          <p className="text-sm text-[#6B7280]">
+            Controle de reservas em tempo real, visualização mensal da grade de embarcações e emissão de saídas.
+          </p>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-2">
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={() => loadScheduleData(true)}
+            onClick={loadData}
             disabled={isLoading}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-            title="Atualizar Tabela"
+            className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg text-[#374151] bg-white hover:bg-[#F3F4F6] border border-[#E5E7EB] transition-colors cursor-pointer disabled:opacity-40"
+            title="Recarregar dados"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Atualizar
           </button>
 
           <button
-            onClick={handleVerifySync}
-            disabled={isLoading || isVerifyingSync}
-            className="relative inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-300 cursor-pointer shadow-md bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 hover:from-indigo-500 hover:to-violet-600 text-white border border-indigo-500/20 hover:shadow-indigo-500/25 active:scale-95 group overflow-hidden"
-            title="Verificar sincronia com Google Agenda"
+            onClick={jumpToToday}
+            className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg text-[#3758F9] hover:bg-[#EEF2FF] border border-[#3758F9] bg-transparent transition-colors cursor-pointer"
           >
-            <span className="absolute -inset-y-0 -inset-x-12 bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12 translate-x-[-100%] group-hover:translate-x-[200%] transition-transform duration-1000 ease-out" />
-            <RefreshCw className={`w-4 h-4 mr-2 ${isVerifyingSync ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-            {isVerifyingSync ? 'Verificando...' : 'Verificar Sincronia'}
+            Ir para Hoje
           </button>
 
-          
           <button
-            id="page-add-res-btn"
-            onClick={() => setIsResModalOpen(true)}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shadow-xs"
+            onClick={() => setIsNewBookingModalOpen(true)}
+            className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-medium rounded-lg bg-[#3758F9] hover:bg-[#1B44C8] text-white shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4 mr-2" />
             Nova Reserva
@@ -1112,601 +452,1467 @@ export default function SchedulesPage() {
         </div>
       </div>
 
-      {/* Sync Pending Alert Section */}
-      {pendingSyncReservations.length > 0 && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 flex flex-col md:flex-row items-stretch justify-between gap-5 shadow-xs animate-in fade-in duration-200">
-          <div className="flex-1 space-y-3">
-            <div className="flex gap-3 items-start">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-amber-950 leading-tight">Agendamentos Pendentes de Sincronização</h4>
-                <p className="text-xs text-slate-700 mt-1">
-                  Existe(m) <strong className="text-amber-900 font-bold">{pendingSyncReservations.length} agendamento(s)</strong> salvo(s) localmente que ainda não foram sincronizados com o Google Agenda.
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Conecte sua conta Google acima para sincronizar ou use os botões individuais abaixo.
-                </p>
-              </div>
-            </div>
-
-            {/* List of explicit pending reservations */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 pt-2 border-t border-amber-200/50">
-              {pendingSyncReservations.map((res) => {
-                const boat = boatDB.getById(res.embarcacaoId);
-                const client = clientDB.getById(res.clienteId);
-                const parsedDate = new Date(res.data + 'T12:00:00');
-                const formattedDate = isNaN(parsedDate.getTime()) ? res.data : parsedDate.toLocaleDateString('pt-BR');
-                const formattedPeriod = res.periodo === 'dia_inteiro' ? 'Dia Inteiro' : res.periodo === 'manha' ? 'Manhã' : 'Tarde';
-                return (
-                  <div key={res.id} className="flex items-center justify-between text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 shadow-2xs">
-                    <div className="flex flex-col min-w-0 pr-2">
-                      <span className="font-bold text-slate-900 truncate flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-mono rounded border border-indigo-100 font-bold">
-                          {boat ? getBoatCode(boat) : 'M--'}
-                        </span>
-                        <span className="text-slate-400 text-[11px] font-normal">
-                          ({boat ? (boat.tipo === 'jet' ? 'Jet' : 'Lancha') : 'Embarcação'})
-                        </span>
-                      </span>
-                      <span className="text-[10px] text-slate-500 truncate mt-1 flex items-center gap-1.5">
-                        Sócio: {client ? client.nome : 'Cliente'}
-                        {client?.statusFinanceiro === 'inadimplente' && (
-                          <span className="px-1.5 flex items-center gap-0.5 py-0.5 rounded text-[8px] font-bold uppercase text-rose-800 bg-rose-100 border border-rose-200">
-                            <AlertTriangle className="w-2.5 h-2.5" /> Pendências
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-end shrink-0 gap-1.5 font-sans">
-                      <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full border border-amber-200">
-                        {formattedDate}
-                      </span>
-                      {gcalConnected && (
-                        <button
-                          onClick={() => handleSyncSingleReservation(res.id)}
-                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer hover:no-underline"
-                        >
-                          Sincronizar Google
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex items-center shrink-0 border-t md:border-t-0 md:border-l border-amber-200 pt-4 md:pt-0 md:pl-5 justify-center">
-            <button
-              onClick={handleSyncAllPending}
-              disabled={isSyncingAll}
-              className="w-full md:w-auto px-5 py-3 h-fit bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shrink-0"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin' : ''}`} />
-              {isSyncingAll ? 'Sincronizando...' : 'Sincronizar Tudo no Google'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Date Navigation & Filters Panel */}
-      <div className="bg-white border border-slate-100 rounded-xl shadow-xs p-3 flex flex-col gap-3">
-        {/* Row 1: Date Navigation & Quick Hop */}
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
-          <div className="flex items-center space-x-1.5 shrink-0">
-            <button onClick={() => stepDate(-1)} className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer text-slate-700" title="Dia Anterior">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button onClick={setToday} className="px-3 py-1.5 border border-slate-200 hover:border-slate-400 font-bold text-[11px] rounded-lg transition-colors cursor-pointer bg-white text-slate-800 uppercase">
-              Hoje
-            </button>
-            <button onClick={() => stepDate(1)} className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer text-slate-700" title="Próximo Dia">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <input
-              id="schedule-main-datepicker"
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="ml-1 px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-950 font-semibold"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 overflow-x-auto subtle-scrollbar w-full lg:w-auto lg:justify-center">
-            {getSubsequentDays().map((dobj) => (
-              <button
-                key={dobj.dateStr}
-                onClick={() => setSelectedDate(dobj.dateStr)}
-                className={`flex-1 lg:flex-none flex flex-col items-center justify-center px-3 py-1.5 border rounded-lg transition-all text-center cursor-pointer min-w-[55px] ${
-                  selectedDate === dobj.dateStr
-                    ? 'border-indigo-600 bg-indigo-50/50 text-indigo-950 ring-1 ring-indigo-500/20'
-                    : 'border-slate-200 hover:border-slate-400 bg-slate-50 hover:bg-white text-slate-600'
-                }`}
-              >
-                <span className="text-[9px] font-bold font-sans uppercase text-slate-400 leading-none mb-0.5">
-                  {dobj.weekday}
-                </span>
-                <span className="text-[11px] font-bold font-mono text-slate-800">
-                  {dobj.label}
-                </span>
-              </button>
-            ))}
-          </div>
-          
-          <div className="hidden xl:flex flex-col items-end shrink-0">
-            <h3 className="font-bold text-slate-900 text-xs tracking-tight">
-              {parsedSelectedDate.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            </h3>
-            <span className="text-[9px] bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full font-bold font-mono text-indigo-700 mt-0.5">
-              {dailyReservations.length} Atividades
+      {/* 2. TailGrids Bento Metric Widgets (4 Cards) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Reservas no Mês */}
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-6 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider block">
+              Reservas no Mês
             </span>
+            <h3 className="text-2xl font-bold text-[#111827]">
+              {metrics.monthTotal}
+            </h3>
+            <p className="text-xs text-[#6B7280] capitalize">
+              {calendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-lg bg-[#EEF2FF] flex items-center justify-center text-[#3758F9]">
+            <CalendarIcon className="w-6 h-6" />
           </div>
         </div>
 
-        <div className="h-px w-full bg-slate-100"></div>
-
-        {/* Row 2: Search & Filters */}
-        <div id="search-and-filters-container" className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          <div className="relative flex-1 md:max-w-sm">
-            <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
-              <Search className="h-3.5 w-3.5" />
-            </div>
-            <input
-              id="schedule-search-input"
-              type="text"
-              placeholder="Pesquisar cliente, barco (ex: M19)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-400 focus:outline-hidden rounded-lg font-medium transition-all"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-700 cursor-pointer">
-                <XCircle className="h-3.5 w-3.5" />
-              </button>
-            )}
+        {/* Card 2: Saídas da Data Selecionada */}
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-6 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider block">
+              Saídas em {parsedSelectedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+            </span>
+            <h3 className="text-2xl font-bold text-[#111827]">
+              {metrics.dayTotal} agendamentos
+            </h3>
+            <p className="text-xs text-[#6B7280]">
+              {metrics.dayLanchas} lancha(s) • {metrics.dayJets} jet(s)
+            </p>
           </div>
+          <div className="w-12 h-12 rounded-lg bg-[#F0F9FF] flex items-center justify-center text-[#0EA5E9]">
+            <Anchor className="w-6 h-6" />
+          </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-bold text-slate-400 uppercase font-mono">Status:</span>
-              <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                {(['Todos', 'Agendado', 'Confirmado', 'Cancelado'] as const).map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setStatusFilter(st)}
-                    className={`px-2.5 py-1 text-[10px] font-bold rounded-md cursor-pointer transition-colors ${statusFilter === st ? 'bg-white text-slate-900 shadow-xs border border-slate-200/50' : 'text-slate-500 hover:text-slate-900'}`}
-                  >
-                    {st}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {/* Card 3: Confirmadas / Na Água */}
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-6 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider block">
+              Confirmadas Hoje
+            </span>
+            <h3 className="text-2xl font-bold text-[#16A34A]">
+              {metrics.dayConfirmed}
+            </h3>
+            <p className="text-xs text-[#6B7280]">
+              {metrics.dayTotal - metrics.dayConfirmed} pendente(s) de liberação
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-lg bg-[#F0FDF4] flex items-center justify-center text-[#22C55E]">
+            <CheckCircle className="w-6 h-6" />
+          </div>
+        </div>
 
-            <div className="flex items-center gap-1.5 font-sans">
-              <span className="text-[9px] font-bold text-slate-400 uppercase font-mono">Tipo:</span>
-              <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                {(['Todos', 'Lancha', 'Jetski'] as const).map((tp) => (
-                  <button
-                    key={tp}
-                    onClick={() => setTypeFilter(tp)}
-                    className={`px-2.5 py-1 text-[10px] font-bold rounded-md cursor-pointer transition-colors ${typeFilter === tp ? 'bg-white text-slate-900 shadow-xs border border-slate-200/50' : 'text-slate-500 hover:text-slate-900'}`}
-                  >
-                    {tp}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {(searchQuery || statusFilter !== 'Todos' || typeFilter !== 'Todos') && (
-              <button onClick={() => { setSearchQuery(''); setStatusFilter('Todos'); setTypeFilter('Todos'); }} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer underline underline-offset-2">
-                Limpar
-              </button>
-            )}
+        {/* Card 4: Alertas Financeiros */}
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-6 shadow-sm flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider block">
+              Inadimplência na Data
+            </span>
+            <h3 className={`text-2xl font-bold ${metrics.overdueCount > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}`}>
+              {metrics.overdueCount > 0 ? `${metrics.overdueCount} cotista(s)` : 'Tudo em dia'}
+            </h3>
+            <p className="text-xs text-[#6B7280]">
+              {metrics.overdueCount > 0 ? 'Possuem valores em atraso' : 'Sem débitos identificados'}
+            </p>
+          </div>
+          <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+            metrics.overdueCount > 0 ? 'bg-[#FEF2F2] text-[#EF4444]' : 'bg-[#F0FDF4] text-[#22C55E]'
+          }`}>
+            {metrics.overdueCount > 0 ? <AlertTriangle className="w-6 h-6 animate-pulse" /> : <ShieldAlert className="w-6 h-6" />}
           </div>
         </div>
       </div>
 
-      {/* Main Grid View */}
-      <div className="grid grid-cols-1 gap-6">
-        
-        {/* Day's Agenda List Column */}
-        <div className="col-span-1 space-y-4">
-          <div className="bg-white border border-slate-100 rounded-xl shadow-xs overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center space-x-2">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  <h3 className="font-semibold text-slate-900 text-sm flex items-center">
-                    <Sparkles className="w-4 h-4 mr-1.5 text-indigo-600 animate-pulse" />
-                    Agendamentos Ativos do Dia
-                  </h3>
-                </div>
-                <span className="text-[10px] bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md font-semibold text-indigo-700 font-sans shadow-2xs">
-                  Sincronizado: Agenda Marina Central
-                </span>
-              </div>
-              <span className="text-xs text-slate-500 font-mono font-medium bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg self-start sm:self-auto">
-                {parsedSelectedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-              </span>
-            </div>
+      {/* 3. Navigation Tabs: Tabela do Dia (Padrão) vs Calendário Mensal vs Cards */}
+      <div className="bg-white border border-[#E5E7EB] rounded-lg p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Main View Tabs */}
+        <div className="inline-flex bg-[#F3F4F6] p-1 rounded-lg border border-[#E5E7EB]">
+          <button
+            onClick={() => setActiveTab('table')}
+            className={`px-4 py-2 text-xs font-medium rounded-md transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'table'
+                ? 'bg-[#3758F9] text-white shadow-xs font-semibold'
+                : 'text-[#6B7280] hover:text-[#111827]'
+            }`}
+          >
+            <List className="w-4 h-4" />
+            <span>Tabela do Dia ({dailyReservations.length})</span>
+          </button>
 
-            {(() => {
-              const overdueCount = filteredDailyReservations.filter(r => {
-                const client = clientDB.getById(r.clienteId);
-                return client?.statusFinanceiro === 'inadimplente';
-              }).length;
-              if (overdueCount === 0) return null;
-              return (
-                <div className="mx-4 mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-3 text-rose-900 shadow-2xs">
-                  <div className="flex items-center gap-2.5">
-                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 animate-pulse" />
-                    <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-rose-800">Alerta de Inadimplência</h4>
-                      <p className="text-xs text-rose-700 font-semibold mt-0.5">
-                        Atenção: Existe(m) <strong className="font-extrabold text-rose-900">{overdueCount} agendamento(s)</strong> de cliente(s) com débitos em atraso nesta data.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+          <button
+            onClick={() => setActiveTab('calendar')}
+            className={`px-4 py-2 text-xs font-medium rounded-md transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'calendar'
+                ? 'bg-[#3758F9] text-white shadow-xs font-semibold'
+                : 'text-[#6B7280] hover:text-[#111827]'
+            }`}
+          >
+            <CalendarIcon className="w-4 h-4" />
+            <span>Calendário & WhatsApp</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+              activeTab === 'calendar' ? 'bg-white/20 text-white' : 'bg-[#25D366] text-white'
+            }`}>
+              WhatsApp
+            </span>
+          </button>
 
-            {dailyReservations.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 space-y-2">
-                <p className="text-sm font-sans font-medium">Nenhum agendamento registrado nesta data.</p>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">Não há registros correspondentes no Google Calendar ou no repositório geral de reservas da marina para o dia selecionado.</p>
-                <button
-                  onClick={() => setIsResModalOpen(true)}
-                  className="inline-flex items-center px-3.5 py-1.5 bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-800 transition-colors mt-2"
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Agendar Saída
-                </button>
-              </div>
-            ) : filteredDailyReservations.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 space-y-3">
-                <Search className="w-8 h-8 text-slate-300 mx-auto stroke-1" />
-                <p className="text-sm font-sans font-semibold">Sem correspondências para os filtros ativos.</p>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto font-sans">Nenhum agendamento do dia selecionado corresponde ao texto da pesquisa ou aos filtros de status/tipo selecionados.</p>
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setStatusFilter('Todos');
-                    setTypeFilter('Todos');
-                  }}
-                  className="inline-flex items-center px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-semibold text-indigo-700 transition-colors mt-1 cursor-pointer font-sans"
-                >
-                  Limpar Filtros
-                </button>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {filteredDailyReservations.map(res => {
-                  return (
-                    <ScheduleCard 
-                      key={res.id} 
-                      res={res} 
-                      gcalConnected={gcalConnected}
-                      onSync={handleSyncSingleReservation}
-                      onGeneratePDF={handleGeneratePDFForEvent}
-                      onOpenStatus={openStatusModal}
-                      onDelete={handleDeleteReservation}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => setActiveTab('cards')}
+            className={`px-4 py-2 text-xs font-medium rounded-md transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'cards'
+                ? 'bg-[#3758F9] text-white shadow-xs font-semibold'
+                : 'text-[#6B7280] hover:text-[#111827]'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            <span>Cards do Dia</span>
+          </button>
         </div>
 
+        {/* Selected Date Indicator */}
+        <div className="flex items-center gap-2 text-sm text-[#374151]">
+          <span className="text-xs text-[#6B7280] uppercase font-bold">Data Ativa:</span>
+          <span className="px-3 py-1 bg-[#EEF2FF] text-[#3758F9] font-semibold rounded-md border border-[#3758F9]/20">
+            {parsedSelectedDate.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+          </span>
+        </div>
       </div>
 
-      {/* Monthly visual scale workspace and exporter */}
-      <MonthlyCalendarGenerator initialDate={selectedDate} />
-
-      {/* Dynamic Status Update Modal */}
-      <StatusModal
-        isOpen={!!statusModalEvent}
-        reserva={statusModalEvent}
-        onClose={() => setStatusModalEvent(null)}
-        onSuccess={(msg) => showToast(msg, 'success')}
-        onError={(msg) => showToast(msg, 'error')}
-        onUpdateCompleted={loadScheduleData}
-      />
-      {/* Sync Comparison and Resolution Modal */}
-      {isSyncModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
-            {/* Header banner */}
-            <div className="bg-indigo-50/50 px-6 py-4 border-b border-indigo-100 flex items-center justify-between">
+      {/* 4. MAIN CONTENT AREA */}
+      {activeTab === 'calendar' ? (
+        /* ========================================================================= */
+        /* GERADOR DE CALENDÁRIO MENSAL & DISPARO PARA O WHATSAPP                    */
+        /* ========================================================================= */
+        <div className="space-y-6">
+          {/* TailGrids Explanatory Banner for WhatsApp Dispatch */}
+          <div className="bg-[#F0FDF4] border border-[#22C55E]/30 rounded-lg p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-lg bg-[#DCFCE7] border border-[#22C55E]/40 flex items-center justify-center text-[#16A34A] shrink-0">
+                <Send className="w-5 h-5" />
+              </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="w-5 h-5 text-indigo-600 animate-spin-slow" />
-                  <h3 className="font-bold text-slate-900 text-base font-sans">
-                    Resolução de Divergências - Google Agenda
-                  </h3>
-                </div>
-                <p className="text-xs text-slate-500 mt-1 font-sans">
-                  Encontramos {differences.length} divergência(s) entre o sistema e o Google Calendar no período de 16 dias. Escolha a ação adequada para cada caso.
+                <h3 className="text-sm font-bold text-[#15803D] flex items-center gap-2">
+                  <span>Escala Mensal e Envio para Grupos de WhatsApp</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#25D366] text-white uppercase">
+                    Disparo Direto
+                  </span>
+                </h3>
+                <p className="text-xs text-[#166534] mt-0.5 leading-relaxed">
+                  Selecione a embarcação desejada para gerar a tabela gráfica oficial com o logo da marina e envie automaticamente para o grupo de WhatsApp da embarcação, ou copie a imagem renderizada para a área de transferência.
                 </p>
               </div>
-              <button 
-                onClick={() => {
-                  setIsSyncModalOpen(false);
-                  loadScheduleData();
-                }}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer ml-4"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
             </div>
 
-            {/* Differences List Content Area */}
-            <div className="p-6 overflow-y-auto space-y-4 flex-1 subtle-scrollbar font-sans text-xs">
-              {differences.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-slate-500 space-y-3">
-                  <CheckCircle className="w-12 h-12 text-emerald-500" />
-                  <p className="font-semibold text-sm">Todas as divergências foram resolvidas!</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {differences.map((diff) => {
-                    const formattedDate = new Date(diff.date + 'T12:00:00').toLocaleDateString('pt-BR');
-                    const periodLabel = diff.period === 'dia_inteiro' ? 'Dia Inteiro' : diff.period === 'manha' ? 'Manhã' : 'Tarde';
-                    const clients = clientDB.getAll();
-
-                    return (
-                      <div 
-                        key={diff.id} 
-                        className={`p-0 border rounded-2xl shadow-sm transition-all flex flex-col overflow-hidden ${
-                          diff.type === 'only_in_system' 
-                            ? 'border-indigo-200' 
-                            : diff.type === 'only_in_calendar' 
-                            ? 'border-emerald-200' 
-                            : 'border-amber-200'
-                        }`}
-                      >
-                        {/* Status Header for Difference */}
-                        <div className={`px-4 py-2 flex items-center justify-between border-b ${
-                          diff.type === 'only_in_system'
-                            ? 'bg-indigo-50 border-indigo-100 text-indigo-800'
-                            : diff.type === 'only_in_calendar'
-                            ? 'bg-emerald-50 border-emerald-100 text-emerald-800'
-                            : 'bg-amber-50 border-amber-100 text-amber-800'
-                        }`}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-bold uppercase tracking-wider">
-                              {diff.type === 'only_in_system' 
-                                ? 'Apenas no Sistema' 
-                                : diff.type === 'only_in_calendar' 
-                                ? 'Apenas no Google Agenda' 
-                                : 'Divergência de Dados'}
-                            </span>
-                            {diff.type === 'mismatch' && (
-                              <span className="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-semibold border border-amber-200">
-                                Conflito
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs font-semibold font-mono bg-white px-2 py-0.5 rounded border border-black/10">
-                            {diff.boatCode} | {formattedDate} ({periodLabel})
-                          </span>
-                        </div>
-
-                        {/* Dual Column Layout */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100 bg-white">
-                          
-                          {/* LEFT COLUMN: SYSTEM */}
-                          <div className={`p-4 flex flex-col ${!diff.reservation ? 'bg-slate-50 opacity-60' : ''}`}>
-                            <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-3 flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
-                              Sistema Local
-                            </h4>
-                            
-                            {!diff.reservation ? (
-                              <div className="flex-1 flex items-center justify-center text-slate-400 text-xs italic text-center px-4 py-4 border-2 border-dashed border-slate-200 rounded-lg">
-                                Este agendamento não existe no banco de dados local.
-                              </div>
-                            ) : (
-                              <div className="space-y-2 text-xs">
-                                <p className="flex justify-between border-b border-slate-50 pb-1">
-                                  <span className="text-slate-500">Cliente:</span>
-                                  <span className="font-semibold text-slate-800">{clientDB.getById(diff.reservation.clienteId)?.nome || 'Desconhecido'}</span>
-                                </p>
-                                <p className="flex justify-between border-b border-slate-50 pb-1">
-                                  <span className="text-slate-500">Status:</span>
-                                  <span className={`font-semibold capitalize ${diff.reservation.status === 'cancelado' ? 'text-rose-600' : 'text-emerald-600'}`}>{diff.reservation.status}</span>
-                                </p>
-                                <p className="flex justify-between border-b border-slate-50 pb-1">
-                                  <span className="text-slate-500">Período:</span>
-                                  <span className="font-semibold text-slate-800">{diff.reservation.periodo === 'dia_inteiro' ? 'Dia Inteiro' : diff.reservation.periodo === 'manha' ? 'Manhã' : 'Tarde'}</span>
-                                </p>
-                                <div className="pt-1">
-                                  <span className="text-slate-500 block mb-1">Observações:</span>
-                                  <p className="text-slate-700 bg-slate-50 p-2 rounded border border-slate-100 italic min-h-[40px]">
-                                    {diff.reservation.observações || 'Nenhuma observação.'}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* RIGHT COLUMN: GOOGLE CALENDAR */}
-                          <div className={`p-4 flex flex-col ${!diff.event ? 'bg-slate-50 opacity-60' : ''}`}>
-                            <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-3 flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                              Google Agenda
-                            </h4>
-                            
-                            {!diff.event ? (
-                              <div className="flex-1 flex items-center justify-center text-slate-400 text-xs italic text-center px-4 py-4 border-2 border-dashed border-slate-200 rounded-lg">
-                                Este agendamento não foi encontrado na agenda do Google.
-                              </div>
-                            ) : (
-                              <div className="space-y-2 text-xs">
-                                <p className="flex justify-between border-b border-slate-50 pb-1">
-                                  <span className="text-slate-500">Título:</span>
-                                  <span className="font-semibold text-slate-800 line-clamp-1" title={diff.event.summary}>{diff.event.summary}</span>
-                                </p>
-                                <p className="flex justify-between border-b border-slate-50 pb-1">
-                                  <span className="text-slate-500">Status Oculto:</span>
-                                  <span className={`font-semibold capitalize ${isEventCancelled(diff.event) ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                    {isEventCancelled(diff.event) ? 'Cancelado' : 'Ativo'}
-                                  </span>
-                                </p>
-                                <p className="flex justify-between border-b border-slate-50 pb-1">
-                                  <span className="text-slate-500">Data Agenda:</span>
-                                  <span className="font-semibold text-slate-800">
-                                    {diff.event.start?.dateTime ? new Date(diff.event.start.dateTime).toLocaleString('pt-BR').substring(0, 10) : (diff.event.start?.date || 'N/A')}
-                                  </span>
-                                </p>
-                                <div className="pt-1">
-                                  <span className="text-slate-500 block mb-1">Descrição:</span>
-                                  <p className="text-slate-700 bg-slate-50 p-2 rounded border border-slate-100 italic min-h-[40px] break-words whitespace-pre-wrap line-clamp-3">
-                                    {getEventObs(diff.event) || 'Nenhuma descrição relevante.'}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Mismatch Highlights (if any) */}
-                        {diff.type === 'mismatch' && diff.details.length > 0 && (
-                          <div className="bg-rose-50/50 border-y border-rose-100 p-3">
-                            <p className="text-[10px] font-bold text-rose-800 uppercase mb-1">Detalhes do Conflito Encontrado:</p>
-                            <ul className="list-disc pl-4 text-xs text-rose-700 space-y-0.5 font-medium">
-                              {diff.details.map((detail, idx) => (
-                                <li key={idx}>{detail}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Action Bar (Footer) */}
-                        <div className="bg-slate-50 p-3 flex flex-wrap items-center justify-between gap-3 rounded-b-2xl">
-                          
-                          {/* actions for ONLY_IN_SYSTEM */}
-                          {diff.type === 'only_in_system' && (
-                            <>
-                              <button 
-                                onClick={() => handleResolveOnlyInSystem(diff, 'delete_local')}
-                                disabled={isResolvingId === diff.id}
-                                className="px-3 py-2 text-xs text-rose-600 hover:bg-rose-100 rounded-lg font-bold transition-colors disabled:opacity-50"
-                              >
-                                Excluir do Sistema
-                              </button>
-                              <button 
-                                onClick={() => handleResolveOnlyInSystem(diff, 'send_to_gcal')}
-                                disabled={isResolvingId === diff.id}
-                                className="px-4 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50 flex items-center gap-2 shadow-xs"
-                              >
-                                {isResolvingId === diff.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                                Copiar para Google Agenda
-                              </button>
-                            </>
-                          )}
-
-                          {/* actions for ONLY_IN_CALENDAR */}
-                          {diff.type === 'only_in_calendar' && (
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-3">
-                              <div className="flex items-center gap-2 flex-1 max-w-sm">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Associar a:</span>
-                                <SearchableClientSelect
-                                  clients={clients}
-                                  value={importClients[diff.id] || diff.suggestedClientId || ''}
-                                  onChange={(val) => setImportClients(prev => ({ ...prev, [diff.id]: val }))}
-                                />
-                                {diff.suggestedClientName && !importClients[diff.id] && !diff.suggestedClientId && (
-                                  <span className="text-[10px] text-amber-600 font-bold hidden md:inline">
-                                    Sugestão: {diff.suggestedClientName}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex gap-2">
-                                <button 
-                                  onClick={() => handleResolveOnlyInCalendar(diff, 'delete_gcal')}
-                                  disabled={isResolvingId === diff.id}
-                                  className="px-3 py-2 text-xs text-rose-600 hover:bg-rose-100 rounded-lg font-bold transition-colors disabled:opacity-50 shrink-0"
-                                >
-                                  Excluir da Agenda
-                                </button>
-                                <button 
-                                  onClick={() => handleResolveOnlyInCalendar(diff, 'import_to_local')}
-                                  disabled={isResolvingId === diff.id || (!diff.suggestedClientId && !importClients[diff.id])}
-                                  className="px-4 py-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50 flex items-center gap-2 shadow-xs shrink-0"
-                                >
-                                  {isResolvingId === diff.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-4 h-4" />}
-                                  Importar para Sistema
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* actions for MISMATCH */}
-                          {diff.type === 'mismatch' && (
-                            <div className="flex justify-end w-full gap-2">
-                              <button 
-                                onClick={() => handleResolveMismatch(diff, 'overwrite_local')}
-                                disabled={isResolvingId === diff.id}
-                                className="px-4 py-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50 flex items-center gap-2 shadow-xs"
-                                title="Grava os dados da agenda do Google no sistema local"
-                              >
-                                {isResolvingId === diff.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5 rotate-180" />}
-                                Importar Alterações da Agenda
-                              </button>
-                              <button 
-                                onClick={() => handleResolveMismatch(diff, 'overwrite_gcal')}
-                                disabled={isResolvingId === diff.id}
-                                className="px-4 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50 flex items-center gap-2 shadow-xs"
-                                title="Força os dados do sistema a sobrescrever a agenda"
-                              >
-                                {isResolvingId === diff.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
-                                Enviar Correções para Agenda
-                              </button>
-                            </div>
-                          )}
-
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Footer with Close Button */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSyncModalOpen(false);
-                  loadScheduleData();
-                }}
-                className="px-5 py-2 text-xs font-semibold bg-white border border-slate-205 text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shadow-sm"
-              >
-                Fechar
-              </button>
-            </div>
+            <button
+              onClick={() => setActiveTab('table')}
+              className="px-4 py-2 bg-white text-[#15803D] hover:bg-[#F0FDF4] border border-[#22C55E]/30 rounded-lg text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+            >
+              Ver Tabela do Dia
+            </button>
           </div>
+
+          {/* Componente Oficial do Gerador de Calendário com Envio para WhatsApp */}
+          <MonthlyCalendarGenerator
+            initialDate={selectedDate}
+            providedBoats={boats}
+            providedReservations={reservations}
+            providedClients={clients}
+          />
+        </div>
+      ) : activeTab === 'table' ? (
+        /* ========================================================================= */
+        /* STRUCTURED TABLE VIEW (PADRÃO)                                            */
+        /* ========================================================================= */
+        <div className="space-y-6">
+          <DayAgendaSection
+            selectedDate={selectedDate}
+            parsedSelectedDate={parsedSelectedDate}
+            dailyReservations={dailyReservations}
+            reservations={filteredDailyReservations}
+            allReservationsCount={dailyReservations.length}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            pierStatusFilter={pierStatusFilter}
+            setPierStatusFilter={setPierStatusFilter}
+            typeFilter={typeFilter}
+            setTypeFilter={setTypeFilter}
+            onlyOverdue={onlyOverdue}
+            setOnlyOverdue={setOnlyOverdue}
+            onOpenNewModal={() => setIsNewBookingModalOpen(true)}
+            onOpenStatusModal={(res) => setStatusModalEvent(res)}
+            onGeneratePDF={handleGeneratePDF}
+            onDelete={handleDeleteReservation}
+            onStepDate={stepDate}
+            onSetToday={jumpToToday}
+            onSelectDate={setSelectedDate}
+            daysRibbon={getSubsequentDays()}
+            isLoading={isLoading}
+            allSystemReservations={reservations}
+            forceView="table"
+          />
+        </div>
+      ) : (
+        /* ========================================================================= */
+        /* CARDS VIEW                                                                */
+        /* ========================================================================= */
+        <div className="space-y-6">
+          <DayAgendaSection
+            selectedDate={selectedDate}
+            parsedSelectedDate={parsedSelectedDate}
+            dailyReservations={dailyReservations}
+            reservations={filteredDailyReservations}
+            allReservationsCount={dailyReservations.length}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            pierStatusFilter={pierStatusFilter}
+            setPierStatusFilter={setPierStatusFilter}
+            typeFilter={typeFilter}
+            setTypeFilter={setTypeFilter}
+            onlyOverdue={onlyOverdue}
+            setOnlyOverdue={setOnlyOverdue}
+            onOpenNewModal={() => setIsNewBookingModalOpen(true)}
+            onOpenStatusModal={(res) => setStatusModalEvent(res)}
+            onGeneratePDF={handleGeneratePDF}
+            onDelete={handleDeleteReservation}
+            onStepDate={stepDate}
+            onSetToday={jumpToToday}
+            onSelectDate={setSelectedDate}
+            daysRibbon={getSubsequentDays()}
+            isLoading={isLoading}
+            allSystemReservations={reservations}
+            forceView="cards"
+          />
         </div>
       )}
 
-
-      {/* Reservation Booking Popup Form render */}
-      {isResModalOpen && (
-        <ReservationModal
-          onClose={() => setIsResModalOpen(false)}
+      {/* 5. NEW RESERVATION MODAL (REALIZAR AGENDAMENTOS RESERVAS) */}
+      {isNewBookingModalOpen && (
+        <NewBookingModal
+          defaultDate={selectedDate}
+          boats={boats}
+          onClose={() => setIsNewBookingModalOpen(false)}
           onSuccess={(msg) => {
+            setIsNewBookingModalOpen(false);
+            loadData();
             showToast(msg);
-            loadScheduleData();
           }}
         />
       )}
+
+      {/* 6. STATUS MODAL */}
+      {statusModalEvent && (
+        <EditStatusModal
+          reserva={statusModalEvent}
+          onClose={() => setStatusModalEvent(null)}
+          onSuccess={(msg) => {
+            setStatusModalEvent(null);
+            loadData();
+            showToast(msg);
+          }}
+          onError={(msg) => showToast(msg, 'error')}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ========================================================================= */
+/* DAY AGENDA COMPONENT (FILTERS, TABLE & CARDS)                             */
+/* ========================================================================= */
+interface DayAgendaSectionProps {
+  selectedDate: string;
+  parsedSelectedDate: Date;
+  dailyReservations: Reserva[];
+  reservations: Reserva[];
+  allReservationsCount: number;
+  searchQuery: string;
+  setSearchQuery: (v: string) => void;
+  pierStatusFilter: PierStatusKey;
+  setPierStatusFilter: (v: PierStatusKey) => void;
+  typeFilter: 'Todos' | 'Lancha' | 'Jetski';
+  setTypeFilter: (v: 'Todos' | 'Lancha' | 'Jetski') => void;
+  onlyOverdue: boolean;
+  setOnlyOverdue: (v: boolean) => void;
+  onOpenNewModal: () => void;
+  onOpenStatusModal: (r: Reserva) => void;
+  onGeneratePDF: (r: Reserva) => void;
+  onDelete: (r: Reserva) => void;
+  onStepDate?: (offset: number) => void;
+  onSetToday?: () => void;
+  onSelectDate?: (d: string) => void;
+  daysRibbon?: Array<{ dateStr: string; label: string; weekday: string }>;
+  isLoading?: boolean;
+  allSystemReservations?: Reserva[];
+  forceView?: 'table' | 'cards';
+}
+
+function DayAgendaSection({
+  selectedDate,
+  parsedSelectedDate,
+  dailyReservations,
+  reservations,
+  allReservationsCount,
+  searchQuery,
+  setSearchQuery,
+  pierStatusFilter,
+  setPierStatusFilter,
+  typeFilter,
+  setTypeFilter,
+  onlyOverdue,
+  setOnlyOverdue,
+  onOpenNewModal,
+  onOpenStatusModal,
+  onGeneratePDF,
+  onDelete,
+  onStepDate,
+  onSetToday,
+  onSelectDate,
+  daysRibbon,
+  isLoading,
+  allSystemReservations,
+  forceView = 'table'
+}: DayAgendaSectionProps) {
+  const [internalView, setInternalView] = useState<'table' | 'cards'>(forceView);
+
+  const viewMode = forceView || internalView;
+
+  // Active dates with bookings across system for empty state suggestions
+  const activeBookingDates = useMemo(() => {
+    if (!allSystemReservations || allSystemReservations.length === 0) return [];
+    const counts: Record<string, number> = {};
+    allSystemReservations.forEach(r => {
+      if (r.status !== 'cancelado') {
+        counts[r.data] = (counts[r.data] || 0) + 1;
+      }
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 6);
+  }, [allSystemReservations]);
+
+  // Pier Status counts for the selected day
+  const pierStatusCounts = useMemo(() => {
+    const counts: Record<PierStatusKey, number> = {
+      todos: dailyReservations.length,
+      agendado: 0,
+      no_pier: 0,
+      navegando: 0,
+      retornou: 0,
+      guardada: 0,
+      cancelado: 0
+    };
+    dailyReservations.forEach(r => {
+      const p = getPierStatus(r);
+      counts[p.id]++;
+    });
+    return counts;
+  }, [dailyReservations]);
+
+  const hasActiveFilters = pierStatusFilter !== 'todos' || typeFilter !== 'Todos' || onlyOverdue || searchQuery.trim() !== '';
+
+  return (
+    <div className="space-y-4">
+      {/* Date Ribbon & Controls */}
+      {daysRibbon && onStepDate && onSetToday && onSelectDate && (
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-4 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
+          <div className="flex items-center space-x-2 shrink-0 w-full lg:w-auto justify-between lg:justify-start">
+            <button
+              onClick={() => onStepDate(-1)}
+              className="p-2 border border-[#D1D5DB] rounded-lg hover:bg-[#F3F4F6] text-[#374151] transition-colors cursor-pointer"
+              title="Dia Anterior"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onSetToday}
+              className="px-4 py-2 border border-[#D1D5DB] hover:bg-[#F3F4F6] text-[#374151] font-medium text-xs rounded-lg transition-colors cursor-pointer uppercase"
+            >
+              Hoje
+            </button>
+            <button
+              onClick={() => onStepDate(1)}
+              className="p-2 border border-[#D1D5DB] rounded-lg hover:bg-[#F3F4F6] text-[#374151] transition-colors cursor-pointer"
+              title="Próximo Dia"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => onSelectDate(e.target.value)}
+              className="ml-2 px-3 py-1.5 text-xs bg-white text-[#374151] border border-[#D1D5DB] rounded-lg focus:border-[#3758F9] focus:ring-2 focus:ring-[#3758F9]/10 font-medium outline-none"
+            />
+          </div>
+
+          {/* Quick Days Carousel */}
+          <div className="flex items-center gap-2 overflow-x-auto subtle-scrollbar w-full lg:w-auto py-1">
+            {daysRibbon.map((dobj) => {
+              const isSelected = selectedDate === dobj.dateStr;
+              return (
+                <button
+                  key={dobj.dateStr}
+                  onClick={() => onSelectDate(dobj.dateStr)}
+                  className={`flex-1 lg:flex-none flex flex-col items-center justify-center px-4 py-2 rounded-lg transition-all text-center cursor-pointer min-w-[62px] ${
+                    isSelected
+                      ? 'bg-[#3758F9] text-white font-semibold shadow-xs'
+                      : 'bg-[#F9FAFB] hover:bg-white text-[#4B5563] border border-[#E5E7EB]'
+                  }`}
+                >
+                  <span className="text-[10px] uppercase font-bold tracking-wider leading-none mb-1 opacity-80">
+                    {dobj.weekday}
+                  </span>
+                  <span className="text-xs font-mono font-bold leading-none">
+                    {dobj.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Header & Filter Controls Bar */}
+      <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 shadow-sm space-y-4">
+        {/* Row 1: Section Title & Action Button */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-base font-bold text-[#111827] flex items-center gap-2">
+              <span>Saídas Agendadas para</span>
+              <span className="text-[#3758F9]">
+                {parsedSelectedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </span>
+              <span className="text-xs font-normal text-[#6B7280] capitalize">
+                ({parsedSelectedDate.toLocaleDateString('pt-BR', { weekday: 'long' })})
+              </span>
+            </h3>
+            <p className="text-xs text-[#6B7280] mt-0.5">
+              Exibindo <strong>{reservations.length}</strong> de <strong>{allReservationsCount}</strong> agendamento(s) cadastrado(s) para este dia.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* View switcher when embedded */}
+            {!forceView && (
+              <div className="inline-flex bg-[#F3F4F6] p-1 rounded-lg border border-[#E5E7EB]">
+                <button
+                  onClick={() => setInternalView('table')}
+                  className={`p-1.5 rounded-md transition-colors ${internalView === 'table' ? 'bg-white text-[#3758F9] shadow-xs' : 'text-[#6B7280]'}`}
+                  title="Modo Tabela"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setInternalView('cards')}
+                  className={`p-1.5 rounded-md transition-colors ${internalView === 'cards' ? 'bg-white text-[#3758F9] shadow-xs' : 'text-[#6B7280]'}`}
+                  title="Modo Cards"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={onOpenNewModal}
+              className="inline-flex items-center px-4 py-2 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-xs font-medium shadow-xs transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Agendar Saída
+            </button>
+          </div>
+        </div>
+
+        <div className="h-px bg-[#E5E7EB]" />
+
+        {/* Row 2: Search Input, Boat Type Pills & Inadimplentes Toggle */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#9CA3AF]">
+              <Search className="h-4 w-4" />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar por cotista, barco (M19), telefone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="block w-full pl-9 pr-8 py-2 text-xs bg-white text-[#374151] border border-[#D1D5DB] rounded-lg placeholder-[#9CA3AF] focus:border-[#3758F9] focus:ring-2 focus:ring-[#3758F9]/10 outline-none transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-[#9CA3AF] hover:text-[#374151]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Type Pills */}
+            <div className="inline-flex bg-[#F3F4F6] p-0.5 rounded-lg border border-[#E5E7EB]">
+              {(['Todos', 'Lancha', 'Jetski'] as const).map(tp => (
+                <button
+                  key={tp}
+                  onClick={() => setTypeFilter(tp)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                    typeFilter === tp ? 'bg-white text-[#111827] shadow-xs font-semibold' : 'text-[#6B7280] hover:text-[#111827]'
+                  }`}
+                >
+                  {tp}
+                </button>
+              ))}
+            </div>
+
+            {/* Inadimplentes Toggle Button */}
+            <button
+              onClick={() => setOnlyOverdue(!onlyOverdue)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                onlyOverdue
+                  ? 'bg-[#FEF2F2] text-[#DC2626] border-[#EF4444]/40 font-semibold shadow-2xs'
+                  : 'bg-white text-[#6B7280] border-[#E5E7EB] hover:text-[#111827]'
+              }`}
+              title="Filtrar apenas cotistas com pendências financeiras em aberto"
+            >
+              <AlertTriangle className={`w-3.5 h-3.5 ${onlyOverdue ? 'text-[#DC2626]' : 'text-[#9CA3AF]'}`} />
+              <span>Inadimplentes</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Row 3: FILTRO DE STATUS OPERACIONAL DO PÍER (MARINA) */}
+        <div className="pt-2 border-t border-[#F3F4F6]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider flex items-center gap-1.5">
+              <Anchor className="w-3.5 h-3.5 text-[#3758F9]" />
+              <span>Status Operacional do Píer:</span>
+            </span>
+
+            {hasActiveFilters && (
+              <button
+                onClick={() => {
+                  setPierStatusFilter('todos');
+                  setTypeFilter('Todos');
+                  setOnlyOverdue(false);
+                  setSearchQuery('');
+                }}
+                className="text-[11px] font-semibold text-[#3758F9] hover:underline cursor-pointer"
+              >
+                Limpar todos os filtros
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto subtle-scrollbar pb-1">
+            {[
+              { id: 'todos', label: 'Todos', count: pierStatusCounts.todos, dot: 'bg-[#111827]' },
+              { id: 'agendado', label: 'Agendado', count: pierStatusCounts.agendado, dot: 'bg-[#3758F9]' },
+              { id: 'no_pier', label: 'Pronto no Píer', count: pierStatusCounts.no_pier, dot: 'bg-[#22C55E]' },
+              { id: 'navegando', label: 'Em Navegação', count: pierStatusCounts.navegando, dot: 'bg-[#0EA5E9]' },
+              { id: 'retornou', label: 'No Píer (Retorno)', count: pierStatusCounts.retornou, dot: 'bg-[#F59E0B]' },
+              { id: 'guardada', label: 'Guardada (Hangar)', count: pierStatusCounts.guardada, dot: 'bg-[#6B7280]' },
+              { id: 'cancelado', label: 'Cancelado', count: pierStatusCounts.cancelado, dot: 'bg-[#EF4444]' }
+            ].map((btn) => {
+              const isSelected = pierStatusFilter === btn.id;
+              return (
+                <button
+                  key={btn.id}
+                  onClick={() => setPierStatusFilter(btn.id as PierStatusKey)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer border ${
+                    isSelected
+                      ? 'bg-[#111827] text-white border-[#111827] shadow-xs font-semibold'
+                      : 'bg-white text-[#4B5563] border-[#E5E7EB] hover:bg-[#F9FAFB] hover:text-[#111827]'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-white' : btn.dot}`} />
+                  <span>{btn.label}</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : btn.count > 0
+                        ? 'bg-[#EEF2FF] text-[#3758F9]'
+                        : 'bg-[#F3F4F6] text-[#9CA3AF]'
+                    }`}
+                  >
+                    {btn.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Content Rendering: Table or Cards */}
+      {isLoading && allReservationsCount === 0 ? (
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-16 text-center text-[#6B7280] space-y-3 shadow-sm">
+          <RefreshCw className="w-8 h-8 text-[#3758F9] animate-spin mx-auto" />
+          <h4 className="text-base font-semibold text-[#111827]">Sincronizando agendamentos...</h4>
+          <p className="text-xs text-[#6B7280]">Carregando as reservas e embarcações do servidor.</p>
+        </div>
+      ) : allReservationsCount === 0 ? (
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-12 text-center text-[#6B7280] space-y-4 shadow-sm">
+          <CalendarIcon className="w-10 h-10 text-[#9CA3AF] mx-auto" />
+          <div className="space-y-1">
+            <h4 className="text-base font-semibold text-[#111827]">Nenhum agendamento para esta data</h4>
+            <p className="text-xs text-[#6B7280] max-w-sm mx-auto">
+              Não há saídas marcadas para {parsedSelectedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}.
+            </p>
+          </div>
+
+          {/* Quick jump to dates with active bookings */}
+          {activeBookingDates.length > 0 && onSelectDate && (
+            <div className="pt-3 border-t border-[#E5E7EB] max-w-lg mx-auto">
+              <span className="text-xs font-semibold text-[#374151] block mb-2">
+                📅 Datas com agendamentos cadastrados no sistema:
+              </span>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {activeBookingDates.map(([dStr, count]) => {
+                  const parts = dStr.split('-');
+                  const formatted = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                  return (
+                    <button
+                      key={dStr}
+                      onClick={() => onSelectDate(dStr)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#EEF2FF] text-[#3758F9] hover:bg-[#E0E7FF] border border-[#3758F9]/20 cursor-pointer transition-colors inline-flex items-center gap-1.5"
+                    >
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      <span>{formatted} ({count} {count === 1 ? 'saída' : 'saídas'})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <button
+              onClick={onOpenNewModal}
+              className="inline-flex items-center px-5 py-2.5 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-xs font-medium shadow-xs transition-colors cursor-pointer mt-1"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Nova Reserva
+            </button>
+          </div>
+        </div>
+      ) : reservations.length === 0 ? (
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-12 text-center text-[#6B7280] space-y-3 shadow-sm">
+          <Search className="w-10 h-10 text-[#9CA3AF] mx-auto" />
+          <h4 className="text-sm font-semibold text-[#111827]">Nenhum agendamento para os filtros selecionados</h4>
+          <p className="text-xs text-[#6B7280]">
+            Não foram encontradas saídas correspondentes aos filtros de status do píer ou busca ativa.
+          </p>
+          <button
+            onClick={() => {
+              setPierStatusFilter('todos');
+              setTypeFilter('Todos');
+              setOnlyOverdue(false);
+              setSearchQuery('');
+            }}
+            className="inline-flex items-center px-4 py-2 border border-[#D1D5DB] bg-white hover:bg-[#F3F4F6] text-[#374151] rounded-lg text-xs font-medium transition-colors cursor-pointer mt-2"
+          >
+            Redefinir Filtros
+          </button>
+        </div>
+      ) : viewMode === 'table' ? (
+        /* TABLE VIEW */
+        <div className="bg-white border border-[#E5E7EB] rounded-lg shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB] text-[#6B7280] text-xs font-semibold uppercase tracking-wider">
+                  <th className="px-6 py-4">Embarcação</th>
+                  <th className="px-6 py-4">Cotista / Sócio</th>
+                  <th className="px-6 py-4">Status Píer / Marina</th>
+                  <th className="px-6 py-4">Observações</th>
+                  <th className="px-6 py-4 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E5E7EB] text-sm text-[#1F2937]">
+                {reservations.map(res => {
+                  const boat = boatDB.getById(res.embarcacaoId);
+                  const client = clientDB.getById(res.clienteId);
+                  const boatCode = boat ? getBoatCode(boat) : 'M00';
+                  const isJet = boat?.tipo === 'jet';
+                  const ownerName = client ? client.nome : 'Desconhecido';
+                  const initials = ownerName.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase() || 'SO';
+                  const pStatus = getPierStatus(res);
+
+                  return (
+                    <tr key={res.id} className="hover:bg-[#F9FAFB] transition-colors">
+                      {/* Embarcação */}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${
+                            isJet ? 'bg-[#FFFBEB] text-[#D97706] border-[#F59E0B]/30' : 'bg-[#EEF2FF] text-[#3758F9] border-[#3758F9]/30'
+                          }`}>
+                            {isJet ? <JetSkiIcon className="w-4 h-4" /> : <Anchor className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 font-mono font-bold text-sm text-[#111827]">
+                              <span>{boatCode}</span>
+                              {boat?.emManutencao && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#FEF2F2] text-[#DC2626] font-sans font-medium">
+                                  Manutenção
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-[#6B7280]">
+                              {boat?.nome || 'Embarcação'} • {isJet ? 'Jet' : 'Lancha'}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Cotista */}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-[#EEF2FF] text-[#3758F9] font-bold text-xs flex items-center justify-center shrink-0">
+                            {initials}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-[#1F2937] block">{ownerName}</span>
+                            {client?.telefone && (
+                              <span className="text-xs text-[#6B7280]">{client.telefone}</span>
+                            )}
+                          </div>
+                          {client?.statusFinanceiro === 'inadimplente' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF2F2] text-[#DC2626] border border-[#EF4444]/30">
+                              Inadimplente
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Status Píer / Marina */}
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1.5 border border-transparent ${pStatus.bg} ${pStatus.text}`}>
+                            <span className={`w-2 h-2 rounded-full ${pStatus.dot}`} />
+                            {pStatus.label}
+                          </span>
+                          {pStatus.timeLabel && (
+                            <div className="text-[11px] text-[#6B7280] flex items-center gap-1 font-mono">
+                              <Clock className="w-3 h-3 text-[#9CA3AF]" />
+                              <span>{pStatus.timeLabel}</span>
+                            </div>
+                          )}
+                          {res.destino && (
+                            <div className="text-[11px] text-[#6B7280] truncate max-w-[170px]" title={res.destino}>
+                              📍 {res.destino}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Observações */}
+                      <td className="px-6 py-4 text-xs text-[#6B7280] max-w-xs truncate">
+                        {res.observações ? `"${res.observações}"` : '—'}
+                      </td>
+
+                      {/* Ações */}
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => onGeneratePDF(res)}
+                            className="px-3 py-1.5 border border-[#3758F9] text-[#3758F9] hover:bg-[#EEF2FF] rounded-lg text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1"
+                            title="Aviso de Saída (PDF)"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                            <span>PDF</span>
+                          </button>
+
+                          <button
+                            onClick={() => onOpenStatusModal(res)}
+                            className="px-3 py-1.5 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                            title="Alterar Status"
+                          >
+                            Status
+                          </button>
+
+                          <button
+                            onClick={() => onDelete(res)}
+                            className="p-1.5 text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-lg transition-colors cursor-pointer"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* CARDS VIEW */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {reservations.map(res => {
+            const boat = boatDB.getById(res.embarcacaoId);
+            const client = clientDB.getById(res.clienteId);
+            const boatCode = boat ? getBoatCode(boat) : 'M00';
+            const isJet = boat?.tipo === 'jet';
+            const ownerName = client ? client.nome : 'Desconhecido';
+            const initials = ownerName.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase() || 'SO';
+            const pStatus = getPierStatus(res);
+
+            return (
+              <div key={res.id} className="bg-white rounded-lg border border-[#E5E7EB] shadow-sm p-5 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${
+                      isJet ? 'bg-[#FFFBEB] text-[#D97706] border-[#F59E0B]/30' : 'bg-[#EEF2FF] text-[#3758F9] border-[#3758F9]/30'
+                    }`}>
+                      {isJet ? <JetSkiIcon className="w-4 h-4" /> : <Anchor className="w-4 h-4" />}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-[#111827] font-mono">{boatCode} - {boat?.nome || 'Embarcação'}</h4>
+                      <p className="text-xs text-[#6B7280]">{isJet ? 'Jet Ski' : 'Lancha'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1.5 ${pStatus.bg} ${pStatus.text}`}>
+                      <span className={`w-2 h-2 rounded-full ${pStatus.dot}`} />
+                      {pStatus.label}
+                    </span>
+                    {pStatus.timeLabel && (
+                      <span className="text-[10px] text-[#6B7280] font-mono">{pStatus.timeLabel}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-[#F9FAFB] rounded-lg p-3 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-[#EEF2FF] text-[#3758F9] font-bold text-[10px] flex items-center justify-center">
+                      {initials}
+                    </div>
+                    <span className="font-semibold text-[#1F2937]">{ownerName}</span>
+                  </div>
+                  {client?.telefone && <span className="text-[#6B7280]">{client.telefone}</span>}
+                </div>
+
+                {res.observações && (
+                  <p className="text-xs text-[#6B7280] italic bg-[#FFFBEB] p-2 rounded border border-[#F59E0B]/20">
+                    "{res.observações}"
+                  </p>
+                )}
+
+                <div className="flex items-center justify-end pt-2 border-t border-[#E5E7EB]">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onGeneratePDF(res)}
+                      className="px-3 py-1.5 border border-[#3758F9] text-[#3758F9] hover:bg-[#EEF2FF] rounded-lg text-xs font-medium cursor-pointer"
+                    >
+                      PDF
+                    </button>
+                    <button
+                      onClick={() => onOpenStatusModal(res)}
+                      className="px-3 py-1.5 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-xs font-medium cursor-pointer"
+                    >
+                      Status
+                    </button>
+                    <button
+                      onClick={() => onDelete(res)}
+                      className="p-1.5 text-[#9CA3AF] hover:text-[#EF4444] rounded-lg cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ========================================================================= */
+/* NEW BOOKING MODAL (REALIZAR AGENDAMENTOS RESERVAS)                        */
+/* ========================================================================= */
+interface NewBookingModalProps {
+  defaultDate: string;
+  boats: Embarcacao[];
+  onClose: () => void;
+  onSuccess: (msg: string) => void;
+}
+
+function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingModalProps) {
+  const [selectedBoatId, setSelectedBoatId] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [bookingMode, setBookingMode] = useState<'single' | 'distinct'>('single');
+  const [date, setDate] = useState(defaultDate);
+  const [distinctDates, setDistinctDates] = useState<string[]>([]);
+  const [distinctInput, setDistinctInput] = useState(defaultDate);
+  const [observacoes, setObservacoes] = useState('');
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Available cotistas based on chosen boat
+  const availableOwners = useMemo(() => {
+    if (!selectedBoatId) return [];
+    const boat = boats.find(b => b.id === selectedBoatId);
+    if (!boat) return [];
+    return boat.donos
+      .map(id => clientDB.getById(id))
+      .filter((c): c is Cliente => c !== undefined && c !== null)
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [selectedBoatId, boats]);
+
+  // Options for SearchableSelect
+  const boatOptions: SelectOption[] = useMemo(() => {
+    return boats.map(b => ({
+      value: b.id,
+      label: `${getBoatCode(b)} - ${b.nome}`,
+      sublabel: `${b.tipo === 'jet' ? 'Jet Ski' : 'Lancha'}${b.emManutencao ? ' • Em Manutenção' : ''}`,
+      badge: b.emManutencao ? (
+        <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-rose-100 text-rose-800 flex items-center shadow-xs">
+          <Wrench className="w-2.5 h-2.5 mr-0.5" />
+          Manutenção
+        </span>
+      ) : undefined
+    }));
+  }, [boats]);
+
+  const clientOptions: SelectOption[] = useMemo(() => {
+    return availableOwners.map(c => {
+      const isInactive = c.status === 'inativo';
+      const isOverdue = c.statusFinanceiro === 'inadimplente';
+      return {
+        value: c.id,
+        label: c.nome,
+        sublabel: `${c.cota ? `Cota ${c.cota}` : 'Sem cota definida'}${c.telefone ? ` • ${c.telefone}` : ''}`,
+        disabled: isInactive,
+        badge: (
+          <div className="flex items-center gap-1">
+            {isOverdue && (
+              <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-rose-100 text-rose-700 border border-rose-200">
+                ⚠️ Inadimplente
+              </span>
+            )}
+            {isInactive && (
+              <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-slate-200 text-slate-700">
+                Inativo
+              </span>
+            )}
+          </div>
+        )
+      };
+    });
+  }, [availableOwners]);
+
+  const handleAddDistinctDate = () => {
+    if (!distinctInput) return;
+    if (!distinctDates.includes(distinctInput)) {
+      setDistinctDates(prev => [...prev, distinctInput].sort());
+    }
+  };
+
+  const handleRemoveDistinctDate = (dToRemove: string) => {
+    setDistinctDates(prev => prev.filter(d => d !== dToRemove));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+
+    if (!selectedBoatId) {
+      setErrorMsg('Selecione uma embarcação.');
+      return;
+    }
+    if (!selectedClientId) {
+      setErrorMsg('Selecione um cotista.');
+      return;
+    }
+
+    const boat = boats.find(b => b.id === selectedBoatId);
+    const client = availableOwners.find(c => c.id === selectedClientId);
+
+    if (!boat || !client) {
+      setErrorMsg('Dados inválidos.');
+      return;
+    }
+
+    if (client.status === 'inativo') {
+      setErrorMsg('Não é possível criar reservas para cliente com cadastro inativo.');
+      return;
+    }
+
+    // Determine target dates
+    const datesToBook: string[] = (
+      bookingMode === 'single' ? [date] : distinctDates
+    ).filter(Boolean);
+
+    if (datesToBook.length === 0) {
+      setErrorMsg(
+        bookingMode === 'distinct'
+          ? 'Por favor, adicione pelo menos uma data para a reserva.'
+          : 'Por favor, informe a data da saída.'
+      );
+      return;
+    }
+
+    // Validation for double bookings
+    const existing = reservationDB.getAll();
+    const overlaps = datesToBook.filter(d =>
+      existing.some(r => r.embarcacaoId === selectedBoatId && r.data === d && r.status !== 'cancelado')
+    );
+
+    if (overlaps.length > 0) {
+      const formattedOverlaps = overlaps.map(d => {
+        const p = new Date(d + 'T12:00:00');
+        return isNaN(p.getTime()) ? d : p.toLocaleDateString('pt-BR');
+      });
+      setErrorMsg(`A embarcação ${getBoatCode(boat)} já possui reserva confirmada nas seguintes datas: ${formattedOverlaps.join(', ')}.`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      for (const d of datesToBook) {
+        // Create event in Google Agenda if connected
+        let googleEventId: string | undefined = undefined;
+        try {
+          if (isCalendarConnected()) {
+            const gResult = await createGoogleCalendarEvent(boat, client, {
+              embarcacaoId: selectedBoatId,
+              clienteId: selectedClientId,
+              data: d,
+              periodo: 'dia_inteiro',
+              observações: observacoes,
+              status: 'agendado'
+            });
+            googleEventId = gResult?.eventId;
+          }
+        } catch (gErr) {
+          console.warn('Google Calendar creation warning:', gErr);
+        }
+
+        // Save in local DB
+        reservationDB.create({
+          embarcacaoId: selectedBoatId,
+          clienteId: selectedClientId,
+          data: d,
+          periodo: 'dia_inteiro',
+          observações: observacoes,
+          status: 'agendado',
+          googleEventId
+        });
+      }
+
+      onSuccess(`Reserva de ${getBoatCode(boat)} criada com sucesso para ${datesToBook.length} data(s)!`);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'Erro ao gravar reserva.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-lg shadow-xl border border-[#E5E7EB] w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Modal Header */}
+        <div className="px-6 py-4 border-b border-[#E5E7EB] flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-[#111827]">Nova Reserva / Agendamento</h3>
+            <p className="text-xs text-[#6B7280]">Realize o agendamento de saída para embarcação cotizada.</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#111827] hover:bg-[#F3F4F6] cursor-pointer">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Modal Body Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+          {errorMsg && (
+            <div className="bg-[#FEF2F2] border border-[#EF4444]/30 rounded-lg p-3 text-xs text-[#DC2626] flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* 1. Embarcação com Busca */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#374151] uppercase">Embarcação *</label>
+            <SearchableSelect
+              options={boatOptions}
+              value={selectedBoatId}
+              onChange={(val) => {
+                setSelectedBoatId(val);
+                setSelectedClientId('');
+              }}
+              placeholder="Selecione uma embarcação..."
+              searchPlaceholder="Pesquisar por nome ou código..."
+              buttonClassName="w-full bg-white border border-[#D1D5DB] rounded-lg px-3.5 py-2.5 text-sm text-[#374151] focus:border-[#3758F9] focus:ring-2 focus:ring-[#3758F9]/10 outline-none flex items-center justify-between"
+            />
+            {selectedBoatId && boats.find(b => b.id === selectedBoatId)?.emManutencao && (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-amber-800 text-xs mt-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold uppercase tracking-wider block text-[10px]">Aviso de Manutenção</span>
+                  <span className="leading-tight">A embarcação selecionada encontra-se marcada em manutenção.</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 2. Cotista / Coproprietário com Busca */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#374151] uppercase">Cotista / Coproprietário *</label>
+            <SearchableSelect
+              options={clientOptions}
+              value={selectedClientId}
+              onChange={(val) => setSelectedClientId(val)}
+              disabled={!selectedBoatId || availableOwners.length === 0}
+              placeholder={
+                !selectedBoatId
+                  ? 'Selecione primeiro a embarcação'
+                  : availableOwners.length === 0
+                  ? 'Nenhum cotista vinculado a este barco'
+                  : 'Selecione o cotista / coproprietário...'
+              }
+              searchPlaceholder="Pesquisar por nome ou telefone..."
+              buttonClassName="w-full bg-white border border-[#D1D5DB] rounded-lg px-3.5 py-2.5 text-sm text-[#374151] focus:border-[#3758F9] focus:ring-2 focus:ring-[#3758F9]/10 outline-none flex items-center justify-between disabled:bg-[#F3F4F6] disabled:text-[#9CA3AF]"
+            />
+            {selectedClientId && availableOwners.find(o => o.id === selectedClientId)?.statusFinanceiro === 'inadimplente' && (
+              <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 p-2.5 rounded-lg text-rose-800 text-xs mt-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold uppercase tracking-wider block text-[10px]">Aviso Financeiro</span>
+                  <span className="leading-tight">
+                    Cliente com pendência financeira (Inadimplente). {availableOwners.find(o => o.id === selectedClientId)?.observacoesFinanceiras}
+                  </span>
+                </div>
+              </div>
+            )}
+            {selectedClientId && availableOwners.find(o => o.id === selectedClientId)?.status === 'inativo' && (
+              <div className="flex items-start gap-2 bg-slate-100 border border-slate-300 p-2.5 rounded-lg text-slate-800 text-xs mt-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-slate-600" />
+                <div>
+                  <span className="font-bold uppercase tracking-wider block text-[10px] text-slate-700">Cadastro Inativo</span>
+                  <span className="leading-tight text-slate-600">Este cliente está com o cadastro inativo. Reative-o na tela de Clientes antes de prosseguir.</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Modo de Agendamento (Um Dia vs Dias Distintos) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#374151] uppercase">Tipo de Agendamento</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setBookingMode('single')}
+                className={`py-2 text-xs font-medium rounded-lg border cursor-pointer transition-colors ${
+                  bookingMode === 'single'
+                    ? 'bg-[#EEF2FF] text-[#3758F9] border-[#3758F9] font-semibold'
+                    : 'border-[#D1D5DB] text-[#4B5563] hover:bg-[#F9FAFB]'
+                }`}
+              >
+                Um Dia
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingMode('distinct')}
+                className={`py-2 text-xs font-medium rounded-lg border cursor-pointer transition-colors ${
+                  bookingMode === 'distinct'
+                    ? 'bg-[#EEF2FF] text-[#3758F9] border-[#3758F9] font-semibold'
+                    : 'border-[#D1D5DB] text-[#4B5563] hover:bg-[#F9FAFB]'
+                }`}
+              >
+                Dias Distintos
+              </button>
+            </div>
+          </div>
+
+          {bookingMode === 'single' ? (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#374151] uppercase">Data da Saída *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                className="w-full bg-white border border-[#D1D5DB] rounded-lg px-3.5 py-2.5 text-sm text-[#374151] focus:border-[#3758F9] focus:ring-2 focus:ring-[#3758F9]/10 outline-none"
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[#374151] uppercase">
+                Datas da Saída (Dias Distintos) *
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={distinctInput}
+                  onChange={(e) => setDistinctInput(e.target.value)}
+                  className="flex-1 bg-white border border-[#D1D5DB] rounded-lg px-3.5 py-2 text-sm text-[#374151] focus:border-[#3758F9] focus:ring-2 focus:ring-[#3758F9]/10 outline-none"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddDistinctDate();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddDistinctDate}
+                  className="px-4 py-2 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5 shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar</span>
+                </button>
+              </div>
+
+              {/* Listagem dos dias distintos adicionados */}
+              {distinctDates.length > 0 ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-[#6B7280]">
+                    <span>{distinctDates.length} {distinctDates.length === 1 ? 'dia selecionado' : 'dias selecionados'}:</span>
+                    <button
+                      type="button"
+                      onClick={() => setDistinctDates([])}
+                      className="text-rose-600 hover:underline cursor-pointer font-medium"
+                    >
+                      Limpar todos
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg subtle-scrollbar">
+                    {distinctDates.map(dStr => {
+                      const p = new Date(dStr + 'T12:00:00');
+                      const formatted = isNaN(p.getTime())
+                        ? dStr
+                        : p.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+                      return (
+                        <span
+                          key={dStr}
+                          className="inline-flex items-center gap-1.5 bg-[#EEF2FF] text-[#3758F9] border border-[#3758F9]/20 px-2.5 py-1 rounded-md text-xs font-medium"
+                        >
+                          <CalendarIcon className="w-3 h-3 text-[#3758F9]" />
+                          <span>{formatted}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDistinctDate(dStr)}
+                            className="text-[#3758F9]/70 hover:text-rose-600 cursor-pointer ml-0.5"
+                            title="Remover data"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-[#9CA3AF] bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-2.5 text-center">
+                  Nenhum dia adicionado ainda. Escolha a data acima e clique em "Adicionar".
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 4. Observações */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#374151] uppercase">Observações (Opcional)</label>
+            <textarea
+              value={observacoes}
+              onChange={(e) => setObservacoes(e.target.value)}
+              placeholder="Ex: Saída com marinheiro, solicitação de gelo, etc..."
+              rows={2}
+              className="w-full bg-white border border-[#D1D5DB] rounded-lg px-3.5 py-2 text-sm text-[#374151] focus:border-[#3758F9] outline-none"
+            />
+          </div>
+
+          {/* Footer Actions */}
+          <div className="pt-4 border-t border-[#E5E7EB] flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-4 py-2 border border-[#E5E7EB] rounded-lg text-sm font-medium text-[#374151] hover:bg-[#F3F4F6] cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-sm font-medium shadow-xs cursor-pointer inline-flex items-center gap-2"
+            >
+              {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              <span>{isSubmitting ? 'Salvando...' : 'Confirmar Reserva'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ========================================================================= */
+/* EDIT STATUS MODAL                                                         */
+/* ========================================================================= */
+interface EditStatusModalProps {
+  reserva: Reserva;
+  onClose: () => void;
+  onSuccess: (msg: string) => void;
+  onError: (msg: string) => void;
+}
+
+function EditStatusModal({ reserva, onClose, onSuccess, onError }: EditStatusModalProps) {
+  const [statusVal, setStatusVal] = useState<'agendado' | 'confirmado' | 'cancelado'>(reserva.status as any || 'agendado');
+  const [destino, setDestino] = useState(reserva.destino || 'Iate Club - Rodeadouro');
+  const [horaSaida, setHoraSaida] = useState(reserva.previsaoSaida || '11:30');
+  const [horaChegada, setHoraChegada] = useState(reserva.previsaoChegada || '17:28');
+  const [pessoasABordo, setPessoasABordo] = useState(String(reserva.pessoasABordo || '02'));
+  const [observacoes, setObservacoes] = useState(reserva.observações || '');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const boat = boatDB.getById(reserva.embarcacaoId);
+  const client = clientDB.getById(reserva.clienteId);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsUpdating(true);
+    try {
+      const updated = reservationDB.update(reserva.id, {
+        status: statusVal,
+        destino,
+        previsaoSaida: horaSaida,
+        previsaoChegada: horaChegada,
+        pessoasABordo: parseInt(pessoasABordo) || 2,
+        observações: observacoes
+      });
+
+      // Update in Google Calendar if connected
+      if (reserva.googleEventId && isCalendarConnected() && boat && client) {
+        try {
+          await updateGoogleCalendarEvent(reserva.googleEventId, boat, client, updated);
+        } catch (gErr) {
+          console.warn('Google Calendar update warning:', gErr);
+        }
+      }
+
+      onSuccess('Status do agendamento atualizado com sucesso!');
+    } catch (err: any) {
+      console.error(err);
+      onError(err.message || 'Erro ao atualizar agendamento.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-lg shadow-xl border border-[#E5E7EB] w-full max-w-md overflow-hidden flex flex-col">
+        <div className="px-6 py-4 border-b border-[#E5E7EB] flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-[#111827]">Atualizar Status da Reserva</h3>
+            <p className="text-xs text-[#6B7280]">
+              {boat ? getBoatCode(boat) : 'Barco'} • {client ? client.nome : 'Cliente'} ({reserva.data})
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#111827]">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSave} className="p-6 space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#374151] uppercase">Status da Reserva</label>
+            <select
+              value={statusVal}
+              onChange={(e) => setStatusVal(e.target.value as any)}
+              className="w-full bg-white border border-[#D1D5DB] rounded-lg px-3.5 py-2.5 text-sm text-[#374151] focus:border-[#3758F9] outline-none"
+            >
+              <option value="agendado">Agendado (Pendente)</option>
+              <option value="confirmado">Confirmado (Liberado para Saída)</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#374151] uppercase">Previsão Saída</label>
+              <input
+                type="time"
+                value={horaSaida}
+                onChange={(e) => setHoraSaida(e.target.value)}
+                className="w-full bg-white border border-[#D1D5DB] rounded-lg px-3 py-2 text-xs text-[#374151] focus:border-[#3758F9] outline-none"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#374151] uppercase">Previsão Retorno</label>
+              <input
+                type="time"
+                value={horaChegada}
+                onChange={(e) => setHoraChegada(e.target.value)}
+                className="w-full bg-white border border-[#D1D5DB] rounded-lg px-3 py-2 text-xs text-[#374151] focus:border-[#3758F9] outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#374151] uppercase">Pessoas a Bordo</label>
+              <input
+                type="number"
+                min="1"
+                value={pessoasABordo}
+                onChange={(e) => setPessoasABordo(e.target.value)}
+                className="w-full bg-white border border-[#D1D5DB] rounded-lg px-3 py-2 text-xs text-[#374151] focus:border-[#3758F9] outline-none"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#374151] uppercase">Destino</label>
+              <input
+                type="text"
+                value={destino}
+                onChange={(e) => setDestino(e.target.value)}
+                className="w-full bg-white border border-[#D1D5DB] rounded-lg px-3 py-2 text-xs text-[#374151] focus:border-[#3758F9] outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#374151] uppercase">Observações</label>
+            <textarea
+              value={observacoes}
+              onChange={(e) => setObservacoes(e.target.value)}
+              rows={2}
+              className="w-full bg-white border border-[#D1D5DB] rounded-lg px-3 py-2 text-xs text-[#374151] focus:border-[#3758F9] outline-none"
+            />
+          </div>
+
+          <div className="pt-4 border-t border-[#E5E7EB] flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isUpdating}
+              className="px-4 py-2 border border-[#E5E7EB] rounded-lg text-sm font-medium text-[#374151] hover:bg-[#F3F4F6]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isUpdating}
+              className="px-5 py-2 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-sm font-medium shadow-xs"
+            >
+              {isUpdating ? 'Salvando...' : 'Salvar Alterações'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

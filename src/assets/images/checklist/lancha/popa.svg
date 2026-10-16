@@ -43,7 +43,7 @@
     <line x1="340" y1="70" x2="345" y2="30" stroke="#94a3b8" stroke-width="2.5"/>
     <polygon points="345,30 370,40 345,50" fill="#22c55e"/>
 
-    <!-- Cockpit Aft Seating (Sofá de Popa) -->
+    <!-- Cockpit Aft Seating (SofÃ¡ de Popa) -->
     <path d="M 200 185 Q 300 175 400 185 L 390 220 Q 300 210 210 220 Z" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
     <path d="M 220 185 L 220 215" stroke="#94a3b8" stroke-width="1.5"/>
     <path d="M 380 185 L 380 215" stroke="#94a3b8" stroke-width="1.5"/>
@@ -57,14 +57,14 @@
     <path d="M 105 230 L 495 230" stroke="#0f172a" stroke-width="7" stroke-linecap="round"/>
     <path d="M 105 230 L 495 230" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round"/>
 
-    <!-- Espaço Gourmet / Churrasqueira & Pia na Popa -->
+    <!-- EspaÃ§o Gourmet / Churrasqueira & Pia na Popa -->
     <rect x="255" y="235" width="90" height="20" rx="3" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
     <rect x="265" y="240" width="30" height="10" rx="2" fill="#0f172a"/>
     <circle cx="320" cy="245" r="5" fill="#94a3b8"/>
 
     <!-- Extended Swim Platform (Plataforma de Popa com Teca) -->
     <path d="M 130 265 L 470 265 L 455 315 L 145 315 Z" fill="url(#teakDeck)" stroke="#78350f" stroke-width="2"/>
-    <!-- Teak Lines (Frisos da Teca Sintética) -->
+    <!-- Teak Lines (Frisos da Teca SintÃ©tica) -->
     <line x1="165" y1="265" x2="175" y2="315" stroke="#78350f" stroke-width="1.5"/>
     <line x1="200" y1="265" x2="205" y2="315" stroke="#78350f" stroke-width="1.5"/>
     <line x1="235" y1="265" x2="238" y2="315" stroke="#78350f" stroke-width="1.5"/>
@@ -74,17 +74,17 @@
     <line x1="400" y1="265" x2="395" y2="315" stroke="#78350f" stroke-width="1.5"/>
     <line x1="435" y1="265" x2="425" y2="315" stroke="#78350f" stroke-width="1.5"/>
 
-    <!-- Swim Ladder (Escada de Reembarque em Inox - Retrátil na Borda) -->
+    <!-- Swim Ladder (Escada de Reembarque em Inox - RetrÃ¡til na Borda) -->
     <rect x="420" y="270" width="28" height="40" rx="2" fill="none" stroke="#94a3b8" stroke-width="3"/>
     <line x1="420" y1="282" x2="448" y2="282" stroke="#94a3b8" stroke-width="2.5"/>
     <line x1="420" y1="295" x2="448" y2="295" stroke="#94a3b8" stroke-width="2.5"/>
     <line x1="420" y1="308" x2="448" y2="308" stroke="#94a3b8" stroke-width="2.5"/>
 
-    <!-- Stern Cleats (Cunhos de Amarração em Inox) -->
+    <!-- Stern Cleats (Cunhos de AmarraÃ§Ã£o em Inox) -->
     <rect x="145" y="250" width="22" height="6" rx="2" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
     <rect x="435" y="250" width="22" height="6" rx="2" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
 
-    <!-- Twin Outboard Motors (Motores de Popa de Alta Potência) -->
+    <!-- Twin Outboard Motors (Motores de Popa de Alta PotÃªncia) -->
     <!-- Motor 1 (Esquerda) -->
     <g transform="translate(-50, 0)">
       <path d="M 305 270 L 335 270 L 340 335 L 325 385 L 315 385 L 300 335 Z" fill="url(#motorOutboard)" stroke="#334155" stroke-width="2"/>
@@ -109,11 +109,11 @@
       <ellipse cx="280" cy="385" rx="16" ry="5" fill="none" stroke="#94a3b8" stroke-width="3" transform="rotate(-30 280 385)"/>
     </g>
 
-    <!-- Trim Tabs (Flaps Hidráulicos nas Extremidades) -->
+    <!-- Trim Tabs (Flaps HidrÃ¡ulicos nas Extremidades) -->
     <rect x="175" y="325" width="30" height="6" fill="#475569" stroke="#94a3b8" stroke-width="1"/>
     <rect x="395" y="325" width="30" height="6" fill="#475569" stroke="#94a3b8" stroke-width="1"/>
 
-    <!-- Underwater LED Lights (Luzes Subaquáticas) -->
+    <!-- Underwater LED Lights (Luzes SubaquÃ¡ticas) -->
     <circle cx="205" cy="340" r="5" fill="#38bdf8" stroke="#0284c7" stroke-width="1.5"/>
     <circle cx="395" cy="340" r="5" fill="#38bdf8" stroke="#0284c7" stroke-width="1.5"/>
   </g>

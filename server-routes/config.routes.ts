@@ -314,6 +314,132 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   }
 });
 
+// Endpoint to test connection with Asaas API
+router.post("/config/test-asaas", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    let { apiKey, apiUrl } = req.body;
+    if (!apiKey || apiKey === "__UNCHANGED__") {
+      apiKey = process.env.ASAAS_API_KEY || await getConfigValue("asaas_api_key");
+    }
+    if (!apiUrl) {
+      apiUrl = process.env.ASAAS_API_URL || await getConfigValue("asaas_api_url") || "https://api-sandbox.asaas.com/v3";
+    }
+
+    if (!apiKey) {
+      return res.status(400).json({ success: false, message: "Nenhuma chave de API (access_token) fornecida ou salva no sistema." });
+    }
+
+    const testUrl = `${apiUrl.replace(/\/+$/, '')}/finance/getCurrentBalance`;
+    const response = await fetch(testUrl, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "access_token": apiKey.trim(),
+        "User-Agent": "GestaoNauticaMexicano"
+      }
+    });
+
+    if (!response.ok) {
+      const errJson = await response.json().catch(() => ({}));
+      const errMsg = errJson.errors?.[0]?.description || `Erro HTTP ${response.status}: ${response.statusText}`;
+      return res.status(400).json({ success: false, message: errMsg });
+    }
+
+    const data = await response.json();
+    return res.json({
+      success: true,
+      message: `Conexão bem sucedida com o Asaas! Saldo disponível: R$ ${Number(data.totalBalance || 0).toFixed(2)}`,
+      environment: apiUrl.includes("sandbox") ? "Sandbox (Testes)" : "Produção",
+      balance: data.totalBalance
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || "Erro ao conectar com a API do Asaas." });
+  }
+});
+
+// Endpoint to auto-register / update Webhook directly via Asaas API
+router.post("/config/setup-asaas-webhook", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    let { apiKey, apiUrl, webhookUrl, authToken, email } = req.body;
+    if (!apiKey || apiKey === "__UNCHANGED__") {
+      apiKey = process.env.ASAAS_API_KEY || await getConfigValue("asaas_api_key");
+    }
+    if (!apiUrl) {
+      apiUrl = process.env.ASAAS_API_URL || await getConfigValue("asaas_api_url") || "https://api-sandbox.asaas.com/v3";
+    }
+    if (!authToken) {
+      authToken = process.env.ASAAS_WEBHOOK_TOKEN || await getConfigValue("asaas_webhook_token");
+    }
+
+    if (!apiKey) {
+      return res.status(400).json({ success: false, message: "A API Key do Asaas precisa estar preenchida ou salva." });
+    }
+    if (!webhookUrl) {
+      return res.status(400).json({ success: false, message: "A URL do Webhook é obrigatória." });
+    }
+
+    const cleanBaseUrl = apiUrl.replace(/\/+$/, '');
+    const headers = {
+      "Content-Type": "application/json",
+      "access_token": apiKey.trim(),
+      "User-Agent": "GestaoNauticaMexicano"
+    };
+
+    const webhookPayload = {
+      name: "Mexicano Gestão Náutica Webhook",
+      url: webhookUrl.trim(),
+      email: email || "contato@vilanautica.com",
+      enabled: true,
+      interrupted: false,
+      apiVersion: 3,
+      authToken: authToken ? authToken.trim() : undefined,
+      events: [
+        "PAYMENT_RECEIVED",
+        "PAYMENT_CONFIRMED",
+        "PAYMENT_OVERDUE",
+        "PAYMENT_DELETED",
+        "PAYMENT_RESTORED",
+        "PAYMENT_REFUNDED"
+      ],
+      sendType: "SEQUENTIALLY"
+    };
+
+    let response = await fetch(`${cleanBaseUrl}/webhooks`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(webhookPayload)
+    });
+
+    if (!response.ok) {
+      const responseFallback = await fetch(`${cleanBaseUrl}/webhook`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(webhookPayload)
+      });
+      if (!responseFallback.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson.errors?.[0]?.description || `Erro HTTP ${response.status}: ${response.statusText}`;
+        return res.status(400).json({ success: false, message: `Asaas rejeitou: ${errMsg}` });
+      }
+      response = responseFallback;
+    }
+
+    const data = await response.json();
+    
+    if (authToken) {
+      await setConfigValue("asaas_webhook_token", authToken.trim());
+    }
+
+    return res.json({
+      success: true,
+      message: "Webhook cadastrado e ativado com sucesso no Asaas!",
+      webhookId: data.id || data.data?.id
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || "Erro ao cadastrar webhook no Asaas." });
+  }
+});
+
 // ---------------- Fuel Inventory & History Endpoints ----------------
 
 

@@ -15,6 +15,8 @@ export interface ChecklistsTabProps {
   getCliente: (id: string) => any;
   onOpenAvulsoModal: () => void;
   onViewChecklist: (reserva: any) => void;
+  selectedDate?: string;
+  formatDisplayDate?: (date: string) => string;
 }
 
 export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
@@ -22,7 +24,9 @@ export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
   getEmbarcacao,
   getCliente,
   onOpenAvulsoModal,
-  onViewChecklist
+  onViewChecklist,
+  selectedDate,
+  formatDisplayDate
 }) => {
   return (
     <main className="flex-1 p-4 max-w-7xl mx-auto w-full pb-24 space-y-3">
@@ -32,6 +36,11 @@ export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
           <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
             <ClipboardList className="w-4 h-4 text-blue-600" />
             <span>CONSULTA DE CHECKLISTS</span>
+            {selectedDate && formatDisplayDate && (
+              <span className="text-[10px] font-bold text-slate-500 lowercase">
+                · {formatDisplayDate(selectedDate)}
+              </span>
+            )}
           </h3>
           <p className="text-[11px] text-slate-500 font-medium mt-0.5">
             Toque em qualquer embarcação para consultar ou realizar fotos do checklist
@@ -52,7 +61,9 @@ export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
       {totalDayReservations.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm space-y-3">
           <ClipboardList className="w-12 h-12 text-slate-300 mx-auto stroke-1" />
-          <h3 className="text-base font-bold text-slate-700">Nenhum agendamento hoje</h3>
+          <h3 className="text-base font-bold text-slate-700">
+            Nenhum agendamento {selectedDate && formatDisplayDate ? `em ${formatDisplayDate(selectedDate)}` : 'nesta data'}
+          </h3>
           <p className="text-xs text-slate-500">
             Você pode clicar no botão "+ Realizar Checklist" acima para selecionar qualquer embarcação da marina.
           </p>
@@ -68,6 +79,7 @@ export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
             const fotosChecklistDescida = reserva.fotosChecklistDescida || (reserva.checklists?.find((c:any) => c.tipo === 'descida')?.fotos || {});
             const fotosChecklistSubida = reserva.fotosChecklistSubida || (reserva.checklists?.find((c:any) => c.tipo === 'subida')?.fotos || {});
 
+            const isCancelado = reserva.status === 'cancelado' || reserva.statusMarina === 'cancelada';
             const hasDescidaFotos = Object.keys(fotosChecklistDescida).length > 0;
             const hasSubidaFotos = Object.keys(fotosChecklistSubida).length > 0;
             const litrosAbastecidos = Number(reserva.abastecimentoLitros) || 0;
@@ -76,22 +88,35 @@ export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
               <div
                 key={reserva.id}
                 onClick={() => onViewChecklist(reserva)}
-                className="bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between transition-all cursor-pointer group gap-3"
+                className={`border rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between transition-all cursor-pointer group gap-3 ${
+                  isCancelado
+                    ? 'bg-rose-50/25 border-rose-200 hover:border-rose-300'
+                    : 'bg-white border-slate-200 hover:border-blue-400'
+                }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <div className={`w-11 h-11 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                    isCancelado
+                      ? 'bg-rose-50 border-rose-200 text-rose-600'
+                      : 'bg-blue-50 border-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
+                  }`}>
                     <Ship className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="font-extrabold text-slate-900 text-sm leading-tight uppercase">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className={`font-extrabold text-sm leading-tight uppercase ${isCancelado ? 'text-rose-950' : 'text-slate-900'}`}>
                         {boat ? getBoatCode(boat) : (reserva.barcoNome || 'Embarcação')}
                       </h3>
                       <span className="bg-slate-900 text-white font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
                         #{boatNumber}
                       </span>
+                      {isCancelado && (
+                        <span className="bg-rose-100 text-rose-700 border border-rose-300 font-bold text-[9px] px-1.5 py-0.5 rounded uppercase">
+                          Cancelado
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs font-bold text-blue-600 uppercase mt-0.5">
+                    <p className={`text-xs font-bold uppercase mt-0.5 ${isCancelado ? 'text-rose-600' : 'text-blue-600'}`}>
                       {client?.nome || reserva.clienteNome || 'Cliente'}
                     </p>
                   </div>

@@ -113,7 +113,7 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
         return parsed;
       }
     }
-    return new Date(2026, 4, 30); // Default to May 2026
+    return new Date();
   });
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -585,14 +585,24 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
             {downloaded ? 'Baixado!' : 'Baixar Imagem'}
           </button>
 
-          {activeBoat?.whatsappGroupId && (
+          {activeBoat?.whatsappGroupId ? (
             <button
               onClick={handleSendToWhatsapp}
               disabled={isSendingWhatsapp}
-              className="inline-flex items-center px-3.5 py-2 bg-[#25D366] hover:bg-[#128C7E] disabled:opacity-70 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+              className="inline-flex items-center px-3.5 py-2 bg-[#25D366] hover:bg-[#128C7E] disabled:opacity-70 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-xs"
+              title={`Enviar diretamente para o grupo do WhatsApp da embarcação (${activeBoat.nome})`}
             >
               <Send className={`w-3.5 h-3.5 mr-2 ${isSendingWhatsapp ? 'animate-pulse' : ''}`} />
-              {isSendingWhatsapp ? 'Enviando...' : 'Enviar p/ WhatsApp'}
+              {isSendingWhatsapp ? 'Enviando...' : 'Enviar p/ WhatsApp (Grupo)'}
+            </button>
+          ) : (
+            <button
+              onClick={captureClipboard}
+              className="inline-flex items-center px-3.5 py-2 bg-[#25D366] hover:bg-[#128C7E] text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Copiar imagem formatada para colar no WhatsApp Web (Ctrl+V)"
+            >
+              <Copy className="w-3.5 h-3.5 mr-2" />
+              Copiar p/ WhatsApp Web
             </button>
           )}
         </div>
@@ -679,10 +689,10 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setCurrentDate(new Date(2026, 4, 30))}
-              className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-200 text-slate-705 hover:border-slate-350 rounded"
+              onClick={() => setCurrentDate(new Date())}
+              className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:border-slate-350 rounded cursor-pointer"
             >
-              Maio/2026
+              Mês Atual
             </button>
             <button
               onClick={() => stepMonth(1)}

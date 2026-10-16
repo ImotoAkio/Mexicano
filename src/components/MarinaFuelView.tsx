@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Droplets, ChevronLeft, ChevronRight, FileText, User as UserIcon, CheckCircle2, Clock, Info, ChevronDown, ChevronUp, Plus, Loader2, Save, Upload, Ship, Search, SlidersHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, X, Download, Building2, CreditCard, DollarSign, Send, Calendar, Filter, RefreshCw, Check, SquarePen, Trash2, Banknote, QrCode, Zap, Wallet, User } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
-import { getBoatCode } from '../utils/boatUtils';
+import { getBoatCode, matchesBoatSearch } from '../utils/boatUtils';
 import { getFuelPrice, getFuelPaymentLabel } from '../utils/constants';
 import { logAction } from '../db';
 import SearchableSelect from './shared/SearchableSelect';
@@ -328,8 +328,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       const client = getCliente(t.clienteId);
       const isAvulsoItem = t.isAvulso || !t.embarcacaoId || (t.descricao && t.descricao.toLowerCase().includes('avulso'));
       const matchesSearch = (
-        boat?.nome?.toLowerCase().includes(term) ||
-        client?.nome?.toLowerCase().includes(term) ||
+        matchesBoatSearch(searchTerm, boat, client, t) ||
         t.descricao?.toLowerCase().includes(term) ||
         t.identificacaoAvulso?.toLowerCase().includes(term) ||
         (isAvulsoItem && 'avulso'.includes(term)) ||

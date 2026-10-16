@@ -6,7 +6,7 @@ import {
   Plus, Loader2, Save, MoreVertical, SlidersHorizontal, LayoutGrid, List, ArrowUpCircle, ArrowDownCircle
 } from 'lucide-react';
 import { Cliente, Embarcacao, Reserva } from '../types';
-import { getBoatCode } from '../utils/boatUtils';
+import { getBoatCode, matchesBoatSearch } from '../utils/boatUtils';
 import { generateAdminReportPDF } from '../utils/pdfGenerator';
 import { ZoomableImage } from './ZoomableImage';
 import { logAction } from '../db';
@@ -162,9 +162,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
     // Search query match
     const term = searchTerm.toLowerCase();
     const matchesSearch = !term || (
-      boat?.nome?.toLowerCase().includes(term) ||
-      boat?.vaga?.toLowerCase().includes(term) ||
-      client?.nome?.toLowerCase().includes(term) ||
+      matchesBoatSearch(searchTerm, boat, client, r) ||
       client?.cpf?.includes(term) ||
       r.operadorDescida?.toLowerCase().includes(term) ||
       r.operadorSubida?.toLowerCase().includes(term)

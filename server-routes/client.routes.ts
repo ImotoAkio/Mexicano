@@ -102,38 +102,52 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
     const reqDateObj = new Date(date + "T12:00:00Z");
     const reqDayOfWeek = reqDateObj.getUTCDay();
 
-    if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && client.plano !== 'completo') {
-      return res.status(400).json({ error: true, message: "A Marina é fechada às segundas e terças-feiras para o seu plano atual." });
-    }
-
-    // Weekend reservation logic: guaranteed vs extra
+    const isMarinaOnlyBoat = boat?.empresas && boat.empresas.includes('MARINA') && !boat.empresas.includes('VALE');
     let tipoReserva: 'garantida' | 'extra' = 'garantida';
-    const isWeekend = reqDayOfWeek === 0 || reqDayOfWeek === 6;
 
-    if (isWeekend) {
-      const reqMonth = reqDateObj.getUTCMonth();
-      const reqYear = reqDateObj.getUTCFullYear();
+    if (!isMarinaOnlyBoat) {
+      if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && client.plano !== 'completo') {
+        return res.status(400).json({ error: true, message: "A Marina é fechada às segundas e terças-feiras para o seu plano atual." });
+      }
 
-      tipoReserva = calcTipoReserva(userId, embarcacaoId, reqDayOfWeek, reqMonth, reqYear, dbData.reservations);
+      // Weekend reservation logic: guaranteed vs extra
+      const isWeekend = reqDayOfWeek === 0 || reqDayOfWeek === 6;
 
-      // Check if the request explicitly confirms extra reservation
-      const { confirmExtra } = req.body;
-      if (tipoReserva === 'extra' && !confirmExtra) {
-        const dayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
-        return res.status(409).json({
-          error: true,
-          requireConfirmation: true,
-          tipoReserva: 'extra',
-          message: `Você já utilizou seu ${dayName} garantido neste mês para esta embarcação. Esta será uma reserva EXTRA e poderá ser contestada por outro cotista até 48 horas antes da data.`
-        });
+      if (isWeekend) {
+        const reqMonth = reqDateObj.getUTCMonth();
+        const reqYear = reqDateObj.getUTCFullYear();
+
+        tipoReserva = calcTipoReserva(userId, embarcacaoId, reqDayOfWeek, reqMonth, reqYear, dbData.reservations);
+
+        // Check if the request explicitly confirms extra reservation
+        const { confirmExtra } = req.body;
+        if (tipoReserva === 'extra' && !confirmExtra) {
+          const dayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
+          return res.status(409).json({
+            error: true,
+            requireConfirmation: true,
+            tipoReserva: 'extra',
+            message: `Você já utilizou seu ${dayName} garantido neste mês para esta embarcação. Esta será uma reserva EXTRA e poderá ser contestada por outro cotista até 48 horas antes da data.`
+          });
+        }
+      }
+
+      const activeReservations = dbData.reservations.filter((r: any) =>
+        r.clienteId === userId && r.embarcacaoId === embarcacaoId && r.status !== 'cancelado' && r.data >= todayStr
+      );
+      if (activeReservations.length >= 2) {
+        return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas para esta embarcação." });
       }
     }
 
-    const activeReservations = dbData.reservations.filter((r: any) => 
-      r.clienteId === userId && r.embarcacaoId === embarcacaoId && r.status !== 'cancelado' && r.data >= todayStr
-    );
-    if (activeReservations.length >= 2) {
-      return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas para esta embarcação." });
+    const currentPool = getDbPool();
+    let nextPos = 1;
+    if (currentPool) {
+      const [maxRows] = await currentPool.query(
+        "SELECT MAX(posicaoFila) as maxPos FROM Reservas WHERE data = ? AND status != 'cancelado'",
+        [date]
+      );
+      nextPos = ((maxRows as any[])[0]?.maxPos || 0) + 1;
     }
 
     const newRes = {
@@ -142,10 +156,14 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
       clienteId: userId,
       data: date,
       periodo,
+      previsaoSaida: req.body.previsaoSaida || null,
+      previsaoChegada: req.body.previsaoChegada || null,
       observações: observacoes,
       status: 'agendado',
       statusMarina: 'agendado',
       tipoReserva,
+      origem: isMarinaOnlyBoat ? 'marina' : 'cota',
+      posicaoFila: nextPos,
       createdAt: new Date().toISOString()
     };
 

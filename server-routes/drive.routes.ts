@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { requireAdminAuth, upload } from "./middlewares";
 import { getDbPool } from "../server-db";
+import { uploadToR2 } from "../server-r2";
 
 const router = Router();
 const driveUploadsDir = path.join(process.cwd(), 'uploads', 'drive');

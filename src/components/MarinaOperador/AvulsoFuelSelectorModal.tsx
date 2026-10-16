@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Ship, X, Search, Check, FileQuestion, User as UserIcon, Droplets } from 'lucide-react';
-import { getBoatCode } from '../../utils/boatUtils';
+import { getBoatCode, matchesBoatSearch } from '../../utils/boatUtils';
 
 export interface AvulsoFuelSelectorModalProps {
   isOpen: boolean;
@@ -102,10 +102,8 @@ export const AvulsoFuelSelectorModal: React.FC<AvulsoFuelSelectorModalProps> = (
                     {(data?.boats || [])
                       .filter((b: any) => {
                         if (!searchTerm.trim()) return true;
-                        const q = searchTerm.trim().toLowerCase();
-                        return (b.nome || '').toLowerCase().includes(q) ||
-                               (b.numero || '').toString().toLowerCase().includes(q) ||
-                               (b.vaga || '').toLowerCase().includes(q);
+                        const client = getCliente(b.clienteId);
+                        return matchesBoatSearch(searchTerm, b, client);
                       })
                       .map((b: any) => {
                         const client = getCliente(b.clienteId);

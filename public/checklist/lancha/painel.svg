@@ -36,7 +36,7 @@
   <line x1="288" y1="115" x2="312" y2="115" stroke="#94a3b8" stroke-width="1.5"/>
 
   <g filter="url(#dashGlow)">
-    <!-- Main Dashboard Body (Console Náutico) -->
+    <!-- Main Dashboard Body (Console NÃ¡utico) -->
     <path d="M 40 160 Q 300 130 560 160 L 580 340 L 20 340 Z" fill="url(#dashboardPanel)" stroke="#334155" stroke-width="3"/>
     <path d="M 60 168 Q 300 142 540 168" fill="none" stroke="#0284c7" stroke-width="2.5" opacity="0.8"/>
 
@@ -48,9 +48,9 @@
     <path d="M 230 240 Q 280 215 340 250" fill="none" stroke="#67e8f9" stroke-width="1.5" opacity="0.6"/>
     <!-- Boat icon on GPS -->
     <polygon points="300,205 306,220 294,220" fill="#f59e0b"/>
-    <text x="215" y="190" fill="#ffffff" font-size="10" font-family="sans-serif" font-weight="bold">GPS 18.4 kts • PROF: 12.5m</text>
+    <text x="215" y="190" fill="#ffffff" font-size="10" font-family="sans-serif" font-weight="bold">GPS 18.4 kts Â• PROF: 12.5m</text>
 
-    <!-- Left Instrument Gauges (Conta-giros / Velocímetro / Horímetro) -->
+    <!-- Left Instrument Gauges (Conta-giros / VelocÃ­metro / HorÃ­metro) -->
     <g transform="translate(70, 175)">
       <!-- Tachometer -->
       <circle cx="35" cy="35" r="32" fill="#020617" stroke="#94a3b8" stroke-width="2.5"/>
@@ -66,7 +66,7 @@
       <text x="17" y="38" fill="#38bdf8" font-size="6" font-family="sans-serif" font-weight="bold">FUEL</text>
     </g>
 
-    <!-- Right Instrument Gauges (Pressão de Óleo / Temperatura / Trim) -->
+    <!-- Right Instrument Gauges (PressÃ£o de Ã“leo / Temperatura / Trim) -->
     <g transform="translate(415, 175)">
       <circle cx="35" cy="35" r="32" fill="#020617" stroke="#94a3b8" stroke-width="2.5"/>
       <circle cx="35" cy="35" r="27" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4 2"/>
@@ -103,7 +103,7 @@
     <circle cx="175" cy="300" r="8" fill="#ef4444"/>
     <text x="171" y="303" fill="#ffffff" font-size="7" font-weight="bold">S</text>
 
-    <!-- Twin Engine Throttle / Shift Lever (Manete de Aceleração Duplo em Inox) -->
+    <!-- Twin Engine Throttle / Shift Lever (Manete de AceleraÃ§Ã£o Duplo em Inox) -->
     <g transform="translate(480, 240)">
       <rect x="0" y="20" width="45" height="60" rx="5" fill="#334155" stroke="#64748b" stroke-width="2"/>
       <path d="M 12 25 L 12 -15 Q 12 -30 25 -30 L 28 -30 Q 32 -30 32 -15 L 32 25 Z" fill="#94a3b8" stroke="#0f172a" stroke-width="2"/>

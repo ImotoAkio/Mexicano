@@ -337,7 +337,7 @@ export default function ScheduleCard({
   );
 }
 
-function NavigationPlanModal({
+export function NavigationPlanModal({
   res,
   ownerName,
   clientPhone,
@@ -382,12 +382,6 @@ function NavigationPlanModal({
             <div>
               <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Contato</span>
               <span className="font-semibold text-slate-700">{clientPhone || 'N/A'}</span>
-            </div>
-            <div>
-              <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Período</span>
-              <span className="font-semibold text-slate-700">
-                {res.periodo === 'dia_inteiro' ? 'Dia Inteiro' : res.periodo === 'manha' ? 'Manhã' : 'Tarde'}
-              </span>
             </div>
             <div>
               <span className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Saída (Previsão)</span>
@@ -467,7 +461,7 @@ const cleanDescription = (desc: string) => {
   return cleaned.trim();
 };
 
-function FinanceSummaryModal({
+export function FinanceSummaryModal({
   clientName,
   observacoesFinanceiras,
   transactions,

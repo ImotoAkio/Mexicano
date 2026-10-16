@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Camera,
@@ -13,9 +13,9 @@ import {
   RotateCcw,
   ZoomIn,
   ZoomOut,
-  ImageIcon,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Image as ImageIcon
 } from 'lucide-react';
 import { uploadPhotoToStorage } from '../../utils/checklistStorage';
 import { getBoatCode } from '../../utils/boatUtils';
@@ -27,12 +27,12 @@ import direitaJet from '../../assets/images/checklist/jet/direita.png';
 import painelJet from '../../assets/images/checklist/jet/painel.png';
 import cascoJet from '../../assets/images/checklist/jet/casco.png';
 
-import proaLancha from '../../assets/images/checklist/lancha/proa.svg';
-import popaLancha from '../../assets/images/checklist/lancha/popa.svg';
-import esquerdaLancha from '../../assets/images/checklist/lancha/esquerda.svg';
-import direitaLancha from '../../assets/images/checklist/lancha/direita.svg';
-import painelLancha from '../../assets/images/checklist/lancha/painel.svg';
-import cascoLancha from '../../assets/images/checklist/lancha/casco.svg';
+import proaLancha from '../../assets/images/checklist/lancha/proa.png';
+import popaLancha from '../../assets/images/checklist/lancha/popa.png';
+import esquerdaLancha from '../../assets/images/checklist/lancha/esquerda.png';
+import direitaLancha from '../../assets/images/checklist/lancha/direita.png';
+import painelLancha from '../../assets/images/checklist/lancha/painel.png';
+import cascoLancha from '../../assets/images/checklist/lancha/casco.png';
 
 /* ──────────────────────────────────────────────
    TYPES
@@ -83,30 +83,30 @@ const ANGLES_JET: ChecklistAngle[] = [
   { id: 'lat_direita',    angleKey: 'lat_direita',    name: 'Lateral Direita',          description: 'Costado direito completo (boreste)',              required: true,  svgPath: direitaJet },
   { id: 'painel',         angleKey: 'painel',         name: 'Painel / Guidão',          description: 'Display, botões e guidão',                       required: true,  svgPath: painelJet },
   { id: 'casco_inferior', angleKey: 'casco_inferior', name: 'Casco Inferior',           description: 'Fundo do casco e linha d\'água',                 required: true,  svgPath: cascoJet },
-  { id: 'casco_traseiro', angleKey: 'casco_traseiro', name: 'Casco Traseiro',           description: 'Parte traseira inferior do casco e turbina',     required: true },
-  { id: 'porta_objetos',  angleKey: 'porta_objetos',  name: 'Porta-Objetos',            description: 'Compartimento de armazenamento aberto',          required: true },
+  { id: 'casco_traseiro', angleKey: 'casco_traseiro', name: 'Casco Traseiro',           description: 'Parte traseira inferior do casco e turbina',     required: true,  svgPath: cascoJet },
+  { id: 'porta_objetos',  angleKey: 'porta_objetos',  name: 'Porta-Objetos',            description: 'Compartimento de armazenamento aberto',          required: true,  svgPath: painelJet },
 ];
 
 const ANGLES_LANCHA: ChecklistAngle[] = [
   // Frente — lancha grande, dividir em proa e bico
   { id: 'frente_proa',       angleKey: 'frente_proa',       name: 'Frente — Proa',             description: 'Vista frontal da proa, bico e olhal',            required: true,  svgPath: proaLancha },
-  { id: 'frente_conves',     angleKey: 'frente_conves',     name: 'Frente — Convés da Proa',   description: 'Área do solário e deck da proa',                 required: true },
+  { id: 'frente_conves',     angleKey: 'frente_conves',     name: 'Frente — Convés da Proa',   description: 'Área do solário e deck da proa',                 required: true,  svgPath: proaLancha },
   // Traseira
   { id: 'traseira_popa',     angleKey: 'traseira_popa',     name: 'Traseira — Popa',           description: 'Vista da popa, motores, rabeta e escada',        required: true,  svgPath: popaLancha },
-  { id: 'traseira_plataforma',angleKey:'traseira_plataforma',name: 'Traseira — Plataforma',    description: 'Plataforma de popa e escada de banho',           required: true },
+  { id: 'traseira_plataforma',angleKey:'traseira_plataforma',name: 'Traseira — Plataforma',    description: 'Plataforma de popa e escada de banho',           required: true,  svgPath: popaLancha },
   // Lateral esquerda (bombordo) — dividir proa/popa
   { id: 'lat_esq_proa',      angleKey: 'lat_esq_proa',     name: 'Lat. Esquerda — Proa',      description: 'Costado bombordo seção da proa',                 required: true,  svgPath: esquerdaLancha },
-  { id: 'lat_esq_popa',      angleKey: 'lat_esq_popa',     name: 'Lat. Esquerda — Popa',      description: 'Costado bombordo seção da popa',                 required: true },
+  { id: 'lat_esq_popa',      angleKey: 'lat_esq_popa',     name: 'Lat. Esquerda — Popa',      description: 'Costado bombordo seção da popa',                 required: true,  svgPath: esquerdaLancha },
   // Lateral direita (boreste) — dividir proa/popa
   { id: 'lat_dir_proa',      angleKey: 'lat_dir_proa',     name: 'Lat. Direita — Proa',       description: 'Costado boreste seção da proa',                  required: true,  svgPath: direitaLancha },
-  { id: 'lat_dir_popa',      angleKey: 'lat_dir_popa',     name: 'Lat. Direita — Popa',       description: 'Costado boreste seção da popa',                  required: true },
+  { id: 'lat_dir_popa',      angleKey: 'lat_dir_popa',     name: 'Lat. Direita — Popa',       description: 'Costado boreste seção da popa',                  required: true,  svgPath: direitaLancha },
   // Painel
   { id: 'painel',            angleKey: 'painel',            name: 'Painel de Comando',         description: 'Instrumentos, manetes, rádio e eletrônica',      required: true,  svgPath: painelLancha },
   // Casco
   { id: 'casco_inferior',    angleKey: 'casco_inferior',    name: 'Casco Inferior',            description: 'Fundo do casco, hélice e linha d\'água',         required: true,  svgPath: cascoLancha },
-  { id: 'casco_traseiro',    angleKey: 'casco_traseiro',    name: 'Casco Traseiro',            description: 'Parte traseira inferior, leme e hélice',         required: true },
+  { id: 'casco_traseiro',    angleKey: 'casco_traseiro',    name: 'Casco Traseiro',            description: 'Parte traseira inferior, leme e hélice',         required: true,  svgPath: cascoLancha },
   // Porta-objetos / Cabine
-  { id: 'porta_objetos',     angleKey: 'porta_objetos',     name: 'Porta-Objetos / Cabine',    description: 'Compartimentos internos e cabine aberta',        required: true },
+  { id: 'porta_objetos',     angleKey: 'porta_objetos',     name: 'Porta-Objetos / Cabine',    description: 'Compartimentos internos e cabine aberta',        required: true,  svgPath: painelLancha },
 ];
 
 const SAFETY_ITEMS = [
@@ -177,8 +177,87 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
 
   const [observacoes, setObservacoes] = useState('');
 
-  const fileInputRefs = useRef<{ [angleKey: string]: HTMLInputElement | null }>({});
-  const extraFileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRefs = useRef<{ [angleKey: string]: HTMLInputElement | null }>({});
+  const galleryInputRefs = useRef<{ [angleKey: string]: HTMLInputElement | null }>({});
+  const extraCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const extraGalleryInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Reset wizard e estados de navegação para o primeiro passo
+    setStep(0);
+    setActiveAngleIdx(0);
+    setUploadingAngle(null);
+    setUploadingExtra(false);
+    setIsSubmitting(false);
+    setPreviewImage(null);
+    setPreviewZoom(1);
+    setRefGuideAngle(null);
+
+    // Carrega fotos e dados específicos do tipo de checklist selecionado (descida, subida, avulso, etc.)
+    let initialFotos: { [angleKey: string]: string } = {};
+    let initialFotosExtras: string[] = [];
+    let initialObs = '';
+    let initialSafety = {
+      coletes: false,
+      extintor: false,
+      cortaCorrente: false,
+      ancora: false,
+      documento: false,
+      boiaCircular: false,
+      primeirosSocorros: false,
+    };
+
+    if (reservaTarget) {
+      if (tipo === 'descida') {
+        if (reservaTarget.fotosChecklistDescida && typeof reservaTarget.fotosChecklistDescida === 'object') {
+          initialFotos = { ...reservaTarget.fotosChecklistDescida };
+        }
+        if (Array.isArray(reservaTarget.fotosExtrasDescida)) {
+          initialFotosExtras = [...reservaTarget.fotosExtrasDescida];
+        }
+        initialObs = reservaTarget.checklistObservacoes || '';
+        if (reservaTarget.checklistEquipamentos) {
+          initialSafety = { ...initialSafety, ...reservaTarget.checklistEquipamentos };
+        }
+      } else if (tipo === 'subida') {
+        if (reservaTarget.fotosChecklistSubida && typeof reservaTarget.fotosChecklistSubida === 'object') {
+          initialFotos = { ...reservaTarget.fotosChecklistSubida };
+        }
+        if (Array.isArray(reservaTarget.fotosExtrasSubida)) {
+          initialFotosExtras = [...reservaTarget.fotosExtrasSubida];
+        }
+        initialObs = reservaTarget.observacoesSubida || '';
+      } else if (tipo === 'saida') {
+        if (reservaTarget.fotosChecklistSaida && typeof reservaTarget.fotosChecklistSaida === 'object') {
+          initialFotos = { ...reservaTarget.fotosChecklistSaida };
+        }
+        if (Array.isArray(reservaTarget.fotosExtrasSaida)) {
+          initialFotosExtras = [...reservaTarget.fotosExtrasSaida];
+        }
+      } else if (tipo === 'retorno') {
+        if (reservaTarget.fotosChecklistChegada && typeof reservaTarget.fotosChecklistChegada === 'object') {
+          initialFotos = { ...reservaTarget.fotosChecklistChegada };
+        }
+        if (Array.isArray(reservaTarget.fotosExtrasChegada)) {
+          initialFotosExtras = [...reservaTarget.fotosExtrasChegada];
+        }
+      } else {
+        if (reservaTarget.fotosAvulsas && typeof reservaTarget.fotosAvulsas === 'object') {
+          initialFotos = { ...reservaTarget.fotosAvulsas };
+        }
+        if (Array.isArray(reservaTarget.fotosExtrasAvulsas)) {
+          initialFotosExtras = [...reservaTarget.fotosExtrasAvulsas];
+        }
+      }
+    }
+
+    setFotos(initialFotos);
+    setFotosExtras(initialFotosExtras);
+    setObservacoes(initialObs);
+    setItensSeguranca(initialSafety);
+  }, [isOpen, tipo, reservaTarget?.id]);
 
   if (!isOpen) return null;
 
@@ -209,27 +288,20 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const localUrl = URL.createObjectURL(file);
-    setFotos(prev => ({ ...prev, [angleKey]: localUrl }));
-
     try {
       setUploadingAngle(angleKey);
       const url = await uploadPhotoToStorage(file);
       setFotos(prev => ({ ...prev, [angleKey]: url }));
-      setTimeout(() => URL.revokeObjectURL(localUrl), 1000);
     } catch (err: any) {
       console.error('Erro ao enviar foto:', err);
-      alert('Falha ao processar foto. Tente novamente.');
-      setFotos(prev => {
-        const next = { ...prev };
-        delete next[angleKey];
-        return next;
-      });
-      URL.revokeObjectURL(localUrl);
+      alert('Falha ao processar foto. Se o celular estiver com pouca memória, utilize o botão "Galeria" ou feche outras abas.');
     } finally {
       setUploadingAngle(null);
-      if (fileInputRefs.current[angleKey]) {
-        fileInputRefs.current[angleKey]!.value = '';
+      if (cameraInputRefs.current[angleKey]) {
+        cameraInputRefs.current[angleKey]!.value = '';
+      }
+      if (galleryInputRefs.current[angleKey]) {
+        galleryInputRefs.current[angleKey]!.value = '';
       }
     }
   };
@@ -238,23 +310,20 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const localUrl = URL.createObjectURL(file);
-    setFotosExtras(prev => [...prev, localUrl]);
-
     try {
       setUploadingExtra(true);
       const url = await uploadPhotoToStorage(file);
-      setFotosExtras(prev => prev.map(f => f === localUrl ? url : f));
-      setTimeout(() => URL.revokeObjectURL(localUrl), 1000);
+      setFotosExtras(prev => [...prev, url]);
     } catch (err: any) {
       console.error('Erro ao enviar foto extra:', err);
-      alert('Falha ao processar foto extra. Tente novamente.');
-      setFotosExtras(prev => prev.filter(f => f !== localUrl));
-      URL.revokeObjectURL(localUrl);
+      alert('Falha ao processar foto extra.');
     } finally {
       setUploadingExtra(false);
-      if (extraFileInputRef.current) {
-        extraFileInputRef.current.value = '';
+      if (extraCameraInputRef.current) {
+        extraCameraInputRef.current.value = '';
+      }
+      if (extraGalleryInputRef.current) {
+        extraGalleryInputRef.current.value = '';
       }
     }
   };
@@ -352,6 +421,14 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
               {embarcacao.nome || 'Embarcação'}
               {boatCode && <span className="text-slate-400 font-mono text-sm ml-1.5">#{boatCode}</span>}
             </h1>
+            <div className="flex items-center justify-center gap-1.5 mt-0.5">
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-2xs ${typeInfo.color}`}>
+                {typeInfo.label}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold truncate hidden sm:inline">
+                • {typeInfo.sub}
+              </span>
+            </div>
           </div>
 
           <button
@@ -404,11 +481,21 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                       : 'border-dashed border-slate-300 bg-slate-50'
                   }`}
                 >
+                  {/* Câmera Direta (capture="environment" para abrir a câmera no celular) */}
                   <input
                     type="file"
                     accept="image/*"
                     capture="environment"
-                    ref={(el) => { fileInputRefs.current[activeAngle.angleKey] = el; }}
+                    ref={(el) => { cameraInputRefs.current[activeAngle.angleKey] = el; }}
+                    className="hidden"
+                    onChange={(e) => handleCaptureAngle(activeAngle.angleKey, e)}
+                  />
+
+                  {/* Galeria / Arquivos (sem capture — não suspende o Chrome, evitando erro de memória) */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={(el) => { galleryInputRefs.current[activeAngle.angleKey] = el; }}
                     className="hidden"
                     onChange={(e) => handleCaptureAngle(activeAngle.angleKey, e)}
                   />
@@ -431,67 +518,121 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                       </div>
 
                       {/* Action buttons */}
-                      <div className="absolute bottom-4 left-4 right-4 flex gap-3">
+                      <div className="absolute bottom-3 left-3 right-3 flex gap-2">
                         <button
+                          type="button"
                           onClick={() => setPreviewImage(fotos[activeAngle.angleKey])}
-                          className="flex-1 py-3 bg-white/95 text-slate-800 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.97] transition backdrop-blur-sm"
+                          className="py-2.5 px-3 bg-white/95 text-slate-800 rounded-xl font-bold text-xs flex items-center justify-center gap-1 shadow-md active:scale-[0.97] transition backdrop-blur-sm cursor-pointer"
                         >
-                          <Eye className="w-5 h-5" /> Ver Foto
+                          <Eye className="w-4 h-4" />
+                          <span>Ver</span>
                         </button>
                         <button
-                          onClick={() => fileInputRefs.current[activeAngle.angleKey]?.click()}
-                          className="flex-1 py-3 bg-white/95 text-blue-600 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.97] transition backdrop-blur-sm"
+                          type="button"
+                          onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
+                          className="flex-1 py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-[0.97] transition cursor-pointer"
                         >
-                          <RotateCcw className="w-5 h-5" /> Refazer
+                          <Camera className="w-4 h-4" />
+                          <span>Nova Foto</span>
                         </button>
                         <button
+                          type="button"
+                          onClick={() => galleryInputRefs.current[activeAngle.angleKey]?.click()}
+                          className="py-2.5 px-2.5 bg-white/95 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1 shadow-md active:scale-[0.97] transition backdrop-blur-sm cursor-pointer"
+                          title="Escolher foto da Galeria (evita travamento de memória)"
+                        >
+                          <ImageIcon className="w-4 h-4 text-slate-600" />
+                          <span>Galeria</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={(e) => handleDeleteAnglePhoto(activeAngle.angleKey, e)}
-                          className="py-3 px-4 bg-red-500/90 text-white rounded-xl shadow-lg active:scale-[0.97] transition backdrop-blur-sm"
+                          title="Excluir Foto"
+                          className="py-2.5 px-3 bg-red-500/90 hover:bg-red-600 text-white rounded-xl shadow-md active:scale-[0.97] transition backdrop-blur-sm cursor-pointer"
                         >
-                          <Trash2 className="w-5 h-5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </>
                   ) : uploadingAngle === activeAngle.angleKey ? (
                     /* ── Uploading ── */
-                    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 absolute inset-0">
+                    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 absolute inset-0 bg-white/95">
                       <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-base font-bold text-blue-600">Enviando foto...</span>
+                      <span className="text-base font-bold text-blue-600">Otimizando e salvando foto...</span>
+                      <p className="text-xs text-slate-400">Reduzindo uso de memória RAM</p>
                     </div>
                   ) : (
                     /* ── Empty — tap to capture ── */
                     <div
                       role="button"
                       tabIndex={0}
-                      onClick={() => fileInputRefs.current[activeAngle.angleKey]?.click()}
-                      className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 active:bg-slate-100 transition cursor-pointer"
+                      onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
+                      className="absolute inset-0 flex flex-col items-center justify-between p-4 sm:p-5 bg-gradient-to-b from-slate-50/80 via-white to-slate-50/80 active:bg-blue-50/40 transition cursor-pointer"
                     >
-                      {/* Show reference SVG large if available */}
-                      {activeAngle.svgPath ? (
-                        <>
+                      {/* Top bar with count & Ver Exemplo button */}
+                      <div className="w-full flex items-center justify-between z-10">
+                        <span className="bg-white/95 text-slate-700 border border-slate-200 text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-xs">
+                          <Camera className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Ângulo {activeAngleIdx + 1} de {angles.length}</span>
+                        </span>
+                        {activeAngle.svgPath && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRefGuideAngle(activeAngle);
+                            }}
+                            className="py-1.5 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold text-xs shadow-md flex items-center gap-1.5 active:scale-95 transition cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Ver Exemplo</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Main reference image display (crisp & clear, no opacity-50) */}
+                      <div className="flex-1 w-full flex items-center justify-center p-2 relative my-1">
+                        {activeAngle.svgPath ? (
                           <img
                             src={activeAngle.svgPath}
                             alt={`Referência ${activeAngle.name}`}
-                            className="w-3/4 h-3/4 object-contain opacity-50"
+                            className="max-h-[190px] w-auto max-w-full object-contain drop-shadow-sm transition-transform duration-200"
+                            loading="eager"
                           />
+                        ) : (
+                          <div className="w-20 h-20 rounded-full bg-blue-50 border-2 border-blue-200 flex items-center justify-center shadow-inner">
+                            <Camera className="w-10 h-10 text-blue-500" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom action banner — Câmera Direta e Galeria Anti-travamento */}
+                      <div
+                        className="w-full bg-white/95 backdrop-blur-xs border border-slate-200 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex gap-2">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPreviewImage(activeAngle.svgPath!);
-                            }}
-                            className="absolute top-4 right-4 py-2 px-4 bg-white/90 text-blue-600 rounded-full font-bold text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition"
+                            type="button"
+                            onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
+                            className="flex-1 py-3 px-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
                           >
-                            <Eye className="w-4 h-4" /> Ver Exemplo
+                            <Camera className="w-4 h-4 shrink-0" />
+                            <span>Tirar Foto</span>
                           </button>
-                        </>
-                      ) : (
-                        <div className="w-20 h-20 rounded-full bg-blue-50 border-2 border-blue-200 flex items-center justify-center">
-                          <Camera className="w-10 h-10 text-blue-400" />
+                          <button
+                            type="button"
+                            onClick={() => galleryInputRefs.current[activeAngle.angleKey]?.click()}
+                            title="Escolher da Galeria (evita travamento de memória no celular)"
+                            className="py-3 px-3.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 border border-slate-200 transition cursor-pointer"
+                          >
+                            <ImageIcon className="w-4 h-4 text-slate-500 shrink-0" />
+                            <span>Galeria</span>
+                          </button>
                         </div>
-                      )}
-                      <div className="text-center">
-                        <p className="text-lg font-extrabold text-slate-800">Toque para fotografar</p>
-                        <p className="text-sm text-slate-500 mt-1">{activeAngle.description}</p>
+                        <p className="text-[11px] text-slate-500 font-medium text-center">
+                          {activeAngle.description}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -541,9 +682,9 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                           </div>
                         </>
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 p-1">
                           {angle.svgPath ? (
-                            <img src={angle.svgPath} alt="" className="w-8 h-8 object-contain opacity-30" />
+                            <img src={angle.svgPath} alt="" className="w-full h-full object-contain" />
                           ) : (
                             <Camera className="w-5 h-5 text-slate-300" />
                           )}
@@ -558,73 +699,130 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                 })}
 
                 {/* Extra photos button in the strip */}
-                <button
-                  onClick={() => extraFileInputRef.current?.click()}
-                  disabled={uploadingExtra}
-                  className="shrink-0 snap-center w-16 h-16 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 flex flex-col items-center justify-center gap-0.5 active:scale-95 transition"
-                >
-                  {uploadingExtra ? (
-                    <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Plus className="w-5 h-5 text-amber-500" />
-                      <span className="text-[8px] font-bold text-amber-600 uppercase">Extra</span>
-                      {fotosExtras.length > 0 && (
-                        <span className="text-[8px] font-bold text-amber-700">{fotosExtras.length}</span>
-                      )}
-                    </>
-                  )}
-                </button>
+                <div className="flex gap-1 shrink-0 snap-center">
+                  <button
+                    type="button"
+                    onClick={() => extraCameraInputRef.current?.click()}
+                    disabled={uploadingExtra}
+                    title="Tirar foto extra com a câmera"
+                    className="w-16 h-16 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100/60 flex flex-col items-center justify-center gap-0.5 active:scale-95 transition cursor-pointer"
+                  >
+                    {uploadingExtra ? (
+                      <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4 text-amber-600" />
+                        <span className="text-[8px] font-bold text-amber-700 uppercase">+ Câmera</span>
+                        {fotosExtras.length > 0 && (
+                          <span className="text-[8px] font-bold text-amber-800">{fotosExtras.length}</span>
+                        )}
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => extraGalleryInputRef.current?.click()}
+                    disabled={uploadingExtra}
+                    title="Adicionar foto extra da galeria (anti-travamento)"
+                    className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 flex flex-col items-center justify-center gap-0.5 active:scale-95 transition cursor-pointer"
+                  >
+                    <ImageIcon className="w-4 h-4 text-slate-500" />
+                    <span className="text-[8px] font-bold text-slate-600 uppercase">+ Galeria</span>
+                  </button>
+                </div>
+
+                {/* Hidden inputs para fotos extras */}
                 <input
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  ref={extraFileInputRef}
+                  ref={extraCameraInputRef}
+                  className="hidden"
+                  onChange={handleCaptureExtra}
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={extraGalleryInputRef}
                   className="hidden"
                   onChange={handleCaptureExtra}
                 />
               </div>
             </div>
 
-            {/* Navigation arrows between angles + advance button */}
+            {/* Navigation arrows between angles + smart action button */}
             <div className="border-t border-slate-100 bg-white p-4 flex items-center gap-3 shrink-0">
               <button
                 onClick={() => setActiveAngleIdx(Math.max(0, activeAngleIdx - 1))}
                 disabled={activeAngleIdx === 0}
-                className="w-14 h-14 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center active:scale-95 transition disabled:opacity-30"
+                className="w-14 h-14 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center active:scale-95 transition disabled:opacity-30 cursor-pointer shrink-0"
               >
                 <ChevronLeft className="w-7 h-7" />
               </button>
 
-              {activeAngleIdx < angles.length - 1 ? (
+              {!fotos[activeAngle.angleKey] ? (
+                /* SEM FOTO NO ÂNGULO ATUAL: Botão inteligente com atalho de galeria */
+                <div className="flex-1 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
+                    disabled={uploadingAngle === activeAngle.angleKey}
+                    className="flex-1 h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer disabled:opacity-50"
+                  >
+                    <Camera className="w-5 h-5" />
+                    <span>Tirar Foto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRefs.current[activeAngle.angleKey]?.click()}
+                    disabled={uploadingAngle === activeAngle.angleKey}
+                    title="Escolher da Galeria (evita erro de memória no celular)"
+                    className="w-14 h-14 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center active:scale-95 transition border border-slate-200 cursor-pointer shrink-0 disabled:opacity-50"
+                  >
+                    <ImageIcon className="w-6 h-6 text-slate-600" />
+                  </button>
+                </div>
+              ) : activeAngleIdx < angles.length - 1 ? (
+                /* COM FOTO NO ÂNGULO ATUAL: Botão inteligente passa para o próximo ângulo */
                 <button
+                  type="button"
                   onClick={() => setActiveAngleIdx(activeAngleIdx + 1)}
-                  className="flex-1 h-14 rounded-xl bg-blue-600 text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-sm"
+                  className="flex-1 h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer"
                 >
-                  Próximo Ângulo <ChevronRight className="w-5 h-5" />
+                  <span>Próximo Ângulo</span>
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              ) : canAdvanceFromPhotos ? (
+                /* COM FOTO NO ÚLTIMO ÂNGULO E TODAS OBRIGATÓRIAS CONCLUÍDAS: Avança para o próximo step */
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  className="flex-1 h-14 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer"
+                >
+                  <span>Avançar</span>
+                  <ChevronRight className="w-5 h-5" />
                 </button>
               ) : (
+                /* COM FOTO NO ÚLTIMO ÂNGULO MAS FALTA ALGUM OBRIGATÓRIO: Redireciona para o primeiro pendente */
                 <button
-                  onClick={handleNextStep}
-                  disabled={!canAdvanceFromPhotos}
-                  className={`flex-1 h-14 rounded-xl font-bold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-sm ${
-                    canAdvanceFromPhotos
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-slate-200 text-slate-400'
-                  }`}
+                  type="button"
+                  onClick={() => {
+                    const firstMissingIdx = angles.findIndex(a => a.required && !fotos[a.angleKey]);
+                    if (firstMissingIdx !== -1) {
+                      setActiveAngleIdx(firstMissingIdx);
+                    }
+                  }}
+                  className="flex-1 h-14 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-sm flex items-center justify-center gap-1.5 active:scale-[0.97] transition shadow-md cursor-pointer"
                 >
-                  {canAdvanceFromPhotos ? (
-                    <>Avançar <ChevronRight className="w-5 h-5" /></>
-                  ) : (
-                    <>Faltam {totalRequired - filledRequired} fotos</>
-                  )}
+                  <AlertCircle className="w-5 h-5" />
+                  <span>Faltam {totalRequired - filledRequired} fotos</span>
                 </button>
               )}
 
               <button
                 onClick={() => setActiveAngleIdx(Math.min(angles.length - 1, activeAngleIdx + 1))}
                 disabled={activeAngleIdx === angles.length - 1}
-                className="w-14 h-14 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center active:scale-95 transition disabled:opacity-30"
+                className="w-14 h-14 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center active:scale-95 transition disabled:opacity-30 cursor-pointer shrink-0"
               >
                 <ChevronRight className="w-7 h-7" />
               </button>
@@ -727,27 +925,40 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
             </div>
 
             {/* Extra photos section */}
-            {fotosExtras.length > 0 && (
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                  Fotos extras adicionadas ({fotosExtras.length})
+                  Fotos Extras ({fotosExtras.length})
                 </label>
+                <button
+                  type="button"
+                  onClick={() => extraCameraInputRef.current?.click()}
+                  className="py-1 px-3 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-full text-xs font-bold flex items-center gap-1 active:scale-95 transition cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5" /> Tirar Foto Extra
+                </button>
+              </div>
+
+              {fotosExtras.length > 0 ? (
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {fotosExtras.map((url, idx) => (
                     <div key={idx} className="shrink-0 w-20 h-20 rounded-xl overflow-hidden border border-slate-200 relative group cursor-pointer" onClick={() => setPreviewImage(url)}>
                       <img src={url} alt="" className="w-full h-full object-cover" />
                       <button
+                        type="button"
                         onClick={(e) => handleDeleteExtraPhoto(idx, e)}
-                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 group-active:opacity-100 transition shadow"
+                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 group-active:opacity-100 transition shadow cursor-pointer"
                       >
                         <X className="w-3 h-3" />
                       </button>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-xs text-slate-400 italic">Nenhuma foto extra adicionada. Use para registrar avarias pré-existentes, motor ou detalhes.</p>
+              )}
+            </div>
           </div>
         )}
 
@@ -916,6 +1127,91 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
           <p className="absolute bottom-6 text-white/70 text-sm font-bold bg-black/50 px-4 py-2 rounded-full">
             Toque fora para fechar
           </p>
+        </div>
+      )}
+
+      {/* ═══════ MODAL GUIA DE EXEMPLO DO ÂNGULO ═══════ */}
+      {refGuideAngle && (
+        <div
+          className="fixed inset-0 z-[9999] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setRefGuideAngle(null)}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-200 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">
+                    Foto de Exemplo — {refGuideAngle.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {refGuideAngle.description}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRefGuideAngle(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Canvas do Exemplo com fundo neutro de alto contraste */}
+            <div className="p-6 bg-slate-50 flex items-center justify-center min-h-[260px] max-h-[50vh] border-b border-slate-100">
+              {refGuideAngle.svgPath ? (
+                <img
+                  src={refGuideAngle.svgPath}
+                  alt={refGuideAngle.name}
+                  className="max-h-[45vh] w-auto max-w-full object-contain drop-shadow-md"
+                  loading="eager"
+                />
+              ) : (
+                <div className="text-center text-slate-400">
+                  <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
+                  <p className="text-xs font-semibold">Exemplo não disponível</p>
+                </div>
+              )}
+            </div>
+
+            {/* Rodapé com Dica e Ação Direta */}
+            <div className="p-4 bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p className="text-xs text-slate-600 font-medium text-center sm:text-left">
+                💡 Enquadre a câmera semelhante a este exemplo para o checklist da marina.
+              </p>
+              <div className="flex gap-2 w-full sm:w-auto shrink-0">
+                <button
+                  onClick={() => {
+                    const key = refGuideAngle.angleKey;
+                    setRefGuideAngle(null);
+                    cameraInputRefs.current[key]?.click();
+                  }}
+                  className="flex-1 sm:flex-initial py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Fotografar</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const key = refGuideAngle.angleKey;
+                    setRefGuideAngle(null);
+                    galleryInputRefs.current[key]?.click();
+                  }}
+                  className="py-3 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-200 active:scale-95 transition cursor-pointer"
+                  title="Escolher da Galeria"
+                >
+                  <ImageIcon className="w-4 h-4 text-slate-500" />
+                  <span>Galeria</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

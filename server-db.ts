@@ -1,4 +1,4 @@
-﻿import mysql from "mysql2/promise";
+import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -184,7 +184,32 @@ export async function initializeDatabase() {
         observacoesFinanceiras TEXT,
         plano VARCHAR(20) DEFAULT 'normal',
         asaasCustomerId VARCHAR(100),
-        status VARCHAR(20) DEFAULT 'ativo'
+        status VARCHAR(20) DEFAULT 'ativo',
+        nacionalidade VARCHAR(100),
+        statusContrato VARCHAR(50) DEFAULT 'sem_contrato',
+        tipoContrato VARCHAR(50) DEFAULT 'aquisicao',
+        contratoDataEmissao VARCHAR(50),
+        contratoDataAssinatura VARCHAR(50),
+        contratoArquivoUrl LONGTEXT,
+        contratoArquivoNome VARCHAR(255),
+        contratoArquivoTamanho INT,
+        contratoObservacoes TEXT,
+        contratoAquisicaoStatus VARCHAR(50) DEFAULT 'sem_contrato',
+        contratoAquisicaoArquivoUrl LONGTEXT,
+        contratoAquisicaoArquivoNome VARCHAR(255),
+        contratoAquisicaoArquivoTamanho INT,
+        contratoAquisicaoDataAssinatura VARCHAR(50),
+        contratoAquisicaoArquivoKey VARCHAR(255),
+        contratoAquisicaoArquivoStorage VARCHAR(20),
+        contratoAdmStatus VARCHAR(50) DEFAULT 'sem_contrato',
+        contratoAdmArquivoUrl LONGTEXT,
+        contratoAdmArquivoNome VARCHAR(255),
+        contratoAdmArquivoTamanho INT,
+        contratoAdmDataAssinatura VARCHAR(50),
+        contratoAdmArquivoKey VARCHAR(255),
+        contratoAdmArquivoStorage VARCHAR(20),
+        contratoValores LONGTEXT,
+        contratos LONGTEXT
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -214,6 +239,33 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Clientes ADD COLUMN acessorios TEXT;`);
     } catch (e) {}
+
+    // Migrações para suporte a contratos oficiais e assinados (R2 / Local)
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN nacionalidade VARCHAR(100);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN statusContrato VARCHAR(50) DEFAULT 'sem_contrato';`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN tipoContrato VARCHAR(50) DEFAULT 'aquisicao';`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoDataEmissao VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoDataAssinatura VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoArquivoUrl LONGTEXT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoArquivoNome VARCHAR(255);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoArquivoTamanho INT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoObservacoes TEXT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAquisicaoStatus VARCHAR(50) DEFAULT 'sem_contrato';`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAquisicaoArquivoUrl LONGTEXT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAquisicaoArquivoNome VARCHAR(255);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAquisicaoArquivoTamanho INT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAquisicaoDataAssinatura VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAquisicaoArquivoKey VARCHAR(255);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAquisicaoArquivoStorage VARCHAR(20);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmStatus VARCHAR(50) DEFAULT 'sem_contrato';`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmArquivoUrl LONGTEXT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmArquivoNome VARCHAR(255);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmArquivoTamanho INT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmDataAssinatura VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmArquivoKey VARCHAR(255);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmArquivoStorage VARCHAR(20);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoValores LONGTEXT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratos LONGTEXT;`); } catch (e) {}
 
     // 2. Embarcacoes Table
     await connection.query(`
@@ -386,9 +438,39 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN contestadaEm VARCHAR(50);`);
+    } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN acessoriosSolicitados TEXT;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN origem VARCHAR(20) DEFAULT 'cota';`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN nomeAvulso VARCHAR(255);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN telefoneAvulso VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN modeloAvulso VARCHAR(255);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN tipoAvulso VARCHAR(20);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN posicaoFila INT DEFAULT 0;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN combustivelInicial VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN litrosAbastecerPrevio VARCHAR(20);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN marinheiroPiloto VARCHAR(150);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN observacoesDescida TEXT;`);
     } catch (e) {}
 
     // 4. ControlesSom Table
@@ -1152,6 +1234,97 @@ export async function initializeDatabase() {
     `);
     console.log("✅ Caixa da Marina tables ready.");
 
+    // ── UTV (Veículos de Trilha) Tables ──
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS UtvVeiculos (
+        id VARCHAR(50) PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        modelo VARCHAR(255),
+        ano INT,
+        placa_chassi VARCHAR(100),
+        kmAtual DECIMAL(10, 2) DEFAULT 0.00,
+        horimetroAtual DECIMAL(10, 2) DEFAULT 0.00,
+        status VARCHAR(50) DEFAULT 'disponivel',
+        imagemUrl TEXT,
+        observacoes TEXT,
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS UtvCotistas (
+        id VARCHAR(50) PRIMARY KEY,
+        clienteId VARCHAR(50) NULL,
+        nome VARCHAR(255) NOT NULL,
+        cotaNumero VARCHAR(50) NOT NULL,
+        telefone VARCHAR(50),
+        email VARCHAR(100),
+        cpf VARCHAR(50),
+        limiteDiasAnual INT DEFAULT 30,
+        anoExercicio INT DEFAULT 2026,
+        status VARCHAR(20) DEFAULT 'ativo',
+        createdAt VARCHAR(50) NOT NULL,
+        INDEX idx_utv_cotistas_ano (anoExercicio)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS UtvUsos (
+        id VARCHAR(50) PRIMARY KEY,
+        veiculoId VARCHAR(50) NOT NULL,
+        cotistaId VARCHAR(50) NOT NULL,
+        dataUso VARCHAR(20) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'reservado',
+        horaSaida VARCHAR(20),
+        kmInicial DECIMAL(10, 2),
+        horimetroInicial DECIMAL(10, 2),
+        limpezaSaida VARCHAR(50),
+        tanqueSaida VARCHAR(50) DEFAULT 'cheio',
+        fotosSaida TEXT,
+        observacoesSaida TEXT,
+        operadorSaida VARCHAR(100),
+        horaChegada VARCHAR(20),
+        kmFinal DECIMAL(10, 2),
+        horimetroFinal DECIMAL(10, 2),
+        kmRodado DECIMAL(10, 2) DEFAULT 0.00,
+        horasUtilizadas DECIMAL(10, 2) DEFAULT 0.00,
+        limpezaChegada VARCHAR(50),
+        tanqueChegada VARCHAR(50) DEFAULT 'cheio',
+        tanqueCheioDevolvido TINYINT(1) DEFAULT 1,
+        comprovanteAbastecimentoUrl TEXT,
+        avarias TEXT,
+        fotosChegada TEXT,
+        observacoesChegada TEXT,
+        operadorChegada VARCHAR(100),
+        fechadoEm VARCHAR(50),
+        fechadoPor VARCHAR(100),
+        canceladoEm VARCHAR(50),
+        canceladoPor VARCHAR(100),
+        motivoCancelamento TEXT,
+        createdAt VARCHAR(50) NOT NULL,
+        INDEX idx_utv_usos_data (dataUso),
+        INDEX idx_utv_usos_cotista (cotistaId),
+        INDEX idx_utv_usos_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS UtvManutencoes (
+        id VARCHAR(50) PRIMARY KEY,
+        veiculoId VARCHAR(50) NOT NULL,
+        data VARCHAR(20) NOT NULL,
+        descricao TEXT NOT NULL,
+        valorTotal DECIMAL(10, 2) NOT NULL,
+        criterioRateio VARCHAR(20) DEFAULT 'horas',
+        detalhesRateio TEXT,
+        registradoPor VARCHAR(100),
+        createdAt VARCHAR(50) NOT NULL,
+        INDEX idx_utv_manut_data (data)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ UTV tables ready.");
+
     connection.release();
     isInitialized = true;
     console.log("VPS Database tables validated/initialized successfully.");
@@ -1256,6 +1429,19 @@ export async function pullDatabase(forceFresh = false) {
       }
     }
     const fin = finMap.get(c.id) || { totalCnt: 0, openCnt: 0, overdueCnt: 0 };
+    let contratoValoresParsed = undefined;
+    if (c.contratoValores) {
+      try {
+        contratoValoresParsed = typeof c.contratoValores === 'string' ? JSON.parse(c.contratoValores) : c.contratoValores;
+      } catch (e) {}
+    }
+    let contratosParsed = undefined;
+    if (c.contratos) {
+      try {
+        contratosParsed = typeof c.contratos === 'string' ? JSON.parse(c.contratos) : c.contratos;
+      } catch (e) {}
+    }
+
     return {
       ...c,
       status: c.status || 'ativo',
@@ -1266,6 +1452,8 @@ export async function pullDatabase(forceFresh = false) {
       statusFinanceiro: fin.overdueCnt > 0 ? 'inadimplente' : (fin.openCnt > 0 ? 'pendente' : 'em_dia'),
       observacoesFinanceiras: c.observacoesFinanceiras || '',
       acessorios: c.acessorios ? (typeof c.acessorios === 'string' ? JSON.parse(c.acessorios) : c.acessorios) : undefined,
+      contratoValores: contratoValoresParsed,
+      contratos: contratosParsed,
     };
   });
 
@@ -1394,11 +1582,32 @@ export async function upsertClient(client: any) {
     ? (typeof client.acessorios === 'string' ? client.acessorios : JSON.stringify(client.acessorios))
     : null;
 
+  const contratoValoresJson = client.contratoValores
+    ? (typeof client.contratoValores === 'string' ? client.contratoValores : JSON.stringify(client.contratoValores))
+    : null;
+
+  const contratosJson = client.contratos
+    ? (typeof client.contratos === 'string' ? client.contratos : JSON.stringify(client.contratos))
+    : null;
+
   const query = `
     INSERT INTO Clientes (
       id, nome, embarcacaoId, cota, telefone, email, cpf, dataNascimento, dataCadastro,
-      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId, cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao, status, acessorios
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras, plano, asaasCustomerId, cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao, status, acessorios,
+      nacionalidade, statusContrato, tipoContrato, contratoDataEmissao, contratoDataAssinatura,
+      contratoArquivoUrl, contratoArquivoNome, contratoArquivoTamanho, contratoObservacoes,
+      contratoAquisicaoStatus, contratoAquisicaoArquivoUrl, contratoAquisicaoArquivoNome, contratoAquisicaoArquivoTamanho, contratoAquisicaoDataAssinatura, contratoAquisicaoArquivoKey, contratoAquisicaoArquivoStorage,
+      contratoAdmStatus, contratoAdmArquivoUrl, contratoAdmArquivoNome, contratoAdmArquivoTamanho, contratoAdmDataAssinatura, contratoAdmArquivoKey, contratoAdmArquivoStorage,
+      contratoValores, contratos
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?,
+      ?, ?
+    )
     ON DUPLICATE KEY UPDATE
       nome = VALUES(nome),
       embarcacaoId = VALUES(embarcacaoId),
@@ -1429,7 +1638,32 @@ export async function upsertClient(client: any) {
       orgaoEmissorHabilitacao = VALUES(orgaoEmissorHabilitacao),
       categoriaHabilitacao = VALUES(categoriaHabilitacao),
       status = VALUES(status),
-      acessorios = VALUES(acessorios)
+      acessorios = VALUES(acessorios),
+      nacionalidade = VALUES(nacionalidade),
+      statusContrato = VALUES(statusContrato),
+      tipoContrato = VALUES(tipoContrato),
+      contratoDataEmissao = VALUES(contratoDataEmissao),
+      contratoDataAssinatura = VALUES(contratoDataAssinatura),
+      contratoArquivoUrl = VALUES(contratoArquivoUrl),
+      contratoArquivoNome = VALUES(contratoArquivoNome),
+      contratoArquivoTamanho = VALUES(contratoArquivoTamanho),
+      contratoObservacoes = VALUES(contratoObservacoes),
+      contratoAquisicaoStatus = VALUES(contratoAquisicaoStatus),
+      contratoAquisicaoArquivoUrl = VALUES(contratoAquisicaoArquivoUrl),
+      contratoAquisicaoArquivoNome = VALUES(contratoAquisicaoArquivoNome),
+      contratoAquisicaoArquivoTamanho = VALUES(contratoAquisicaoArquivoTamanho),
+      contratoAquisicaoDataAssinatura = VALUES(contratoAquisicaoDataAssinatura),
+      contratoAquisicaoArquivoKey = VALUES(contratoAquisicaoArquivoKey),
+      contratoAquisicaoArquivoStorage = VALUES(contratoAquisicaoArquivoStorage),
+      contratoAdmStatus = VALUES(contratoAdmStatus),
+      contratoAdmArquivoUrl = VALUES(contratoAdmArquivoUrl),
+      contratoAdmArquivoNome = VALUES(contratoAdmArquivoNome),
+      contratoAdmArquivoTamanho = VALUES(contratoAdmArquivoTamanho),
+      contratoAdmDataAssinatura = VALUES(contratoAdmDataAssinatura),
+      contratoAdmArquivoKey = VALUES(contratoAdmArquivoKey),
+      contratoAdmArquivoStorage = VALUES(contratoAdmArquivoStorage),
+      contratoValores = VALUES(contratoValores),
+      contratos = VALUES(contratos)
   `;
 
   await currentPool.query(query, [
@@ -1464,7 +1698,32 @@ export async function upsertClient(client: any) {
     client.orgaoEmissorHabilitacao || null,
     client.categoriaHabilitacao || null,
     client.status || 'ativo',
-    acessoriosJson
+    acessoriosJson,
+    client.nacionalidade || null,
+    client.statusContrato || 'sem_contrato',
+    client.tipoContrato || 'aquisicao',
+    client.contratoDataEmissao || null,
+    client.contratoDataAssinatura || null,
+    client.contratoArquivoUrl || null,
+    client.contratoArquivoNome || null,
+    client.contratoArquivoTamanho ? Number(client.contratoArquivoTamanho) : null,
+    client.contratoObservacoes || null,
+    client.contratoAquisicaoStatus || null,
+    client.contratoAquisicaoArquivoUrl || null,
+    client.contratoAquisicaoArquivoNome || null,
+    client.contratoAquisicaoArquivoTamanho ? Number(client.contratoAquisicaoArquivoTamanho) : null,
+    client.contratoAquisicaoDataAssinatura || null,
+    client.contratoAquisicaoArquivoKey || null,
+    client.contratoAquisicaoArquivoStorage || null,
+    client.contratoAdmStatus || null,
+    client.contratoAdmArquivoUrl || null,
+    client.contratoAdmArquivoNome || null,
+    client.contratoAdmArquivoTamanho ? Number(client.contratoAdmArquivoTamanho) : null,
+    client.contratoAdmDataAssinatura || null,
+    client.contratoAdmArquivoKey || null,
+    client.contratoAdmArquivoStorage || null,
+    contratoValoresJson,
+    contratosJson
   ]);
 
   if (client.empresas && Array.isArray(client.empresas)) {
@@ -1631,8 +1890,9 @@ export async function upsertReservation(reserva: any) {
       previsaoSaida, previsaoChegada, statusMarina, horaDescida, fotosChecklistDescida, operadorDescida, operadorSaida, operadorChegada, destino, pessoasABordo, confirmacaoEnviada, litrosAbastecidos, horaSubida, operadorSubida, fotosChecklistSubida,
       acessoriosSolicitados,
       abastecimentoLitros, abastecimentoStatusCobranca, abastecimentoFormaPagamento, abastecimentoValorTotal, abastecimentoComprovanteUrl, abastecimentoOperador,
-      tipoReserva, contestadaPor, contestadaEm
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      tipoReserva, contestadaPor, contestadaEm,
+      origem, nomeAvulso, telefoneAvulso, modeloAvulso, tipoAvulso, posicaoFila, combustivelInicial, litrosAbastecerPrevio, marinheiroPiloto, observacoesDescida
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       embarcacaoId = VALUES(embarcacaoId),
       clienteId = VALUES(clienteId),
@@ -1672,7 +1932,17 @@ export async function upsertReservation(reserva: any) {
       abastecimentoOperador = VALUES(abastecimentoOperador),
       tipoReserva = VALUES(tipoReserva),
       contestadaPor = VALUES(contestadaPor),
-      contestadaEm = VALUES(contestadaEm)
+      contestadaEm = VALUES(contestadaEm),
+      origem = VALUES(origem),
+      nomeAvulso = VALUES(nomeAvulso),
+      telefoneAvulso = VALUES(telefoneAvulso),
+      modeloAvulso = VALUES(modeloAvulso),
+      tipoAvulso = VALUES(tipoAvulso),
+      posicaoFila = VALUES(posicaoFila),
+      combustivelInicial = VALUES(combustivelInicial),
+      litrosAbastecerPrevio = VALUES(litrosAbastecerPrevio),
+      marinheiroPiloto = VALUES(marinheiroPiloto),
+      observacoesDescida = VALUES(observacoesDescida)
   `;
 
   const values = [
@@ -1716,7 +1986,17 @@ export async function upsertReservation(reserva: any) {
     reserva.abastecimentoOperador || reserva.operadorChegada || null,
     reserva.tipoReserva || 'garantida',
     reserva.contestadaPor || null,
-    reserva.contestadaEm || null
+    reserva.contestadaEm || null,
+    reserva.origem || 'cota',
+    reserva.nomeAvulso || null,
+    reserva.telefoneAvulso || null,
+    reserva.modeloAvulso || null,
+    reserva.tipoAvulso || null,
+    reserva.posicaoFila || 0,
+    reserva.combustivelInicial || null,
+    reserva.litrosAbastecerPrevio || null,
+    reserva.marinheiroPiloto || null,
+    reserva.observacoesDescida || null
   ];
 
   await currentPool.query(query, values);
@@ -1769,12 +2049,30 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
     // 2. Sync clients
     for (const client of payload.clients) {
       const embarcacoesJson = client.embarcacoes ? JSON.stringify(client.embarcacoes) : null;
+      const acessoriosJson = client.acessorios ? (typeof client.acessorios === 'string' ? client.acessorios : JSON.stringify(client.acessorios)) : null;
+      const contratoValoresJson = client.contratoValores ? (typeof client.contratoValores === 'string' ? client.contratoValores : JSON.stringify(client.contratoValores)) : null;
+      const contratosJson = client.contratos ? (typeof client.contratos === 'string' ? client.contratos : JSON.stringify(client.contratos)) : null;
+
       await connection.query(`
         INSERT INTO Clientes (
           id, nome, embarcacaoId, cota, telefone, email, cpf, dataNascimento, dataCadastro, 
           cep, logradouro, numeroEnd, complemento, bairro, cidade, estado, embarcacoes, statusFinanceiro, observacoesFinanceiras,
-          cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          cnh_cha, profissao, estadoCivil, rg, orgaoEmissor, numeroHabilitacao, validadeHabilitacao, orgaoEmissorHabilitacao, categoriaHabilitacao,
+          acessorios, nacionalidade, statusContrato, tipoContrato, contratoDataEmissao, contratoDataAssinatura,
+          contratoArquivoUrl, contratoArquivoNome, contratoArquivoTamanho, contratoObservacoes,
+          contratoAquisicaoStatus, contratoAquisicaoArquivoUrl, contratoAquisicaoArquivoNome, contratoAquisicaoArquivoTamanho, contratoAquisicaoDataAssinatura, contratoAquisicaoArquivoKey, contratoAquisicaoArquivoStorage,
+          contratoAdmStatus, contratoAdmArquivoUrl, contratoAdmArquivoNome, contratoAdmArquivoTamanho, contratoAdmDataAssinatura, contratoAdmArquivoKey, contratoAdmArquivoStorage,
+          contratoValores, contratos
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?,
+          ?, ?
+        )
         ON DUPLICATE KEY UPDATE
           nome = VALUES(nome), embarcacaoId = VALUES(embarcacaoId), cota = VALUES(cota),
           telefone = VALUES(telefone), email = VALUES(email), cpf = VALUES(cpf), dataNascimento = VALUES(dataNascimento),
@@ -1785,7 +2083,33 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
           cnh_cha = VALUES(cnh_cha), profissao = VALUES(profissao), estadoCivil = VALUES(estadoCivil),
           rg = VALUES(rg), orgaoEmissor = VALUES(orgaoEmissor), numeroHabilitacao = VALUES(numeroHabilitacao),
           validadeHabilitacao = VALUES(validadeHabilitacao), orgaoEmissorHabilitacao = VALUES(orgaoEmissorHabilitacao),
-          categoriaHabilitacao = VALUES(categoriaHabilitacao)
+          categoriaHabilitacao = VALUES(categoriaHabilitacao),
+          acessorios = VALUES(acessorios),
+          nacionalidade = VALUES(nacionalidade),
+          statusContrato = VALUES(statusContrato),
+          tipoContrato = VALUES(tipoContrato),
+          contratoDataEmissao = VALUES(contratoDataEmissao),
+          contratoDataAssinatura = VALUES(contratoDataAssinatura),
+          contratoArquivoUrl = VALUES(contratoArquivoUrl),
+          contratoArquivoNome = VALUES(contratoArquivoNome),
+          contratoArquivoTamanho = VALUES(contratoArquivoTamanho),
+          contratoObservacoes = VALUES(contratoObservacoes),
+          contratoAquisicaoStatus = VALUES(contratoAquisicaoStatus),
+          contratoAquisicaoArquivoUrl = VALUES(contratoAquisicaoArquivoUrl),
+          contratoAquisicaoArquivoNome = VALUES(contratoAquisicaoArquivoNome),
+          contratoAquisicaoArquivoTamanho = VALUES(contratoAquisicaoArquivoTamanho),
+          contratoAquisicaoDataAssinatura = VALUES(contratoAquisicaoDataAssinatura),
+          contratoAquisicaoArquivoKey = VALUES(contratoAquisicaoArquivoKey),
+          contratoAquisicaoArquivoStorage = VALUES(contratoAquisicaoArquivoStorage),
+          contratoAdmStatus = VALUES(contratoAdmStatus),
+          contratoAdmArquivoUrl = VALUES(contratoAdmArquivoUrl),
+          contratoAdmArquivoNome = VALUES(contratoAdmArquivoNome),
+          contratoAdmArquivoTamanho = VALUES(contratoAdmArquivoTamanho),
+          contratoAdmDataAssinatura = VALUES(contratoAdmDataAssinatura),
+          contratoAdmArquivoKey = VALUES(contratoAdmArquivoKey),
+          contratoAdmArquivoStorage = VALUES(contratoAdmArquivoStorage),
+          contratoValores = VALUES(contratoValores),
+          contratos = VALUES(contratos)
       `, [
         client.id, client.nome, client.embarcacaoId || null, client.cota || null,
         client.telefone || null, client.email || null, client.cpf || null, client.dataNascimento || null,
@@ -1796,7 +2120,33 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
         client.cnh_cha || null, client.profissao || null, client.estadoCivil || null,
         client.rg || null, client.orgaoEmissor || null, client.numeroHabilitacao || null,
         client.validadeHabilitacao || null, client.orgaoEmissorHabilitacao || null,
-        client.categoriaHabilitacao || null
+        client.categoriaHabilitacao || null,
+        acessoriosJson,
+        client.nacionalidade || null,
+        client.statusContrato || 'sem_contrato',
+        client.tipoContrato || 'aquisicao',
+        client.contratoDataEmissao || null,
+        client.contratoDataAssinatura || null,
+        client.contratoArquivoUrl || null,
+        client.contratoArquivoNome || null,
+        client.contratoArquivoTamanho ? Number(client.contratoArquivoTamanho) : null,
+        client.contratoObservacoes || null,
+        client.contratoAquisicaoStatus || null,
+        client.contratoAquisicaoArquivoUrl || null,
+        client.contratoAquisicaoArquivoNome || null,
+        client.contratoAquisicaoArquivoTamanho ? Number(client.contratoAquisicaoArquivoTamanho) : null,
+        client.contratoAquisicaoDataAssinatura || null,
+        client.contratoAquisicaoArquivoKey || null,
+        client.contratoAquisicaoArquivoStorage || null,
+        client.contratoAdmStatus || null,
+        client.contratoAdmArquivoUrl || null,
+        client.contratoAdmArquivoNome || null,
+        client.contratoAdmArquivoTamanho ? Number(client.contratoAdmArquivoTamanho) : null,
+        client.contratoAdmDataAssinatura || null,
+        client.contratoAdmArquivoKey || null,
+        client.contratoAdmArquivoStorage || null,
+        contratoValoresJson,
+        contratosJson
       ]);
     }
 
@@ -3524,4 +3874,537 @@ export async function restoreFuelAtomicDb(litros: number, motivo: string, operad
   } finally {
     connection.release();
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// ──────────── MÓDULO UTV (VEÍCULO DE TRILHA OFF-ROAD) ────────
+// ─────────────────────────────────────────────────────────────
+
+// ── Veículos UTV ──
+
+export async function getUtvVeiculos(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  const [rows] = await currentPool.query("SELECT * FROM UtvVeiculos ORDER BY nome ASC");
+  return (rows as any[]).map(v => ({
+    ...v,
+    kmAtual: Number(v.kmAtual) || 0,
+    horimetroAtual: Number(v.horimetroAtual) || 0,
+  }));
+}
+
+export async function upsertUtvVeiculo(v: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const id = v.id || `utv_v_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const agora = new Date().toISOString();
+
+  await currentPool.query(
+    `INSERT INTO UtvVeiculos (id, nome, modelo, ano, placa_chassi, kmAtual, horimetroAtual, status, imagemUrl, observacoes, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       nome = VALUES(nome),
+       modelo = VALUES(modelo),
+       ano = VALUES(ano),
+       placa_chassi = VALUES(placa_chassi),
+       kmAtual = VALUES(kmAtual),
+       horimetroAtual = VALUES(horimetroAtual),
+       status = VALUES(status),
+       imagemUrl = VALUES(imagemUrl),
+       observacoes = VALUES(observacoes),
+       updatedAt = VALUES(updatedAt)`,
+    [
+      id,
+      v.nome || 'UTV Can-Am Maverick',
+      v.modelo || null,
+      v.ano ? Number(v.ano) : null,
+      v.placa_chassi || null,
+      Number(v.kmAtual) || 0,
+      Number(v.horimetroAtual) || 0,
+      v.status || 'disponivel',
+      v.imagemUrl || null,
+      v.observacoes || null,
+      v.createdAt || agora,
+      agora
+    ]
+  );
+}
+
+export async function deleteUtvVeiculo(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM UtvVeiculos WHERE id = ?", [id]);
+}
+
+// ── Cotistas UTV ──
+
+export async function getUtvCotistas(ano?: number): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  const anoFiltro = ano || new Date().getFullYear();
+  const [rows] = await currentPool.query(
+    "SELECT * FROM UtvCotistas WHERE anoExercicio = ? ORDER BY cotaNumero ASC, nome ASC",
+    [anoFiltro]
+  );
+  return (rows as any[]).map(c => ({
+    ...c,
+    limiteDiasAnual: Number(c.limiteDiasAnual) || 30,
+    anoExercicio: Number(c.anoExercicio) || anoFiltro,
+  }));
+}
+
+export async function upsertUtvCotista(c: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const id = c.id || `utv_c_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const ano = c.anoExercicio ? Number(c.anoExercicio) : new Date().getFullYear();
+
+  await currentPool.query(
+    `INSERT INTO UtvCotistas (id, clienteId, nome, cotaNumero, telefone, email, cpf, limiteDiasAnual, anoExercicio, status, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       clienteId = VALUES(clienteId),
+       nome = VALUES(nome),
+       cotaNumero = VALUES(cotaNumero),
+       telefone = VALUES(telefone),
+       email = VALUES(email),
+       cpf = VALUES(cpf),
+       limiteDiasAnual = VALUES(limiteDiasAnual),
+       anoExercicio = VALUES(anoExercicio),
+       status = VALUES(status)`,
+    [
+      id,
+      c.clienteId || null,
+      c.nome,
+      c.cotaNumero || 'Cota 01',
+      c.telefone || null,
+      c.email || null,
+      c.cpf || null,
+      c.limiteDiasAnual !== undefined ? Number(c.limiteDiasAnual) : 30,
+      ano,
+      c.status || 'ativo',
+      c.createdAt || new Date().toISOString()
+    ]
+  );
+}
+
+export async function deleteUtvCotista(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM UtvCotistas WHERE id = ?", [id]);
+}
+
+// ── Usos / Checklists / Reservas UTV ──
+
+export async function getUtvUsos(filters: {
+  veiculoId?: string;
+  cotistaId?: string;
+  dataUso?: string;
+  status?: string;
+  ano?: number;
+} = {}): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  let query = `
+    SELECT u.*,
+           c.nome AS cotistaNome, c.cotaNumero AS cotistaCota, c.telefone AS cotistaTelefone,
+           v.nome AS veiculoNome
+    FROM UtvUsos u
+    LEFT JOIN UtvCotistas c ON u.cotistaId = c.id
+    LEFT JOIN UtvVeiculos v ON u.veiculoId = v.id
+    WHERE 1=1
+  `;
+  const params: any[] = [];
+
+  if (filters.veiculoId && filters.veiculoId !== 'todos') {
+    query += " AND u.veiculoId = ?";
+    params.push(filters.veiculoId);
+  }
+  if (filters.cotistaId && filters.cotistaId !== 'todos') {
+    query += " AND u.cotistaId = ?";
+    params.push(filters.cotistaId);
+  }
+  if (filters.dataUso) {
+    query += " AND u.dataUso = ?";
+    params.push(filters.dataUso);
+  }
+  if (filters.status && filters.status !== 'todos') {
+    query += " AND u.status = ?";
+    params.push(filters.status);
+  }
+  if (filters.ano) {
+    query += " AND u.dataUso LIKE ?";
+    params.push(`${filters.ano}-%`);
+  }
+
+  query += " ORDER BY u.dataUso DESC, u.createdAt DESC";
+
+  const [rows] = await currentPool.query(query, params);
+  return (rows as any[]).map(u => ({
+    ...u,
+    kmInicial: u.kmInicial !== null ? Number(u.kmInicial) : null,
+    horimetroInicial: u.horimetroInicial !== null ? Number(u.horimetroInicial) : null,
+    kmFinal: u.kmFinal !== null ? Number(u.kmFinal) : null,
+    horimetroFinal: u.horimetroFinal !== null ? Number(u.horimetroFinal) : null,
+    kmRodado: Number(u.kmRodado) || 0,
+    horasUtilizadas: Number(u.horasUtilizadas) || 0,
+    tanqueCheioDevolvido: u.tanqueCheioDevolvido === 1 || u.tanqueCheioDevolvido === true,
+    fotosSaida: u.fotosSaida ? (typeof u.fotosSaida === 'string' ? JSON.parse(u.fotosSaida) : u.fotosSaida) : [],
+    fotosChegada: u.fotosChegada ? (typeof u.fotosChegada === 'string' ? JSON.parse(u.fotosChegada) : u.fotosChegada) : [],
+  }));
+}
+
+export async function getUtvUsoById(id: string): Promise<any | null> {
+  const currentPool = getDbPool();
+  if (!currentPool) return null;
+
+  const [rows] = await currentPool.query(
+    `SELECT u.*,
+            c.nome AS cotistaNome, c.cotaNumero AS cotistaCota, c.telefone AS cotistaTelefone,
+            v.nome AS veiculoNome
+     FROM UtvUsos u
+     LEFT JOIN UtvCotistas c ON u.cotistaId = c.id
+     LEFT JOIN UtvVeiculos v ON u.veiculoId = v.id
+     WHERE u.id = ?`,
+    [id]
+  );
+  const arr = rows as any[];
+  if (arr.length === 0) return null;
+
+  const u = arr[0];
+  return {
+    ...u,
+    kmInicial: u.kmInicial !== null ? Number(u.kmInicial) : null,
+    horimetroInicial: u.horimetroInicial !== null ? Number(u.horimetroInicial) : null,
+    kmFinal: u.kmFinal !== null ? Number(u.kmFinal) : null,
+    horimetroFinal: u.horimetroFinal !== null ? Number(u.horimetroFinal) : null,
+    kmRodado: Number(u.kmRodado) || 0,
+    horasUtilizadas: Number(u.horasUtilizadas) || 0,
+    tanqueCheioDevolvido: u.tanqueCheioDevolvido === 1 || u.tanqueCheioDevolvido === true,
+    fotosSaida: u.fotosSaida ? (typeof u.fotosSaida === 'string' ? JSON.parse(u.fotosSaida) : u.fotosSaida) : [],
+    fotosChegada: u.fotosChegada ? (typeof u.fotosChegada === 'string' ? JSON.parse(u.fotosChegada) : u.fotosChegada) : [],
+  };
+}
+
+export async function upsertUtvUso(u: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const id = u.id || `utv_uso_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const agora = new Date().toISOString();
+
+  // Calcular deltas se houver valores finais e iniciais
+  let kmRodado = Number(u.kmRodado) || 0;
+  if (u.kmFinal !== undefined && u.kmInicial !== undefined && u.kmFinal !== null && u.kmInicial !== null) {
+    kmRodado = Math.max(0, Math.round((Number(u.kmFinal) - Number(u.kmInicial)) * 100) / 100);
+  }
+
+  let horasUtilizadas = Number(u.horasUtilizadas) || 0;
+  if (u.horimetroFinal !== undefined && u.horimetroInicial !== undefined && u.horimetroFinal !== null && u.horimetroInicial !== null) {
+    horasUtilizadas = Math.max(0, Math.round((Number(u.horimetroFinal) - Number(u.horimetroInicial)) * 100) / 100);
+  }
+
+  const fotosSaidaStr = Array.isArray(u.fotosSaida) ? JSON.stringify(u.fotosSaida) : (u.fotosSaida || null);
+  const fotosChegadaStr = Array.isArray(u.fotosChegada) ? JSON.stringify(u.fotosChegada) : (u.fotosChegada || null);
+
+  await currentPool.query(
+    `INSERT INTO UtvUsos (
+      id, veiculoId, cotistaId, dataUso, status,
+      horaSaida, kmInicial, horimetroInicial, limpezaSaida, tanqueSaida, fotosSaida, observacoesSaida, operadorSaida,
+      horaChegada, kmFinal, horimetroFinal, kmRodado, horasUtilizadas, limpezaChegada, tanqueChegada, tanqueCheioDevolvido,
+      comprovanteAbastecimentoUrl, avarias, fotosChegada, observacoesChegada, operadorChegada,
+      fechadoEm, fechadoPor, canceladoEm, canceladoPor, motivoCancelamento, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      veiculoId = VALUES(veiculoId),
+      cotistaId = VALUES(cotistaId),
+      dataUso = VALUES(dataUso),
+      status = VALUES(status),
+      horaSaida = VALUES(horaSaida),
+      kmInicial = VALUES(kmInicial),
+      horimetroInicial = VALUES(horimetroInicial),
+      limpezaSaida = VALUES(limpezaSaida),
+      tanqueSaida = VALUES(tanqueSaida),
+      fotosSaida = VALUES(fotosSaida),
+      observacoesSaida = VALUES(observacoesSaida),
+      operadorSaida = VALUES(operadorSaida),
+      horaChegada = VALUES(horaChegada),
+      kmFinal = VALUES(kmFinal),
+      horimetroFinal = VALUES(horimetroFinal),
+      kmRodado = VALUES(kmRodado),
+      horasUtilizadas = VALUES(horasUtilizadas),
+      limpezaChegada = VALUES(limpezaChegada),
+      tanqueChegada = VALUES(tanqueChegada),
+      tanqueCheioDevolvido = VALUES(tanqueCheioDevolvido),
+      comprovanteAbastecimentoUrl = VALUES(comprovanteAbastecimentoUrl),
+      avarias = VALUES(avarias),
+      fotosChegada = VALUES(fotosChegada),
+      observacoesChegada = VALUES(observacoesChegada),
+      operadorChegada = VALUES(operadorChegada),
+      fechadoEm = VALUES(fechadoEm),
+      fechadoPor = VALUES(fechadoPor),
+      canceladoEm = VALUES(canceladoEm),
+      canceladoPor = VALUES(canceladoPor),
+      motivoCancelamento = VALUES(motivoCancelamento)`,
+    [
+      id,
+      u.veiculoId,
+      u.cotistaId,
+      u.dataUso,
+      u.status || 'reservado',
+      u.horaSaida || null,
+      u.kmInicial !== undefined && u.kmInicial !== null ? Number(u.kmInicial) : null,
+      u.horimetroInicial !== undefined && u.horimetroInicial !== null ? Number(u.horimetroInicial) : null,
+      u.limpezaSaida || null,
+      u.tanqueSaida || 'cheio',
+      fotosSaidaStr,
+      u.observacoesSaida || null,
+      u.operadorSaida || null,
+      u.horaChegada || null,
+      u.kmFinal !== undefined && u.kmFinal !== null ? Number(u.kmFinal) : null,
+      u.horimetroFinal !== undefined && u.horimetroFinal !== null ? Number(u.horimetroFinal) : null,
+      kmRodado,
+      horasUtilizadas,
+      u.limpezaChegada || null,
+      u.tanqueChegada || 'cheio',
+      u.tanqueCheioDevolvido !== undefined ? (u.tanqueCheioDevolvido ? 1 : 0) : 1,
+      u.comprovanteAbastecimentoUrl || null,
+      u.avarias || null,
+      fotosChegadaStr,
+      u.observacoesChegada || null,
+      u.operadorChegada || null,
+      u.fechadoEm || null,
+      u.fechadoPor || null,
+      u.canceladoEm || null,
+      u.canceladoPor || null,
+      u.motivoCancelamento || null,
+      u.createdAt || agora
+    ]
+  );
+
+  // Se o uso foi finalizado como "realizado", atualiza o horímetro e km atuais do veículo
+  if (u.status === 'realizado' && u.veiculoId) {
+    if (u.kmFinal || u.horimetroFinal) {
+      await currentPool.query(
+        `UPDATE UtvVeiculos
+         SET kmAtual = GREATEST(kmAtual, ?),
+             horimetroAtual = GREATEST(horimetroAtual, ?),
+             status = 'disponivel',
+             updatedAt = ?
+         WHERE id = ?`,
+        [Number(u.kmFinal) || 0, Number(u.horimetroFinal) || 0, agora, u.veiculoId]
+      );
+    }
+  } else if (u.status === 'em_uso' && u.veiculoId) {
+    await currentPool.query(
+      `UPDATE UtvVeiculos SET status = 'em_uso', updatedAt = ? WHERE id = ?`,
+      [agora, u.veiculoId]
+    );
+  }
+}
+
+/**
+ * Exclusão de uso do UTV.
+ * REGRA RIGOROSA DE INTEGRIDADE (utv.md):
+ * "É terminantemente proibido apagar um uso já realizado.
+ * Qualquer correção deve ser feita de forma a preservar o histórico do sistema."
+ */
+export async function deleteUtvUso(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const [rows] = await currentPool.query("SELECT status FROM UtvUsos WHERE id = ?", [id]);
+  const arr = rows as any[];
+  if (arr.length === 0) return;
+
+  const status = arr[0].status;
+  if (status === 'realizado') {
+    throw new Error("É terminantemente proibido apagar um uso já realizado. Regra de integridade do UTV.");
+  }
+
+  await currentPool.query("DELETE FROM UtvUsos WHERE id = ?", [id]);
+}
+
+// ── Controle Anual (Franquia de 30 Dias & Métricas Acumuladas) ──
+
+export async function getUtvControleAnual(ano?: number): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  const anoExercicio = ano || new Date().getFullYear();
+
+  // Buscar todos os cotistas do ano
+  const [cotistasRows] = await currentPool.query(
+    "SELECT * FROM UtvCotistas WHERE anoExercicio = ? ORDER BY cotaNumero ASC, nome ASC",
+    [anoExercicio]
+  );
+  const cotistas = cotistasRows as any[];
+
+  // Buscar todos os usos do ano
+  const [usosRows] = await currentPool.query(
+    "SELECT * FROM UtvUsos WHERE dataUso LIKE ?",
+    [`${anoExercicio}-%`]
+  );
+  const usos = usosRows as any[];
+
+  return cotistas.map(cot => {
+    const cotistaUsos = usos.filter(u => u.cotistaId === cot.id);
+
+    // Contagem de dias conforme utv.md:
+    // Reservas ativas bloqueiam saldo provisoriamente ('reservado', 'em_uso')
+    const diasReservados = cotistaUsos.filter(u => u.status === 'reservado' || u.status === 'em_uso').length;
+    // Realizado efetiva baixa ('realizado')
+    const diasRealizados = cotistaUsos.filter(u => u.status === 'realizado').length;
+    // Cancelados não debitam dia da cota anual
+    const limiteDias = Number(cot.limiteDiasAnual) || 30;
+    const saldoDisponivel = Math.max(0, limiteDias - (diasReservados + diasRealizados));
+
+    // Acúmulo perpétuo de KM e Horas
+    let kmTotalAcumulado = 0;
+    let horasMotorAcumuladas = 0;
+    cotistaUsos.forEach(u => {
+      if (u.status === 'realizado') {
+        kmTotalAcumulado += Number(u.kmRodado) || 0;
+        horasMotorAcumuladas += Number(u.horasUtilizadas) || 0;
+      }
+    });
+
+    return {
+      cotistaId: cot.id,
+      clienteId: cot.clienteId,
+      nome: cot.nome,
+      cotaNumero: cot.cotaNumero,
+      telefone: cot.telefone,
+      limiteDiasAnual: limiteDias,
+      diasReservados,
+      diasRealizados,
+      saldoDisponivel,
+      kmTotalAcumulado: Math.round(kmTotalAcumulado * 100) / 100,
+      horasMotorAcumuladas: Math.round(horasMotorAcumuladas * 100) / 100,
+      anoExercicio
+    };
+  });
+}
+
+// ── Rateio de Manutenção UTV ──
+
+export async function getUtvManutencoes(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  const [rows] = await currentPool.query(
+    `SELECT m.*, v.nome AS veiculoNome
+     FROM UtvManutencoes m
+     LEFT JOIN UtvVeiculos v ON m.veiculoId = v.id
+     ORDER BY m.data DESC, m.createdAt DESC`
+  );
+  return (rows as any[]).map(m => ({
+    ...m,
+    valorTotal: Number(m.valorTotal) || 0,
+    detalhesRateio: m.detalhesRateio ? (typeof m.detalhesRateio === 'string' ? JSON.parse(m.detalhesRateio) : m.detalhesRateio) : []
+  }));
+}
+
+export async function upsertUtvManutencao(m: any): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const id = m.id || `utv_manut_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const detalhesStr = Array.isArray(m.detalhesRateio) ? JSON.stringify(m.detalhesRateio) : (m.detalhesRateio || null);
+
+  await currentPool.query(
+    `INSERT INTO UtvManutencoes (id, veiculoId, data, descricao, valorTotal, criterioRateio, detalhesRateio, registradoPor, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       veiculoId = VALUES(veiculoId),
+       data = VALUES(data),
+       descricao = VALUES(descricao),
+       valorTotal = VALUES(valorTotal),
+       criterioRateio = VALUES(criterioRateio),
+       detalhesRateio = VALUES(detalhesRateio),
+       registradoPor = VALUES(registradoPor)`,
+    [
+      id,
+      m.veiculoId,
+      m.data || new Date().toISOString().split('T')[0],
+      m.descricao,
+      Number(m.valorTotal) || 0,
+      m.criterioRateio || 'horas',
+      detalhesStr,
+      m.registradoPor || null,
+      m.createdAt || new Date().toISOString()
+    ]
+  );
+}
+
+export async function deleteUtvManutencao(id: string): Promise<void> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+  await currentPool.query("DELETE FROM UtvManutencoes WHERE id = ?", [id]);
+}
+
+/**
+ * Calcula o rateio proporcional de uma despesa de manutenção entre os cotistas
+ * Baseado no uso real acumulado (KM ou Horas Decimais)
+ */
+export async function calcularRateioUtv(params: {
+  veiculoId: string;
+  valorTotal: number;
+  criterioRateio: 'horas' | 'km';
+  ano?: number;
+}): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const anoExercicio = params.ano || new Date().getFullYear();
+  const controle = await getUtvControleAnual(anoExercicio);
+
+  const valorTotal = Number(params.valorTotal) || 0;
+  const criterio = params.criterioRateio || 'horas';
+
+  // Obter total geral de uso do critério escolhido
+  let totalUsoGeral = 0;
+  controle.forEach(c => {
+    const uso = criterio === 'km' ? c.kmTotalAcumulado : c.horasMotorAcumuladas;
+    totalUsoGeral += uso;
+  });
+
+  const totalCotistas = controle.length;
+
+  const detalhes = controle.map(cot => {
+    const usoIndividual = criterio === 'km' ? cot.kmTotalAcumulado : cot.horasMotorAcumuladas;
+    let percentual = 0;
+    let valorRateado = 0;
+
+    if (totalUsoGeral > 0) {
+      percentual = (usoIndividual / totalUsoGeral) * 100;
+      valorRateado = (valorTotal * percentual) / 100;
+    } else if (totalCotistas > 0) {
+      // Se ninguém rodou ainda, rateia igualmente
+      percentual = 100 / totalCotistas;
+      valorRateado = valorTotal / totalCotistas;
+    }
+
+    return {
+      cotistaId: cot.cotistaId,
+      cotistaNome: cot.nome,
+      cotaNumero: cot.cotaNumero,
+      usoAcumulado: Math.round(usoIndividual * 100) / 100,
+      percentual: Math.round(percentual * 100) / 100,
+      valorRateado: Math.round(valorRateado * 100) / 100
+    };
+  });
+
+  return {
+    veiculoId: params.veiculoId,
+    valorTotal,
+    criterioRateio: criterio,
+    totalUsoGeral: Math.round(totalUsoGeral * 100) / 100,
+    detalhes
+  };
 }

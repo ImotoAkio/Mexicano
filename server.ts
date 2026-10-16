@@ -38,6 +38,8 @@ import boletosRoutes from "./server-routes/boletos.routes";
 import feedbacksRoutes from "./server-routes/feedbacks.routes";
 import driveRoutes from "./server-routes/drive.routes";
 import configRoutes from "./server-routes/config.routes";
+import utvRoutes from "./server-routes/utv.routes";
+import marinaAgendamentosRoutes from "./server-routes/marina-agendamentos.routes";
 import {
   getDbPool, getDbStatus, initializeDatabase, pullDatabase,
   upsertClient, deleteClient, upsertBoat, deleteBoat,
@@ -112,6 +114,7 @@ app.use(helmet({
       connectSrc: ["'self'", "https://www.googleapis.com", "https://api.open-meteo.com", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "ws:", "wss:", "https://*.r2.cloudflarestorage.com", "https://*.r2.dev"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
       mediaSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+      frameSrc: ["'self'", "blob:", "data:", "https://*.r2.cloudflarestorage.com", "https://*.r2.dev", "https:", "http:"],
       upgradeInsecureRequests: null,
     }
   },
@@ -167,6 +170,10 @@ const checklistUploadsDir = path.join(uploadsDir, 'checklists');
 const comprovantesUploadsDir = path.join(uploadsDir, 'comprovantes');
 const driveUploadsDir = path.join(uploadsDir, 'drive');
 const boletosUploadsDir = path.join(uploadsDir, 'boletos');
+const contratosUploadsDir = path.join(uploadsDir, 'contratos');
+const contratosAquisicaoUploadsDir = path.join(contratosUploadsDir, 'aquisicao');
+const contratosGestaoUploadsDir = path.join(contratosUploadsDir, 'gestao');
+
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 if (!fs.existsSync(boatsUploadsDir)) fs.mkdirSync(boatsUploadsDir, { recursive: true });
 if (!fs.existsSync(clientsUploadsDir)) fs.mkdirSync(clientsUploadsDir, { recursive: true });
@@ -174,9 +181,18 @@ if (!fs.existsSync(checklistUploadsDir)) fs.mkdirSync(checklistUploadsDir, { rec
 if (!fs.existsSync(comprovantesUploadsDir)) fs.mkdirSync(comprovantesUploadsDir, { recursive: true });
 if (!fs.existsSync(driveUploadsDir)) fs.mkdirSync(driveUploadsDir, { recursive: true });
 if (!fs.existsSync(boletosUploadsDir)) fs.mkdirSync(boletosUploadsDir, { recursive: true });
+if (!fs.existsSync(contratosUploadsDir)) fs.mkdirSync(contratosUploadsDir, { recursive: true });
+if (!fs.existsSync(contratosAquisicaoUploadsDir)) fs.mkdirSync(contratosAquisicaoUploadsDir, { recursive: true });
+if (!fs.existsSync(contratosGestaoUploadsDir)) fs.mkdirSync(contratosGestaoUploadsDir, { recursive: true });
 
 app.use('/uploads', express.static(uploadsDir, {
   setHeaders: (res, path) => {
+    if (/\.pdf$/i.test(path)) {
+      // O visualizador nativo de PDF do navegador é bloqueado por CSP restritiva; PDFs não executam scripts da página.
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('Content-Disposition', 'inline');
+      return;
+    }
     // Bloqueia execução de scripts nos arquivos enviados pelo cliente (Prevenção de XSS)
     res.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline';");
     // Força download (attachment) de extensões perigosas que o navegador tentaria renderizar
@@ -198,6 +214,7 @@ app.use('/api/', apiLimiter);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/marina/caixa", marinaCaixaRoutes);
+app.use("/api/marina", marinaAgendamentosRoutes);
 app.use("/api/manutencoes", maintenanceRoutes);
 app.use("/api/chamados", chamadosRoutes);
 app.use("/api/tipos-manutencao", tiposManutencaoRoutes);
@@ -205,6 +222,7 @@ app.use("/api/tipos-manutencao", tiposManutencaoRoutes);
 app.use('/api/client/', clientRoutes);
 app.use('/api/financeiro', financeiroRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/webhook', webhookRoutes);
 app.use('/api/leads', publicLeadsRoutes);
 app.use("/api", whatsappRoutes);
 
@@ -218,6 +236,7 @@ app.use("/api/logs", logsRouter);
 app.use("/api/fuel", fuelRoutes);
 app.use("/api", funcionariosRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/utv", utvRoutes);
 
 
 

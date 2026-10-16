@@ -22,5 +22,7 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["src/**/*", "server.ts", "server-r2.ts", "server-routes/**/*", "types.ts", "vite.config.ts"],
+  "exclude": ["dist", "node_modules", "build"]
 }

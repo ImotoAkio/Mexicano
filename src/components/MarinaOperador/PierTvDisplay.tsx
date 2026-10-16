@@ -137,10 +137,14 @@ export default function PierTvDisplay() {
       }
     }
 
+    const vaga = boat?.vaga || reserva.embarcacaoVaga;
+    const boatNumber = vaga ? vaga.toString() : (boat?.numero?.toString().padStart(2, '0') || boat?.nome?.match(/\d+/)?.[0]?.padStart(2, '0') || (reserva.posicaoFila ? `#${reserva.posicaoFila}` : '--'));
+    const boatName = boat ? getBoatCode(boat) : (reserva.modeloAvulso || reserva.barcoNome || reserva.embarcacaoNome || 'Avulso');
+
     return {
       id: reserva.id,
-      boatName: boat ? getBoatCode(boat) : (reserva.barcoNome || 'S/N'),
-      boatNumber: boat?.numero?.toString().padStart(2, '0') || boat?.nome?.match(/\d+/)?.[0]?.padStart(2, '0') || '--',
+      boatName,
+      boatNumber,
       time: timeLabel,
       statusText,
       statusClass,

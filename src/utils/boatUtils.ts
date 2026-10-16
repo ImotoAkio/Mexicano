@@ -37,3 +37,73 @@ export function getBoatLabel(boat?: Partial<Embarcacao> | null): string {
   const spec = boat.modelo || (boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha');
   return `${code} (${spec})`;
 }
+
+/**
+ * Helper to check if a boat (and optional reservation/client) matches a search query.
+ * Correctly matches "m99", "99", "M03", "3", boat name, vaga, client name, etc.
+ */
+export function matchesBoatSearch(
+  query: string,
+  boat?: Partial<Embarcacao> | null | any,
+  client?: any,
+  reservation?: any
+): boolean {
+  if (!query) return true;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  // 1. Número limpo sem M (ex: "m99" -> "99", "m-99" -> "99", "99" -> "99")
+  const qCleanNoM = q.replace(/^m[\s\-_]*/i, '');
+  const isQNumeric = /^\d+$/.test(qCleanNoM);
+  const qNumInt = isQNumeric ? parseInt(qCleanNoM, 10) : null;
+  const qPad = isQNumeric ? `m${qCleanNoM.padStart(2, '0')}` : '';
+
+  // 2. Código oficial da embarcação (ex: M99)
+  const boatCode = getBoatCode(boat || reservation?.barcoNome || reservation?.embarcacaoId).toLowerCase();
+  if (boatCode && boatCode !== 'n/a' && boatCode !== 'm--') {
+    if (boatCode.includes(q)) return true;
+    if (qPad && boatCode.includes(qPad)) return true;
+    if (isQNumeric && boatCode.includes(qCleanNoM)) return true;
+  }
+
+  // 3. Número do barco
+  const rawNum = String(boat?.numero || '').trim().toLowerCase().replace(/^m/i, '');
+  const isBoatNumNumeric = /^\d+$/.test(rawNum);
+  const boatNumInt = isBoatNumNumeric ? parseInt(rawNum, 10) : null;
+
+  if (isQNumeric && isBoatNumNumeric && qNumInt !== null && boatNumInt !== null) {
+    if (qNumInt === boatNumInt) return true;
+  }
+  if (rawNum) {
+    if (rawNum.includes(q) || q.includes(rawNum)) return true;
+    if (qCleanNoM && rawNum.includes(qCleanNoM)) return true;
+    const boatCodeFormatted = `m${rawNum.padStart(2, '0')}`;
+    if (boatCodeFormatted.includes(q) || q.includes(boatCodeFormatted)) return true;
+  }
+
+  // 4. Nome da embarcação / modelo / id
+  const boatName = String(boat?.nome || reservation?.barcoNome || reservation?.embarcacaoNome || '').toLowerCase();
+  if (boatName.includes(q)) return true;
+  if (isQNumeric && boatName.includes(qCleanNoM)) return true;
+
+  const boatModel = String(boat?.modelo || reservation?.modeloAvulso || '').toLowerCase();
+  if (boatModel.includes(q)) return true;
+
+  const boatId = String(boat?.id || reservation?.embarcacaoId || '').toLowerCase();
+  if (boatId.includes(q) || (isQNumeric && boatId.includes(qCleanNoM))) return true;
+
+  // 5. Vaga
+  const boatVaga = String(boat?.vaga || reservation?.embarcacaoVaga || '').toLowerCase();
+  if (boatVaga && (boatVaga.includes(q) || (isQNumeric && boatVaga.includes(qCleanNoM)))) return true;
+
+  // 6. Nome do cliente
+  const clientName = String(client?.nome || reservation?.clienteNome || reservation?.nomeAvulso || '').toLowerCase();
+  if (clientName.includes(q)) return true;
+
+  // 7. Observações
+  const obs = String(reservation?.observacoes || reservation?.observacoesDescida || '').toLowerCase();
+  if (obs.includes(q)) return true;
+
+  return false;
+}
+

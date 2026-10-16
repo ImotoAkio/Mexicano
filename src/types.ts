@@ -36,6 +36,7 @@ export interface Cliente {
   asaasCustomerId?: string;
   rg?: string;
   orgaoEmissor?: string;
+  nacionalidade?: string;
   cnh_cha?: string;
   profissao?: string;
   estadoCivil?: string;
@@ -43,6 +44,49 @@ export interface Cliente {
   validadeHabilitacao?: string;
   orgaoEmissorHabilitacao?: string;
   categoriaHabilitacao?: string;
+  statusContrato?: 'assinado' | 'pendente' | 'sem_contrato';
+  tipoContrato?: 'aquisicao' | 'adm' | 'ambos';
+  contratoDataEmissao?: string;
+  contratoDataAssinatura?: string;
+  contratoArquivoUrl?: string;
+  contratoArquivoNome?: string;
+  contratoArquivoTamanho?: number;
+  contratoObservacoes?: string;
+
+  // Diferenciação por tipo de contrato (Aquisição vs Administração)
+  contratoAquisicaoStatus?: 'assinado' | 'pendente' | 'sem_contrato';
+  contratoAquisicaoArquivoUrl?: string;
+  contratoAquisicaoArquivoNome?: string;
+  contratoAquisicaoArquivoTamanho?: number;
+  contratoAquisicaoDataAssinatura?: string;
+  contratoAquisicaoArquivoKey?: string;
+  contratoAquisicaoArquivoStorage?: 'r2' | 'local';
+
+  contratoAdmStatus?: 'assinado' | 'pendente' | 'sem_contrato';
+  contratoAdmArquivoUrl?: string;
+  contratoAdmArquivoNome?: string;
+  contratoAdmArquivoTamanho?: number;
+  contratoAdmDataAssinatura?: string;
+  contratoAdmArquivoKey?: string;
+  contratoAdmArquivoStorage?: 'r2' | 'local';
+  contratoValores?: {
+    valorTotal?: string;
+    valorEntrada?: string;
+    valorRemanescente?: string;
+    valorRemanescenteExtenso?: string;
+    numParcelas?: string;
+    numParcelasExtenso?: string;
+    valorParcela?: string;
+    valorParcelaExtenso?: string;
+    formaPagamento?: string;
+    diaVencimento?: string;
+    taxaMensalAdm?: string;
+    customSectionsAquisicao?: ContractSections;
+    customSectionsAdm?: ContractSections;
+  };
+  contratoAquisicaoCustomSections?: ContractSections;
+  contratoAdmCustomSections?: ContractSections;
+  contratos?: ContratoItem[];
   acessorios?: {
     tenda?: boolean;
     mesa?: boolean;
@@ -50,6 +94,56 @@ export interface Cliente {
     churrasqueira?: boolean;
     observacoes?: string;
   };
+}
+
+export interface ContractSections {
+  type: 'aquisicao' | 'adm';
+  title: string;
+  clientStr: string;
+  vendorStr: string;
+  introStr?: string;
+  clauses: string[];
+  signCompany: {
+    name: string;
+    cnpj?: string;
+  };
+  signClient: {
+    name: string;
+    cpf: string;
+  };
+}
+
+export type StatusContrato = 'assinado' | 'pendente' | 'sem_contrato';
+export type TipoContrato = 'aquisicao' | 'adm' | 'ambos';
+
+export interface ContratoItem {
+  id: string;
+  clienteId: string;
+  tipo: 'aquisicao' | 'adm';
+  titulo: string;
+  status: StatusContrato;
+  dataEmissao?: string;
+  dataAssinatura?: string;
+  observacoes?: string;
+  arquivoUrl?: string;
+  arquivoNome?: string;
+  arquivoTamanho?: number;
+  embarcacaoId?: string;
+  cota?: string;
+  paymentData?: {
+    valorTotal?: string;
+    valorEntrada?: string;
+    valorRemanescente?: string;
+    valorRemanescenteExtenso?: string;
+    numParcelas?: string;
+    numParcelasExtenso?: string;
+    valorParcela?: string;
+    valorParcelaExtenso?: string;
+    formaPagamento?: string;
+    diaVencimento?: string;
+  };
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface RegistroHoras {
@@ -197,6 +291,16 @@ export interface Reserva {
   operadorChegada?: string;
   operadorSubida?: string;
   confirmacaoEnviada?: boolean;
+  origem?: 'cota' | 'marina' | 'avulso';
+  nomeAvulso?: string;
+  telefoneAvulso?: string;
+  modeloAvulso?: string;
+  tipoAvulso?: 'jet' | 'lancha';
+  posicaoFila?: number;
+  combustivelInicial?: string;
+  litrosAbastecerPrevio?: string;
+  marinheiroPiloto?: string;
+  observacoesDescida?: string;
 }
 
 export interface ControleSom {
@@ -579,3 +683,124 @@ export interface CentroDeCusto {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// ==========================================
+// MÓDULO UTV (VEÍCULO DE TRILHA OFF-ROAD)
+// ==========================================
+
+export interface UtvVeiculo {
+  id: string;
+  nome: string;
+  modelo?: string;
+  ano?: number;
+  placa_chassi?: string;
+  kmAtual: number;
+  horimetroAtual: number;
+  status: 'disponivel' | 'em_uso' | 'manutencao';
+  imagemUrl?: string;
+  observacoes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface UtvCotista {
+  id: string;
+  clienteId?: string; // vínculo opcional com a tabela Clientes
+  nome: string;
+  cotaNumero: string;
+  telefone?: string;
+  email?: string;
+  cpf?: string;
+  limiteDiasAnual: number; // padrão: 30 dias
+  anoExercicio: number;    // ex: 2026
+  status: 'ativo' | 'inativo';
+  createdAt: string;
+  // Métricas agregadas
+  diasReservados?: number;
+  diasRealizados?: number;
+  saldoDisponivel?: number;
+  kmAcumulado?: number;
+  horasAcumuladas?: number;
+}
+
+export interface UtvUso {
+  id: string;
+  veiculoId: string;
+  cotistaId: string;
+  dataUso: string; // YYYY-MM-DD
+  status: 'reservado' | 'em_uso' | 'realizado' | 'cancelado';
+
+  // Checklist Retirada / Saída
+  horaSaida?: string;
+  kmInicial?: number;
+  horimetroInicial?: number;
+  limpezaSaida?: 'limpo' | 'regular' | 'sujo';
+  tanqueSaida?: 'cheio'; // Regra: Tanque Cheio
+  fotosSaida?: string[];
+  observacoesSaida?: string;
+  operadorSaida?: string;
+
+  // Checklist Devolução / Retorno
+  horaChegada?: string;
+  kmFinal?: number;
+  horimetroFinal?: number;
+  kmRodado?: number;          // kmFinal - kmInicial
+  horasUtilizadas?: number;    // horimetroFinal - horimetroInicial (decimal)
+  limpezaChegada?: 'limpo' | 'regular' | 'sujo';
+  tanqueChegada?: 'cheio';     // Regra: Tanque Cheio
+  tanqueCheioDevolvido?: boolean;
+  comprovanteAbastecimentoUrl?: string; // Anexo obrigatório
+  avarias?: string;
+  fotosChegada?: string[];
+  observacoesChegada?: string;
+  operadorChegada?: string;
+
+  // Fechamento / Cancelamento
+  createdAt: string;
+  fechadoEm?: string;
+  fechadoPor?: string;
+  canceladoEm?: string;
+  canceladoPor?: string;
+  motivoCancelamento?: string;
+
+  // Campos agregados (joins para facilitar visualização)
+  cotistaNome?: string;
+  cotistaCota?: string;
+  cotistaTelefone?: string;
+  veiculoNome?: string;
+}
+
+export interface UtvControleAnualItem {
+  cotistaId: string;
+  clienteId?: string;
+  nome: string;
+  cotaNumero: string;
+  telefone?: string;
+  limiteDiasAnual: number; // 30
+  diasReservados: number;
+  diasRealizados: number;
+  saldoDisponivel: number;
+  kmTotalAcumulado: number;
+  horasMotorAcumuladas: number;
+  anoExercicio: number;
+}
+
+export interface UtvManutencao {
+  id: string;
+  veiculoId: string;
+  data: string;
+  descricao: string;
+  valorTotal: number;
+  criterioRateio: 'horas' | 'km';
+  detalhesRateio?: Array<{
+    cotistaId: string;
+    cotistaNome: string;
+    cotaNumero: string;
+    usoAcumulado: number;
+    percentual: number;
+    valorRateado: number;
+  }>;
+  registradoPor?: string;
+  createdAt: string;
+}
+

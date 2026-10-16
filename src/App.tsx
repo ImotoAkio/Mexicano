@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import Logo from './components/Logo';
 import { loadFromRemote } from './db';
 import { io } from 'socket.io-client';
@@ -50,14 +51,16 @@ const AuditLogsPage = lazy(() => import('./components/AuditLogsPage'));
 const SharedChecklistPage = lazy(() => import('./components/SharedChecklistPage'));
 const ContractGeneratorPage = lazy(() => import('./components/ContractGeneratorPage'));
 const SimuladoPage = lazy(() => import('./components/SimuladoPage'));
+const UtvPage = lazy(() => import('./components/utv/UtvPage'));
+const MarinaAgendamentosView = lazy(() => import('./components/MarinaAgendamentosView'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
-import { 
-  Compass, 
-  Calendar as CalendarIcon, 
-  Users, 
-  Ship, 
-  Anchor, 
-  Settings, 
+import {
+  Compass,
+  Calendar as CalendarIcon,
+  Users,
+  Ship,
+  Anchor,
+  Settings,
   Speaker,
   Shield,
   Menu,
@@ -72,7 +75,8 @@ import {
   MessageSquare,
   CheckCircle,
   Wrench,
-  Droplet, Droplets, Clock, CalendarClock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package, PieChart, CalendarDays
+  Droplet, Droplets, Clock, CalendarClock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package, PieChart, CalendarDays,
+  Truck, Calculator
 } from 'lucide-react';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -128,14 +132,14 @@ const AdminFuelWrapper = () => {
   return <AdminFuelPage data={data} setData={setData} reloadData={loadData} operadorNome="Admin" isAdmin={true} />;
 };
 
-type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios';
+type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   
   // Client session: JWT-based with local cache for instant PWA loading
   const [clientToken, setClientToken] = useState<string | null>(() => localStorage.getItem('client_token'));
-  const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[]; chamados?: any[] } | null>(() => {
+  const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[]; chamados?: any[]; manutencoes?: any[] } | null>(() => {
     try {
       const cached = localStorage.getItem('client_data_cache');
       return cached ? JSON.parse(cached) : null;
@@ -231,18 +235,20 @@ export default function App() {
     }
   }, [isAuthenticated, adminRole, isRoleLoading]);
 
-  // Load DB into memory (com AbortController para evitar race conditions)
+  // Load DB into memory
   useEffect(() => {
+    let isMounted = true;
     if (isAuthenticated && !isAdminDbLoaded) {
-      const controller = new AbortController();
       loadFromRemote().then((data) => {
-        if (!controller.signal.aborted) {
+        if (isMounted) {
           setDbData(data);
           setIsAdminDbLoaded(true);
         }
       });
-      return () => controller.abort();
     }
+    return () => {
+      isMounted = false;
+    };
   }, [isAuthenticated, isAdminDbLoaded]);
 
   // Real-time synchronization for Admin/Marina/Peças dashboard
@@ -300,6 +306,7 @@ export default function App() {
   }, [clientToken]);
 
   const effectiveRole = (adminRole || localStorage.getItem('admin_role') || '').toLowerCase().trim();
+  const isAdmin = effectiveRole === 'admin';
   const isPecasServicos = effectiveRole === 'pecas_servicos';
   const isFinanceiro = effectiveRole === 'financeiro';
   const isComercial = effectiveRole === 'comercial';
@@ -310,9 +317,18 @@ export default function App() {
       group: 'Visão Geral & Reservas',
       items: [
         { id: 'dashboard' as TabType, label: 'Painel Geral', icon: Compass },
-        { id: 'schedules' as TabType, label: 'Agendamentos', icon: CalendarIcon },
+        { id: 'schedules' as TabType, label: 'Agendamentos Cotas', icon: CalendarIcon },
+        { id: 'marina-agendamentos' as TabType, label: 'Agendamentos Marina', icon: Anchor },
         { id: 'finance-schedules' as TabType, label: 'Consulta de Agendamentos', icon: CalendarDays },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
+      ]
+    },
+    {
+      group: 'UTV Trilha (Off-Road)',
+      items: [
+        { id: 'utv-operacao' as TabType, label: 'Operação & Agenda UTV', icon: Truck },
+        { id: 'utv-controle-anual' as TabType, label: 'Controle Anual (30 Dias)', icon: CalendarDays },
+        { id: 'utv-rateio' as TabType, label: 'Rateio de Manutenção', icon: Calculator },
       ]
     },
     {
@@ -379,6 +395,10 @@ export default function App() {
   ].map(group => ({
     ...group,
     items: group.items.filter(item => {
+      // Regra estrita: O módulo UTV é exclusivo para o administrador
+      if (item.id.startsWith('utv-') && !isAdmin) {
+        return false;
+      }
       if (isFinanceiro) {
         return ['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(item.id);
       } else if (isPecasServicos) {
@@ -391,14 +411,16 @@ export default function App() {
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {
-    if (isFinanceiro && !['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(activeTab)) {
+    if (!isAdmin && ['utv-operacao', 'utv-controle-anual', 'utv-rateio'].includes(activeTab)) {
+      setActiveTab('schedules');
+    } else if (isFinanceiro && !['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(activeTab)) {
       setActiveTab('finance-dashboard');
     } else if (isPecasServicos && !['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(activeTab)) {
       setActiveTab('manutencoes');
     } else if (isComercial && !['contratos', 'clients', 'boats', 'schedules', 'aviso-saida', 'portal-interno'].includes(activeTab)) {
       setActiveTab('contratos');
     }
-  }, [effectiveRole, activeTab]);
+  }, [effectiveRole, activeTab, isAdmin]);
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
@@ -465,43 +487,62 @@ export default function App() {
 
   // ═══════════ PORTAL DO CLIENTE (Módulo PWA) ═══════════
   if (isClientRoute) {
-    if (!clientToken) {
-      return (
-        <ClientLoginPage 
-          onLoginSuccess={(token) => {
-            setClientToken(token);
-            // fetchClientData runs automatically in useEffect when clientToken changes
-          }} 
-        />
-      );
-    }
     return (
-      <Suspense fallback={
-        <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
-          <div className="w-10 h-10 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-xs text-slate-400 font-medium animate-pulse">Carregando dados da sua embarcação...</span>
-        </div>
-      }>
-        {clientData ? (
-          <ClientDashboardPage
-            client={clientData.client}
-            boats={clientData.boats || []}
-            reservations={clientData.reservations || []}
-            transacoes={clientData.transacoes || []}
-            chamados={clientData.chamados || []}
-            manutencoes={clientData.manutencoes || []}
-            onLogout={() => {
-              localStorage.removeItem('client_token');
-              localStorage.removeItem('client_data_cache');
-              setClientToken(null);
-              setClientData(null);
-            }}
-            onRefresh={() => fetchClientData(false)}
-          />
+      <AnimatePresence mode="wait">
+        {!clientToken ? (
+          <motion.div
+            key="client-login"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="w-full min-h-screen"
+          >
+            <ClientLoginPage 
+              onLoginSuccess={(token) => {
+                setClientToken(token);
+                // fetchClientData runs automatically in useEffect when clientToken changes
+              }} 
+            />
+          </motion.div>
         ) : (
-          <div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div></div>
+          <motion.div
+            key="client-dashboard"
+            initial={{ opacity: 0, scale: 0.99 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="w-full min-h-screen"
+          >
+            <Suspense fallback={
+              <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
+                <div className="w-10 h-10 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-xs text-slate-400 font-medium animate-pulse">Carregando dados da sua embarcação...</span>
+              </div>
+            }>
+              {clientData ? (
+                <ClientDashboardPage
+                  client={clientData.client}
+                  boats={clientData.boats || []}
+                  reservations={clientData.reservations || []}
+                  transacoes={clientData.transacoes || []}
+                  chamados={clientData.chamados || []}
+                  manutencoes={clientData.manutencoes || []}
+                  onLogout={() => {
+                    localStorage.removeItem('client_token');
+                    localStorage.removeItem('client_data_cache');
+                    setClientToken(null);
+                    setClientData(null);
+                  }}
+                  onRefresh={() => fetchClientData(false)}
+                />
+              ) : (
+                <div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div></div>
+              )}
+            </Suspense>
+          </motion.div>
         )}
-      </Suspense>
+      </AnimatePresence>
     );
   }
 
@@ -705,6 +746,7 @@ export default function App() {
               <Suspense fallback={<div className="h-full w-full min-h-[400px] flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
                 {activeTab === 'dashboard' && adminRole !== 'financeiro' && adminRole !== 'pecas_servicos' && <Dashboard onNavigate={handleTabChange} />}
                 {activeTab === 'schedules' && <SchedulesPage />}
+                {activeTab === 'marina-agendamentos' && <MarinaAgendamentosView />}
                 {activeTab === 'finance-schedules' && <FinanceSchedulesPage />}
                 {activeTab === 'whatsapp' && <WhatsAppPage />}
                 {activeTab === 'checklists' && <AdminChecklistsWrapper />}
@@ -737,6 +779,9 @@ export default function App() {
                 {activeTab === 'controle-folgas' && <ControleFolgasPage />}
                 {activeTab === 'controle-epi' && <ControleEpiPage />}
                 {activeTab === 'audit-logs' && <AuditLogsPage logs={registrosAtividadesDB.getAll() || []} boats={boatDB.getAll() || []} />}
+                {activeTab === 'utv-operacao' && isAdmin && <UtvPage initialTab="operacao" />}
+                {activeTab === 'utv-controle-anual' && isAdmin && <UtvPage initialTab="controle-anual" />}
+                {activeTab === 'utv-rateio' && isAdmin && <UtvPage initialTab="rateio" />}
               </Suspense>
             </ErrorBoundary>
           </div>

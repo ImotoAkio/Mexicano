@@ -51,9 +51,13 @@ export default function ClientReservationModal({
       setCreatedReservation(null);
       setWhatsappStatus('idle');
       setSyncResult(null);
+      setPrevisaoSaida('09:00');
+      setPrevisaoChegada('');
     }
   }, [isOpen, preselectedBoatId, boats]);
   const [observacoes, setObservacoes] = useState('');
+  const [previsaoSaida, setPrevisaoSaida] = useState('09:00');
+  const [previsaoChegada, setPrevisaoChegada] = useState('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -136,6 +140,8 @@ export default function ClientReservationModal({
           date: selectedDate,
           periodo: 'dia_inteiro',
           observacoes,
+          previsaoSaida: previsaoSaida || '09:00',
+          previsaoChegada: previsaoChegada || undefined,
           confirmExtra: isConfirmedExtra
         })
       });
@@ -370,6 +376,32 @@ export default function ClientReservationModal({
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Horários de Descida e Retorno */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
+                  Previsão Descida
+                </label>
+                <input
+                  type="time"
+                  value={previsaoSaida}
+                  onChange={(e) => setPrevisaoSaida(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#111] border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
+                  Previsão Retorno
+                </label>
+                <input
+                  type="time"
+                  value={previsaoChegada}
+                  onChange={(e) => setPrevisaoChegada(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#111] border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74] focus:outline-none"
+                />
+              </div>
             </div>
 
             {/* Observações */}

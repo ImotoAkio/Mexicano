@@ -85,6 +85,17 @@ export function requireMarinaManagerOrAdminAuth(req: express.Request, res: expre
   });
 }
 
+export function requireStrictAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  requireAdminAuth(req, res, () => {
+    const user = (req as any).user;
+    const role = (user?.role || "").toLowerCase().trim();
+    if (role !== "admin") {
+      return res.status(403).json({ error: true, message: "Acesso restrito exclusivamente ao Administrador." });
+    }
+    next();
+  });
+}
+
 export function requireClientAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {

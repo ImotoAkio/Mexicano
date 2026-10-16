@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { getBoatCode } from '../utils/boatUtils';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet } from 'lucide-react';
+import { getBoatCode, matchesBoatSearch } from '../utils/boatUtils';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet, Plus } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction, chamadoDB } from '../db';
@@ -9,20 +9,21 @@ import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
 import MarinaChamadosView from './MarinaChamadosView';
 import MarinaCaixaView from './MarinaCaixaView';
-import BoatPage from './BoatPage';
-import ClientPage from './ClientPage';
+import MarinaEmbarcacoesClientesView from './MarinaEmbarcacoesClientesView';
 import FinanceSchedulesPage from './FinanceSchedulesPage';
+import MarinaAgendamentosView from './MarinaAgendamentosView';
+import AdicionarFilaModal from './AdicionarFilaModal';
 import ControleFolgasPage from './ControleFolgasPage';
 import AvisosSaidaPage from './AvisosSaidaPage';
 import SettingsPage from './SettingsPage';
 import { getFuelInventory, consumeFuelForEmbarcacao } from '../utils/fuelInventory';
 import { getFuelPrice } from '../utils/constants';
-import refFrente from '../assets/images/checklist/frente.svg';
-import refTras from '../assets/images/checklist/tras.svg';
-import refEsquerda from '../assets/images/checklist/esquerda.svg';
-import refDireita from '../assets/images/checklist/direita.svg';
-import refPainel from '../assets/images/checklist/painel.svg';
-import refCasco from '../assets/images/checklist/casco.svg';
+import refFrente from '../assets/images/checklist/frente.png';
+import refTras from '../assets/images/checklist/tras.png';
+import refEsquerda from '../assets/images/checklist/esquerda.png';
+import refDireita from '../assets/images/checklist/direita.png';
+import refPainel from '../assets/images/checklist/painel.png';
+import refCasco from '../assets/images/checklist/casco.png';
 
 interface MarinaDashboardProps {
   onLogout?: () => void;
@@ -99,7 +100,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'chamados' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes' | 'caixa'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'chamados' | 'embarcacoes-clientes' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes' | 'caixa'>('home');
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
   const [filterType, setFilterType] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
@@ -119,6 +120,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [isAddFilaOpen, setIsAddFilaOpen] = useState(false);
   const [lightbox, setLightbox] = useState<{ urls: string[]; currentIndex: number; title: string } | null>(null);
 
   const parseFotos = (fotos: any): string[] => {
@@ -688,16 +690,10 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
   const filterBySearch = (list: any[]) => {
     if (!searchTerm.trim()) return list;
-    const q = searchTerm.trim().toLowerCase();
     return list.filter((r: any) => {
       const boat = getEmbarcacao(r.embarcacaoId);
       const client = getCliente(r.clienteId);
-      const boatName = (boat?.nome || r.barcoNome || '').toLowerCase();
-      const boatNum = (boat?.numero || '').toString().toLowerCase();
-      const boatVaga = (boat?.vaga || '').toString().toLowerCase();
-      const clientName = (client?.nome || r.clienteNome || '').toLowerCase();
-      const obs = (r.observacoes || '').toLowerCase();
-      return boatName.includes(q) || boatNum.includes(q) || boatVaga.includes(q) || clientName.includes(q) || obs.includes(q);
+      return matchesBoatSearch(searchTerm, boat, client, r);
     });
   };
 
@@ -919,22 +915,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           <div>
             {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Cadastros & Reservas</p>}
             <nav className="space-y-1">
-              <button 
-                onClick={() => setActiveTab('clientes')}
-                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'clientes' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
-                title="Cadastro e Controle de Clientes"
+              <button
+                onClick={() => setActiveTab('embarcacoes-clientes')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${(activeTab === 'embarcacoes-clientes' || activeTab === 'embarcacoes' || activeTab === 'clientes') ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Consulta de Embarcações e Cotistas"
               >
-                <UserIcon className="w-4 h-4 shrink-0" />
-                {isSidebarOpen && <span>Clientes</span>}
-              </button>
-
-              <button 
-                onClick={() => setActiveTab('embarcacoes')}
-                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'embarcacoes' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
-                title="Lista de Embarcações"
-              >
-                <Anchor className="w-4 h-4 shrink-0" />
-                {isSidebarOpen && <span>Embarcações</span>}
+                <Ship className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Embarcações & Clientes</span>}
               </button>
 
               <button 
@@ -1127,12 +1114,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                     <Wrench className="w-4 h-4" />
                     <span>Chamados</span>
                   </button>
-                  <button 
-                    onClick={() => setActiveTab('clientes')}
+                  <button
+                    onClick={() => setActiveTab('embarcacoes-clientes')}
                     className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
                   >
-                    <UserIcon className="w-4 h-4" />
-                    <span>Clientes</span>
+                    <Ship className="w-4 h-4" />
+                    <span>Embarcações & Clientes</span>
                   </button>
                   <button 
                     onClick={() => setActiveTab('operacao')}
@@ -1630,6 +1617,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 )}
               </div>
 
+              {/* Add to Queue Button */}
+              <button
+                onClick={() => setIsAddFilaOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Adicionar à Fila</span>
+              </button>
+
               {/* View Mode Switcher: Kanban vs Lista */}
               <div className="flex bg-white border border-slate-200 rounded-xl p-1 shadow-sm shrink-0 items-center gap-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 hidden sm:inline">Visão:</span>
@@ -1739,6 +1735,9 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         const barco = getEmbarcacao(reserva.embarcacaoId);
                         const cliente = getCliente(reserva.clienteId);
                         const isConfirmado = reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada';
+                        const boatTitle = barco ? getBoatCode(barco) : (reserva.modeloAvulso || reserva.barcoNome || reserva.embarcacaoNome || 'Embarcação');
+                        const clientTitle = cliente?.nome || reserva.nomeAvulso || reserva.clienteNome || 'Cliente';
+
                         return (
                           <div
                             key={reserva.id}
@@ -1748,11 +1747,23 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                           >
                             <div className="flex items-start justify-between gap-1">
                               <div>
-                                <span className="font-extrabold text-sm text-slate-900 block leading-tight">{barco ? getBoatCode(barco) : (reserva.barcoNome || 'Embarcação')}</span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-extrabold text-sm text-slate-900 block leading-tight">{boatTitle}</span>
+                                  {reserva.posicaoFila ? (
+                                    <span className="text-[10px] font-mono font-black bg-slate-900 text-white px-1.5 py-0.2 rounded">
+                                      #{reserva.posicaoFila}
+                                    </span>
+                                  ) : null}
+                                  {reserva.origem === 'avulso' && (
+                                    <span className="text-[9px] font-black bg-amber-100 text-amber-800 px-1 py-0.2 rounded uppercase">
+                                      Avulso
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="mt-1 flex items-center gap-1.5">
                                   <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
-                                    isConfirmado 
-                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80' 
+                                    isConfirmado
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
                                       : 'bg-amber-50 text-amber-800 border-amber-200/80'
                                   }`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${isConfirmado ? 'bg-emerald-500' : 'bg-amber-500'}`} />
@@ -1770,9 +1781,17 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                            <p className="text-xs text-slate-500 font-medium truncate">Cliente: {clientTitle}</p>
+
+                            {(reserva.combustivelInicial === 'tanque_cheio' || (reserva.litrosAbastecerPrevio && Number(reserva.litrosAbastecerPrevio) > 0)) && !reserva.abastecimentoLitros && (
+                              <div className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                                <Droplets className="w-3 h-3 text-amber-600 shrink-0" />
+                                <span>Abastecer {reserva.combustivelInicial === 'tanque_cheio' ? 'Tanque Cheio' : `${reserva.litrosAbastecerPrevio}L`}</span>
+                              </div>
+                            )}
+
                             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
-                              <span className="text-slate-400 font-medium">Vaga: {barco?.vaga || 'N/A'}</span>
+                              <span className="text-slate-400 font-medium">Vaga: {barco?.vaga || reserva.embarcacaoVaga || 'N/A'}</span>
                               <button
                                 onClick={() => executeRegistrarDescida([], reserva)}
                                 className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer shadow-2xs"
@@ -1998,10 +2017,13 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                       const isChegada = !!reserva.horaChegada;
                       const isSubida = !!reserva.horaSubida;
                       const isConfirmado = reserva.status === 'confirmado' || reserva.statusMarina === 'confirmada';
+                      const boatTitle = boat?.nome || reserva.modeloAvulso || reserva.barcoNome || reserva.embarcacaoNome || 'Embarcação';
+                      const clientTitle = client?.nome || reserva.nomeAvulso || reserva.clienteNome || 'Cliente';
+                      const vaga = boat?.vaga || reserva.embarcacaoVaga;
 
                       return (
-                        <div 
-                          key={reserva.id} 
+                        <div
+                          key={reserva.id}
                           className="p-3 sm:p-4 hover:bg-slate-50/80 transition-colors flex flex-col md:grid md:grid-cols-12 gap-3 items-start md:items-center relative group cursor-pointer"
                           onClick={() => {
                             setDetailsReserva(reserva);
@@ -2010,34 +2032,44 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                         >
                           {/* Left accent bar */}
                           <div className={`absolute top-0 left-0 bottom-0 w-1 ${
-                            isSubida ? 'bg-emerald-500' : 
-                            isChegada ? 'bg-teal-500' : 
-                            isSaida ? 'bg-sky-500' : 
-                            reserva.horaDescida ? 'bg-blue-500' : 
+                            isSubida ? 'bg-emerald-500' :
+                            isChegada ? 'bg-teal-500' :
+                            isSaida ? 'bg-sky-500' :
+                            reserva.horaDescida ? 'bg-blue-500' :
                             isConfirmado ? 'bg-emerald-500' :
                             'bg-amber-500'
                           }`} />
 
                           {/* Col 1: Embarcação & Cliente */}
                           <div className="md:col-span-4 lg:col-span-3 min-w-0 pl-1">
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
-                                {boat?.nome || 'Embarcação'}
+                                {boatTitle}
                               </span>
+                              {reserva.posicaoFila ? (
+                                <span className="bg-slate-900 text-white px-1.5 py-0.5 rounded text-[10px] font-black font-mono">
+                                  #{reserva.posicaoFila}
+                                </span>
+                              ) : null}
                               {boat?.numero && (
-                                <span className="bg-slate-900 text-white px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">
+                                <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">
                                   {boat.numero}
                                 </span>
                               )}
-                              {boat?.vaga && (
-                                <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                  Vaga {boat.vaga}
+                              {vaga ? (
+                                <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                  Vaga {vaga}
+                                </span>
+                              ) : null}
+                              {reserva.origem === 'avulso' && (
+                                <span className="bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded text-[9px] font-black uppercase">
+                                  Avulso
                                 </span>
                               )}
                             </div>
                             <div className="text-xs text-slate-500 font-medium flex items-center gap-1 mt-0.5">
                               <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span className="truncate max-w-[200px]">{client?.nome || 'Cliente'}</span>
+                              <span className="truncate max-w-[200px]">{clientTitle}</span>
                             </div>
                           </div>
 
@@ -2238,21 +2270,19 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           />
         )}
 
-        {activeTab === 'clientes' && (
+        {(activeTab === 'embarcacoes-clientes' || activeTab === 'embarcacoes' || activeTab === 'clientes') && (
           <div className="max-w-7xl mx-auto">
-            <ClientPage />
-          </div>
-        )}
-
-        {activeTab === 'embarcacoes' && (
-          <div className="max-w-7xl mx-auto">
-            <BoatPage showWhatsAppMapping={false} />
+            <MarinaEmbarcacoesClientesView
+              boats={data?.boats}
+              clients={data?.clients}
+              onReload={fetchData}
+            />
           </div>
         )}
 
         {activeTab === 'agendamentos' && (
           <div className="max-w-7xl mx-auto">
-            <FinanceSchedulesPage />
+            <MarinaAgendamentosView />
           </div>
         )}
 
@@ -2961,7 +2991,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
              </div>
           </div>
 
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); setLightbox(prev => prev ? { ...prev, currentIndex: Math.min(prev.urls.length - 1, prev.currentIndex + 1) } : null) }}
             className={`absolute right-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer z-10 backdrop-blur-md ${lightbox.currentIndex === lightbox.urls.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={lightbox.currentIndex === lightbox.urls.length - 1}
@@ -2970,6 +3000,16 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           </button>
         </div>
       )}
+
+      {/* Modal para Adicionar Imediatamente na Fila de Descida */}
+      <AdicionarFilaModal
+        isOpen={isAddFilaOpen}
+        onClose={() => setIsAddFilaOpen(false)}
+        onSuccess={() => {
+          fetchData();
+          showToast('Embarcação colocada na fila de descida com sucesso!', 'success');
+        }}
+      />
 
     </div>
   );

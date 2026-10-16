@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock, MessageCircle } from 'lucide-react';
 import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
@@ -16,6 +17,41 @@ import { getBoatCode } from '../utils/boatUtils';
 import { Chamado } from '../types';
 import { chamadoDB } from '../db';
 
+const TAB_ORDER = ['home', 'calendar', 'finance', 'maintenance'] as const;
+type TabKey = typeof TAB_ORDER[number];
+
+const pageTabVariants = {
+  initial: (direction: number) => ({
+    opacity: 0,
+    x: direction > 0 ? 20 : direction < 0 ? -20 : 0,
+    scale: 0.99,
+  }),
+  animate: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: {
+      duration: 0.22,
+      ease: [0.25, 1, 0.5, 1] as const,
+    },
+  },
+  exit: (direction: number) => ({
+    opacity: 0,
+    x: direction > 0 ? -20 : direction < 0 ? 20 : 0,
+    scale: 0.99,
+    transition: {
+      duration: 0.16,
+      ease: [0.25, 1, 0.5, 1] as const,
+    },
+  }),
+};
+
+const subTabVariants = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' as const } },
+  exit: { opacity: 0, y: -6, transition: { duration: 0.14, ease: 'easeIn' as const } },
+};
+
 interface ClientDashboardPageProps {
   client: any;
   boats: any[];
@@ -28,7 +64,16 @@ interface ClientDashboardPageProps {
 }
 
 export default function ClientDashboardPage({ client, boats, reservations, transacoes = [], chamados = [], manutencoes = [], onLogout, onRefresh }: ClientDashboardPageProps) {
-  const [activeTab, setActiveTab] = useState<'home' | 'calendar' | 'finance' | 'maintenance'>('home');
+  const [activeTab, setActiveTab] = useState<TabKey>('home');
+  const [tabDirection, setTabDirection] = useState(0);
+
+  const handleTabChange = (newTab: TabKey) => {
+    if (newTab === activeTab) return;
+    const currentIndex = TAB_ORDER.indexOf(activeTab);
+    const nextIndex = TAB_ORDER.indexOf(newTab);
+    setTabDirection(nextIndex > currentIndex ? 1 : -1);
+    setActiveTab(newTab);
+  };
   const [maintenanceSubTab, setMaintenanceSubTab] = useState<'chamados' | 'servicos'>('chamados');
   const [financeTab, setFinanceTab] = useState<'fatura' | 'extrato'>('fatura');
   const [showFutureInvoices, setShowFutureInvoices] = useState(false);
@@ -1475,7 +1520,15 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         </div>
         
         {/* Lista de Transações */}
-        <div className="space-y-4">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={financeTab}
+            variants={subTabVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="space-y-4"
+          >
           {(() => {
             const filteredTransacoes = transacoes.filter(t => {
               if (financeTab === 'fatura') {
@@ -1624,7 +1677,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               </div>
             );
           })()}
-        </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
     );
   };
@@ -2089,10 +2143,22 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         </div>
         {/* Shared Header End */}
 
-        {activeTab === 'home' && renderHome()}
-        {activeTab === 'calendar' && renderCalendar()}
-        {activeTab === 'finance' && renderFinance()}
-        {activeTab === 'maintenance' && renderMaintenance()}
+        <AnimatePresence mode="wait" custom={tabDirection}>
+          <motion.div
+            key={activeTab}
+            custom={tabDirection}
+            variants={pageTabVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="w-full flex-1 flex flex-col"
+          >
+            {activeTab === 'home' && renderHome()}
+            {activeTab === 'calendar' && renderCalendar()}
+            {activeTab === 'finance' && renderFinance()}
+            {activeTab === 'maintenance' && renderMaintenance()}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Bottom Navigation (iPhone Style Glassmorphism) */}
@@ -2100,8 +2166,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         <div className="max-w-[400px] mx-auto flex items-center justify-between px-2 relative">
           
           <button
-            onClick={() => setActiveTab('home')}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10"
+            onClick={() => handleTabChange('home')}
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10 cursor-pointer"
           >
             <Home className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'home' ? 'text-[#B69D74]' : 'text-white/30'}`} />
             <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'home' ? 'text-[#B69D74]' : 'text-transparent'}`}>
@@ -2110,8 +2176,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           </button>
 
           <button
-            onClick={() => setActiveTab('calendar')}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10"
+            onClick={() => handleTabChange('calendar')}
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10 cursor-pointer"
           >
             <Calendar className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'calendar' ? 'text-[#B69D74]' : 'text-white/30'}`} />
             <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'calendar' ? 'text-[#B69D74]' : 'text-transparent'}`}>
@@ -2168,7 +2234,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 <button
                   onClick={() => {
                     setIsActionMenuOpen(false);
-                    setActiveTab('maintenance');
+                    handleTabChange('maintenance');
                   }}
                   className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-amber-500/15 border border-white/[0.05] hover:border-amber-500/30 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-2"
                 >
@@ -2232,8 +2298,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           </div>
 
           <button
-            onClick={() => setActiveTab('finance')}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10"
+            onClick={() => handleTabChange('finance')}
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10 cursor-pointer"
           >
             <Wallet className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'finance' ? 'text-[#B69D74]' : 'text-white/30'}`} />
             <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'finance' ? 'text-[#B69D74]' : 'text-transparent'}`}>
@@ -2242,8 +2308,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           </button>
 
           <button
-            onClick={() => setActiveTab('maintenance')}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10"
+            onClick={() => handleTabChange('maintenance')}
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10 cursor-pointer"
           >
             <Wrench className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-white/30'}`} />
             <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-transparent'}`}>
@@ -2845,7 +2911,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             setLastAddedResId(newRes.id);
           }
           setIsReservationModalOpen(false);
-          setActiveTab('home');
+          handleTabChange('home');
           if (onRefresh) {
             onRefresh();
           } else {

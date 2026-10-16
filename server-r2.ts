@@ -19,8 +19,24 @@ export const s3Client = new S3Client({
   },
 });
 
-export const uploadToR2 = async (buffer: Buffer, filename: string, mimeType: string): Promise<string> => {
-  if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) {
+/** Indica se as credenciais do bucket R2 estão presentes no ambiente. */
+export const isR2Configured = (): boolean =>
+  Boolean(accountId && accessKeyId && secretAccessKey && bucketName);
+
+export interface UploadToR2Options {
+  /** Ex.: `inline; filename="contrato.pdf"` — controla visualização/download no navegador. */
+  contentDisposition?: string;
+  /** Metadados livres gravados junto ao objeto (somente ASCII). */
+  metadata?: Record<string, string>;
+}
+
+export const uploadToR2 = async (
+  buffer: Buffer,
+  filename: string,
+  mimeType: string,
+  options: UploadToR2Options = {}
+): Promise<string> => {
+  if (!isR2Configured()) {
     throw new Error("R2 not configured securely via environment variables");
   }
 
@@ -29,6 +45,8 @@ export const uploadToR2 = async (buffer: Buffer, filename: string, mimeType: str
     Key: filename,
     Body: buffer,
     ContentType: mimeType,
+    ...(options.contentDisposition ? { ContentDisposition: options.contentDisposition } : {}),
+    ...(options.metadata ? { Metadata: options.metadata } : {}),
   };
 
   await s3Client.send(new PutObjectCommand(uploadParams));
@@ -42,7 +60,7 @@ export const uploadToR2 = async (buffer: Buffer, filename: string, mimeType: str
 };
 
 export const generatePresignedUrl = async (filename: string, mimeType: string, expiresIn = 3600): Promise<{ uploadUrl: string, publicUrl: string }> => {
-  if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) {
+  if (!isR2Configured()) {
     throw new Error("R2 not configured securely via environment variables");
   }
 

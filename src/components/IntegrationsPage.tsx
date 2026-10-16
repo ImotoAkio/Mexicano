@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Compass, CalendarDays, CheckCircle2, X, CreditCard, Key, Shield,
-  ShieldCheck, AlertTriangle, RefreshCw, MessageSquare, QrCode, Loader2, Check
+  ShieldCheck, AlertTriangle, RefreshCw, MessageSquare, QrCode, Loader2, Check,
+  Copy, ExternalLink, Wand2, Sparkles, Send
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { Cliente } from '../types';
@@ -82,6 +83,91 @@ export default function IntegrationsPage() {
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [isTestingAsaas, setIsTestingAsaas] = useState(false);
+  const [isSettingUpWebhook, setIsSettingUpWebhook] = useState(false);
+
+  const handleCopyWebhookUrl = () => {
+    const url = `${window.location.origin}/api/webhooks/asaas`;
+    navigator.clipboard.writeText(url);
+    setCopiedWebhook(true);
+    setTimeout(() => setCopiedWebhook(false), 2500);
+    showToast('URL do Webhook copiada com sucesso!', 'success');
+  };
+
+  const generateRandomWebhookToken = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let token = 'whsec_';
+    for (let i = 0; i < 28; i++) {
+      token += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setAsaasWebhookToken(token);
+    showToast('Token de segurança gerado! Clique em Salvar Configurações para persistir.', 'success');
+  };
+
+  const handleTestAsaas = async () => {
+    setIsTestingAsaas(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/config/test-asaas', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          apiKey: asaasApiKey,
+          apiUrl: asaasApiUrl
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+      } else {
+        showToast(data.message || 'Falha ao conectar com o Asaas.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao conectar ao servidor.', 'error');
+    } finally {
+      setIsTestingAsaas(false);
+    }
+  };
+
+  const handleSetupAsaasWebhook = async () => {
+    if (!asaasWebhookToken) {
+      showToast('Por favor, defina um Token de Segurança antes de registrar o Webhook.', 'error');
+      return;
+    }
+    setIsSettingUpWebhook(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const webhookUrl = `${window.location.origin}/api/webhooks/asaas`;
+      const res = await fetch('/api/config/setup-asaas-webhook', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          apiKey: asaasApiKey,
+          apiUrl: asaasApiUrl,
+          webhookUrl,
+          authToken: asaasWebhookToken
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+      } else {
+        showToast(data.message || 'Falha ao registrar webhook no Asaas.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao conectar com o servidor.', 'error');
+    } finally {
+      setIsSettingUpWebhook(false);
+    }
   };
 
   const [isSAMode, setIsSAMode] = useState(isServiceAccountMode());
@@ -548,73 +634,151 @@ export default function IntegrationsPage() {
               </div>
             </div>
 
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
-              <h5 className="font-bold text-blue-800 text-xs mb-2">Instruções de Configuração Asaas:</h5>
-              <ol className="list-decimal list-inside text-[11px] text-blue-700/90 space-y-1.5 leading-relaxed">
-                <li>Acesse sua conta no Asaas e vá em <strong>Configurações &gt; Integração &gt; API</strong> ou "Gerar API Key".</li>
-                <li>Copie o "Access Token" e cole no campo <strong>API Key</strong> abaixo.</li>
-                <li>Para o Webhook, vá em <strong>Integração &gt; Webhooks</strong> e crie um novo.</li>
-                <li>Use o endpoint do servidor para <code>/api/webhook/asaas</code>.</li>
-                <li>Marque os eventos <code>PAYMENT_RECEIVED</code> e <code>PAYMENT_CONFIRMED</code>.</li>
-                <li>Configure um <strong>Token Autenticador</strong> (Token de Segurança) lá e preencha-o abaixo.</li>
+            <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-4 mb-3">
+              <h5 className="font-bold text-blue-900 text-xs mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                Guia Rápido de Configuração (Asaas API & Webhook):
+              </h5>
+              <ol className="list-decimal list-inside text-[11px] text-blue-800/90 space-y-1.5 leading-relaxed">
+                <li>
+                  Acesse sua conta Asaas (<a href="https://sandbox.asaas.com" target="_blank" rel="noreferrer" className="underline font-semibold hover:text-blue-950">Sandbox</a> para testes ou <a href="https://www.asaas.com" target="_blank" rel="noreferrer" className="underline font-semibold hover:text-blue-950">Produção</a>).
+                </li>
+                <li>
+                  Vá em <strong>Menu do Usuário (canto superior direito) &gt; Configurações da Conta &gt; Integração &gt; API</strong> e clique em <strong>Gerar Chave de API</strong> (ou copie a chave existente).
+                </li>
+                <li>
+                  Cole o token gerado no campo <strong>API Key do Asaas</strong> abaixo e clique em <strong>Testar Conexão</strong>.
+                </li>
+                <li>
+                  Gere ou defina um <strong>Token de Segurança do Webhook</strong> e clique em <strong>Registrar Webhook no Asaas Automaticamente</strong> ou configure manualmente com a URL abaixo.
+                </li>
               </ol>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Ambiente de Execução</label>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Ambiente Asaas</label>
                 <select
                   value={asaasApiUrl}
                   onChange={(e) => setAsaasApiUrl(e.target.value)}
-                  className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                 >
-                  <option value="https://api-sandbox.asaas.com/v3">Sandbox / Homologação (Testes)</option>
-                  <option value="https://api.asaas.com/v3">Produção (Dinheiro Real)</option>
+                  <option value="https://api-sandbox.asaas.com/v3">🧪 Sandbox / Homologação (Ambiente de Testes)</option>
+                  <option value="https://api.asaas.com/v3">🚀 Produção (Transações Reais / Dinheiro Real)</option>
                 </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  * Chaves de Sandbox começam com <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-600">$aact_hmlg_</code> e Produção com <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-600">$aact_prod_</code>.
+                </p>
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">API Key do Asaas</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] uppercase font-bold text-slate-500">API Key do Asaas (Access Token)</label>
+                  {hasAsaasApiKey && (
+                    <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Chave configurada
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
                     <Key className="w-3.5 h-3.5" />
                   </span>
                   <input
                     type="password"
-                    placeholder={hasAsaasApiKey ? "••••••••••••••••••••••••••••••••" : "Cole sua access_token do Asaas"}
+                    placeholder={hasAsaasApiKey ? "••••••••••••••••••••••••••••••••" : "Cole aqui seu access_token gerado no Asaas"}
                     value={asaasApiKey === '__UNCHANGED__' ? '' : asaasApiKey}
                     onChange={(e) => setAsaasApiKey(e.target.value)}
                     className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                   />
                 </div>
-                {hasAsaasApiKey && (
-                  <p className="text-[9px] text-slate-400 mt-1">
-                    * Uma chave de API já está salva. Deixe em branco se não quiser alterá-la.
-                  </p>
-                )}
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Token de Segurança do Webhook</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] uppercase font-bold text-slate-500">URL do Webhook (Endpoint do Servidor)</label>
+                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                    Conciliação Automática
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-slate-100/90 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 truncate select-all">
+                    {typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/asaas` : '/api/webhooks/asaas'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyWebhookUrl}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-700 rounded-xl text-xs font-semibold transition-colors shrink-0 cursor-pointer"
+                    title="Copiar URL para o Asaas"
+                  >
+                    {copiedWebhook ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedWebhook ? 'Copiado!' : 'Copiar URL'}</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  O Asaas dispara notificações para este endereço sempre que um boleto ou PIX é pago.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] uppercase font-bold text-slate-500">Token de Segurança do Webhook</label>
+                  <button
+                    type="button"
+                    onClick={generateRandomWebhookToken}
+                    className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Wand2 className="w-3 h-3" />
+                    <span>Gerar Token Aleatório</span>
+                  </button>
+                </div>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
                     <Shield className="w-3.5 h-3.5" />
                   </span>
                   <input
                     type="text"
-                    placeholder="Configure um token para validação das chamadas do webhook"
+                    placeholder="Ex: whsec_abc123... (usado para validar as chamadas recebidas)"
                     value={asaasWebhookToken}
                     onChange={(e) => setAsaasWebhookToken(e.target.value)}
                     className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                   />
                 </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Este token é enviado no cabeçalho <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-600">asaas-access-token</code> para impedir acessos não autorizados.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleTestAsaas}
+                  disabled={isTestingAsaas || isLoading}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isTestingAsaas ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  <span>{isTestingAsaas ? 'Testando Conexão...' : 'Testar Conexão com Asaas'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSetupAsaasWebhook}
+                  disabled={isSettingUpWebhook || isLoading}
+                  className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="Cadastra ou atualiza o webhook diretamente no Asaas via API"
+                >
+                  {isSettingUpWebhook ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>{isSettingUpWebhook ? 'Cadastrando...' : 'Registrar Webhook no Asaas'}</span>
+                </button>
               </div>
 
               <button
+                type="button"
                 onClick={handleSaveAsaasConfig}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors mt-2"
+                disabled={isLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors mt-2 cursor-pointer shadow-xs disabled:opacity-50"
               >
-                {isLoading ? 'Salvando...' : 'Salvar Configurações'}
+                {isLoading ? 'Salvando...' : 'Salvar Configurações no Sistema'}
               </button>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { clientDB, boatDB } from '../db';
+import { clientDB, boatDB, syncWithRemote, onDbUpdate, isDbLoaded } from '../db';
 import { Cliente, Embarcacao } from '../types';
 import { generateContract } from './ContractGenerator';
 import { FileText, Download, UserCheck, Anchor, Sparkles, RefreshCw, CheckCircle2, ShieldCheck, FileCheck, ArrowRight, Loader2 } from 'lucide-react';
@@ -43,17 +43,40 @@ export default function ContractGeneratorPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadedClients = clientDB.getAll();
-    const loadedBoats = boatDB.getAll();
-    setClients(loadedClients);
-    setBoats(loadedBoats);
+    let isMounted = true;
 
-    if (loadedClients.length > 0) {
-      fillClientData(loadedClients[0]);
+    const populate = () => {
+      const loadedClients = clientDB.getAll();
+      const loadedBoats = boatDB.getAll();
+      setClients([...loadedClients]);
+      setBoats([...loadedBoats]);
+
+      if (loadedClients.length > 0 && !selectedClientId) {
+        fillClientData(loadedClients[0]);
+      }
+      if (loadedBoats.length > 0 && !selectedBoatId) {
+        fillBoatData(loadedBoats[0]);
+      }
+    };
+
+    populate();
+
+    const unsubscribe = onDbUpdate(() => {
+      if (isMounted) populate();
+    });
+
+    if (!isDbLoaded || clientDB.getAll().length === 0) {
+      syncWithRemote()
+        .then(() => {
+          if (isMounted) populate();
+        })
+        .catch(console.error);
     }
-    if (loadedBoats.length > 0) {
-      fillBoatData(loadedBoats[0]);
-    }
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const fillClientData = (client: Cliente) => {

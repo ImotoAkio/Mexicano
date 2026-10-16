@@ -24,7 +24,7 @@
   <ellipse cx="325" cy="340" rx="260" ry="15" fill="#bae6fd" opacity="0.5"/>
 
   <g filter="url(#boatShadowSideRight)">
-    <!-- T-Top / Hardtop & Radar (Proa à Esquerda, Popa à Direita) -->
+    <!-- T-Top / Hardtop & Radar (Proa Ã  Esquerda, Popa Ã  Direita) -->
     <path d="M 420 75 L 260 60 L 230 85 L 400 100 Z" fill="#0f172a"/>
     <path d="M 405 78 L 265 66 L 245 84 L 390 94 Z" fill="#ffffff"/>
     <!-- Hardtop Structure Pillars -->
@@ -49,7 +49,7 @@
     <line x1="200" y1="188" x2="200" y2="212" stroke="#64748b" stroke-width="2.5"/>
     <line x1="270" y1="187" x2="270" y2="212" stroke="#64748b" stroke-width="2.5"/>
 
-    <!-- Main Hull (Casco Lateral de Boreste - Proa à Esquerda, Popa à Direita) -->
+    <!-- Main Hull (Casco Lateral de Boreste - Proa Ã  Esquerda, Popa Ã  Direita) -->
     <path d="M 530 230 L 510 310 Q 330 340 60 220 L 50 205 Q 200 195 530 230 Z" fill="url(#lanchaSideHullRight)" stroke="#cbd5e1" stroke-width="2"/>
 
     <!-- Dynamic Sport Graphic Stripe -->
@@ -60,14 +60,14 @@
     <circle cx="310" cy="250" r="5" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
     <circle cx="335" cy="253" r="5" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
 
-    <!-- Rub Rail (Friso Lateral de Proteção em Toda a Extensão) -->
+    <!-- Rub Rail (Friso Lateral de ProteÃ§Ã£o em Toda a ExtensÃ£o) -->
     <path d="M 535 230 Q 270 205 50 205" fill="none" stroke="#0f172a" stroke-width="5" stroke-linecap="round"/>
     <path d="M 535 230 Q 270 205 50 205" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
 
     <!-- Bow Anchor & Roller -->
     <polygon points="60,205 35,200 50,215" fill="#64748b" stroke="#334155" stroke-width="1.5"/>
 
-    <!-- Stern Platform (Plataforma de Popa à Direita) -->
+    <!-- Stern Platform (Plataforma de Popa Ã  Direita) -->
     <rect x="530" y="245" width="45" height="15" rx="2" fill="#d97706" stroke="#78350f" stroke-width="1.5"/>
     <!-- Ladder tucked under platform -->
     <line x1="560" y1="260" x2="560" y2="280" stroke="#94a3b8" stroke-width="2.5"/>

@@ -675,8 +675,8 @@ export default function SimuladoPage() {
                  {historyMetrics.chartData.length >= 2 && (
                    <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm mb-6">
                      <h2 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wide">Evolução de Desempenho</h2>
-                     <div className="h-[200px]">
-                       <ResponsiveContainer width="100%" height="100%">
+                     <div className="h-[200px] w-full min-w-0 min-h-[200px]">
+                       <ResponsiveContainer width="100%" height={200} minWidth={100} minHeight={200} debounce={50}>
                          <LineChart data={historyMetrics.chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                            <XAxis

@@ -244,8 +244,8 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
           </div>
         </div>
 
-        <div className="w-full h-72">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full h-72 min-w-0 min-h-[288px]">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={288}>
             <LineChart data={projectionData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5ea" />
               <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#86868b' }} dy={10} />
