@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Xmark,
+  X,
   User,
   Mail,
   Phone,
-  StatsReport,
+  TrendingUp,
   Bell,
-  Computer,
-  KeyCommand,
+  Monitor,
+  Keyboard,
   Check,
-  Restart,
-} from 'iconoir-react';
+  RotateCcw,
+  Sliders,
+  DollarSign,
+  Shield,
+  Sparkles
+} from 'lucide-react';
 
 export interface ComercialSettings {
   nome: string;
@@ -129,347 +133,359 @@ export default function ComercialSettingsModal({
   const progressPercent = Math.min(100, Math.round((settings.faturamentoAtual / (settings.metaMensalFaturamento || 1)) * 100));
 
   const TABS = [
-    { id: 'perfil', label: 'Perfil & Conta', icon: User },
-    { id: 'metas', label: 'Metas & Vendas', icon: StatsReport },
-    { id: 'notificacoes', label: 'Notificações', icon: Bell },
-    { id: 'interface', label: 'Interface', icon: Computer },
-    { id: 'atalhos', label: 'Atalhos', icon: KeyCommand },
+    { id: 'perfil', label: 'Perfil & Conta', icon: User, desc: 'Identificação do operador e contatos da conta comercial' },
+    { id: 'metas', label: 'Metas & Vendas', icon: TrendingUp, desc: 'Metas de faturamento mensal e novos contratos náuticos' },
+    { id: 'notificacoes', label: 'Notificações', icon: Bell, desc: 'Preferências de alertas para leads e contratos pendentes' },
+    { id: 'interface', label: 'Interface & Visualização', icon: Monitor, desc: 'Densidade de tabelas e exibição de dados no painel' },
+    { id: 'atalhos', label: 'Atalhos do Teclado', icon: Keyboard, desc: 'Comandos rápidos para navegação veloz pelo sistema' },
   ] as const;
 
+  const currentTabMeta = TABS.find(t => t.id === activeTab) || TABS[0];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/30 backdrop-blur-xs font-sans animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-900/60 backdrop-blur-xs font-sans animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      {/* ─── MODAL CONTAINER (Padrão Split View da Referência) ─── */}
       <div
-        className="bg-white rounded-2xl shadow-[0_20px_50px_-15px_rgba(0,0,0,0.12),0_8px_16px_-4px_rgba(0,0,0,0.04)] border border-stone-200/90 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-100"
+        className="bg-white rounded-3xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.18)] border border-stone-200/80 w-full max-w-4xl h-[90vh] max-h-[660px] flex flex-col md:flex-row overflow-hidden animate-in zoom-in-95 duration-150"
+        onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        {/* Header Limpo */}
-        <div className="px-6 py-4 border-b border-stone-200/80 flex items-center justify-between bg-white shrink-0">
-          <div>
-            <h3 className="text-[15px] font-semibold text-stone-900 tracking-tight">
-              Configurações do Comercial
-            </h3>
-            <p className="text-[12px] text-stone-400 mt-0.5">
-              El Mexicano • Preferências da conta, metas e alertas
-            </p>
+        {/* ================= COLUNA LATERAL ESQUERDA ================= */}
+        <aside className="w-full md:w-72 bg-stone-50/70 border-b md:border-b-0 md:border-r border-stone-200/70 p-6 flex flex-col justify-between shrink-0">
+          <div className="space-y-6">
+            
+            {/* Cabeçalho da Coluna Esquerda */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-white border border-stone-200/80 shadow-2xs flex items-center justify-center text-stone-800 shrink-0">
+                  <Sliders className="w-4 h-4 text-stone-700" />
+                </div>
+                <h3 className="font-bold text-[14px] text-stone-900 tracking-tight">
+                  Configurações
+                </h3>
+              </div>
+
+              <p className="text-[11px] text-stone-500 leading-relaxed font-normal">
+                Preferências da conta, metas comerciais, alertas e parâmetros do operador.
+              </p>
+            </div>
+
+            {/* Menu Vertical de Navegação por Pílulas */}
+            <nav className="space-y-1">
+              {TABS.map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
+                      isActive
+                        ? 'bg-white text-stone-900 shadow-xs border border-stone-200/80'
+                        : 'text-stone-500 hover:text-stone-900 hover:bg-stone-100/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Icon className="w-4 h-4 text-stone-600" />
+                      <span>{tab.label}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
           </div>
 
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
-            title="Fechar"
-          >
-            <Xmark className="w-4 h-4" />
-          </button>
-        </div>
+          {/* Rodapé da Coluna Esquerda */}
+          <div className="pt-4 border-t border-stone-200/60 space-y-1 mt-4">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-stone-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                {settings.nome ? settings.nome.slice(0, 2).toUpperCase() : 'CO'}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-stone-900 truncate">
+                  {settings.nome || 'Operador Comercial'}
+                </p>
+                <p className="text-[10px] text-stone-500 truncate">
+                  {settings.cargo || 'Comercial Mexicano'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </aside>
 
-        {/* Tab Navigation Clean */}
-        <div className="flex items-center gap-1 px-6 border-b border-stone-200/80 bg-stone-50/40 shrink-0 overflow-x-auto scrollbar-none">
-          {TABS.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`h-10 px-3 text-[12px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 border-b-2 whitespace-nowrap ${
-                  isActive
-                    ? 'border-stone-900 text-stone-900 font-semibold'
-                    : 'border-transparent text-stone-500 hover:text-stone-800'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* ================= COLUNA PRINCIPAL DE CONTEÚDO ================= */}
+        <main className="flex-1 flex flex-col min-w-0 bg-white p-6 md:p-8 overflow-hidden">
+          
+          {/* Cabeçalho da Seção Ativa + Botão Fechar */}
+          <header className="flex items-start justify-between gap-4 pb-4 border-b border-stone-100 shrink-0">
+            <div>
+              <h2 className="font-bold text-base text-stone-900 tracking-tight">
+                {currentTabMeta.label}
+              </h2>
+              <p className="text-xs text-stone-500 font-normal mt-0.5">
+                {currentTabMeta.desc}
+              </p>
+            </div>
 
-        {/* Tab Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-white">
-          {/* TAB: PERFIL */}
-          {activeTab === 'perfil' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[12px] font-medium text-stone-700 mb-1">
-                    Nome de exibição
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.nome}
-                    onChange={e => setSettings({ ...settings, nome: e.target.value })}
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 bg-white text-stone-900 text-[13px] focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition-all placeholder:text-stone-400"
-                    placeholder="Nome completo"
-                  />
-                  <span className="text-[11px] text-stone-400 mt-1 block">Exibido na topbar e propostas</span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
+              title="Fechar (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </header>
+
+          {/* Área de Conteúdo Scrollável com Cards Padronizados */}
+          <div className="flex-1 overflow-y-auto py-5 space-y-4 pr-1">
+            
+            {/* TAB: PERFIL */}
+            {activeTab === 'perfil' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Nome de Exibição
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.nome}
+                      onChange={e => setSettings({ ...settings, nome: e.target.value })}
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-semibold focus:outline-hidden focus:border-stone-400"
+                      placeholder="Nome completo"
+                    />
+                    <span className="text-[10px] text-stone-400 mt-0.5 block">Exibido na topbar e propostas</span>
+                  </div>
+
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Cargo / Função
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.cargo}
+                      onChange={e => setSettings({ ...settings, cargo: e.target.value })}
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-semibold focus:outline-hidden focus:border-stone-400"
+                      placeholder="Ex: Comercial Mexicano"
+                    />
+                    <span className="text-[10px] text-stone-400 mt-0.5 block">Identificação no Mexicano</span>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[12px] font-medium text-stone-700 mb-1">
-                    Cargo / Função
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.cargo}
-                    onChange={e => setSettings({ ...settings, cargo: e.target.value })}
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 bg-white text-stone-900 text-[13px] focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition-all placeholder:text-stone-400"
-                    placeholder="Ex: Comercial Mexicano"
-                  />
-                  <span className="text-[11px] text-stone-400 mt-1 block">Identificação no Mexicano</span>
-                </div>
-
-                <div>
-                  <label className="block text-[12px] font-medium text-stone-700 mb-1">
-                    E-mail comercial
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-2.5" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      E-mail Profissional
+                    </label>
                     <input
                       type="email"
                       value={settings.email}
                       onChange={e => setSettings({ ...settings, email: e.target.value })}
-                      className="w-full h-9 pl-8.5 pr-3 rounded-lg border border-stone-200 bg-white text-stone-900 text-[13px] focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition-all"
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-semibold focus:outline-hidden focus:border-stone-400"
+                      placeholder="seu.email@empresa.com"
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-[12px] font-medium text-stone-700 mb-1">
-                    WhatsApp / Telefone
-                  </label>
-                  <div className="relative">
-                    <Phone className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-2.5" />
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Telefone / WhatsApp
+                    </label>
                     <input
                       type="text"
                       value={settings.telefone}
                       onChange={e => setSettings({ ...settings, telefone: e.target.value })}
-                      className="w-full h-9 pl-8.5 pr-3 rounded-lg border border-stone-200 bg-white text-stone-900 text-[13px] focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition-all"
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-semibold focus:outline-hidden focus:border-stone-400"
+                      placeholder="(11) 98765-4321"
                     />
                   </div>
                 </div>
               </div>
+            )}
 
-              <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
-                <div>
-                  <div className="text-[12px] font-medium text-stone-800">Unidade Vinculada</div>
-                  <div className="text-[11px] text-stone-400">El Mexicano • Setor Comercial & Contratos</div>
-                </div>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-stone-600 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded-md">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Sessão ativa no Mexicano
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* TAB: METAS */}
-          {activeTab === 'metas' && (
-            <div className="space-y-5">
-              {/* Progresso minimalista */}
-              <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/80 space-y-2.5">
-                <div className="flex items-center justify-between text-[12px]">
-                  <span className="font-medium text-stone-700">Meta do Mês (Outubro)</span>
-                  <span className="font-semibold text-stone-900 tabular-nums">{progressPercent}% atingida</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-stone-200/80 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-stone-900 transition-all duration-300"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-stone-400 tabular-nums">
-                  <span>Atual: {formatBRL(settings.faturamentoAtual)}</span>
-                  <span>Alvo: {formatBRL(settings.metaMensalFaturamento)}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[12px] font-medium text-stone-700 mb-1">
-                    Meta de faturamento (R$)
-                  </label>
-                  <input
-                    type="number"
-                    step={10000}
-                    value={settings.metaMensalFaturamento}
-                    onChange={e => setSettings({ ...settings, metaMensalFaturamento: Number(e.target.value) || 0 })}
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 bg-white text-stone-900 text-[13px] focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition-all"
-                  />
-                  <span className="text-[11px] text-stone-400 mt-1 block">Valor exibido no card da sidebar</span>
+            {/* TAB: METAS */}
+            {activeTab === 'metas' && (
+              <div className="space-y-4">
+                {/* Card de Progresso */}
+                <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-stone-900">Atingimento da Meta Mensal</p>
+                      <p className="text-[11px] text-stone-500">
+                        {formatBRL(settings.faturamentoAtual)} de {formatBRL(settings.metaMensalFaturamento)}
+                      </p>
+                    </div>
+                    <span className="text-sm font-black text-stone-900">{progressPercent}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-stone-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-stone-900 rounded-full transition-all duration-300"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[12px] font-medium text-stone-700 mb-1">
-                    Faturamento acumulado (R$)
-                  </label>
-                  <input
-                    type="number"
-                    step={5000}
-                    value={settings.faturamentoAtual}
-                    onChange={e => setSettings({ ...settings, faturamentoAtual: Number(e.target.value) || 0 })}
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 bg-white text-stone-900 text-[13px] focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition-all"
-                  />
-                  <span className="text-[11px] text-stone-400 mt-1 block">Total atingido no mês atual</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Meta de Faturamento (R$)
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.metaMensalFaturamento}
+                      onChange={e => setSettings({ ...settings, metaMensalFaturamento: Number(e.target.value) || 0 })}
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-bold focus:outline-hidden focus:border-stone-400"
+                    />
+                  </div>
+
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Faturamento Atual (R$)
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.faturamentoAtual}
+                      onChange={e => setSettings({ ...settings, faturamentoAtual: Number(e.target.value) || 0 })}
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-bold focus:outline-hidden focus:border-stone-400"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[12px] font-medium text-stone-700 mb-1">
-                    Meta de novos contratos
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.metaNovosContratos}
-                    onChange={e => setSettings({ ...settings, metaNovosContratos: Number(e.target.value) || 0 })}
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 bg-white text-stone-900 text-[13px] focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition-all"
-                  />
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Meta de Novos Contratos
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.metaNovosContratos}
+                      onChange={e => setSettings({ ...settings, metaNovosContratos: Number(e.target.value) || 0 })}
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-bold focus:outline-hidden focus:border-stone-400"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-[12px] font-medium text-stone-700 mb-1">
-                    Meta de novos leads
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.metaNovosLeads}
-                    onChange={e => setSettings({ ...settings, metaNovosLeads: Number(e.target.value) || 0 })}
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 bg-white text-stone-900 text-[13px] focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-400 transition-all"
-                  />
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Meta de Novos Leads
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.metaNovosLeads}
+                      onChange={e => setSettings({ ...settings, metaNovosLeads: Number(e.target.value) || 0 })}
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-bold focus:outline-hidden focus:border-stone-400"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* TAB: NOTIFICAÇÕES */}
-          {activeTab === 'notificacoes' && (
-            <div className="space-y-3.5 divide-y divide-stone-100">
-              <div className="flex items-center justify-between pt-1">
-                <div>
-                  <div className="text-[12.5px] font-medium text-stone-800">Novos leads recebidos</div>
-                  <div className="text-[11px] text-stone-400">Notificar chegada de contatos via WhatsApp ou site</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.notificarNovosLeads}
-                  onChange={e => setSettings({ ...settings, notificarNovosLeads: e.target.checked })}
-                  className="w-4 h-4 rounded text-stone-900 accent-stone-900 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-3">
-                <div>
-                  <div className="text-[12.5px] font-medium text-stone-800">Propostas pendentes</div>
-                  <div className="text-[11px] text-stone-400">Alertar propostas sem resposta há mais de 48 horas</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.notificarPropostasSemResposta}
-                  onChange={e => setSettings({ ...settings, notificarPropostasSemResposta: e.target.checked })}
-                  className="w-4 h-4 rounded text-stone-900 accent-stone-900 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-3">
-                <div>
-                  <div className="text-[12.5px] font-medium text-stone-800">Contratos próximos ao vencimento</div>
-                  <div className="text-[11px] text-stone-400">Exibir badge de renovação de cotas e guarda</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.notificarContratosPendentes}
-                  onChange={e => setSettings({ ...settings, notificarContratosPendentes: e.target.checked })}
-                  className="w-4 h-4 rounded text-stone-900 accent-stone-900 cursor-pointer"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-between">
-                <div>
-                  <div className="text-[12.5px] font-medium text-stone-800">Antecedência dos alertas</div>
-                  <div className="text-[11px] text-stone-400">Tempo prévio para aviso de renovação</div>
-                </div>
-                <select
-                  value={settings.diasAlertaVencimento}
-                  onChange={e => setSettings({ ...settings, diasAlertaVencimento: Number(e.target.value) })}
-                  className="h-8.5 px-2.5 rounded-lg border border-stone-200 bg-white text-stone-800 text-[12px] focus:outline-hidden focus:border-stone-400"
-                >
-                  <option value={15}>15 dias antes</option>
-                  <option value={30}>30 dias antes</option>
-                  <option value={45}>45 dias antes</option>
-                  <option value={60}>60 dias antes</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* TAB: INTERFACE */}
-          {activeTab === 'interface' && (
-            <div className="space-y-3.5 divide-y divide-stone-100">
-              <div className="flex items-center justify-between pt-1">
-                <div>
-                  <div className="text-[12.5px] font-medium text-stone-800">Barra lateral compacta</div>
-                  <div className="text-[11px] text-stone-400">Iniciar com o menu lateral recolhido por padrão</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.sidebarColapsadaPadrao}
-                  onChange={e => setSettings({ ...settings, sidebarColapsadaPadrao: e.target.checked })}
-                  className="w-4 h-4 rounded text-stone-900 accent-stone-900 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-3">
-                <div>
-                  <div className="text-[12.5px] font-medium text-stone-800">Efeitos sonoros</div>
-                  <div className="text-[11px] text-stone-400">Sons discretos ao concluir ações e salvar propostas</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.somNotificacoes}
-                  onChange={e => setSettings({ ...settings, somNotificacoes: e.target.checked })}
-                  className="w-4 h-4 rounded text-stone-900 accent-stone-900 cursor-pointer"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-between">
-                <div>
-                  <div className="text-[12.5px] font-medium text-stone-800">Densidade das tabelas</div>
-                  <div className="text-[11px] text-stone-400">Espaçamento entre as linhas de dados</div>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setSettings({ ...settings, densidadeTabelas: 'confortavel' })}
-                    className={`h-7 px-2.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                      settings.densidadeTabelas === 'confortavel'
-                        ? 'bg-stone-900 text-white'
-                        : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-                    }`}
-                  >
-                    Padrão
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSettings({ ...settings, densidadeTabelas: 'compacta' })}
-                    className={`h-7 px-2.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                      settings.densidadeTabelas === 'compacta'
-                        ? 'bg-stone-900 text-white'
-                        : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-                    }`}
-                  >
-                    Compacta
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB: ATALHOS */}
-          {activeTab === 'atalhos' && (
-            <div className="space-y-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {/* TAB: NOTIFICAÇÕES */}
+            {activeTab === 'notificacoes' && (
+              <div className="space-y-3">
                 {[
-                  { label: 'Busca rápida', shortcut: 'Ctrl + K' },
-                  { label: 'Fechar gavetas e modais', shortcut: 'Esc' },
+                  {
+                    key: 'notificarNovosLeads' as const,
+                    title: 'Novos leads cadastrados',
+                    desc: 'Notificar quando uma oportunidade for capturada via landing page ou webhook',
+                  },
+                  {
+                    key: 'notificarPropostasSemResposta' as const,
+                    title: 'Propostas sem retorno há mais de 48h',
+                    desc: 'Alerta de follow-up para contatar cotistas em negociação',
+                  },
+                  {
+                    key: 'notificarContratosPendentes' as const,
+                    title: 'Contratos pendentes de assinatura',
+                    desc: 'Lembretes automáticos para acelerar o fechamento formal',
+                  },
+                  {
+                    key: 'somNotificacoes' as const,
+                    title: 'Som nas notificações',
+                    desc: 'Emitir bipe discreto ao receber novidades e alertas importantes',
+                  },
+                ].map(item => (
+                  <label
+                    key={item.key}
+                    className="flex items-center justify-between p-3.5 rounded-2xl border border-stone-200/70 bg-stone-50/50 hover:bg-stone-100/40 transition-colors cursor-pointer"
+                  >
+                    <div className="pr-3">
+                      <p className="text-xs font-bold text-stone-900">{item.title}</p>
+                      <p className="text-[11px] text-stone-500 mt-0.5">{item.desc}</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings[item.key]}
+                      onChange={e => setSettings({ ...settings, [item.key]: e.target.checked })}
+                      className="w-4 h-4 rounded text-stone-900 focus:ring-stone-400 cursor-pointer shrink-0"
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* TAB: INTERFACE */}
+            {activeTab === 'interface' && (
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-2xl border border-stone-200/70 bg-stone-50/50 space-y-2">
+                  <p className="text-xs font-bold text-stone-900">Densidade visual das tabelas</p>
+                  <p className="text-[11px] text-stone-500">Ajuste o espaçamento vertical entre linhas</p>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {(['confortavel', 'compacta'] as const).map(d => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, densidadeTabelas: d })}
+                        className={`h-9 px-3 rounded-xl border text-xs font-semibold capitalize transition-all cursor-pointer ${
+                          settings.densidadeTabelas === d
+                            ? 'border-stone-900 bg-white text-stone-900 shadow-2xs'
+                            : 'border-stone-200 bg-stone-100/50 text-stone-600 hover:bg-white'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="flex items-center justify-between p-3.5 rounded-2xl border border-stone-200/70 bg-stone-50/50 hover:bg-stone-100/40 transition-colors cursor-pointer">
+                  <div className="pr-3">
+                    <p className="text-xs font-bold text-stone-900">Menu lateral colapsado por padrão</p>
+                    <p className="text-[11px] text-stone-500 mt-0.5">Inicia a barra de navegação no modo reduzido</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.sidebarColapsadaPadrao}
+                    onChange={e => setSettings({ ...settings, sidebarColapsadaPadrao: e.target.checked })}
+                    className="w-4 h-4 rounded text-stone-900 focus:ring-stone-400 cursor-pointer shrink-0"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-3.5 rounded-2xl border border-stone-200/70 bg-stone-50/50 hover:bg-stone-100/40 transition-colors cursor-pointer">
+                  <div className="pr-3">
+                    <p className="text-xs font-bold text-stone-900">Ocultar valores monetários no Dashboard</p>
+                    <p className="text-[11px] text-stone-500 mt-0.5">Substitui cifras por asteriscos para privacidade</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.ocultarValoresDashboard}
+                    onChange={e => setSettings({ ...settings, ocultarValoresDashboard: e.target.checked })}
+                    className="w-4 h-4 rounded text-stone-900 focus:ring-stone-400 cursor-pointer shrink-0"
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* TAB: ATALHOS */}
+            {activeTab === 'atalhos' && (
+              <div className="space-y-2">
+                {[
+                  { label: 'Busca rápida de cotistas', shortcut: 'Ctrl + K' },
+                  { label: 'Fechar modais e formulários', shortcut: 'Esc' },
                   { label: 'Ir para Dashboard', shortcut: 'Alt + D' },
                   { label: 'Ir para Clientes', shortcut: 'Alt + C' },
                   { label: 'Ir para Embarcações', shortcut: 'Alt + E' },
@@ -477,58 +493,62 @@ export default function ComercialSettingsModal({
                 ].map(item => (
                   <div
                     key={item.label}
-                    className="h-9 px-3 rounded-lg border border-stone-100 bg-stone-50 flex items-center justify-between"
+                    className="h-10 px-4 rounded-2xl border border-stone-200/70 bg-stone-50/50 flex items-center justify-between"
                   >
-                    <span className="text-[12px] text-stone-700">{item.label}</span>
-                    <kbd className="text-[10px] font-mono font-medium text-stone-500 bg-white border border-stone-200 rounded px-1.5 py-0.5">
+                    <span className="text-xs font-semibold text-stone-800">{item.label}</span>
+                    <kbd className="text-[10px] font-mono font-bold text-stone-600 bg-white border border-stone-200 rounded-lg px-2 py-0.5 shadow-2xs">
                       {item.shortcut}
                     </kbd>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
+            )}
 
-        {/* Footer Limpo */}
-        <div className="px-6 py-3.5 bg-stone-50/70 border-t border-stone-200/80 flex items-center justify-between shrink-0">
-          <button
-            type="button"
-            onClick={handleResetDefaults}
-            className="text-[12px] text-stone-400 hover:text-stone-700 transition-colors cursor-pointer flex items-center gap-1.5"
-          >
-            <Restart className="w-3 h-3" />
-            <span>Restaurar padrões</span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-8.5 px-3 rounded-lg border border-stone-200 bg-white text-[12px] font-medium text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="h-8.5 px-4 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
-            >
-              {saveSuccess ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Salvo</span>
-                </>
-              ) : isSaving ? (
-                <span>Salvando…</span>
-              ) : (
-                <span>Salvar alterações</span>
-              )}
-            </button>
           </div>
-        </div>
+
+          {/* ================= RODAPÉ PRINCIPAL DO MODAL ================= */}
+          <footer className="pt-4 border-t border-stone-100 flex items-center justify-between shrink-0">
+            {/* Ação Auxiliar na Esquerda */}
+            <button
+              type="button"
+              onClick={handleResetDefaults}
+              className="text-xs font-semibold text-stone-500 hover:text-stone-900 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Restaurar padrões</span>
+            </button>
+
+            {/* Botões de Ação na Direita */}
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-9 px-4 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="h-9 px-5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                {saveSuccess ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Salvo com sucesso</span>
+                  </>
+                ) : isSaving ? (
+                  <span>Salvando…</span>
+                ) : (
+                  <span>Salvar alterações</span>
+                )}
+              </button>
+            </div>
+          </footer>
+
+        </main>
       </div>
     </div>
   );

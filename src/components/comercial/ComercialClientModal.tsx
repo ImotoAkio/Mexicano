@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   User,
@@ -23,7 +23,9 @@ import {
   ShieldCheck,
   Calendar,
   CheckCircle2,
-  Award
+  Award,
+  Loader2,
+  UserCheck
 } from 'lucide-react';
 import { Cliente, Embarcacao } from '../../types';
 import { clientDB } from '../../db';
@@ -97,6 +99,8 @@ export default function ComercialClientModal({
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('PE');
   const [isSearchingCep, setIsSearchingCep] = useState(false);
+  const [cepError, setCepError] = useState<string | null>(null);
+  const numeroInputRef = useRef<HTMLInputElement | null>(null);
 
   // Embarcações ordenadas
   const sortedBoats = useMemo(() => {
@@ -221,18 +225,25 @@ export default function ComercialClientModal({
 
   const handleCepChange = (val: string) => {
     let clean = val.replace(/\D/g, '').slice(0, 8);
+    let formatted = clean;
     if (clean.length > 5) {
-      clean = clean.replace(/(\d{5})(\d{1,3})/, '$1-$2');
+      formatted = clean.replace(/(\d{5})(\d{1,3})/, '$1-$2');
     }
-    setCep(clean);
+    setCep(formatted);
+
+    // Se preencheu os 8 dígitos do CEP, aciona a busca automaticamente no ViaCEP
+    if (clean.length === 8) {
+      searchCep(clean);
+    }
   };
 
   // Busca de CEP automática via ViaCEP
-  const searchCep = async () => {
-    const cleanCep = cep.replace(/\D/g, '');
+  const searchCep = async (overrideCep?: string) => {
+    const cleanCep = (overrideCep !== undefined ? overrideCep : cep).replace(/\D/g, '');
     if (cleanCep.length !== 8) return;
 
     setIsSearchingCep(true);
+    setCepError(null);
     try {
       const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
       const data = await res.json();
@@ -241,9 +252,18 @@ export default function ComercialClientModal({
         if (data.bairro) setBairro(data.bairro);
         if (data.localidade) setCidade(data.localidade);
         if (data.uf) setEstado(data.uf);
+        if (data.complemento && !complemento) setComplemento(data.complemento);
+        // Focar automaticamente no número da residência após preencher
+        setTimeout(() => {
+          numeroInputRef.current?.focus();
+        }, 120);
+      } else {
+        setCepError('CEP não encontrado');
+        setTimeout(() => setCepError(null), 4000);
       }
     } catch {
-      // Ignora erro silenciosamente
+      setCepError('Falha ao consultar CEP');
+      setTimeout(() => setCepError(null), 4000);
     } finally {
       setIsSearchingCep(false);
     }
@@ -356,130 +376,144 @@ export default function ComercialClientModal({
     }
   };
 
+  interface ClientTabItem {
+    id: 'comercial' | 'embarcacoes' | 'dados' | 'endereco';
+    label: string;
+    icon: React.ElementType;
+    desc: string;
+    count?: number;
+  }
+
+  const CLIENT_TABS: ClientTabItem[] = [
+    { id: 'comercial', label: 'Condição Comercial', icon: Sparkles, desc: 'Status do cadastro, plano de navegação e situação financeira' },
+    { id: 'embarcacoes', label: 'Embarcações & Cotas', icon: Ship, desc: 'Vínculos de cotas e acessórios por embarcação', count: cotasList.length },
+    { id: 'dados', label: 'Dados Pessoais', icon: User, desc: 'Identificação civil e habilitação náutica do cotista' },
+    { id: 'endereco', label: 'Contatos & Endereço', icon: MapPin, desc: 'Canais de comunicação e endereço residencial' },
+  ];
+
+  const currentTabMeta = CLIENT_TABS.find(t => t.id === activeTab) || CLIENT_TABS[0];
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-5">
-      {/* Backdrop */}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-900/60 backdrop-blur-xs font-sans animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      {/* ─── MODAL CONTAINER (Padrão Split View da Referência) ─── */}
       <div
-        onClick={onClose}
-        className="fixed inset-0 bg-stone-900/40 backdrop-blur-[2px] transition-opacity"
-      />
-
-      {/* Modal Dialog */}
-      <div
+        className="bg-white rounded-3xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.18)] border border-stone-200/80 w-full max-w-4xl h-[90vh] max-h-[680px] flex flex-col md:flex-row overflow-hidden animate-in zoom-in-95 duration-150"
+        onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden border border-stone-200/90 animate-in fade-in zoom-in-95 duration-150"
       >
-        {/* HEADER */}
-        <header className="px-6 py-4.5 bg-gradient-to-r from-stone-50 via-white to-stone-50/50 border-b border-stone-200/80 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-11 h-11 rounded-xl bg-mx-ink text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">
-              {nome ? nome.slice(0, 2).toUpperCase() : <User className="w-5 h-5" />}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-stone-900 truncate">
-                  {isEditing ? (nome || 'Editar Cliente') : 'Novo Cadastro Comercial'}
-                </h2>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    status === 'ativo'
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                      : 'bg-stone-100 text-stone-500 border border-stone-200'
-                  }`}
-                >
-                  {status}
-                </span>
+        {/* ================= COLUNA LATERAL ESQUERDA ================= */}
+        <aside className="w-full md:w-72 bg-stone-50/70 border-b md:border-b-0 md:border-r border-stone-200/70 p-6 flex flex-col justify-between shrink-0">
+          <div className="space-y-6">
+            
+            {/* Cabeçalho da Coluna Esquerda */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-white border border-stone-200/80 shadow-2xs flex items-center justify-center text-stone-800 shrink-0">
+                  <User className="w-4 h-4 text-stone-700" />
+                </div>
+                <h3 className="font-bold text-[14px] text-stone-900 tracking-tight">
+                  {isEditing ? 'Editar Cotista' : 'Novo Cotista'}
+                </h3>
               </div>
-              <p className="text-xs text-stone-500 truncate">
-                {isEditing
-                  ? `Atualização cadastral e cotas vinculadas • ID: ${editingClient?.id}`
-                  : 'Cadastre cotistas e configure embarcações, cotas e planos'}
+
+              <p className="text-[11px] text-stone-500 leading-relaxed font-normal">
+                {isEditing ? (
+                  <>Atualização cadastral e cotas de <span className="font-semibold text-stone-800">{nome || 'cliente'}</span>.</>
+                ) : (
+                  'Cadastre cotistas e configure embarcações, cotas e planos.'
+                )}
               </p>
             </div>
+
+            {/* Menu Vertical de Navegação por Pílulas */}
+            <nav className="space-y-1">
+              {CLIENT_TABS.map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
+                      isActive
+                        ? 'bg-white text-stone-900 shadow-xs border border-stone-200/80'
+                        : 'text-stone-500 hover:text-stone-900 hover:bg-stone-100/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Icon className="w-4 h-4 text-stone-600" />
+                      <span>{tab.label}</span>
+                    </div>
+                    {typeof tab.count === 'number' && tab.count > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-200/80 text-stone-700">
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
 
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
-            title="Fechar"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </header>
-
-        {/* NAVEGAÇÃO POR ABAS (TABS) */}
-        <div className="px-6 pt-3 bg-white border-b border-stone-200/80 shrink-0 flex items-center gap-1 overflow-x-auto hide-scrollbar">
-          <button
-            type="button"
-            onClick={() => setActiveTab('comercial')}
-            className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'comercial'
-                ? 'border-mx-ink text-mx-ink font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900 hover:border-stone-300'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>1. Condição Comercial</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('embarcacoes')}
-            className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'embarcacoes'
-                ? 'border-mx-ink text-mx-ink font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900 hover:border-stone-300'
-            }`}
-          >
-            <Ship className="w-4 h-4" />
-            <span>2. Embarcações & Cotas</span>
-            {cotasList.length > 0 && (
-              <span className="w-4 h-4 rounded-full bg-mx-ink-100 text-mx-ink text-[10px] font-bold flex items-center justify-center">
-                {cotasList.length}
+          {/* Rodapé da Coluna Esquerda */}
+          <div className="pt-4 border-t border-stone-200/60 space-y-2 mt-4">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-stone-500 font-medium">Situação:</span>
+              <span className={`font-semibold px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1 ${
+                status === 'ativo' ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-700'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${status === 'ativo' ? 'bg-emerald-600' : 'bg-stone-400'}`} />
+                {status === 'ativo' ? 'Ativo' : 'Inativo'}
               </span>
-            )}
-          </button>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('dados')}
-            className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'dados'
-                ? 'border-mx-ink text-mx-ink font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900 hover:border-stone-300'
-            }`}
-          >
-            <User className="w-4 h-4" />
-            <span>3. Dados Pessoais</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('endereco')}
-            className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'endereco'
-                ? 'border-mx-ink text-mx-ink font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900 hover:border-stone-300'
-            }`}
-          >
-            <MapPin className="w-4 h-4" />
-            <span>4. Contatos & Endereço</span>
-          </button>
-        </div>
-
-        {/* MENSAGEM DE ERRO (CASO HAJA) */}
-        {errorMessage && (
-          <div className="mx-6 mt-4 p-3 rounded-xl bg-red-50 border border-red-200/80 text-red-700 text-xs flex items-center gap-2.5">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-            <span>{errorMessage}</span>
+            <div className="flex items-center justify-between text-[10px] text-stone-400 pt-0.5">
+              <span className="font-medium text-stone-600">Plano {plano === 'completo' ? 'Completo' : 'Normal'}</span>
+              <span className="font-semibold text-stone-700">{statusFinanceiro === 'em_dia' ? 'Em dia' : statusFinanceiro}</span>
+            </div>
           </div>
-        )}
+        </aside>
 
-        {/* CORPO DO FORMULÁRIO */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* ================= COLUNA PRINCIPAL DE CONTEÚDO ================= */}
+        <main className="flex-1 flex flex-col min-w-0 bg-white p-6 md:p-8 overflow-hidden">
+          {/* Cabeçalho da Seção Ativa + Botão Fechar */}
+          <header className="flex items-start justify-between gap-4 pb-4 border-b border-stone-100 shrink-0">
+            <div>
+              <h2 className="font-bold text-base text-stone-900 tracking-tight">
+                {currentTabMeta.label}
+              </h2>
+              <p className="text-xs text-stone-500 font-normal mt-0.5">
+                {currentTabMeta.desc}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
+              title="Fechar (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </header>
+
+          {/* MENSAGEM DE ERRO (CASO HAJA) */}
+          {errorMessage && (
+            <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200/80 text-red-700 text-xs flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* CORPO DO FORMULÁRIO COM SCROLL */}
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto py-5 space-y-6 pr-1">
           {/* ============================================================== */}
           {/* ABA 1: CONDIÇÃO COMERCIAL                                      */}
           {/* ============================================================== */}
@@ -1063,16 +1097,36 @@ export default function ComercialClientModal({
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   {/* CEP */}
                   <div className="space-y-1 sm:col-span-1">
-                    <label className="text-[11px] font-semibold text-stone-600">CEP</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-semibold text-stone-600">CEP</label>
+                      {cepError && (
+                        <span className="text-[10px] text-rose-500 font-semibold animate-in fade-in">{cepError}</span>
+                      )}
+                    </div>
                     <div className="relative">
                       <input
                         type="text"
                         value={cep}
                         onChange={e => handleCepChange(e.target.value)}
-                        onBlur={searchCep}
+                        onBlur={() => searchCep()}
                         placeholder="00000-000"
-                        className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                        maxLength={9}
+                        className="w-full h-9 pl-3 pr-8 rounded-lg border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
                       />
+                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center">
+                        {isSearchingCep ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-500" />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => searchCep()}
+                            className="text-stone-400 hover:text-stone-700 transition-colors cursor-pointer"
+                            title="Buscar endereço no ViaCEP"
+                          >
+                            <Search className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1092,6 +1146,7 @@ export default function ComercialClientModal({
                   <div className="space-y-1 sm:col-span-1">
                     <label className="text-[11px] font-semibold text-stone-600">Número</label>
                     <input
+                      ref={numeroInputRef}
                       type="text"
                       value={numeroEnd}
                       onChange={e => setNumeroEnd(e.target.value)}
@@ -1154,37 +1209,47 @@ export default function ComercialClientModal({
           )}
         </form>
 
-        {/* RODAPÉ FIXO DO MODAL */}
-        <footer className="px-6 py-4 bg-stone-50 border-t border-stone-200/80 flex items-center justify-between shrink-0">
-          <div className="text-xs text-stone-500 hidden sm:block">
-            {isEditing ? (
-              <span>Editando registro cadastral</span>
-            ) : (
-              <span>Preencha as abas e salve para cadastrar</span>
-            )}
-          </div>
+          {/* ================= RODAPÉ PRINCIPAL DO MODAL ================= */}
+          <footer className="pt-4 border-t border-stone-100 flex items-center justify-between shrink-0">
+            <div className="text-xs text-stone-400 hidden sm:block">
+              {isEditing ? (
+                <span>Editando cotista • ID: {editingClient?.id}</span>
+              ) : (
+                <span>Preencha as informações para cadastrar</span>
+              )}
+            </div>
 
-          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="h-9 px-4 rounded-lg bg-white border border-stone-200 hover:bg-stone-100 text-stone-700 text-xs font-semibold transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSaving}
+                className="h-9 px-4 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              >
+                Cancelar
+              </button>
 
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isSaving}
-              className="h-9 px-5 rounded-lg bg-mx-ink hover:bg-mx-ink-700 text-white text-xs font-semibold flex items-center gap-2 shadow-[0_4px_12px_-4px_rgba(43,17,32,0.6)] transition-all cursor-pointer disabled:opacity-60"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>{isSaving ? 'Salvando…' : isEditing ? 'Salvar Alterações' : 'Cadastrar Cliente'}</span>
-            </button>
-          </div>
-        </footer>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isSaving}
+                className="h-9 px-5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Salvando…</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{isEditing ? 'Salvar Alterações' : 'Cadastrar Cotista'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </footer>
+        </main>
       </div>
     </div>
   );

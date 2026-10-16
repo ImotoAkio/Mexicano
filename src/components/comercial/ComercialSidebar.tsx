@@ -6,6 +6,7 @@ import {
   Users,
   Ship,
   FileSignature,
+  DollarSign,
   Wallet,
   ChevronDown,
   BarChart3,
@@ -30,6 +31,7 @@ interface NavItem {
 
 const MAIN_NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'vendas', label: 'Vendas', icon: DollarSign },
   { id: 'leads', label: 'Leads', icon: UserPlus, badge: '46' },
   { id: 'propostas', label: 'Propostas', icon: FileText },
   { id: 'clientes', label: 'Clientes', icon: Users },

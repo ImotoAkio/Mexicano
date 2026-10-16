@@ -222,15 +222,20 @@ export default function ComercialClientDrawer({
 
   const handleCepChange = (val: string) => {
     let clean = val.replace(/\D/g, '').slice(0, 8);
+    let formatted = clean;
     if (clean.length > 5) {
-      clean = clean.replace(/(\d{5})(\d{1,3})/, '$1-$2');
+      formatted = clean.replace(/(\d{5})(\d{1,3})/, '$1-$2');
     }
-    setCep(clean);
+    setCep(formatted);
+
+    if (clean.length === 8) {
+      searchCep(clean);
+    }
   };
 
   // Busca de CEP automática via ViaCEP
-  const searchCep = async () => {
-    const cleanCep = cep.replace(/\D/g, '');
+  const searchCep = async (overrideCep?: string) => {
+    const cleanCep = (overrideCep !== undefined ? overrideCep : cep).replace(/\D/g, '');
     if (cleanCep.length !== 8) return;
 
     setIsSearchingCep(true);
@@ -242,6 +247,7 @@ export default function ComercialClientDrawer({
         if (data.bairro) setBairro(data.bairro);
         if (data.localidade) setCidade(data.localidade);
         if (data.uf) setEstado(data.uf);
+        if (data.complemento && !complemento) setComplemento(data.complemento);
       }
     } catch {
       // Ignora erro

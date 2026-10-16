@@ -1325,6 +1325,50 @@ export async function initializeDatabase() {
     `);
     console.log("✅ UTV tables ready.");
 
+    // ── Comercial Vendas Table ──
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS Vendas (
+        id VARCHAR(50) PRIMARY KEY,
+        codigoVenda VARCHAR(50) NOT NULL,
+        dataVenda VARCHAR(20) NOT NULL,
+        vendedorNome VARCHAR(150),
+        clienteId VARCHAR(50) NOT NULL,
+        embarcacaoId VARCHAR(50) NOT NULL,
+        cota VARCHAR(50) NOT NULL,
+        valorTotal DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        valorEntrada DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        dataVencimentoEntrada VARCHAR(20),
+        formaPagamentoEntrada VARCHAR(100),
+        entradaPaga TINYINT(1) DEFAULT 0,
+        comprovanteEntrada VARCHAR(500),
+        valorRemanescente DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        numParcelas INT NOT NULL DEFAULT 1,
+        valorParcela DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        diaVencimento INT NOT NULL DEFAULT 10,
+        dataPrimeiraParcela VARCHAR(20),
+        formaPagamentoParcelas VARCHAR(100),
+        gerouTaxaAdm TINYINT(1) DEFAULT 0,
+        valorTaxaAdm DECIMAL(10, 2) DEFAULT 0.00,
+        mesesTaxaAdm INT DEFAULT 12,
+        diaVencimentoTaxaAdm INT DEFAULT 10,
+        dataPrimeiraTaxaAdm VARCHAR(20),
+        grupoParcelamentoId VARCHAR(80),
+        grupoTaxaAdmId VARCHAR(80),
+        transacaoEntradaId VARCHAR(80),
+        empresa VARCHAR(50) DEFAULT 'Mexicano',
+        planoContasId VARCHAR(50),
+        centroCustoId VARCHAR(50),
+        contaBancariaId VARCHAR(50),
+        observacoes TEXT,
+        status VARCHAR(30) DEFAULT 'ativa',
+        createdAt VARCHAR(50) NOT NULL,
+        INDEX idx_vendas_data (dataVenda),
+        INDEX idx_vendas_cliente (clienteId),
+        INDEX idx_vendas_embarcacao (embarcacaoId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ Vendas table ready.");
+
     connection.release();
     isInitialized = true;
     console.log("VPS Database tables validated/initialized successfully.");
@@ -4407,4 +4451,513 @@ export async function calcularRateioUtv(params: {
     totalUsoGeral: Math.round(totalUsoGeral * 100) / 100,
     detalhes
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// ──────────── MÓDULO COMERCIAL — LANÇAMENTO DE VENDAS ─────────
+// ─────────────────────────────────────────────────────────────
+
+function buildDueDateWithFixedDay(baseDateStr: string, monthOffset: number, fixedDay: number): string {
+  const parts = baseDateStr.split('-').map(Number);
+  const year = parts[0] || new Date().getFullYear();
+  const month = (parts[1] || (new Date().getMonth() + 1)) - 1;
+  const target = new Date(year, month + monthOffset, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  const day = Math.min(Math.max(1, fixedDay || 10), lastDay);
+  const yyyy = target.getFullYear();
+  const mm = String(target.getMonth() + 1).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatNumberToBRLString(val: number): string {
+  const fixed = (Number(val) || 0).toFixed(2).replace('.', ',');
+  return fixed.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+export async function getNextCodigoVenda(): Promise<string> {
+  const currentPool = getDbPool();
+  const year = new Date().getFullYear();
+  const prefix = `VND-${year}-`;
+  if (!currentPool) {
+    return `${prefix}${String(Date.now() % 1000).padStart(3, '0')}`;
+  }
+
+  const [rows] = await currentPool.query(
+    "SELECT codigoVenda FROM Vendas WHERE codigoVenda LIKE ? ORDER BY codigoVenda DESC LIMIT 1",
+    [`${prefix}%`]
+  );
+  const existing = rows as any[];
+  if (existing.length === 0) {
+    return `${prefix}001`;
+  }
+  const lastCode = existing[0].codigoVenda || '';
+  const lastNum = parseInt(lastCode.replace(prefix, ''), 10) || 0;
+  return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
+}
+
+export async function getAllVendas(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  const [rows] = await currentPool.query(`
+    SELECT v.*,
+           c.nome AS clienteNome, c.cpf AS clienteCpf, c.telefone AS clienteTelefone,
+           e.nome AS embarcacaoNome, e.numero AS embarcacaoNumero, e.modelo AS embarcacaoModelo
+    FROM Vendas v
+    LEFT JOIN Clientes c ON v.clienteId = c.id
+    LEFT JOIN Embarcacoes e ON v.embarcacaoId = e.id
+    ORDER BY v.dataVenda DESC, v.createdAt DESC
+  `);
+
+  const vendas = rows as any[];
+  if (vendas.length === 0) return [];
+
+  // Buscar resumo das transações financeiras vinculadas às vendas
+  const [txRows] = await currentPool.query(`
+    SELECT id, grupoParcelamentoId, status, valor, dataVencimento, dataPagamento, comprovante
+    FROM TransacoesFinanceiras
+    WHERE grupoParcelamentoId LIKE 'GRP-VND-%' OR id LIKE 'fin_vnd_%'
+  `);
+  const txs = txRows as any[];
+
+  const txByGroup = new Map<string, any[]>();
+  const txById = new Map<string, any>();
+  txs.forEach(t => {
+    txById.set(t.id, t);
+    if (t.grupoParcelamentoId) {
+      if (!txByGroup.has(t.grupoParcelamentoId)) txByGroup.set(t.grupoParcelamentoId, []);
+      txByGroup.get(t.grupoParcelamentoId)!.push(t);
+    }
+  });
+
+  return vendas.map(v => {
+    const groupTxs = v.grupoParcelamentoId ? (txByGroup.get(v.grupoParcelamentoId) || []) : [];
+    const entradaTx = v.transacaoEntradaId ? txById.get(v.transacaoEntradaId) : null;
+
+    const parcelasPagas = groupTxs.filter(t => t.status === 'pago').length;
+    const parcelasVencidas = groupTxs.filter(t => t.status === 'vencido').length;
+    let totalRecebidoCota = groupTxs
+      .filter(t => t.status === 'pago')
+      .reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+
+    const statusEntradaFinanceiro = entradaTx ? entradaTx.status : (v.entradaPaga ? 'pago' : 'lancado');
+    if (statusEntradaFinanceiro === 'pago') {
+      totalRecebidoCota += Number(v.valorEntrada) || 0;
+    }
+
+    return {
+      ...v,
+      embarcacaoNome: v.embarcacaoNome
+        ? `${v.embarcacaoNumero ? `M${String(v.embarcacaoNumero).replace(/^M/i, '')} - ` : ''}${v.embarcacaoNome}`
+        : 'Embarcação',
+      valorTotal: Number(v.valorTotal) || 0,
+      valorEntrada: Number(v.valorEntrada) || 0,
+      entradaPaga: v.entradaPaga === 1 || v.entradaPaga === true || statusEntradaFinanceiro === 'pago',
+      comprovanteEntrada: (entradaTx && entradaTx.comprovante) ? entradaTx.comprovante : (v.comprovanteEntrada || null),
+      valorRemanescente: Number(v.valorRemanescente) || 0,
+      numParcelas: Number(v.numParcelas) || 0,
+      valorParcela: Number(v.valorParcela) || 0,
+      diaVencimento: Number(v.diaVencimento) || 10,
+      gerouTaxaAdm: v.gerouTaxaAdm === 1 || v.gerouTaxaAdm === true,
+      valorTaxaAdm: Number(v.valorTaxaAdm) || 0,
+      mesesTaxaAdm: Number(v.mesesTaxaAdm) || 0,
+      diaVencimentoTaxaAdm: Number(v.diaVencimentoTaxaAdm) || 10,
+      parcelasPagas,
+      parcelasVencidas,
+      totalRecebidoCota: Math.round(totalRecebidoCota * 100) / 100,
+      statusEntradaFinanceiro
+    };
+  });
+}
+
+export async function createVendaCompleta(payload: any): Promise<any> {
+  invalidateDbCache();
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  // Ler configurações padrão definidas pelo Administrador
+  const vendaPadraoEmpresa = (await getConfigValue('venda_padrao_empresa')) || 'Mexicano';
+  const vendaPadraoPlanoContasId = (await getConfigValue('venda_padrao_plano_contas_id')) || null;
+  const vendaPadraoCentroCustoId = (await getConfigValue('venda_padrao_centro_custo_id')) || null;
+  const vendaPadraoContaBancariaId = (await getConfigValue('venda_padrao_conta_bancaria_id')) || null;
+  const vendaPadraoCategoria = (await getConfigValue('venda_padrao_categoria')) || 'Venda de Cota';
+
+  const taxaAdmPadraoEmpresa = (await getConfigValue('taxa_adm_padrao_empresa')) || 'Vale Administradora';
+  const taxaAdmPadraoPlanoContasId = (await getConfigValue('taxa_adm_padrao_plano_contas_id')) || null;
+  const taxaAdmPadraoCentroCustoId = (await getConfigValue('taxa_adm_padrao_centro_custo_id')) || null;
+  const taxaAdmPadraoContaBancariaId = (await getConfigValue('taxa_adm_padrao_conta_bancaria_id')) || null;
+  const taxaAdmPadraoCategoria = (await getConfigValue('taxa_adm_padrao_categoria')) || 'Taxa de Administração';
+
+  const codigoVenda = payload.codigoVenda || (await getNextCodigoVenda());
+  const connection = await currentPool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const nowIso = new Date().toISOString();
+    const todayStr = nowIso.split('T')[0];
+    const ts = Date.now();
+    const vendaId = payload.id || `vnd_${ts}_${Math.random().toString(36).substring(2, 6)}`;
+    const dataVenda = payload.dataVenda || todayStr;
+    const clienteId = payload.clienteId;
+    const embarcacaoId = payload.embarcacaoId;
+    const cota = payload.cota || 'C1';
+
+    if (!clienteId || !embarcacaoId) {
+      throw new Error("Cliente e Embarcação são obrigatórios para lançar uma venda.");
+    }
+
+    // Buscar dados atuais do Cliente e da Embarcação
+    const [cliRows] = await connection.query("SELECT * FROM Clientes WHERE id = ?", [clienteId]);
+    const clientRow = (cliRows as any[])[0];
+    if (!clientRow) throw new Error("Cliente não encontrado no banco de dados.");
+
+    const [boatRows] = await connection.query("SELECT * FROM Embarcacoes WHERE id = ?", [embarcacaoId]);
+    const boatRow = (boatRows as any[])[0];
+    if (!boatRow) throw new Error("Embarcação não encontrada no banco de dados.");
+
+    const boatLabel = boatRow.numero
+      ? `M${String(boatRow.numero).replace(/^M/i, '')} - ${boatRow.nome}`
+      : boatRow.nome;
+
+    const valorTotal = Number(payload.valorTotal) || 0;
+    const valorEntrada = Number(payload.valorEntrada) || 0;
+    const dataVencimentoEntrada = payload.dataVencimentoEntrada || dataVenda;
+    const formaPagamentoEntrada = payload.formaPagamentoEntrada || 'PIX / Transferência';
+    const entradaPaga = Boolean(payload.entradaPaga);
+    const comprovanteEntrada = payload.comprovanteEntrada || null;
+
+    const numParcelas = Math.max(0, Number(payload.numParcelas) || 0);
+    const valorRemanescente = payload.valorRemanescente !== undefined
+      ? Number(payload.valorRemanescente)
+      : Math.max(0, Math.round((valorTotal - valorEntrada) * 100) / 100);
+    const valorParcela = payload.valorParcela !== undefined && Number(payload.valorParcela) > 0
+      ? Number(payload.valorParcela)
+      : (numParcelas > 0 ? Math.round((valorRemanescente / numParcelas) * 100) / 100 : 0);
+    const diaVencimento = Number(payload.diaVencimento) || 10;
+    const dataPrimeiraParcela = payload.dataPrimeiraParcela || buildDueDateWithFixedDay(dataVenda, 1, diaVencimento);
+    const formaPagamentoParcelas = payload.formaPagamentoParcelas || 'Boleto / PIX';
+
+    const gerouTaxaAdm = Boolean(payload.gerouTaxaAdm);
+    const valorTaxaAdm = Number(payload.valorTaxaAdm) || 0;
+    const mesesTaxaAdm = Math.max(0, Number(payload.mesesTaxaAdm) || 12);
+    const diaVencimentoTaxaAdm = Number(payload.diaVencimentoTaxaAdm) || diaVencimento;
+    const dataPrimeiraTaxaAdm = payload.dataPrimeiraTaxaAdm || dataPrimeiraParcela;
+
+    const empresaVenda = payload.empresa || vendaPadraoEmpresa;
+    const planoContasIdVenda = payload.planoContasId || vendaPadraoPlanoContasId;
+    const centroCustoIdVenda = payload.centroCustoId || vendaPadraoCentroCustoId;
+    const contaBancariaIdVenda = payload.contaBancariaId || vendaPadraoContaBancariaId;
+    const categoriaVenda = payload.categoria || vendaPadraoCategoria;
+
+    const grupoParcelamentoId = `GRP-VND-${ts}`;
+    const grupoTaxaAdmId = gerouTaxaAdm && valorTaxaAdm > 0 && mesesTaxaAdm > 0 ? `GRP-ADM-${ts}` : null;
+    const transacaoEntradaId = valorEntrada > 0 ? `fin_vnd_ent_${ts}` : null;
+
+    // 1. Inserir registro na tabela Vendas
+    await connection.query(
+      `INSERT INTO Vendas (
+        id, codigoVenda, dataVenda, vendedorNome, clienteId, embarcacaoId, cota,
+        valorTotal, valorEntrada, dataVencimentoEntrada, formaPagamentoEntrada, entradaPaga, comprovanteEntrada,
+        valorRemanescente, numParcelas, valorParcela, diaVencimento, dataPrimeiraParcela, formaPagamentoParcelas,
+        gerouTaxaAdm, valorTaxaAdm, mesesTaxaAdm, diaVencimentoTaxaAdm, dataPrimeiraTaxaAdm,
+        grupoParcelamentoId, grupoTaxaAdmId, transacaoEntradaId,
+        empresa, planoContasId, centroCustoId, contaBancariaId, observacoes, status, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        vendaId, codigoVenda, dataVenda, payload.vendedorNome || 'Comercial',
+        clienteId, embarcacaoId, cota,
+        valorTotal, valorEntrada, dataVencimentoEntrada, formaPagamentoEntrada, entradaPaga ? 1 : 0, comprovanteEntrada,
+        valorRemanescente, numParcelas, valorParcela, diaVencimento, dataPrimeiraParcela, formaPagamentoParcelas,
+        gerouTaxaAdm ? 1 : 0, valorTaxaAdm, mesesTaxaAdm, diaVencimentoTaxaAdm, dataPrimeiraTaxaAdm,
+        grupoParcelamentoId, grupoTaxaAdmId, transacaoEntradaId,
+        empresaVenda, planoContasIdVenda, centroCustoIdVenda, contaBancariaIdVenda,
+        payload.observacoes || null, 'ativa', nowIso
+      ]
+    );
+
+    // 2. Criar transação financeira da ENTRADA (se houver valor de entrada > 0)
+    if (valorEntrada > 0 && transacaoEntradaId) {
+      const statusEntrada = entradaPaga
+        ? 'pago'
+        : (dataVencimentoEntrada < todayStr ? 'vencido' : 'lancado');
+      const dataPagtoEntrada = entradaPaga ? (dataVencimentoEntrada || todayStr) : null;
+
+      await upsertTransacao({
+        id: transacaoEntradaId,
+        tipo: 'receita',
+        categoria: categoriaVenda,
+        valor: valorEntrada,
+        dataVencimento: dataVencimentoEntrada,
+        dataPagamento: dataPagtoEntrada,
+        status: statusEntrada,
+        descricao: `Entrada Cota ${cota} - ${boatLabel} (${clientRow.nome})`,
+        clienteId,
+        embarcacaoId,
+        comprovante: comprovanteEntrada,
+        createdAt: nowIso,
+        metodoPagamento: formaPagamentoEntrada,
+        operador: payload.vendedorNome || 'Comercial',
+        metadata: {
+          vendaId,
+          codigoVenda,
+          tipoLancamentoVenda: 'entrada_cota',
+          cota
+        },
+        empresa: empresaVenda,
+        contaBancariaId: contaBancariaIdVenda,
+        planoContasId: planoContasIdVenda,
+        centroCustoId: centroCustoIdVenda,
+        grupoParcelamentoId: null,
+        numeroParcela: 1,
+        totalParcelas: 1
+      }, connection);
+    }
+
+    // 3. Criar transações financeiras das PARCELAS DA COTA
+    if (numParcelas > 0 && valorParcela > 0) {
+      for (let i = 0; i < numParcelas; i++) {
+        const venc = i === 0
+          ? dataPrimeiraParcela
+          : buildDueDateWithFixedDay(dataPrimeiraParcela, i, diaVencimento);
+        const statusParc = venc < todayStr ? 'vencido' : 'lancado';
+
+        await upsertTransacao({
+          id: `fin_vnd_parc_${ts}_${i + 1}`,
+          tipo: 'receita',
+          categoria: categoriaVenda,
+          valor: valorParcela,
+          dataVencimento: venc,
+          dataPagamento: null,
+          status: statusParc,
+          descricao: `Parcela Cota ${cota} - ${boatLabel} (${i + 1}/${numParcelas})`,
+          clienteId,
+          embarcacaoId,
+          comprovante: null,
+          createdAt: nowIso,
+          metodoPagamento: formaPagamentoParcelas,
+          operador: payload.vendedorNome || 'Comercial',
+          metadata: {
+            vendaId,
+            codigoVenda,
+            tipoLancamentoVenda: 'parcela_cota',
+            cota,
+            numeroParcela: i + 1,
+            totalParcelas: numParcelas
+          },
+          empresa: empresaVenda,
+          contaBancariaId: contaBancariaIdVenda,
+          planoContasId: planoContasIdVenda,
+          centroCustoId: centroCustoIdVenda,
+          grupoParcelamentoId,
+          numeroParcela: i + 1,
+          totalParcelas: numParcelas
+        }, connection);
+      }
+    }
+
+    // 4. Criar transações financeiras da TAXA DE ADMINISTRAÇÃO (se selecionada)
+    if (gerouTaxaAdm && valorTaxaAdm > 0 && mesesTaxaAdm > 0 && grupoTaxaAdmId) {
+      for (let i = 0; i < mesesTaxaAdm; i++) {
+        const vencAdm = i === 0
+          ? dataPrimeiraTaxaAdm
+          : buildDueDateWithFixedDay(dataPrimeiraTaxaAdm, i, diaVencimentoTaxaAdm);
+        const statusAdm = vencAdm < todayStr ? 'vencido' : 'lancado';
+
+        await upsertTransacao({
+          id: `fin_vnd_adm_${ts}_${i + 1}`,
+          tipo: 'receita',
+          categoria: taxaAdmPadraoCategoria,
+          valor: valorTaxaAdm,
+          dataVencimento: vencAdm,
+          dataPagamento: null,
+          status: statusAdm,
+          descricao: `Taxa de Administração - Cota ${cota} - ${boatLabel} (${i + 1}/${mesesTaxaAdm})`,
+          clienteId,
+          embarcacaoId,
+          comprovante: null,
+          createdAt: nowIso,
+          metodoPagamento: 'Boleto / PIX',
+          operador: payload.vendedorNome || 'Comercial',
+          metadata: {
+            vendaId,
+            codigoVenda,
+            tipoLancamentoVenda: 'taxa_administracao',
+            cota,
+            numeroParcela: i + 1,
+            totalParcelas: mesesTaxaAdm
+          },
+          empresa: taxaAdmPadraoEmpresa,
+          contaBancariaId: taxaAdmPadraoContaBancariaId,
+          planoContasId: taxaAdmPadraoPlanoContasId,
+          centroCustoId: taxaAdmPadraoCentroCustoId,
+          grupoParcelamentoId: grupoTaxaAdmId,
+          numeroParcela: i + 1,
+          totalParcelas: mesesTaxaAdm
+        }, connection);
+      }
+    }
+
+    // 5. Vincular automaticamente o Cliente à Embarcação e Cota + Atualizar contratoValores
+    let clientEmbarcacoes: any[] = [];
+    if (clientRow.embarcacoes) {
+      try {
+        clientEmbarcacoes = typeof clientRow.embarcacoes === 'string'
+          ? JSON.parse(clientRow.embarcacoes)
+          : clientRow.embarcacoes;
+        if (!Array.isArray(clientEmbarcacoes)) clientEmbarcacoes = [];
+      } catch {
+        clientEmbarcacoes = [];
+      }
+    } else if (clientRow.embarcacaoId) {
+      clientEmbarcacoes = [{ embarcacaoId: clientRow.embarcacaoId, cota: clientRow.cota || 'C1' }];
+    }
+
+    const alreadyHasBoatCota = clientEmbarcacoes.some(
+      (eb: any) => eb.embarcacaoId === embarcacaoId && eb.cota === cota
+    );
+    if (!alreadyHasBoatCota) {
+      const existingIdx = clientEmbarcacoes.findIndex((eb: any) => eb.embarcacaoId === embarcacaoId);
+      if (existingIdx !== -1) {
+        clientEmbarcacoes[existingIdx] = { ...clientEmbarcacoes[existingIdx], embarcacaoId, cota };
+      } else {
+        clientEmbarcacoes.push({ embarcacaoId, cota });
+      }
+    }
+
+    let currentContratoValores: any = {};
+    if (clientRow.contratoValores) {
+      try {
+        currentContratoValores = typeof clientRow.contratoValores === 'string'
+          ? JSON.parse(clientRow.contratoValores)
+          : clientRow.contratoValores;
+      } catch {
+        currentContratoValores = {};
+      }
+    }
+
+    const updatedContratoValores = {
+      ...currentContratoValores,
+      valorTotal: formatNumberToBRLString(valorTotal),
+      valorEntrada: formatNumberToBRLString(valorEntrada),
+      valorRemanescente: formatNumberToBRLString(valorRemanescente),
+      numParcelas: String(numParcelas),
+      valorParcela: formatNumberToBRLString(valorParcela),
+      formaPagamento: formaPagamentoParcelas,
+      diaVencimento: String(diaVencimento),
+      ...(gerouTaxaAdm && valorTaxaAdm > 0 ? { taxaMensalAdm: formatNumberToBRLString(valorTaxaAdm) } : {})
+    };
+
+    const nextStatusContrato = (!clientRow.statusContrato || clientRow.statusContrato === 'sem_contrato')
+      ? 'pendente'
+      : clientRow.statusContrato;
+    const nextAquisicaoStatus = (!clientRow.contratoAquisicaoStatus || clientRow.contratoAquisicaoStatus === 'sem_contrato')
+      ? 'pendente'
+      : clientRow.contratoAquisicaoStatus;
+
+    await connection.query(
+      `UPDATE Clientes
+       SET embarcacaoId = ?,
+           cota = ?,
+           embarcacoes = ?,
+           contratoValores = ?,
+           statusContrato = ?,
+           contratoAquisicaoStatus = ?,
+           contratoDataEmissao = COALESCE(contratoDataEmissao, ?)
+       WHERE id = ?`,
+      [
+        embarcacaoId,
+        cota,
+        JSON.stringify(clientEmbarcacoes),
+        JSON.stringify(updatedContratoValores),
+        nextStatusContrato,
+        nextAquisicaoStatus,
+        dataVenda,
+        clienteId
+      ]
+    );
+
+    // Garantir associação multi-empresa do cliente
+    await connection.query(
+      "INSERT IGNORE INTO ClienteEmpresas (clienteId, empresa) VALUES (?, 'VALE'), (?, 'MEXICANO')",
+      [clienteId, clienteId]
+    );
+
+    // 6. Adicionar Cliente aos donos da Embarcação
+    let boatDonos: string[] = [];
+    if (boatRow.donos) {
+      try {
+        boatDonos = typeof boatRow.donos === 'string' ? JSON.parse(boatRow.donos) : boatRow.donos;
+        if (!Array.isArray(boatDonos)) boatDonos = [];
+      } catch {
+        boatDonos = [];
+      }
+    }
+    if (!boatDonos.includes(clienteId)) {
+      boatDonos.push(clienteId);
+      await connection.query(
+        "UPDATE Embarcacoes SET donos = ? WHERE id = ?",
+        [JSON.stringify(boatDonos), embarcacaoId]
+      );
+    }
+
+    await connection.commit();
+
+    // Atualizar statusFinanceiro do cliente após commit
+    await syncClientFinancialStatus(clienteId);
+    invalidateDbCache();
+
+    return {
+      success: true,
+      vendaId,
+      codigoVenda,
+      grupoParcelamentoId,
+      grupoTaxaAdmId,
+      transacaoEntradaId,
+      totalLancamentosGerados: (valorEntrada > 0 ? 1 : 0) + numParcelas + (gerouTaxaAdm ? mesesTaxaAdm : 0)
+    };
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function cancelarVenda(id: string): Promise<void> {
+  invalidateDbCache();
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const [rows] = await currentPool.query("SELECT * FROM Vendas WHERE id = ?", [id]);
+  const venda = (rows as any[])[0];
+  if (!venda) throw new Error("Venda não encontrada.");
+
+  // Excluir lançamentos financeiros que ainda não foram pagos (ou todos vinculados caso solicitado)
+  if (venda.grupoParcelamentoId) {
+    await currentPool.query(
+      "DELETE FROM TransacoesFinanceiras WHERE grupoParcelamentoId = ? AND status != 'pago'",
+      [venda.grupoParcelamentoId]
+    );
+  }
+  if (venda.grupoTaxaAdmId) {
+    await currentPool.query(
+      "DELETE FROM TransacoesFinanceiras WHERE grupoParcelamentoId = ? AND status != 'pago'",
+      [venda.grupoTaxaAdmId]
+    );
+  }
+  if (venda.transacaoEntradaId) {
+    await currentPool.query(
+      "DELETE FROM TransacoesFinanceiras WHERE id = ? AND status != 'pago'",
+      [venda.transacaoEntradaId]
+    );
+  }
+
+  await currentPool.query("UPDATE Vendas SET status = 'cancelada' WHERE id = ?", [id]);
+
+  if (venda.clienteId) {
+    await syncClientFinancialStatus(venda.clienteId);
+  }
+  invalidateDbCache();
 }

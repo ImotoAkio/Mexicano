@@ -45,7 +45,7 @@ export interface Cliente {
   orgaoEmissorHabilitacao?: string;
   categoriaHabilitacao?: string;
   statusContrato?: 'assinado' | 'pendente' | 'sem_contrato';
-  tipoContrato?: 'aquisicao' | 'adm' | 'ambos';
+  tipoContrato?: 'aquisicao' | 'adm' | 'aditivo' | 'ambos';
   contratoDataEmissao?: string;
   contratoDataAssinatura?: string;
   contratoArquivoUrl?: string;
@@ -53,7 +53,7 @@ export interface Cliente {
   contratoArquivoTamanho?: number;
   contratoObservacoes?: string;
 
-  // Diferenciação por tipo de contrato (Aquisição vs Administração)
+  // Diferenciação por tipo de contrato (Aquisição vs Administração vs Aditivo)
   contratoAquisicaoStatus?: 'assinado' | 'pendente' | 'sem_contrato';
   contratoAquisicaoArquivoUrl?: string;
   contratoAquisicaoArquivoNome?: string;
@@ -69,6 +69,14 @@ export interface Cliente {
   contratoAdmDataAssinatura?: string;
   contratoAdmArquivoKey?: string;
   contratoAdmArquivoStorage?: 'r2' | 'local';
+
+  contratoAditivoStatus?: 'assinado' | 'pendente' | 'sem_contrato';
+  contratoAditivoArquivoUrl?: string;
+  contratoAditivoArquivoNome?: string;
+  contratoAditivoArquivoTamanho?: number;
+  contratoAditivoDataAssinatura?: string;
+  contratoAditivoArquivoKey?: string;
+  contratoAditivoArquivoStorage?: 'r2' | 'local';
   contratoValores?: {
     valorTotal?: string;
     valorEntrada?: string;
@@ -83,9 +91,11 @@ export interface Cliente {
     taxaMensalAdm?: string;
     customSectionsAquisicao?: ContractSections;
     customSectionsAdm?: ContractSections;
+    customSectionsAditivo?: ContractSections;
   };
   contratoAquisicaoCustomSections?: ContractSections;
   contratoAdmCustomSections?: ContractSections;
+  contratoAditivoCustomSections?: ContractSections;
   contratos?: ContratoItem[];
   acessorios?: {
     tenda?: boolean;
@@ -97,7 +107,7 @@ export interface Cliente {
 }
 
 export interface ContractSections {
-  type: 'aquisicao' | 'adm';
+  type: 'aquisicao' | 'adm' | 'aditivo';
   title: string;
   clientStr: string;
   vendorStr: string;
@@ -114,12 +124,12 @@ export interface ContractSections {
 }
 
 export type StatusContrato = 'assinado' | 'pendente' | 'sem_contrato';
-export type TipoContrato = 'aquisicao' | 'adm' | 'ambos';
+export type TipoContrato = 'aquisicao' | 'adm' | 'aditivo' | 'ambos';
 
 export interface ContratoItem {
   id: string;
   clienteId: string;
-  tipo: 'aquisicao' | 'adm';
+  tipo: 'aquisicao' | 'adm' | 'aditivo';
   titulo: string;
   status: StatusContrato;
   dataEmissao?: string;
@@ -804,3 +814,78 @@ export interface UtvManutencao {
   createdAt: string;
 }
 
+// ==========================================
+// MÓDULO COMERCIAL — LANÇAMENTO DE VENDAS
+// ==========================================
+
+export interface VendaComercial {
+  id: string;
+  codigoVenda: string;
+  dataVenda: string; // YYYY-MM-DD
+  vendedorNome?: string;
+  clienteId: string;
+  clienteNome?: string;
+  clienteCpf?: string;
+  clienteTelefone?: string;
+  embarcacaoId: string;
+  embarcacaoNome?: string;
+  embarcacaoModelo?: string;
+  cota: string;
+
+  // Valores da Cota & Entrada
+  valorTotal: number;
+  valorEntrada: number;
+  dataVencimentoEntrada: string; // YYYY-MM-DD
+  formaPagamentoEntrada: string;
+  entradaPaga: boolean;
+  comprovanteEntrada?: string | null;
+
+  // Parcelamento da Cota
+  valorRemanescente: number;
+  numParcelas: number;
+  valorParcela: number;
+  diaVencimento: number;
+  dataPrimeiraParcela: string; // YYYY-MM-DD
+  formaPagamentoParcelas: string;
+
+  // Taxa de Administração Opcional
+  gerouTaxaAdm: boolean;
+  valorTaxaAdm?: number;
+  mesesTaxaAdm?: number;
+  diaVencimentoTaxaAdm?: number;
+  dataPrimeiraTaxaAdm?: string;
+
+  // Vínculos Financeiros
+  grupoParcelamentoId: string;
+  grupoTaxaAdmId?: string | null;
+  transacaoEntradaId?: string | null;
+  empresa?: string;
+  planoContasId?: string | null;
+  centroCustoId?: string | null;
+  contaBancariaId?: string | null;
+
+  // Resumo dinâmico do Financeiro (joins)
+  parcelasPagas?: number;
+  parcelasVencidas?: number;
+  totalRecebidoCota?: number;
+  statusEntradaFinanceiro?: string;
+
+  observacoes?: string;
+  status: 'ativa' | 'concluida' | 'cancelada';
+  createdAt: string;
+}
+
+export interface ConfiguracaoLancamentoPadraoVenda {
+  vendaPadraoEmpresa: string;
+  vendaPadraoPlanoContasId: string;
+  vendaPadraoCentroCustoId: string;
+  vendaPadraoContaBancariaId: string;
+  vendaPadraoCategoria: string;
+
+  taxaAdmPadraoEmpresa: string;
+  taxaAdmPadraoPlanoContasId: string;
+  taxaAdmPadraoCentroCustoId: string;
+  taxaAdmPadraoContaBancariaId: string;
+  taxaAdmPadraoCategoria: string;
+  taxaAdmPadraoValor: string;
+}

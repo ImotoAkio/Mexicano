@@ -532,7 +532,7 @@ router.post("/centros-custo/save", requireAdminAuth, async (req, res) => {
 });
 
 // ----------------------------------------------------------------------
-// CONFIGURAÇÕES GLOBAIS (TAXA DE JUROS)
+// CONFIGURAÇÕES GLOBAIS (TAXA DE JUROS + LANÇAMENTO PADRÃO DE VENDAS)
 // ----------------------------------------------------------------------
 router.get("/configuracoes", requireAdminAuth, async (req, res) => {
   try {
@@ -540,7 +540,42 @@ router.get("/configuracoes", requireAdminAuth, async (req, res) => {
     const taxaMultaAtraso = await getConfigValue('fin_taxa_multa_atraso') || '2.0';
     const asaasContaBancariaId = await getConfigValue('fin_asaas_conta_bancaria_id') || '';
     const fin_asaas_split_enabled = await getConfigValue('fin_asaas_split_enabled') === '1';
-    res.json({ success: true, configuracoes: { taxaJurosMensal, taxaMultaAtraso, asaasContaBancariaId, fin_asaas_split_enabled } });
+
+    // Padrão de Lançamento de Venda (Mexicano)
+    const vendaPadraoEmpresa = await getConfigValue('venda_padrao_empresa') || 'Mexicano';
+    const vendaPadraoPlanoContasId = await getConfigValue('venda_padrao_plano_contas_id') || '';
+    const vendaPadraoCentroCustoId = await getConfigValue('venda_padrao_centro_custo_id') || '';
+    const vendaPadraoContaBancariaId = await getConfigValue('venda_padrao_conta_bancaria_id') || '';
+    const vendaPadraoCategoria = await getConfigValue('venda_padrao_categoria') || 'Venda de Cota';
+
+    // Padrão de Lançamento de Taxa de Administração
+    const taxaAdmPadraoEmpresa = await getConfigValue('taxa_adm_padrao_empresa') || 'Vale Administradora';
+    const taxaAdmPadraoPlanoContasId = await getConfigValue('taxa_adm_padrao_plano_contas_id') || '';
+    const taxaAdmPadraoCentroCustoId = await getConfigValue('taxa_adm_padrao_centro_custo_id') || '';
+    const taxaAdmPadraoContaBancariaId = await getConfigValue('taxa_adm_padrao_conta_bancaria_id') || '';
+    const taxaAdmPadraoCategoria = await getConfigValue('taxa_adm_padrao_categoria') || 'Taxa de Administração';
+    const taxaAdmPadraoValor = await getConfigValue('taxa_adm_padrao_valor') || '850.00';
+
+    res.json({
+      success: true,
+      configuracoes: {
+        taxaJurosMensal,
+        taxaMultaAtraso,
+        asaasContaBancariaId,
+        fin_asaas_split_enabled,
+        vendaPadraoEmpresa,
+        vendaPadraoPlanoContasId,
+        vendaPadraoCentroCustoId,
+        vendaPadraoContaBancariaId,
+        vendaPadraoCategoria,
+        taxaAdmPadraoEmpresa,
+        taxaAdmPadraoPlanoContasId,
+        taxaAdmPadraoCentroCustoId,
+        taxaAdmPadraoContaBancariaId,
+        taxaAdmPadraoCategoria,
+        taxaAdmPadraoValor
+      }
+    });
   } catch (err: any) {
     console.error("[Configuracoes Error]", err);
     res.status(500).json({ error: true, message: err.message || "Failed to fetch configuracoes" });
@@ -549,7 +584,24 @@ router.get("/configuracoes", requireAdminAuth, async (req, res) => {
 
 router.post("/configuracoes", requireAdminAuth, async (req, res) => {
   try {
-    const { taxaJurosMensal, taxaMultaAtraso, asaasContaBancariaId, fin_asaas_split_enabled } = req.body;
+    const {
+      taxaJurosMensal,
+      taxaMultaAtraso,
+      asaasContaBancariaId,
+      fin_asaas_split_enabled,
+      vendaPadraoEmpresa,
+      vendaPadraoPlanoContasId,
+      vendaPadraoCentroCustoId,
+      vendaPadraoContaBancariaId,
+      vendaPadraoCategoria,
+      taxaAdmPadraoEmpresa,
+      taxaAdmPadraoPlanoContasId,
+      taxaAdmPadraoCentroCustoId,
+      taxaAdmPadraoContaBancariaId,
+      taxaAdmPadraoCategoria,
+      taxaAdmPadraoValor
+    } = req.body;
+
     if (taxaJurosMensal !== undefined) {
       await setConfigValue('fin_taxa_juros_mensal', String(taxaJurosMensal));
     }
@@ -562,8 +614,24 @@ router.post("/configuracoes", requireAdminAuth, async (req, res) => {
     if (fin_asaas_split_enabled !== undefined) {
       await setConfigValue('fin_asaas_split_enabled', fin_asaas_split_enabled === '1' || fin_asaas_split_enabled === true ? '1' : '0');
     }
+
+    // Salvar padrão de lançamento de Venda
+    if (vendaPadraoEmpresa !== undefined) await setConfigValue('venda_padrao_empresa', String(vendaPadraoEmpresa));
+    if (vendaPadraoPlanoContasId !== undefined) await setConfigValue('venda_padrao_plano_contas_id', String(vendaPadraoPlanoContasId));
+    if (vendaPadraoCentroCustoId !== undefined) await setConfigValue('venda_padrao_centro_custo_id', String(vendaPadraoCentroCustoId));
+    if (vendaPadraoContaBancariaId !== undefined) await setConfigValue('venda_padrao_conta_bancaria_id', String(vendaPadraoContaBancariaId));
+    if (vendaPadraoCategoria !== undefined) await setConfigValue('venda_padrao_categoria', String(vendaPadraoCategoria));
+
+    // Salvar padrão de lançamento de Taxa de Administração
+    if (taxaAdmPadraoEmpresa !== undefined) await setConfigValue('taxa_adm_padrao_empresa', String(taxaAdmPadraoEmpresa));
+    if (taxaAdmPadraoPlanoContasId !== undefined) await setConfigValue('taxa_adm_padrao_plano_contas_id', String(taxaAdmPadraoPlanoContasId));
+    if (taxaAdmPadraoCentroCustoId !== undefined) await setConfigValue('taxa_adm_padrao_centro_custo_id', String(taxaAdmPadraoCentroCustoId));
+    if (taxaAdmPadraoContaBancariaId !== undefined) await setConfigValue('taxa_adm_padrao_conta_bancaria_id', String(taxaAdmPadraoContaBancariaId));
+    if (taxaAdmPadraoCategoria !== undefined) await setConfigValue('taxa_adm_padrao_categoria', String(taxaAdmPadraoCategoria));
+    if (taxaAdmPadraoValor !== undefined) await setConfigValue('taxa_adm_padrao_valor', String(taxaAdmPadraoValor));
+
     const io = (req.app as any).locals.io;
-    if (io) io.emit('finance_config_update', { taxaJurosMensal, taxaMultaAtraso, asaasContaBancariaId, fin_asaas_split_enabled });
+    if (io) io.emit('finance_config_update', req.body);
 
     res.json({ success: true });
   } catch (err: any) {

@@ -1,5 +1,5 @@
 import { ContractSections } from '../types';
-import { ClientData, BoatData, PaymentData, formatAddress, formatDateDDMMAAAA, formatDateExtenso, formatDateExtensoMin } from '../components/ContractGenerator';
+import { ClientData, BoatData, PaymentData, formatAddress, formatDateDDMMAAAA, formatDateExtenso, formatDateExtensoMin, formatCpfMask, formatPhoneMask } from '../components/ContractGenerator';
 import { formatBoatName } from './constants';
 
 export interface ContractClauseItem {
@@ -9,9 +9,11 @@ export interface ContractClauseItem {
   texto: string;
 }
 
+export type ContractType = 'aquisicao' | 'adm' | 'aditivo';
+
 export interface ContractModelTemplate {
-  id: 'aquisicao' | 'adm';
-  tipo: 'aquisicao' | 'adm';
+  id: 'aquisicao' | 'adm' | 'aditivo';
+  tipo: 'aquisicao' | 'adm' | 'aditivo';
   nome: string;
   titulo: string;
   subtitulo: string;
@@ -229,10 +231,104 @@ export const DEFAULT_TEMPLATE_ADM: ContractModelTemplate = {
   ]
 };
 
+// Template Padrão Oficial: Aditivo Náutico (Segunda e Terça)
+export const DEFAULT_TEMPLATE_ADITIVO: ContractModelTemplate = {
+  id: 'aditivo',
+  tipo: 'aditivo',
+  nome: 'Aditivo Contratual ao Contrato de Administração de Bens Náuticos',
+  titulo: 'ADITIVO CONTRATUAL AO CONTRATO DE ADMINISTRAÇÃO DE BENS NÁUTICOS',
+  subtitulo: 'Vale Administradora de Bens Náuticos',
+  empresaNome: 'VALE ADMINISTRADORA DE BENS NÁUTICOS',
+  empresaCnpj: '62.794.642/0001-67',
+  empresaEndereco: 'situada na cidade de Petrolina-PE, no Loteamento Lote 190, nº 190, Estrada da Tapera, CEP: 56334-899',
+  empresaEmail: 'atendimentovaleadm@gmail.com',
+  empresaTelefone: '(87)9 9109-0051',
+  intro: 'Pelo presente instrumento particular, de um lado, <b>VALE ADMINISTRADORA DE BENS NÁUTICOS</b>, inscrita no CNPJ sob nº <b>62.794.642/0001-67</b>, e de outro lado o <b>COTISTA</b>, resolvem firmar o presente ADITIVO CONTRATUAL.',
+  clausulas: [
+    {
+      id: 'adit-1',
+      numero: '1',
+      titulo: 'CLÁUSULA 1',
+      texto: 'O presente aditivo tem por objeto a inclusão de nova modalidade de funcionamento da marina nos dias segunda-feira e terça-feira, mediante adesão opcional por parte do cotista.'
+    },
+    {
+      id: 'adit-2',
+      numero: '2',
+      titulo: 'CLÁUSULA 2 – DEFINIÇÕES',
+      texto: 'Para fins deste aditivo, define-se "descida" como cada operação de colocação da embarcação na água.'
+    },
+    {
+      id: 'adit-3',
+      numero: '3',
+      titulo: 'CLÁUSULA 3 – DA UTILIZAÇÃO',
+      texto: `2.1. A adesão ao novo serviço deverá ser formalizada pelo cotista por meio da assinatura deste aditivo.
+
+2.2. A utilização da marina nos dias adicionais estará sujeita aos seguintes valores:
+
+Jet Ski: R$ 50,00 (cinquenta reais);
+Lancha: R$100,00 (cem reais).`
+    },
+    {
+      id: 'adit-4',
+      numero: '4',
+      titulo: 'CLÁUSULA 4 – DA MENSALIDADE',
+      texto: `3.1. O cotista aderente terá sua mensalidade acrescida conforme o tipo de embarcação:
+
+Jet Ski: acréscimo de R$ 50,00 (cinquenta reais) mensais;
+Lancha: acréscimo de R$100,00 (cem reais) mensais.
+
+3.2. O valor adicional será cobrado mensalmente enquanto perdurar a adesão ao serviço.`
+    },
+    {
+      id: 'adit-5',
+      numero: '5',
+      titulo: 'CLÁUSULA 5 – CARÊNCIA',
+      texto: `4.1. A adesão ao presente serviço possui carência mínima de 6 (seis) meses.
+
+4.2. Em caso de cancelamento antes do término do período de carência:
+
+O cotista ficará impedido de aderir novamente ao serviço pelo prazo de 6 (seis) meses, contados a partir da data do cancelamento.
+
+4.3. Caso o cotista deseje utilizar a marina nos dias adicionais durante o período de bloqueio, poderá fazê-lo mediante pagamento de taxa de liberação por uso, conforme abaixo:
+
+Jet Ski: R$ 100,00 (cem reais) por descida;
+Lancha: R$200,00 (duzentos reais) por descida.`
+    },
+    {
+      id: 'adit-6',
+      numero: '6',
+      titulo: 'CLÁUSULA 6 – DO REAJUSTE',
+      texto: 'Os valores previstos neste aditivo poderão ser reajustados anualmente de acordo com a variação positiva do IGPM/FGV ou outro índice oficial que venha a substituí-lo.'
+    },
+    {
+      id: 'adit-7',
+      numero: '7',
+      titulo: 'CLÁUSULA 7 – VIGÊNCIA E CANCELAMENTO',
+      texto: `8.1. O presente contrato tem vigência por prazo indeterminado enquanto perdurar o contrato principal ou até que seja rescindido por qualquer das partes.
+
+8.2. O cancelamento da adesão poderá ser solicitado mediante aviso prévio por escrito com antecedência mínima de 30 (trinta) dias, respeitada a carência da Cláusula 5.`
+    },
+    {
+      id: 'adit-8',
+      numero: '8',
+      titulo: 'CLÁUSULA 8 – DISPOSIÇÕES GERAIS E FORO',
+      texto: `Permanecem inalteradas todas as demais cláusulas do contrato original que não conflitam com o presente aditivo.
+
+Fica eleito o foro da comarca da sede da Administradora para dirimir quaisquer dúvidas ou controvérsias oriundas deste instrumento.`
+    }
+  ]
+};
+
 // Obter Template Salvo (ou Padrão)
-export function getContractModelTemplate(type: 'aquisicao' | 'adm'): ContractModelTemplate {
+export function getContractModelTemplate(type: ContractType): ContractModelTemplate {
+  const getDefault = (t: ContractType) => {
+    if (t === 'aquisicao') return DEFAULT_TEMPLATE_AQUISICAO;
+    if (t === 'aditivo') return DEFAULT_TEMPLATE_ADITIVO;
+    return DEFAULT_TEMPLATE_ADM;
+  };
+
   if (typeof window === 'undefined') {
-    return type === 'aquisicao' ? DEFAULT_TEMPLATE_AQUISICAO : DEFAULT_TEMPLATE_ADM;
+    return getDefault(type);
   }
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${type}`);
@@ -245,7 +341,7 @@ export function getContractModelTemplate(type: 'aquisicao' | 'adm'): ContractMod
   } catch (e) {
     console.warn(`Erro ao carregar template do modelo ${type}:`, e);
   }
-  return type === 'aquisicao' ? DEFAULT_TEMPLATE_AQUISICAO : DEFAULT_TEMPLATE_ADM;
+  return getDefault(type);
 }
 
 // Salvar Template Personalizado
@@ -264,19 +360,24 @@ export function saveContractModelTemplate(template: ContractModelTemplate): void
 }
 
 // Restaurar Template Padrão de Fábrica
-export function resetContractModelTemplate(type: 'aquisicao' | 'adm'): ContractModelTemplate {
+export function resetContractModelTemplate(type: ContractType): ContractModelTemplate {
   if (typeof window !== 'undefined') {
     try {
       localStorage.removeItem(`${STORAGE_PREFIX}${type}`);
     } catch {}
   }
-  const defaultTpl = type === 'aquisicao' ? DEFAULT_TEMPLATE_AQUISICAO : DEFAULT_TEMPLATE_ADM;
+  const defaultTpl =
+    type === 'aquisicao'
+      ? DEFAULT_TEMPLATE_AQUISICAO
+      : type === 'aditivo'
+      ? DEFAULT_TEMPLATE_ADITIVO
+      : DEFAULT_TEMPLATE_ADM;
   notifyTemplateChange(type);
   return defaultTpl;
 }
 
 // Sistema de Notificação de Mudança de Template
-type TemplateChangeListener = (type: 'aquisicao' | 'adm') => void;
+type TemplateChangeListener = (type: ContractType) => void;
 const listeners = new Set<TemplateChangeListener>();
 
 export function onContractTemplateChange(callback: TemplateChangeListener): () => void {
@@ -286,7 +387,7 @@ export function onContractTemplateChange(callback: TemplateChangeListener): () =
   };
 }
 
-function notifyTemplateChange(type: 'aquisicao' | 'adm') {
+function notifyTemplateChange(type: ContractType) {
   listeners.forEach(fn => {
     try {
       fn(type);
@@ -312,7 +413,7 @@ export function replaceContractTags(text: string, context: Record<string, string
 
 // Compilar Template para ContractSections com dados dinâmicos do cliente e da embarcação
 export function compileTemplateToSections(
-  type: 'aquisicao' | 'adm',
+  type: ContractType,
   clientData: ClientData,
   boatData: BoatData,
   paymentData?: PaymentData
@@ -365,16 +466,19 @@ export function compileTemplateToSections(
     ? formatDateExtensoMin(clientData.dataAssinatura)
     : formatDateExtenso(clientData.dataAssinatura);
 
+  const formattedCpf = formatCpfMask(clientData.cpf) || '120.752.334-89';
+  const formattedTel = formatPhoneMask(clientData.telefone) || '+55 (87) 8169-0003';
+
   const tagsContext: Record<string, string> = {
-    CLIENTE_NOME: clientData.nome || 'NÃO INFORMADO',
-    CPF: clientData.cpf || 'NÃO INFORMADO',
+    CLIENTE_NOME: clientData.nome || 'ARTHUR CARRARO PEDROSA',
+    CPF: formattedCpf,
     RG: clientData.rg ? `${clientData.rg.trim()}${clientData.orgaoEmissor ? ' ' + clientData.orgaoEmissor.trim() : ''}` : 'NÃO INFORMADO',
     ESTADO_CIVIL: (clientData.estadoCivil || 'solteiro(a)').toLowerCase(),
     PROFISSAO: (clientData.profissao || 'não informado').toLowerCase(),
-    ENDERECO: fullAddress,
-    TELEFONE: clientData.telefone || 'NÃO INFORMADO',
+    ENDERECO: fullAddress !== 'NÃO INFORMADO' ? fullAddress : 'Rua Major Agostinho Cavalcante, nº 280, Ap 103, Atrás da Banca, Petrolina - PE, CEP 56.308-090',
+    TELEFONE: formattedTel,
     EMAIL: clientData.email || 'NÃO INFORMADO',
-    EMBARCACAO: boatName,
+    EMBARCACAO: boatName || 'EL MEXICANO 10',
     MODELO: boatModelo,
     CHASSI: boatChassi,
     INSCRICAO: boatInscricao,
@@ -390,27 +494,46 @@ export function compileTemplateToSections(
     DIA_VENCIMENTO: diaVenc,
     TAXA_ADM_MENSAL: taxaAdm,
     DATA_ATUAL: dataAtual,
-    DATA_EXTENSO: dataExtenso
+    DATA_EXTENSO: dataExtenso,
+    EMPRESA_NOME: template.empresaNome,
+    EMPRESA_CNPJ: template.empresaCnpj
   };
 
   const rgFormatted = tagsContext.RG;
   const estCivil = tagsContext.ESTADO_CIVIL;
 
-  // Montagem do preâmbulo
+  const clientCpfDisplay = formatCpfMask(clientData.cpf) || 'NÃO INFORMADO';
+  const clientTelDisplay = formatPhoneMask(clientData.telefone) || 'NÃO INFORMADO';
+
+  // Montagem do preâmbulo e dados das partes
   const clientStr = type === 'aquisicao'
-    ? `COMPRADOR: Nome: <b>${clientData.nome || 'NÃO INFORMADO'}</b>, Nacionalidade: <b>${(clientData.nacionalidade || 'BRASILEIRO').toUpperCase()}</b>, Estado civil: <b>${estCivil}</b>, Profissão: <b>${clientData.profissao || 'NÃO INFORMADO'}</b>, inscrito no CPF sob o nº <b>${clientData.cpf || 'NÃO INFORMADO'}</b>, portador da carteira de identidade nº <b>${rgFormatted}</b>, Endereço: <b>${fullAddress}</b>, contato (WhatsApp): <b>${clientData.telefone || 'NÃO INFORMADO'}</b>.`
-    : `CONTRATANTE: Nome: <b>${clientData.nome || 'NÃO INFORMADO'}</b>, Nacionalidade: <b>${(clientData.nacionalidade || 'BRASILEIRO').toUpperCase()}</b>, Estado civil: <b>${estCivil.toUpperCase()}</b>, Profissão: <b>${(clientData.profissao || 'NÃO INFORMADO').toUpperCase()}</b>, inscrito no CPF sob o nº <b>${clientData.cpf || 'NÃO INFORMADO'}</b>, portador da carteira de identidade nº <b>${rgFormatted}</b>, Endereço: <b>${fullAddress}</b>, contato (WhatsApp): <b>${clientData.telefone || 'NÃO INFORMADO'}</b>.`;
+    ? `COMPRADOR: Nome: <b>${clientData.nome || 'NÃO INFORMADO'}</b>, Nacionalidade: <b>${(clientData.nacionalidade || 'BRASILEIRO').toUpperCase()}</b>, Estado civil: <b>${estCivil}</b>, Profissão: <b>${clientData.profissao || 'NÃO INFORMADO'}</b>, inscrito no CPF sob o nº <b>${clientCpfDisplay}</b>, portador da carteira de identidade nº <b>${rgFormatted}</b>, Endereço: <b>${fullAddress}</b>, contato (WhatsApp): <b>${clientTelDisplay}</b>.`
+    : type === 'aditivo'
+    ? replaceContractTags(template.intro, tagsContext)
+    : `CONTRATANTE: Nome: <b>${clientData.nome || 'NÃO INFORMADO'}</b>, Nacionalidade: <b>${(clientData.nacionalidade || 'BRASILEIRO').toUpperCase()}</b>, Estado civil: <b>${estCivil.toUpperCase()}</b>, Profissão: <b>${(clientData.profissao || 'NÃO INFORMADO').toUpperCase()}</b>, inscrito no CPF sob o nº <b>${clientCpfDisplay}</b>, portador da carteira de identidade nº <b>${rgFormatted}</b>, Endereço: <b>${fullAddress}</b>, contato (WhatsApp): <b>${clientTelDisplay}</b>.`;
+
+  const cotistaNome = clientData.nome || 'ARTHUR CARRARO PEDROSA';
+  const cotistaCpf = formatCpfMask(clientData.cpf) || '120.752.334-89';
+  const cotistaEndereco = fullAddress !== 'NÃO INFORMADO' ? fullAddress : 'Rua Major Agostinho Cavalcante, nº 280, Ap 103, Atrás da Banca, Petrolina - PE, CEP 56.308-090';
+  const cotistaTelefone = formatPhoneMask(clientData.telefone) || '+55 (87) 8169-0003';
+  const cotistaEmbarcacao = boatName || 'EL MEXICANO 10';
 
   const vendorStr = type === 'aquisicao'
     ? `VENDEDOR: <b>${template.empresaNome}</b>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <b>${template.empresaCnpj}</b>, ${template.empresaEndereco}, endereço eletrônico: <b>${template.empresaEmail}</b>, WhatsApp: <b>${template.empresaTelefone}</b>.`
+    : type === 'aditivo'
+    ? `<b>DADOS DO COTISTA E EMBARCAÇÃO</b>\nNome do Cotista: <b>${cotistaNome}</b>\nCPF: <b>${cotistaCpf}</b>\nEndereço: <b>${cotistaEndereco}</b>\nTelefone: <b>${cotistaTelefone}</b>\nNome da Embarcação: <b>${cotistaEmbarcacao}</b>`
     : `CONTRATADO/ADMINISTRADOR: <b>${template.empresaNome}</b>, pessoa jurídica de direito privado, CNPJ: <b>${template.empresaCnpj}</b>, ${template.empresaEndereco}, endereço eletrônico: <b>${template.empresaEmail}</b>, WhatsApp: <b>${template.empresaTelefone}</b>.`;
 
-  const introStr = replaceContractTags(template.intro, tagsContext);
+  const introStr = type === 'aditivo' ? '' : replaceContractTags(template.intro, tagsContext);
 
   // Mapeamento de cláusulas
   const clauses: string[] = [];
   template.clausulas.forEach(item => {
-    clauses.push(`<b>${item.numero ? `${item.numero}. ` : ''}<u>${item.titulo}</u></b>`);
+    if (type === 'aditivo') {
+      clauses.push(`<b><u>${item.titulo || `CLÁUSULA ${item.numero}`}</u></b>`);
+    } else {
+      clauses.push(`<b>${item.numero ? `${item.numero}. ` : ''}<u>${item.titulo}</u></b>`);
+    }
     const replaced = replaceContractTags(item.texto, tagsContext);
     clauses.push(replaced);
   });
@@ -427,8 +550,8 @@ export function compileTemplateToSections(
       cnpj: template.empresaCnpj ? `CNPJ: ${template.empresaCnpj}` : undefined
     },
     signClient: {
-      name: `${(clientData.nome || (type === 'aquisicao' ? 'COMPRADOR' : 'CONTRATANTE')).toUpperCase()}`,
-      cpf: clientData.cpf ? `CPF: ${clientData.cpf}` : 'N/A'
+      name: `${(clientData.nome || 'ARTHUR CARRARO PEDROSA').toUpperCase()}`,
+      cpf: clientData.cpf ? `CPF: ${formatCpfMask(clientData.cpf)}` : 'CPF: 120.752.334-89'
     }
   };
 }

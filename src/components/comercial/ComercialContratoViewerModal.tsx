@@ -43,7 +43,7 @@ interface ComercialContratoViewerModalProps {
   onClose: () => void;
   cliente: Cliente | null;
   embarcacao?: Embarcacao | null;
-  initialType?: 'aquisicao' | 'adm';
+  initialType?: 'aquisicao' | 'adm' | 'aditivo';
   initialTab?: 'documento' | 'pdf' | 'anexo';
   startDirectEdit?: boolean;
   onStatusChange?: (clientId: string, newStatus: StatusContrato, extraData?: Partial<Cliente>) => void;
@@ -59,7 +59,7 @@ export default function ComercialContratoViewerModal({
   startDirectEdit = false,
   onStatusChange
 }: ComercialContratoViewerModalProps) {
-  const [contractType, setContractType] = useState<'aquisicao' | 'adm'>(initialType);
+  const [contractType, setContractType] = useState<'aquisicao' | 'adm' | 'aditivo'>(initialType);
   const [activeTab, setActiveTab] = useState<'documento' | 'anexo'>(
     initialTab === 'anexo' ? 'anexo' : 'documento'
   );
@@ -124,6 +124,16 @@ export default function ComercialContratoViewerModal({
       setAnexoNome(nome);
       setDataAssinatura(data);
       setCurrentStatus(st);
+    } else if (contractType === 'aditivo') {
+      const url = cliente.contratoAditivoArquivoUrl || null;
+      const nome = cliente.contratoAditivoArquivoNome || null;
+      const data = cliente.contratoAditivoDataAssinatura || new Date().toISOString().split('T')[0];
+      const st = cliente.contratoAditivoStatus || (url ? 'assinado' : 'pendente');
+
+      setAnexoUrl(url);
+      setAnexoNome(nome);
+      setDataAssinatura(data);
+      setCurrentStatus(st);
     } else {
       const url = cliente.contratoAdmArquivoUrl || (cliente.tipoContrato === 'adm' ? cliente.contratoArquivoUrl : undefined) || null;
       const nome = cliente.contratoAdmArquivoNome || (cliente.tipoContrato === 'adm' ? cliente.contratoArquivoNome : undefined) || null;
@@ -144,6 +154,11 @@ export default function ComercialContratoViewerModal({
       return (
         cliente.contratoValores?.customSectionsAquisicao ||
         cliente.contratoAquisicaoCustomSections
+      );
+    } else if (contractType === 'aditivo') {
+      return (
+        cliente.contratoValores?.customSectionsAditivo ||
+        cliente.contratoAditivoCustomSections
       );
     } else {
       return (
@@ -238,13 +253,18 @@ export default function ComercialContratoViewerModal({
       overallStatus = otherHasSigned ? 'pendente' : 'sem_contrato';
     }
 
-    const updateData: Partial<Cliente> = isAquisicao
+    const updateData: Partial<Cliente> = contractType === 'aquisicao'
       ? {
           contratoAquisicaoStatus: newStatus,
           contratoAquisicaoDataAssinatura: newStatus === 'assinado' ? effectiveDate : undefined,
           statusContrato: overallStatus,
           contratoDataAssinatura: newStatus === 'assinado' ? effectiveDate : undefined,
           contratoDataEmissao: cliente.contratoDataEmissao || new Date().toISOString().split('T')[0]
+        }
+      : contractType === 'aditivo'
+      ? {
+          contratoAditivoStatus: newStatus,
+          contratoAditivoDataAssinatura: newStatus === 'assinado' ? effectiveDate : undefined
         }
       : {
           contratoAdmStatus: newStatus,
@@ -311,6 +331,16 @@ export default function ComercialContratoViewerModal({
             contratoArquivoTamanho: uploadRes.size,
             contratoDataAssinatura: effectiveAssinaturaDate
           }
+        : contractType === 'aditivo'
+        ? {
+            contratoAditivoArquivoUrl: uploadRes.url,
+            contratoAditivoArquivoNome: uploadRes.filename,
+            contratoAditivoArquivoTamanho: uploadRes.size,
+            contratoAditivoArquivoKey: uploadRes.key,
+            contratoAditivoArquivoStorage: uploadRes.storage,
+            contratoAditivoStatus: 'assinado',
+            contratoAditivoDataAssinatura: effectiveAssinaturaDate
+          }
         : {
             contratoAdmArquivoUrl: uploadRes.url,
             contratoAdmArquivoNome: uploadRes.filename,
@@ -347,7 +377,7 @@ export default function ComercialContratoViewerModal({
   // Remover anexo
   const handleRemoveAnexo = () => {
     if (!cliente) return;
-    const typeLabel = contractType === 'aquisicao' ? 'Contrato de Aquisição' : 'Contrato de Gestão Náutica';
+    const typeLabel = contractType === 'aquisicao' ? 'Contrato de Aquisição' : contractType === 'aditivo' ? 'Aditivo Náutico' : 'Contrato de Gestão Náutica';
     if (!window.confirm(`Tem certeza que deseja remover o anexo assinado de ${typeLabel}?`)) return;
 
     setAnexoUrl(null);
@@ -375,6 +405,16 @@ export default function ComercialContratoViewerModal({
           contratoArquivoNome: null as any,
           contratoArquivoTamanho: null as any,
           contratoDataAssinatura: null as any
+        }
+      : contractType === 'aditivo'
+      ? {
+          contratoAditivoArquivoUrl: null as any,
+          contratoAditivoArquivoNome: null as any,
+          contratoAditivoArquivoTamanho: null as any,
+          contratoAditivoArquivoKey: null as any,
+          contratoAditivoArquivoStorage: null as any,
+          contratoAditivoStatus: 'pendente',
+          contratoAditivoDataAssinatura: null as any
         }
       : {
           contratoAdmArquivoUrl: null as any,
@@ -707,16 +747,24 @@ export default function ComercialContratoViewerModal({
   // Salvar o texto editado diretamente no cliente
   const handleSaveDirectText = () => {
     if (!cliente || !directSections) return;
-    const isAquisicao = contractType === 'aquisicao';
     const newContratoValores = {
       ...(cliente.contratoValores || {}),
-      ...(isAquisicao ? { customSectionsAquisicao: directSections } : { customSectionsAdm: directSections })
+      ...(contractType === 'aquisicao'
+        ? { customSectionsAquisicao: directSections }
+        : contractType === 'aditivo'
+        ? { customSectionsAditivo: directSections }
+        : { customSectionsAdm: directSections })
     };
 
-    const updatePatch: Partial<Cliente> = isAquisicao
+    const updatePatch: Partial<Cliente> = contractType === 'aquisicao'
       ? {
           contratoValores: newContratoValores,
           contratoAquisicaoCustomSections: directSections
+        }
+      : contractType === 'aditivo'
+      ? {
+          contratoValores: newContratoValores,
+          contratoAditivoCustomSections: directSections
         }
       : {
           contratoValores: newContratoValores,
@@ -743,18 +791,24 @@ export default function ComercialContratoViewerModal({
       return;
     }
 
-    const isAquisicao = contractType === 'aquisicao';
     const newContratoValores = { ...(cliente.contratoValores || {}) };
-    if (isAquisicao) {
+    if (contractType === 'aquisicao') {
       delete newContratoValores.customSectionsAquisicao;
+    } else if (contractType === 'aditivo') {
+      delete newContratoValores.customSectionsAditivo;
     } else {
       delete newContratoValores.customSectionsAdm;
     }
 
-    const updatePatch: Partial<Cliente> = isAquisicao
+    const updatePatch: Partial<Cliente> = contractType === 'aquisicao'
       ? {
           contratoValores: newContratoValores,
           contratoAquisicaoCustomSections: undefined
+        }
+      : contractType === 'aditivo'
+      ? {
+          contratoValores: newContratoValores,
+          contratoAditivoCustomSections: undefined
         }
       : {
           contratoValores: newContratoValores,
@@ -1024,6 +1078,16 @@ export default function ComercialContratoViewerModal({
                   }`}
                 >
                   Administração
+                </button>
+                <button
+                  onClick={() => setContractType('aditivo')}
+                  className={`px-3 py-1 text-xs rounded-md font-semibold transition-all cursor-pointer ${
+                    contractType === 'aditivo'
+                      ? 'bg-white text-stone-900 shadow-xs'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  Aditivo (Seg/Ter)
                 </button>
               </div>
 

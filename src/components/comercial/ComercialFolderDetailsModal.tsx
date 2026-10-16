@@ -29,7 +29,8 @@ import {
   Info,
   Sparkles,
   CreditCard,
-  UserCheck
+  UserCheck,
+  Anchor
 } from 'lucide-react';
 import { Cliente, Embarcacao, StatusContrato } from '../../types';
 import { formatBoatName } from '../../utils/constants';
@@ -40,8 +41,8 @@ interface ComercialFolderDetailsModalProps {
   onClose: () => void;
   client: Cliente | null;
   boat: Embarcacao | null;
-  onOpenViewer: (client: Cliente, type: 'aquisicao' | 'adm', tab?: 'documento' | 'pdf' | 'anexo') => void;
-  onDownloadPdf: (client: Cliente, e: React.MouseEvent, type?: 'aquisicao' | 'adm') => void;
+  onOpenViewer: (client: Cliente, type: 'aquisicao' | 'adm' | 'aditivo', tab?: 'documento' | 'pdf' | 'anexo') => void;
+  onDownloadPdf: (client: Cliente, e: React.MouseEvent, type?: 'aquisicao' | 'adm' | 'aditivo') => void;
   onEditContract: (clientId: string) => void;
   onStatusChange: (clientId: string, newStatus: StatusContrato, extraData?: Partial<Cliente>) => void;
   onOpenFullProfile?: (client: Cliente) => void;
@@ -66,7 +67,7 @@ export default function ComercialFolderDetailsModal({
   const [activeTab, setActiveTab] = useState<'contratos' | 'condicoes' | 'cadastro' | 'embarcacao'>('contratos');
 
   // Alternador do tipo de contrato ativo na aba Contratos
-  const [activeContractSubtype, setActiveContractSubtype] = useState<'aquisicao' | 'adm'>('aquisicao');
+  const [activeContractSubtype, setActiveContractSubtype] = useState<'aquisicao' | 'adm' | 'aditivo'>('aquisicao');
 
   // Estados de upload para cada tipo de contrato
   const [isUploading, setIsUploading] = useState(false);
@@ -115,7 +116,15 @@ export default function ComercialFolderDetailsModal({
   const admData = activeClient.contratoAdmDataAssinatura ||
     (activeClient.tipoContrato === 'adm' ? activeClient.contratoDataAssinatura : undefined);
 
-  const totalAssinados = (hasAquisicaoAssinado ? 1 : 0) + (hasAdmAssinado ? 1 : 0);
+  const hasAditivoAssinado = Boolean(
+    activeClient.contratoAditivoArquivoUrl || activeClient.contratoAditivoStatus === 'assinado'
+  );
+  const aditivoNome = activeClient.contratoAditivoArquivoNome || 'Aditivo_Nautico_Assinado.pdf';
+  const aditivoUrl = activeClient.contratoAditivoArquivoUrl;
+  const aditivoTamanho = activeClient.contratoAditivoArquivoTamanho;
+  const aditivoData = activeClient.contratoAditivoDataAssinatura;
+
+  const totalAssinados = (hasAquisicaoAssinado ? 1 : 0) + (hasAdmAssinado ? 1 : 0) + (hasAditivoAssinado ? 1 : 0);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return 'Data recente';
@@ -135,7 +144,7 @@ export default function ComercialFolderDetailsModal({
   };
 
   // Upload de arquivo assinado para o tipo de contrato ativo
-  const processContractFile = async (type: 'aquisicao' | 'adm', file: File) => {
+  const processContractFile = async (type: 'aquisicao' | 'adm' | 'aditivo', file: File) => {
     if (!activeClient) return;
     setIsUploading(true);
     setUploadProgress(0);
@@ -151,13 +160,14 @@ export default function ComercialFolderDetailsModal({
       const today = new Date().toISOString().split('T')[0];
 
       const isAquisicao = type === 'aquisicao';
+      const isAditivo = type === 'aditivo';
       const clientType = activeClient.tipoContrato || 'aquisicao';
       let newOverallStatus: StatusContrato = 'assinado';
       if (clientType === 'ambos') {
         const otherSigned = isAquisicao ? hasAdmAssinado : hasAquisicaoAssinado;
         newOverallStatus = otherSigned ? 'assinado' : 'pendente';
       } else {
-        newOverallStatus = 'assinado';
+        newOverallStatus = isAditivo ? (activeClient.statusContrato || 'assinado') : 'assinado';
       }
 
       const updateData: Partial<Cliente> = isAquisicao
@@ -174,6 +184,16 @@ export default function ComercialFolderDetailsModal({
             contratoArquivoNome: uploadRes.filename,
             contratoArquivoTamanho: uploadRes.size,
             contratoDataAssinatura: today
+          }
+        : isAditivo
+        ? {
+            contratoAditivoStatus: 'assinado',
+            contratoAditivoArquivoUrl: uploadRes.url,
+            contratoAditivoArquivoNome: uploadRes.filename,
+            contratoAditivoArquivoTamanho: uploadRes.size,
+            contratoAditivoArquivoKey: uploadRes.key,
+            contratoAditivoArquivoStorage: uploadRes.storage,
+            contratoAditivoDataAssinatura: today
           }
         : {
             contratoAdmStatus: 'assinado',
@@ -209,12 +229,13 @@ export default function ComercialFolderDetailsModal({
   };
 
   // Remover contrato assinado
-  const handleRemoveContractFile = (type: 'aquisicao' | 'adm') => {
+  const handleRemoveContractFile = (type: 'aquisicao' | 'adm' | 'aditivo') => {
     if (!activeClient) return;
-    const typeLabel = type === 'aquisicao' ? 'Contrato de Aquisição' : 'Contrato de Gestão Náutica';
+    const typeLabel = type === 'aquisicao' ? 'Contrato de Aquisição' : type === 'aditivo' ? 'Aditivo Náutico' : 'Contrato de Gestão Náutica';
     if (!window.confirm(`Tem certeza que deseja remover o documento assinado do ${typeLabel}?`)) return;
 
     const isAquisicao = type === 'aquisicao';
+    const isAditivo = type === 'aditivo';
     const otherSigned = isAquisicao ? hasAdmAssinado : hasAquisicaoAssinado;
     const newOverallStatus: StatusContrato = otherSigned ? 'pendente' : 'pendente';
 
@@ -232,6 +253,16 @@ export default function ComercialFolderDetailsModal({
           contratoArquivoNome: hasAdmAssinado ? admNome : (null as any),
           contratoArquivoTamanho: hasAdmAssinado ? admTamanho : (null as any),
           contratoDataAssinatura: hasAdmAssinado ? admData : (null as any)
+        }
+      : isAditivo
+      ? {
+          contratoAditivoStatus: 'pendente',
+          contratoAditivoArquivoUrl: null as any,
+          contratoAditivoArquivoNome: null as any,
+          contratoAditivoArquivoTamanho: null as any,
+          contratoAditivoArquivoKey: null as any,
+          contratoAditivoArquivoStorage: null as any,
+          contratoAditivoDataAssinatura: null as any
         }
       : {
           contratoAdmStatus: 'pendente',
@@ -288,12 +319,12 @@ export default function ComercialFolderDetailsModal({
 
   const statusConfig = {
     assinado: {
-      label: totalAssinados === 2 ? 'Contratos Assinados (2/2)' : 'Contrato Assinado',
+      label: totalAssinados >= 2 ? `Contratos Assinados (${totalAssinados}/3)` : 'Contrato Assinado',
       badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
       dotColor: 'bg-emerald-500'
     },
     pendente: {
-      label: totalAssinados === 1 ? '1 de 2 Assinado' : 'Aguardando Assinatura',
+      label: totalAssinados >= 1 ? `${totalAssinados} Assinado(s)` : 'Aguardando Assinatura',
       badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
       dotColor: 'bg-amber-500'
     },
@@ -308,11 +339,12 @@ export default function ComercialFolderDetailsModal({
 
   // Informações do contrato atualmente selecionado no seletor segmentado
   const currentSubtypeIsAquisicao = activeContractSubtype === 'aquisicao';
-  const currentHasSigned = currentSubtypeIsAquisicao ? hasAquisicaoAssinado : hasAdmAssinado;
-  const currentFileName = currentSubtypeIsAquisicao ? aquisicaoNome : admNome;
-  const currentFileUrl = currentSubtypeIsAquisicao ? aquisicaoUrl : admUrl;
-  const currentFileSize = currentSubtypeIsAquisicao ? aquisicaoTamanho : admTamanho;
-  const currentSignDate = currentSubtypeIsAquisicao ? aquisicaoData : admData;
+  const currentSubtypeIsAditivo = activeContractSubtype === 'aditivo';
+  const currentHasSigned = currentSubtypeIsAquisicao ? hasAquisicaoAssinado : currentSubtypeIsAditivo ? hasAditivoAssinado : hasAdmAssinado;
+  const currentFileName = currentSubtypeIsAquisicao ? aquisicaoNome : currentSubtypeIsAditivo ? aditivoNome : admNome;
+  const currentFileUrl = currentSubtypeIsAquisicao ? aquisicaoUrl : currentSubtypeIsAditivo ? aditivoUrl : admUrl;
+  const currentFileSize = currentSubtypeIsAquisicao ? aquisicaoTamanho : currentSubtypeIsAditivo ? aditivoTamanho : admTamanho;
+  const currentSignDate = currentSubtypeIsAquisicao ? aquisicaoData : currentSubtypeIsAditivo ? aditivoData : admData;
 
   return (
     <div
@@ -488,11 +520,11 @@ export default function ComercialFolderDetailsModal({
                   <label className="text-[11px] font-semibold text-stone-600 block">
                     Modelo de Contrato
                   </label>
-                  <div className="grid grid-cols-2 gap-1.5 bg-stone-100/80 p-1 rounded-xl border border-stone-200/60 max-w-md">
+                  <div className="grid grid-cols-3 gap-1.5 bg-stone-100/80 p-1 rounded-xl border border-stone-200/60 max-w-lg">
                     <button
                       type="button"
                       onClick={() => setActiveContractSubtype('aquisicao')}
-                      className={`h-8 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      className={`h-8 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                         activeContractSubtype === 'aquisicao'
                           ? 'bg-white text-stone-900 shadow-xs border border-stone-200/80'
                           : 'text-stone-500 hover:text-stone-800'
@@ -506,15 +538,29 @@ export default function ComercialFolderDetailsModal({
                     <button
                       type="button"
                       onClick={() => setActiveContractSubtype('adm')}
-                      className={`h-8 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      className={`h-8 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                         activeContractSubtype === 'adm'
                           ? 'bg-white text-stone-900 shadow-xs border border-stone-200/80'
                           : 'text-stone-500 hover:text-stone-800'
                       }`}
                     >
                       <ShieldCheck className="w-3.5 h-3.5 text-stone-700" />
-                      <span>Gestão Náutica (Adm)</span>
+                      <span>Gestão Náutica</span>
                       {hasAdmAssinado && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveContractSubtype('aditivo')}
+                      className={`h-8 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        activeContractSubtype === 'aditivo'
+                          ? 'bg-white text-stone-900 shadow-xs border border-stone-200/80'
+                          : 'text-stone-500 hover:text-stone-800'
+                      }`}
+                    >
+                      <Anchor className="w-3.5 h-3.5 text-stone-700" />
+                      <span>Aditivo (Seg/Ter)</span>
+                      {hasAditivoAssinado && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
                     </button>
                   </div>
                 </div>
@@ -524,7 +570,7 @@ export default function ComercialFolderDetailsModal({
                   <div className="flex items-center justify-between pb-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-stone-900">
-                        {currentSubtypeIsAquisicao ? 'Contrato de Aquisição de Cota' : 'Contrato de Gestão e Administração'}
+                        {currentSubtypeIsAquisicao ? 'Contrato de Aquisição de Cota' : currentSubtypeIsAditivo ? 'Aditivo Náutico (Segunda e Terça)' : 'Contrato de Gestão e Administração'}
                       </span>
                       <span className="text-[11px] text-stone-400">•</span>
                       <span className="text-[11px] text-stone-500 font-medium">

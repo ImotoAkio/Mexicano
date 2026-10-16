@@ -29,6 +29,7 @@ export interface ClientData {
   telefone?: string;
   email?: string;
   cota?: string;
+  plano?: string;
   dataAssinatura?: string;
   dataCadastro?: string;
 }
@@ -36,6 +37,8 @@ export interface ClientData {
 export interface BoatData {
   nome?: string;
   modelo?: string;
+  fabricante?: string;
+  ano?: number | string;
   chassi?: string;
   inscricao?: string;
   tipo_propulsao?: string;
@@ -61,10 +64,10 @@ export interface PaymentData {
   customPaymentText?: string;
 }
 
-const getLogoImage = async (type: 'adm' | 'aquisicao'): Promise<HTMLImageElement> => {
+const getLogoImage = async (type: 'adm' | 'aquisicao' | 'aditivo'): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.src = type === 'adm' ? logoValeSrc : logoMexicanoSrc;
+    img.src = type === 'aquisicao' ? logoMexicanoSrc : logoValeSrc;
     img.onload = () => resolve(img);
     img.onerror = (err) => reject(err);
   });
@@ -182,8 +185,96 @@ export function formatDateExtensoMin(dateStr?: string): string {
   return `${dia} de ${mes} de ${ano}`;
 }
 
+/**
+ * Aplica máscara padrão de CPF (000.000.000-00) ou CNPJ (00.000.000/0000-00).
+ */
+export function formatCpfMask(cpf?: string): string {
+  if (!cpf) return '';
+  const trimmed = cpf.trim();
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+  if (digits.length === 14) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+  }
+  return trimmed;
+}
+
+/**
+ * Aplica máscara padrão de telefone celular ou fixo nacional:
+ * - 11 dígitos: (87) 98169-0003
+ * - 10 dígitos: (87) 8169-0003
+ * - Com DDI 55 (12 ou 13 dígitos): +55 (87) 98169-0003 / (87) 98169-0003
+ */
+export function formatPhoneMask(phone?: string): string {
+  if (!phone) return '';
+  const trimmed = phone.trim();
+  const digits = trimmed.replace(/\D/g, '');
+
+  // Com DDI 55 (13 dígitos: 55 + DDD + 9 dígitos)
+  if (digits.length === 13 && digits.startsWith('55')) {
+    const hasPlus = trimmed.startsWith('+');
+    const ddd = digits.slice(2, 4);
+    const p1 = digits.slice(4, 9);
+    const p2 = digits.slice(9);
+    return hasPlus ? `+55 (${ddd}) ${p1}-${p2}` : `(${ddd}) ${p1}-${p2}`;
+  }
+
+  // Com DDI 55 (12 dígitos: 55 + DDD + 8 dígitos)
+  if (digits.length === 12 && digits.startsWith('55')) {
+    const hasPlus = trimmed.startsWith('+');
+    const ddd = digits.slice(2, 4);
+    const p1 = digits.slice(4, 8);
+    const p2 = digits.slice(8);
+    return hasPlus ? `+55 (${ddd}) ${p1}-${p2}` : `(${ddd}) ${p1}-${p2}`;
+  }
+
+  // 11 dígitos (DDD + 9 dígitos)
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+
+  // 10 dígitos (DDD + 8 dígitos)
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+
+  // 9 dígitos (sem DDD)
+  if (digits.length === 9) {
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  }
+
+  // 8 dígitos (sem DDD)
+  if (digits.length === 8) {
+    return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  }
+
+  return trimmed;
+}
+
+/**
+ * Normaliza e formata CPFs e telefones dentro de textos ricos de contratos.
+ */
+export function applyContractMasksToText(text: string): string {
+  if (!text) return '';
+  let res = text;
+
+  // Substituir CPF sem máscara (11 dígitos após palavras como CPF, sob o nº, etc.)
+  res = res.replace(/(CPF(?:\s*(?:sob\s*o\s*n[ºo°]|n[ºo°]|:))?\s*)(<b>)?(\d{11})(<\/b>)?/gi, (match, prefix, b1, digits, b2) => {
+    return `${prefix}${b1 || ''}${formatCpfMask(digits)}${b2 || ''}`;
+  });
+
+  // Substituir Telefone sem máscara após palavras como WhatsApp, Telefone, contato
+  res = res.replace(/((?:WhatsApp|Telefone|contato)(?:\s*\([^\)]*\))?(?:\s*:)?\s*)(<b>)?(\+?\d[\d\s-]{7,15}\d)(<\/b>)?/gi, (match, prefix, b1, phoneStr, b2) => {
+    return `${prefix}${b1 || ''}${formatPhoneMask(phoneStr)}${b2 || ''}`;
+  });
+
+  return res;
+}
+
 export interface ContractSections {
-  type: 'aquisicao' | 'adm';
+  type: 'aquisicao' | 'adm' | 'aditivo';
   title: string;
   clientStr: string;
   vendorStr: string;
@@ -200,7 +291,7 @@ export interface ContractSections {
 }
 
 export function getContractSections(
-  type: 'adm' | 'aquisicao',
+  type: 'adm' | 'aquisicao' | 'aditivo',
   clientData: ClientData,
   boatData: BoatData,
   paymentData?: PaymentData,
@@ -230,7 +321,7 @@ export function getContractSections(
       ? `${clientData.rg.trim()}${clientData.orgaoEmissor ? ' ' + clientData.orgaoEmissor.trim() : ''}`
       : 'NÃO INFORMADO';
     const estCivil = clientData.estadoCivil ? clientData.estadoCivil.toLowerCase() : 'não informado';
-    const clientStr = `COMPRADOR: Nome: <b>${clientData.nome || 'NÃO INFORMADO'}</b>, Nacionalidade: <b>${(clientData.nacionalidade || 'BRASILEIRO').toUpperCase()}</b>, Estado civil: <b>${estCivil}</b>, Profissão: <b>${clientData.profissao || 'NÃO INFORMADO'}</b>, inscrito no CPF sob o nº <b>${clientData.cpf || 'NÃO INFORMADO'}</b>, portador da carteira de identidade nº <b>${rgFormatted}</b>, Endereço: <b>${fullAddress}</b>, contato (WhatsApp): <b>${clientData.telefone || 'NÃO INFORMADO'}</b>.`;
+    const clientStr = `COMPRADOR: Nome: <b>${clientData.nome || 'NÃO INFORMADO'}</b>, Nacionalidade: <b>${(clientData.nacionalidade || 'BRASILEIRO').toUpperCase()}</b>, Estado civil: <b>${estCivil}</b>, Profissão: <b>${clientData.profissao || 'NÃO INFORMADO'}</b>, inscrito no CPF sob o nº <b>${formatCpfMask(clientData.cpf) || 'NÃO INFORMADO'}</b>, portador da carteira de identidade nº <b>${rgFormatted}</b>, Endereço: <b>${fullAddress}</b>, contato (WhatsApp): <b>${formatPhoneMask(clientData.telefone) || 'NÃO INFORMADO'}</b>.`;
     const vendorStr = `VENDEDOR: <b>MEXICANO LANCHAS LTDA</b>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <b>42.206.594/0001-31</b> com sede, situada na cidade de <b>Petrolina-PE, no Loteamento Lote 190, nº 190, Estrada da Tapera, CEP: 56334-899</b>, endereço eletrônico: <b>vendasmexicanolanchas@gmail.com</b>, WhatsApp: <b>(87)9 9655-2883</b>.`;
     const introStr = `As partes acima identificadas têm, entre si, justo e acertado o presente contrato para aquisição de cota de embarcação, que se regerá pelas cláusulas a seguir descritas.`;
 
@@ -387,7 +478,7 @@ export function getContractSections(
       },
       signClient: {
         name: `${(clientData.nome || 'COMPRADOR').toUpperCase()}, ${(clientData.nacionalidade || 'BRASILEIRO').toUpperCase()}`,
-        cpf: clientData.cpf ? `CPF: ${clientData.cpf}` : 'N/A'
+        cpf: clientData.cpf ? `CPF: ${formatCpfMask(clientData.cpf)}` : 'N/A'
       }
     };
   } else {
@@ -406,9 +497,10 @@ export function getContractSections(
     const nacFormatted = (clientData.nacionalidade || 'BRASILEIRO').toUpperCase();
     const estCivilFormatted = (clientData.estadoCivil || 'NÃO INFORMADO').toUpperCase();
     const profFormatted = (clientData.profissao || 'NÃO INFORMADO').toUpperCase();
-    const telFormatted = clientData.telefone || 'NÃO INFORMADO';
+    const telFormatted = formatPhoneMask(clientData.telefone) || 'NÃO INFORMADO';
+    const cpfFormatted = formatCpfMask(clientData.cpf) || 'NÃO INFORMADO';
 
-    const clientStr = `CONTRATANTE: Nome: <b>${clientData.nome || 'NÃO INFORMADO'}</b>, Nacionalidade: <b>${nacFormatted}</b>, Estado civil: <b>${estCivilFormatted}</b>, Profissão: <b>${profFormatted}</b> Carteira Náutica nº: <b>${chaFormatted}</b>, válida até: <b>${validadeFormatted}</b>, órgão emissor: <b>${emissorFormatted}</b>, inscrito no CPF sob o nº <b>${clientData.cpf || 'NÃO INFORMADO'}</b>, portador da carteira de identidade nº <b>${rgFormatted}</b>, Endereço: <b>${fullAddress}</b>, contato (WhatsApp): <b>${telFormatted}</b>.`;
+    const clientStr = `CONTRATANTE: Nome: <b>${clientData.nome || 'NÃO INFORMADO'}</b>, Nacionalidade: <b>${nacFormatted}</b>, Estado civil: <b>${estCivilFormatted}</b>, Profissão: <b>${profFormatted}</b> Carteira Náutica nº: <b>${chaFormatted}</b>, válida até: <b>${validadeFormatted}</b>, órgão emissor: <b>${emissorFormatted}</b>, inscrito no CPF sob o nº <b>${cpfFormatted}</b>, portador da carteira de identidade nº <b>${rgFormatted}</b>, Endereço: <b>${fullAddress}</b>, contato (WhatsApp): <b>${telFormatted}</b>.`;
 
     const vendorStr = `CONTRATADO/ADMINISTRADOR: <b>VALE ADMINISTRADORA NAUTICA</b>, pessoa jurídica de direito privado, CNPJ: <b>62.794.642/0001-67</b> com sede situada na cidade de <b>PETROLINA-PE</b>, no <b>LOTEAMENTO LOTE 190, Nº 190, ESTRADA DA TAPERA, CEP: 56.334-899</b>, endereço eletrônico: <b>atendimentovaleadm@gmail.com</b>, WhatsApp: <b>(87)9 9109-0051</b>.`;
 
@@ -643,14 +735,14 @@ export function getContractSections(
       },
       signClient: {
         name: clientData.nome?.toUpperCase() || 'CONTRATANTE',
-        cpf: clientData.cpf ? `CPF: ${clientData.cpf}` : 'N/A'
+        cpf: clientData.cpf ? `CPF: ${formatCpfMask(clientData.cpf)}` : 'N/A'
       }
     };
   }
 }
 
 export async function buildContractDoc(
-  type: 'adm' | 'aquisicao',
+  type: 'adm' | 'aquisicao' | 'aditivo',
   clientData: ClientData,
   boatData: BoatData,
   paymentData?: PaymentData,
@@ -821,7 +913,25 @@ export async function buildContractDoc(
     cursorY += extraSpacingBottom;
   };
 
-  const sections = customSections || getContractSections(type, clientData, boatData, paymentData);
+  const rawSections = customSections || getContractSections(type, clientData, boatData, paymentData);
+
+  // Garantir aplicação de máscaras de CPF e Telefone em todas as seções e dados do PDF
+  const sections: ContractSections = {
+    ...rawSections,
+    clientStr: applyContractMasksToText(rawSections.clientStr),
+    vendorStr: applyContractMasksToText(rawSections.vendorStr),
+    introStr: rawSections.introStr ? applyContractMasksToText(rawSections.introStr) : undefined,
+    clauses: rawSections.clauses.map(c => applyContractMasksToText(c)),
+    signCompany: rawSections.signCompany,
+    signClient: {
+      name: rawSections.signClient.name,
+      cpf: rawSections.signClient.cpf
+        ? (rawSections.signClient.cpf.startsWith('CPF:')
+            ? `CPF: ${formatCpfMask(rawSections.signClient.cpf.replace(/^CPF:\s*/i, ''))}`
+            : formatCpfMask(rawSections.signClient.cpf))
+        : ''
+    }
+  };
 
   drawHeaderLogo();
   writeTitle(sections.title);
@@ -845,6 +955,8 @@ export async function buildContractDoc(
   doc.setFontSize(9.5);
   const cityDateStr = type === 'aquisicao'
     ? `Petrolina/PE, ${dateExtensoMin}.`
+    : type === 'aditivo'
+    ? `Petrolina, ${clientData.dataAssinatura ? dateExtensoMin : '____ de ____________ de 20____'}.`
     : `PETROLINA-PE, ${dateExtensoCaps}`;
   doc.text(cityDateStr, pageWidth / 2, cursorY, { align: 'center' });
   cursorY += 16;
@@ -873,16 +985,18 @@ export async function buildContractDoc(
   doc.text(sections.signClient.cpf, pageWidth / 2, cursorY, { align: 'center' });
   cursorY += 12;
 
-  // Testemunhas
-  checkPageBreak(25);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
-  doc.text('TESTEMUNHAS:', margins.left, cursorY);
-  cursorY += 8;
-  doc.setFont("helvetica", "normal");
-  doc.text('Nome: ____________________________________    Nome: ____________________________________', margins.left, cursorY);
-  cursorY += 6;
-  doc.text('CPF:   ____________________________________    CPF:   ____________________________________', margins.left, cursorY);
+  // Testemunhas (não aplicável ao aditivo simplificado)
+  if (type !== 'aditivo') {
+    checkPageBreak(25);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text('TESTEMUNHAS:', margins.left, cursorY);
+    cursorY += 8;
+    doc.setFont("helvetica", "normal");
+    doc.text('Nome: ____________________________________    Nome: ____________________________________', margins.left, cursorY);
+    cursorY += 6;
+    doc.text('CPF:   ____________________________________    CPF:   ____________________________________', margins.left, cursorY);
+  }
 
   // Rodapé Oficial em todas as páginas
   const totalPages = doc.getNumberOfPages();
@@ -894,6 +1008,8 @@ export async function buildContractDoc(
     const clientNameUpper = (clientData.nome || 'CONTRATANTE').toUpperCase();
     const footerText = type === 'adm'
       ? `Página ${p} de ${totalPages} integrante e indissociável do CONTRATO DE ADMINISTRAÇÃO PARA EMBARCAÇÃO DE USO COMPARTILHADO entre VALE ADMINISTRADORA DE BENS NÁUTICOS e (${clientNameUpper}).`
+      : type === 'aditivo'
+      ? `Página ${p} de ${totalPages} integrante e indissociável do ADITIVO CONTRATUAL AO CONTRATO DE ADMINISTRAÇÃO DE BENS NÁUTICOS entre VALE ADMINISTRADORA DE BENS NÁUTICOS e (${clientNameUpper}).`
       : `Página ${p} de ${totalPages} integrante e indissociável do CONTRATO DE AQUISIÇÃO DE COPROPRIEDADE DE EMBARCAÇÃO NOVA firmado entre MEXICANO LANCHAS e COMPRADOR.`;
     doc.text(footerText, pageWidth / 2, pageHeight - 8, { align: 'center', maxWidth: textWidth });
   }
@@ -901,18 +1017,19 @@ export async function buildContractDoc(
   return doc;
 }
 
-export async function generateContract(type: 'adm' | 'aquisicao', clientData: ClientData, boatData: BoatData, paymentData?: PaymentData, customSections?: ContractSections) {
+export async function generateContract(type: 'adm' | 'aquisicao' | 'aditivo', clientData: ClientData, boatData: BoatData, paymentData?: PaymentData, customSections?: ContractSections) {
   const doc = await buildContractDoc(type, clientData, boatData, paymentData, customSections);
-  doc.save(`Contrato_${type}_${clientData.nome || 'Cliente'}.pdf`);
+  const prefix = type === 'aditivo' ? 'Aditivo' : `Contrato_${type}`;
+  doc.save(`${prefix}_${clientData.nome || 'Cliente'}.pdf`);
   return doc;
 }
 
-export async function getContractPdfBlob(type: 'adm' | 'aquisicao', clientData: ClientData, boatData: BoatData, paymentData?: PaymentData, customSections?: ContractSections): Promise<Blob> {
+export async function getContractPdfBlob(type: 'adm' | 'aquisicao' | 'aditivo', clientData: ClientData, boatData: BoatData, paymentData?: PaymentData, customSections?: ContractSections): Promise<Blob> {
   const doc = await buildContractDoc(type, clientData, boatData, paymentData, customSections);
   return doc.output('blob');
 }
 
-export async function getContractPdfDataUri(type: 'adm' | 'aquisicao', clientData: ClientData, boatData: BoatData, paymentData?: PaymentData, customSections?: ContractSections): Promise<string> {
+export async function getContractPdfDataUri(type: 'adm' | 'aquisicao' | 'aditivo', clientData: ClientData, boatData: BoatData, paymentData?: PaymentData, customSections?: ContractSections): Promise<string> {
   const doc = await buildContractDoc(type, clientData, boatData, paymentData, customSections);
   return doc.output('datauristring');
 }

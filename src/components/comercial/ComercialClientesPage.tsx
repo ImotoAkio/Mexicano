@@ -23,7 +23,7 @@ import {
 import { clientDB, boatDB, syncWithRemote, onDbUpdate, isDbLoaded } from '../../db';
 import { Cliente, Embarcacao } from '../../types';
 import ClientProfileModal from '../ClientProfileModal';
-import ComercialClientDrawer from './ComercialClientDrawer';
+import ComercialClientModal from './ComercialClientModal';
 import ComercialContratoViewerModal from './ComercialContratoViewerModal';
 import ComercialClientFilterDrawer, {
   ClientFilters,
@@ -571,7 +571,6 @@ export default function ComercialClientesPage() {
                   <th className="py-3 px-4">Plano</th>
                   <th className="py-3 px-4">Empresas</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Cadastro</th>
                   <th className="py-3 px-4 text-right">Ações</th>
                 </tr>
               </thead>
@@ -708,11 +707,6 @@ export default function ComercialClientesPage() {
                           <span className={`w-1.5 h-1.5 rounded-full ${isAtivo ? 'bg-emerald-500' : 'bg-stone-400'}`} />
                           {isAtivo ? 'Ativo' : 'Inativo'}
                         </span>
-                      </td>
-
-                      {/* Cadastro */}
-                      <td className="py-3 px-4 text-stone-500 tabular-nums">
-                        {formatDate(client.dataCadastro)}
                       </td>
 
                       {/* Ações */}
@@ -861,10 +855,7 @@ export default function ComercialClientesPage() {
                 </div>
 
                 {/* Rodapé do Card */}
-                <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
-                  <span className="text-[11px] text-stone-400 tabular-nums">
-                    Desde {formatDate(client.dataCadastro)}
-                  </span>
+                <div className="pt-3 border-t border-stone-100 flex items-center justify-end">
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setSelectedClientForContract(client)}
@@ -927,9 +918,9 @@ export default function ComercialClientesPage() {
         />
       )}
 
-      {/* Drawer de Edição / Cadastro de Cliente (Baseado no AddWidgetDrawer) */}
-      <ComercialClientDrawer
-        open={!!selectedClientForEdit}
+      {/* Modal de Edição / Cadastro de Cliente no padrão Split-View */}
+      <ComercialClientModal
+        isOpen={!!selectedClientForEdit}
         editingClient={selectedClientForEdit}
         boats={boats}
         onClose={() => setSelectedClientForEdit(null)}
@@ -939,8 +930,8 @@ export default function ComercialClientesPage() {
         }}
       />
 
-      <ComercialClientDrawer
-        open={isNewClientOpen}
+      <ComercialClientModal
+        isOpen={isNewClientOpen}
         editingClient={null}
         boats={boats}
         onClose={() => setIsNewClientOpen(false)}

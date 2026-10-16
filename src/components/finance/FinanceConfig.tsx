@@ -52,7 +52,42 @@ export default function FinanceConfig({
   const [planosContas, setPlanosContas] = useState<PlanoDeConta[]>([]);
   const [centrosCusto, setCentrosCusto] = useState<CentroDeCusto[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
-  const [globalConfig, setGlobalConfig] = useState<{ taxaJurosMensal: string, taxaMultaAtraso?: string, asaasContaBancariaId?: string, fin_asaas_split_enabled?: boolean }>({ taxaJurosMensal: "2.2", taxaMultaAtraso: "2.0", asaasContaBancariaId: "", fin_asaas_split_enabled: false });
+  const [allContasBancarias, setAllContasBancarias] = useState<ContaBancaria[]>([]);
+  const [allPlanosContas, setAllPlanosContas] = useState<PlanoDeConta[]>([]);
+  const [allCentrosCusto, setAllCentrosCusto] = useState<CentroDeCusto[]>([]);
+  const [globalConfig, setGlobalConfig] = useState<{
+    taxaJurosMensal: string;
+    taxaMultaAtraso?: string;
+    asaasContaBancariaId?: string;
+    fin_asaas_split_enabled?: boolean;
+    vendaPadraoEmpresa?: string;
+    vendaPadraoPlanoContasId?: string;
+    vendaPadraoCentroCustoId?: string;
+    vendaPadraoContaBancariaId?: string;
+    vendaPadraoCategoria?: string;
+    taxaAdmPadraoEmpresa?: string;
+    taxaAdmPadraoPlanoContasId?: string;
+    taxaAdmPadraoCentroCustoId?: string;
+    taxaAdmPadraoContaBancariaId?: string;
+    taxaAdmPadraoCategoria?: string;
+    taxaAdmPadraoValor?: string;
+  }>({
+    taxaJurosMensal: "2.2",
+    taxaMultaAtraso: "2.0",
+    asaasContaBancariaId: "",
+    fin_asaas_split_enabled: false,
+    vendaPadraoEmpresa: "Mexicano",
+    vendaPadraoPlanoContasId: "",
+    vendaPadraoCentroCustoId: "",
+    vendaPadraoContaBancariaId: "",
+    vendaPadraoCategoria: "Venda de Cota",
+    taxaAdmPadraoEmpresa: "Vale Administradora",
+    taxaAdmPadraoPlanoContasId: "",
+    taxaAdmPadraoCentroCustoId: "",
+    taxaAdmPadraoContaBancariaId: "",
+    taxaAdmPadraoCategoria: "Taxa de Administração",
+    taxaAdmPadraoValor: "850.00"
+  });
   const [loading, setLoading] = useState(false);
 
   // Modals / Form State
@@ -140,17 +175,25 @@ export default function FinanceConfig({
     try {
       const q = empresa && empresa !== 'Todos' ? `?empresa=${encodeURIComponent(empresa)}` : '';
 
-      const [resContas, resPlanos, resFornecedores, resCentros, resConfig] = await Promise.all([
+      const [resContas, resPlanos, resFornecedores, resCentros, resConfig, resAllContas, resAllPlanos, resAllCentros] = await Promise.all([
         fetch(`/api/financeiro/contas-bancarias${q}`, { credentials: 'include', headers: getAuthHeader() }),
         fetch(`/api/financeiro/planos-contas${q}`, { credentials: 'include', headers: getAuthHeader() }),
         fetch(`/api/financeiro/fornecedores${q}`, { credentials: 'include', headers: getAuthHeader() }),
         fetch(`/api/financeiro/centros-custo${q}`, { credentials: 'include', headers: getAuthHeader() }),
-        fetch(`/api/financeiro/configuracoes`, { credentials: 'include', headers: getAuthHeader() })
+        fetch(`/api/financeiro/configuracoes`, { credentials: 'include', headers: getAuthHeader() }),
+        fetch(`/api/financeiro/contas-bancarias?empresa=Todos`, { credentials: 'include', headers: getAuthHeader() }),
+        fetch(`/api/financeiro/planos-contas?empresa=Todos`, { credentials: 'include', headers: getAuthHeader() }),
+        fetch(`/api/financeiro/centros-custo?empresa=Todos`, { credentials: 'include', headers: getAuthHeader() })
       ]);
 
       if (resConfig.ok) {
         const { configuracoes } = await resConfig.json();
-        if (configuracoes) setGlobalConfig(configuracoes);
+        if (configuracoes) {
+          setGlobalConfig(prev => ({
+            ...prev,
+            ...configuracoes
+          }));
+        }
       }
 
       if (resContas.ok) {
@@ -168,6 +211,18 @@ export default function FinanceConfig({
       if (resCentros.ok) {
         const data = await resCentros.json();
         setCentrosCusto(data);
+      }
+      if (resAllContas.ok) {
+        const data = await resAllContas.json();
+        setAllContasBancarias(Array.isArray(data) ? data : []);
+      }
+      if (resAllPlanos.ok) {
+        const data = await resAllPlanos.json();
+        setAllPlanosContas(Array.isArray(data) ? data : []);
+      }
+      if (resAllCentros.ok) {
+        const data = await resAllCentros.json();
+        setAllCentrosCusto(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error('Erro ao buscar dados das configurações:', err);
@@ -374,7 +429,18 @@ export default function FinanceConfig({
           taxaJurosMensal: parseFloat(globalConfig.taxaJurosMensal || '0'),
           taxaMultaAtraso: parseFloat(globalConfig.taxaMultaAtraso || '0'),
           asaasContaBancariaId: globalConfig.asaasContaBancariaId,
-          fin_asaas_split_enabled: globalConfig.fin_asaas_split_enabled ? '1' : '0'
+          fin_asaas_split_enabled: globalConfig.fin_asaas_split_enabled ? '1' : '0',
+          vendaPadraoEmpresa: globalConfig.vendaPadraoEmpresa || 'Mexicano',
+          vendaPadraoPlanoContasId: globalConfig.vendaPadraoPlanoContasId || '',
+          vendaPadraoCentroCustoId: globalConfig.vendaPadraoCentroCustoId || '',
+          vendaPadraoContaBancariaId: globalConfig.vendaPadraoContaBancariaId || '',
+          vendaPadraoCategoria: globalConfig.vendaPadraoCategoria || 'Venda de Cota',
+          taxaAdmPadraoEmpresa: globalConfig.taxaAdmPadraoEmpresa || 'Vale Administradora',
+          taxaAdmPadraoPlanoContasId: globalConfig.taxaAdmPadraoPlanoContasId || '',
+          taxaAdmPadraoCentroCustoId: globalConfig.taxaAdmPadraoCentroCustoId || '',
+          taxaAdmPadraoContaBancariaId: globalConfig.taxaAdmPadraoContaBancariaId || '',
+          taxaAdmPadraoCategoria: globalConfig.taxaAdmPadraoCategoria || 'Taxa de Administração',
+          taxaAdmPadraoValor: globalConfig.taxaAdmPadraoValor || '850.00'
         })
       });
       if (res.ok) {
@@ -787,14 +853,15 @@ export default function FinanceConfig({
             {/* SUBTAB 5: CONFIGURACOES GERAIS */}
             {activeSubTab === 'configuracoes_gerais' && (
               <div className="p-6">
-                <div className="max-w-2xl bg-slate-50 border border-slate-200 rounded-2xl p-6">
+                <div className="max-w-4xl bg-slate-50 border border-slate-200 rounded-2xl p-6">
                   <h3 className="font-bold text-slate-800 text-lg mb-4 flex items-center gap-2">
                     <AlertCircle className="w-5 h-5 text-indigo-500" />
-                    Parâmetros Globais do Financeiro
+                    Parâmetros Globais do Financeiro & Comercial
                   </h3>
 
                   <div className="space-y-6">
-                                        <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm relative overflow-hidden">
+                    {/* Card 1: Juros, Multa e Asaas */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm relative overflow-hidden">
                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
                       <label className="block text-sm font-bold text-slate-700 mb-2">
                         Taxa de Juros Mensal Padrão (%)
@@ -850,8 +917,8 @@ export default function FinanceConfig({
                             className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all w-full max-w-sm"
                           >
                             <option value="">-- Não Definida --</option>
-                            {contasBancarias.map(c => (
-                              <option key={c.id} value={c.id}>{c.nome} ({c.banco})</option>
+                            {(allContasBancarias.length > 0 ? allContasBancarias : contasBancarias).map(c => (
+                              <option key={c.id} value={c.id}>{c.nome} ({c.banco} - {c.empresa})</option>
                             ))}
                           </select>
                         </div>
@@ -876,18 +943,226 @@ export default function FinanceConfig({
                             </span>
                           </label>
                         </div>
+                      </div>
+                    </div>
 
-                        <div className="pt-4 border-t border-slate-100 flex items-center gap-4">
-                          <button
-                            type="button"
-                            onClick={handleSaveGlobalConfig}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm shadow-indigo-100 hover:shadow active:scale-95 cursor-pointer"
+                    {/* Card 2: Configuração Padrão de Lançamento de Venda (Mexicano) */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm relative overflow-hidden">
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></div>
+                      <h4 className="text-sm font-bold text-slate-800 mb-1">
+                        Lançamento Padrão de Venda (Comercial → Mexicano)
+                      </h4>
+                      <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                        Estes parâmetros são aplicados automaticamente aos lançamentos financeiros de <strong>Entrada</strong> e <strong>Parcelas de Cota</strong> gerados quando o Comercial registra uma nova venda.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Empresa Destino
+                          </label>
+                          <select
+                            value={globalConfig.vendaPadraoEmpresa || 'Mexicano'}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, vendaPadraoEmpresa: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all"
                           >
-                            <Save className="w-4 h-4" />
-                            <span>Salvar Configurações</span>
-                          </button>
+                            <option value="Mexicano">Mexicano</option>
+                            <option value="Vale Administradora">Vale Administradora</option>
+                            <option value="Marina Velho Chico">Marina Velho Chico</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Categoria Padrão
+                          </label>
+                          <input
+                            type="text"
+                            value={globalConfig.vendaPadraoCategoria || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, vendaPadraoCategoria: e.target.value }))}
+                            placeholder="Ex: Venda de Cota"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Plano de Contas (Receita)
+                          </label>
+                          <select
+                            value={globalConfig.vendaPadraoPlanoContasId || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, vendaPadraoPlanoContasId: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all"
+                          >
+                            <option value="">-- Selecionar Plano de Contas --</option>
+                            {(allPlanosContas.length > 0 ? allPlanosContas : planosContas)
+                              .filter(p => p.status === 'ativo' && (p.empresa === 'Todos' || !globalConfig.vendaPadraoEmpresa || p.empresa === globalConfig.vendaPadraoEmpresa))
+                              .map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.codigoContabil ? `${p.codigoContabil} - ` : ''}{p.descricao} ({p.tipo})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Centro de Custo Padrão
+                          </label>
+                          <select
+                            value={globalConfig.vendaPadraoCentroCustoId || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, vendaPadraoCentroCustoId: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all"
+                          >
+                            <option value="">-- Selecionar Centro de Custo --</option>
+                            {(allCentrosCusto.length > 0 ? allCentrosCusto : centrosCusto)
+                              .filter(c => c.status === 'ativo' && (c.empresa === 'Todos' || !globalConfig.vendaPadraoEmpresa || c.empresa === globalConfig.vendaPadraoEmpresa))
+                              .map(c => (
+                                <option key={c.id} value={c.id}>{c.nome} ({c.empresa})</option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Conta Bancária Padrão de Recebimento
+                          </label>
+                          <select
+                            value={globalConfig.vendaPadraoContaBancariaId || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, vendaPadraoContaBancariaId: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-emerald-100 focus:border-emerald-400 outline-none transition-all"
+                          >
+                            <option value="">-- Selecionar Conta Bancária --</option>
+                            {(allContasBancarias.length > 0 ? allContasBancarias : contasBancarias)
+                              .filter(cb => cb.status === 'ativo' && (!globalConfig.vendaPadraoEmpresa || cb.empresa === globalConfig.vendaPadraoEmpresa))
+                              .map(cb => (
+                                <option key={cb.id} value={cb.id}>{cb.nome} ({cb.banco} - {cb.empresa})</option>
+                              ))}
+                          </select>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Card 3: Configuração Padrão de Taxa de Administração */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm relative overflow-hidden">
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
+                      <h4 className="text-sm font-bold text-slate-800 mb-1">
+                        Lançamento Padrão de Taxa de Administração (Opcional na Venda)
+                      </h4>
+                      <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                        Parâmetros utilizados quando o Comercial opta por já gerar as parcelas mensais da Taxa de Administração no momento da venda.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Empresa Destino
+                          </label>
+                          <select
+                            value={globalConfig.taxaAdmPadraoEmpresa || 'Vale Administradora'}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaAdmPadraoEmpresa: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-amber-100 focus:border-amber-400 outline-none transition-all"
+                          >
+                            <option value="Vale Administradora">Vale Administradora</option>
+                            <option value="Mexicano">Mexicano</option>
+                            <option value="Marina Velho Chico">Marina Velho Chico</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Valor Mensal Sugerido (R$)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={globalConfig.taxaAdmPadraoValor || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaAdmPadraoValor: e.target.value }))}
+                            placeholder="850.00"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-amber-100 focus:border-amber-400 outline-none transition-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Categoria Padrão
+                          </label>
+                          <input
+                            type="text"
+                            value={globalConfig.taxaAdmPadraoCategoria || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaAdmPadraoCategoria: e.target.value }))}
+                            placeholder="Ex: Taxa de Administração"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-amber-100 focus:border-amber-400 outline-none transition-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Plano de Contas (Receita)
+                          </label>
+                          <select
+                            value={globalConfig.taxaAdmPadraoPlanoContasId || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaAdmPadraoPlanoContasId: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-amber-100 focus:border-amber-400 outline-none transition-all"
+                          >
+                            <option value="">-- Selecionar Plano de Contas --</option>
+                            {(allPlanosContas.length > 0 ? allPlanosContas : planosContas)
+                              .filter(p => p.status === 'ativo' && (p.empresa === 'Todos' || !globalConfig.taxaAdmPadraoEmpresa || p.empresa === globalConfig.taxaAdmPadraoEmpresa))
+                              .map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.codigoContabil ? `${p.codigoContabil} - ` : ''}{p.descricao} ({p.tipo})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Centro de Custo Padrão
+                          </label>
+                          <select
+                            value={globalConfig.taxaAdmPadraoCentroCustoId || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaAdmPadraoCentroCustoId: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-amber-100 focus:border-amber-400 outline-none transition-all"
+                          >
+                            <option value="">-- Selecionar Centro de Custo --</option>
+                            {(allCentrosCusto.length > 0 ? allCentrosCusto : centrosCusto)
+                              .filter(c => c.status === 'ativo' && (c.empresa === 'Todos' || !globalConfig.taxaAdmPadraoEmpresa || c.empresa === globalConfig.taxaAdmPadraoEmpresa))
+                              .map(c => (
+                                <option key={c.id} value={c.id}>{c.nome} ({c.empresa})</option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                            Conta Bancária Padrão
+                          </label>
+                          <select
+                            value={globalConfig.taxaAdmPadraoContaBancariaId || ''}
+                            onChange={(e) => setGlobalConfig(prev => ({ ...prev, taxaAdmPadraoContaBancariaId: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-amber-100 focus:border-amber-400 outline-none transition-all"
+                          >
+                            <option value="">-- Selecionar Conta Bancária --</option>
+                            {(allContasBancarias.length > 0 ? allContasBancarias : contasBancarias)
+                              .filter(cb => cb.status === 'ativo' && (!globalConfig.taxaAdmPadraoEmpresa || cb.empresa === globalConfig.taxaAdmPadraoEmpresa))
+                              .map(cb => (
+                                <option key={cb.id} value={cb.id}>{cb.nome} ({cb.banco} - {cb.empresa})</option>
+                              ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-end gap-4">
+                      <button
+                        type="button"
+                        onClick={handleSaveGlobalConfig}
+                        className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm shadow-indigo-100 hover:shadow active:scale-95 cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>Salvar Todas as Configurações</span>
+                      </button>
                     </div>
                   </div>
                 </div>

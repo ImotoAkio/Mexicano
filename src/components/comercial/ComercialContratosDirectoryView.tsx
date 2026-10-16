@@ -13,9 +13,9 @@ interface ComercialContratosDirectoryViewProps {
   clients: Cliente[];
   boats: Embarcacao[];
   boatsMap: Map<string, Embarcacao>;
-  onOpenViewer: (cliente: Cliente, type?: 'aquisicao' | 'adm') => void;
+  onOpenViewer: (cliente: Cliente, type?: 'aquisicao' | 'adm' | 'aditivo') => void;
   onOpenDetails: (cliente: Cliente) => void;
-  onDownloadPdf: (cliente: Cliente, e: React.MouseEvent, type?: 'aquisicao' | 'adm') => void;
+  onDownloadPdf: (cliente: Cliente, e: React.MouseEvent, type?: 'aquisicao' | 'adm' | 'aditivo') => void;
   onEditContract: (clientId: string) => void;
   onCreateNewContract: () => void;
   onStatusChange: (clientId: string, newStatus: StatusContrato) => void;

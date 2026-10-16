@@ -2,7 +2,14 @@ import { Router } from "express";
 import fs from "fs";
 import path from "path";
 import { requireAdminAuth, upload } from "./middlewares";
-import { getDbPool, getUserPreferences, upsertUserPreferences } from "../server-db";
+import {
+  getDbPool,
+  getUserPreferences,
+  upsertUserPreferences,
+  getAllVendas,
+  createVendaCompleta,
+  cancelarVenda
+} from "../server-db";
 import { uploadToR2 } from "../server-r2";
 
 const router = Router();
@@ -82,6 +89,60 @@ router.post("/preferences", requireAdminAuth, upload.fields([{ name: 'logo', max
   } catch(err: any) {
     console.error(err);
     res.status(500).json({ error: true, message: err.message || "Error saving preferences" });
+  }
+});
+
+// ==========================================
+// Vendas Comerciais (Lançamento de Vendas)
+// ==========================================
+router.get("/vendas", requireAdminAuth, async (req, res) => {
+  try {
+    const vendas = await getAllVendas();
+    res.json({ success: true, vendas });
+  } catch (err: any) {
+    console.error("[GET /api/comercial/vendas Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao buscar vendas" });
+  }
+});
+
+router.post("/vendas", requireAdminAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const payload = {
+      ...req.body,
+      vendedorNome: req.body.vendedorNome || user?.nome || user?.email || 'Comercial',
+      createdBy: req.body.createdBy || user?.id || null
+    };
+    const result = await createVendaCompleta(payload);
+
+    const io = (req.app as any).locals.io;
+    if (io) {
+      io.emit('venda_created', result);
+      io.emit('finance_update', { type: 'venda_created', vendaId: result.vendaId });
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("[POST /api/comercial/vendas Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao registrar venda" });
+  }
+});
+
+router.delete("/vendas/:id", requireAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await cancelarVenda(id);
+
+    const io = (req.app as any).locals.io;
+    if (io) {
+      io.emit('venda_cancelled', { id });
+      io.emit('finance_update', { type: 'venda_cancelled', vendaId: id });
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("[DELETE /api/comercial/vendas/:id Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao cancelar venda" });
   }
 });
 

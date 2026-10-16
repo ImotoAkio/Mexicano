@@ -17,9 +17,9 @@ import { formatBoatName } from '../../utils/constants';
 interface ComercialClient3DFolderProps {
   client: Cliente;
   boat: Embarcacao | null;
-  onOpenViewer: (client: Cliente, type?: 'aquisicao' | 'adm') => void;
+  onOpenViewer: (client: Cliente, type?: 'aquisicao' | 'adm' | 'aditivo') => void;
   onOpenDetails: (client: Cliente) => void;
-  onDownloadPdf: (client: Cliente, e: React.MouseEvent, type?: 'aquisicao' | 'adm') => void;
+  onDownloadPdf: (client: Cliente, e: React.MouseEvent, type?: 'aquisicao' | 'adm' | 'aditivo') => void;
   onEditContract: (clientId: string) => void;
   onStatusChange?: (clientId: string, newStatus: StatusContrato) => void;
 }
@@ -27,7 +27,7 @@ interface ComercialClient3DFolderProps {
 interface ContractDocSheet {
   id: string;
   title: string;
-  type: 'aquisicao' | 'adm' | 'anexo';
+  type: 'aquisicao' | 'adm' | 'aditivo' | 'anexo';
   badge: string;
   badgeHeaderClass: string;
 }
@@ -61,6 +61,13 @@ const ComercialClient3DFolder = memo(function ComercialClient3DFolder({
       type: 'adm',
       badge: "Marina",
       badgeHeaderClass: "bg-stone-800 text-white"
+    },
+    {
+      id: `${client.id}-aditivo`,
+      title: "Aditivo Náutico",
+      type: 'aditivo',
+      badge: "Seg / Ter",
+      badgeHeaderClass: "bg-emerald-900 text-white"
     }
   ];
 
@@ -152,7 +159,7 @@ const ComercialClient3DFolder = memo(function ComercialClient3DFolder({
           
           // Ângulos e deslocamentos suaves para a fanação das minutas
           const rotation = factor * 12;
-          const translationX = factor * (docs.length === 3 ? 56 : 42);
+          const translationX = factor * (docs.length >= 3 ? 56 : 42);
           const translationY = Math.abs(factor) * 8;
 
           return (
@@ -171,7 +178,7 @@ const ComercialClient3DFolder = memo(function ComercialClient3DFolder({
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                onOpenViewer(client, doc.type === 'adm' ? 'adm' : 'aquisicao');
+                onOpenViewer(client, doc.type === 'anexo' ? 'aquisicao' : doc.type);
               }}
             >
               {/* Folha de Minuta Jurídica A4 Oficial Mexicano */}

@@ -26,6 +26,7 @@ import {
 import ComercialClientesPage from './ComercialClientesPage';
 import ComercialEmbarcacoesPage from './ComercialEmbarcacoesPage';
 import ComercialContratosPage from './ComercialContratosPage';
+import ComercialVendasPage from './ComercialVendasPage';
 
 interface ComercialDashboardProps {
   onLogout?: () => void;
@@ -34,7 +35,7 @@ interface ComercialDashboardProps {
 
 export default function ComercialDashboard({ onLogout, operadorNome }: ComercialDashboardProps) {
   const [activeNav, setActiveNav] = useState<string>(() => {
-    return localStorage.getItem('comercial_active_nav') || 'contratos';
+    return localStorage.getItem('comercial_active_nav') || 'vendas';
   });
   const [widgetDrawerOpen, setWidgetDrawerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -142,7 +143,9 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
         {/* Content */}
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-[1400px] mx-auto p-4 lg:p-6 space-y-4">
-            {activeNav === 'clientes' ? (
+            {activeNav === 'vendas' || activeNav === 'recebimentos' ? (
+              <ComercialVendasPage />
+            ) : activeNav === 'clientes' ? (
               <ComercialClientesPage />
             ) : activeNav === 'embarcacoes' ? (
               <ComercialEmbarcacoesPage />

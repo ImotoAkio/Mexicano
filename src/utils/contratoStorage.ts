@@ -12,7 +12,7 @@
  * operação falha de forma explícita para o usuário tentar novamente.
  */
 
-export type ContratoTipo = 'aquisicao' | 'adm';
+export type ContratoTipo = 'aquisicao' | 'adm' | 'aditivo';
 
 export interface ContratoUploadResult {
   url: string;

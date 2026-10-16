@@ -49,13 +49,13 @@ export default function ComercialContratosPage() {
 
   // Filtros
   const [selectedStatus, setSelectedStatus] = useState<StatusContrato | 'all'>('all');
-  const [selectedType, setSelectedType] = useState<'all' | 'aquisicao' | 'adm'>('all');
+  const [selectedType, setSelectedType] = useState<'all' | 'aquisicao' | 'adm' | 'aditivo'>('all');
   const [selectedBoatFilter, setSelectedBoatFilter] = useState<string>('all');
 
   // Modais e Drawers
   const [viewerModalOpen, setViewerModalOpen] = useState(false);
   const [selectedClientForViewer, setSelectedClientForViewer] = useState<Cliente | null>(null);
-  const [viewerInitialType, setViewerInitialType] = useState<'aquisicao' | 'adm'>('aquisicao');
+  const [viewerInitialType, setViewerInitialType] = useState<'aquisicao' | 'adm' | 'aditivo'>('aquisicao');
   const [viewerInitialTab, setViewerInitialTab] = useState<'documento' | 'pdf' | 'anexo'>('documento');
 
   // Modal de Detalhes da Pasta / Dossiê do Cliente
@@ -173,6 +173,7 @@ export default function ComercialContratosPage() {
         const cType = c.tipoContrato || 'aquisicao';
         if (selectedType === 'aquisicao' && cType !== 'aquisicao' && cType !== 'ambos') return false;
         if (selectedType === 'adm' && cType !== 'adm' && cType !== 'ambos') return false;
+        if (selectedType === 'aditivo' && cType !== 'aditivo' && !c.contratoAditivoStatus && !c.contratoAditivoArquivoUrl) return false;
       }
 
       // 3. Filtro por Embarcação
@@ -229,7 +230,7 @@ export default function ComercialContratosPage() {
   // Ação: Abrir Visualizador
   const handleOpenViewer = (
     cliente: Cliente,
-    type: 'aquisicao' | 'adm' = 'aquisicao',
+    type: 'aquisicao' | 'adm' | 'aditivo' = 'aquisicao',
     tab: 'documento' | 'pdf' | 'anexo' = 'documento'
   ) => {
     setSelectedClientForViewer(cliente);
@@ -245,11 +246,11 @@ export default function ComercialContratosPage() {
   };
 
   // Ação: Download Rápido do PDF
-  const handleDownloadPdf = async (cliente: Cliente, e: React.MouseEvent, forcedType?: 'aquisicao' | 'adm') => {
+  const handleDownloadPdf = async (cliente: Cliente, e: React.MouseEvent, forcedType?: 'aquisicao' | 'adm' | 'aditivo') => {
     e.stopPropagation();
     const boatId = cliente.embarcacoes?.[0]?.embarcacaoId || cliente.embarcacaoId;
     const boat = boatId ? boatsMap.get(boatId) : null;
-    const type = forcedType || (cliente.tipoContrato === 'adm' ? 'adm' : 'aquisicao');
+    const type = forcedType || (cliente.tipoContrato === 'adm' ? 'adm' : cliente.tipoContrato === 'aditivo' ? 'aditivo' : 'aquisicao');
 
     await generateContract(
       type,
@@ -475,6 +476,7 @@ export default function ComercialContratosPage() {
               <option value="all">Todos os Modelos</option>
               <option value="aquisicao">Aquisição (Cota)</option>
               <option value="adm">Administração</option>
+              <option value="aditivo">Aditivo (Seg/Ter)</option>
             </select>
 
             <select
@@ -582,11 +584,12 @@ export default function ComercialContratosPage() {
                     const boat = boatId ? boatsMap.get(boatId) : null;
                     const status = c.statusContrato || 'sem_contrato';
                     const cotaVal = c.embarcacoes?.[0]?.cota || c.cota || 'Cota 25%';
-                    const type = c.tipoContrato === 'adm' ? 'adm' : 'aquisicao';
+                    const type = c.tipoContrato === 'adm' ? 'adm' : c.tipoContrato === 'aditivo' ? 'aditivo' : 'aquisicao';
 
                     const hasAquisicaoAssinado = Boolean(c.contratoAquisicaoArquivoUrl || (c.tipoContrato !== 'adm' && c.contratoArquivoUrl));
                     const hasAdmAssinado = Boolean(c.contratoAdmArquivoUrl || (c.tipoContrato === 'adm' && c.contratoArquivoUrl));
-                    const totalAssinados = (hasAquisicaoAssinado ? 1 : 0) + (hasAdmAssinado ? 1 : 0);
+                    const hasAditivoAssinado = Boolean(c.contratoAditivoArquivoUrl);
+                    const totalAssinados = (hasAquisicaoAssinado ? 1 : 0) + (hasAdmAssinado ? 1 : 0) + (hasAditivoAssinado ? 1 : 0);
 
                     return (
                       <tr
@@ -607,7 +610,7 @@ export default function ComercialContratosPage() {
                               <div className="flex items-center gap-2 text-[11px] text-stone-400 mt-0.5">
                                 <span>CPF: {c.cpf || 'Não informado'}</span>
                                 {c.telefone && (
-                                  <>
+                                   <>
                                     <span>•</span>
                                     <span className="flex items-center gap-1 text-stone-500">
                                       <Phone className="w-2.5 h-2.5" />
@@ -647,9 +650,11 @@ export default function ComercialContratosPage() {
                           <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
                             type === 'aquisicao'
                               ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : type === 'aditivo'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               : 'bg-indigo-50 text-indigo-800 border border-indigo-200'
                           }`}>
-                            {type === 'aquisicao' ? 'Aquisição (Cota)' : 'Administração'}
+                            {type === 'aquisicao' ? 'Aquisição (Cota)' : type === 'aditivo' ? 'Aditivo (Seg/Ter)' : 'Administração'}
                           </span>
                         </td>
 
@@ -810,11 +815,12 @@ export default function ComercialContratosPage() {
             const boat = boatId ? boatsMap.get(boatId) : null;
             const status = c.statusContrato || 'sem_contrato';
             const cotaVal = c.embarcacoes?.[0]?.cota || c.cota || 'Cota 25%';
-            const type = c.tipoContrato === 'adm' ? 'adm' : 'aquisicao';
+            const type = c.tipoContrato === 'adm' ? 'adm' : c.tipoContrato === 'aditivo' ? 'aditivo' : 'aquisicao';
 
             const hasAquisicaoAssinado = Boolean(c.contratoAquisicaoArquivoUrl || (c.tipoContrato !== 'adm' && c.contratoArquivoUrl));
             const hasAdmAssinado = Boolean(c.contratoAdmArquivoUrl || (c.tipoContrato === 'adm' && c.contratoArquivoUrl));
-            const totalAssinados = (hasAquisicaoAssinado ? 1 : 0) + (hasAdmAssinado ? 1 : 0);
+            const hasAditivoAssinado = Boolean(c.contratoAditivoArquivoUrl);
+            const totalAssinados = (hasAquisicaoAssinado ? 1 : 0) + (hasAdmAssinado ? 1 : 0) + (hasAditivoAssinado ? 1 : 0);
 
             return (
               <div
@@ -835,12 +841,12 @@ export default function ComercialContratosPage() {
                       {status === 'assinado' ? (
                         <>
                           <FileCheck2 className="w-3.5 h-3.5 text-mx-green" />
-                          <span>{totalAssinados === 2 ? '2/2 Assinados' : 'Assinado'}</span>
+                          <span>{totalAssinados >= 2 ? `${totalAssinados} Assinados` : 'Assinado'}</span>
                         </>
                       ) : status === 'pendente' ? (
                         <>
                           <Clock className="w-3.5 h-3.5 text-amber-600" />
-                          <span>{totalAssinados === 1 ? '1/2 Assinado' : 'Pendente'}</span>
+                          <span>{totalAssinados >= 1 ? `${totalAssinados} Assinado` : 'Pendente'}</span>
                         </>
                       ) : (
                         <>
@@ -851,7 +857,7 @@ export default function ComercialContratosPage() {
                     </span>
 
                     <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                      {type === 'aquisicao' ? 'Aquisição' : 'Administração'}
+                      {type === 'aquisicao' ? 'Aquisição' : type === 'aditivo' ? 'Aditivo' : 'Administração'}
                     </span>
                   </div>
 
