@@ -72,9 +72,13 @@ export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
  * Formata o nome da embarcação para exibição comercial e em documentos.
  * Converte "M00", "M01", "M02", "M-00", "M 00" para "EL MEXICANO 00", "EL MEXICANO 01", etc.
  */
-export function formatBoatName(nome?: string): string {
-  if (!nome) return '';
-  const trimmed = nome.trim();
+export function formatBoatName(nome?: any): string {
+  if (nome === null || nome === undefined) return '';
+  // Se for passado um objeto com propriedade nome (ex: objeto Embarcacao)
+  const raw = typeof nome === 'object' && nome !== null && 'nome' in nome ? (nome as any).nome : nome;
+  if (raw === null || raw === undefined) return '';
+  const str = typeof raw === 'string' ? raw : String(raw);
+  const trimmed = str.trim();
   const match = trimmed.match(/^M[-_\s]*(\d+)(.*)$/i);
   if (match) {
     const num = match[1];

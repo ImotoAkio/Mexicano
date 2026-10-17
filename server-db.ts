@@ -579,6 +579,10 @@ export async function initializeDatabase() {
     } catch (e) {}
 
     try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN asaasBatchId VARCHAR(100) NULL;`);
+    } catch (e) {}
+
+    try {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN reservaId VARCHAR(50) NULL;`);
     } catch (e) {}
 
@@ -632,6 +636,10 @@ export async function initializeDatabase() {
         status VARCHAR(20) DEFAULT 'ativo',
         parentId VARCHAR(50),
         asaasWalletId VARCHAR(255),
+        asaasSplitAtivo TINYINT(1) DEFAULT 0,
+        asaasSplitTipo VARCHAR(20) DEFAULT 'PERCENTAGE',
+        asaasSplitValor DECIMAL(10, 2) DEFAULT 100.00,
+        isContaPrincipalAsaas TINYINT(1) DEFAULT 0,
         createdAt VARCHAR(50) NOT NULL,
         updatedAt VARCHAR(50) NOT NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -639,6 +647,18 @@ export async function initializeDatabase() {
 
     try {
       await connection.query(`ALTER TABLE ContasBancarias ADD COLUMN asaasWalletId VARCHAR(255);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE ContasBancarias ADD COLUMN asaasSplitAtivo TINYINT(1) DEFAULT 0;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE ContasBancarias ADD COLUMN asaasSplitTipo VARCHAR(20) DEFAULT 'PERCENTAGE';`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE ContasBancarias ADD COLUMN asaasSplitValor DECIMAL(10, 2) DEFAULT 100.00;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE ContasBancarias ADD COLUMN isContaPrincipalAsaas TINYINT(1) DEFAULT 0;`);
     } catch (e) {}
 
     
@@ -3629,29 +3649,61 @@ export async function getAbastecimentosPendentesCaixa(): Promise<any[]> {
 export async function getAllContasBancarias(empresa?: string): Promise<any[]> {
   const currentPool = getDbPool();
   if (!currentPool) return [];
+  let rows: any[] = [];
   if (empresa) {
-    const [rows] = await currentPool.query("SELECT * FROM ContasBancarias WHERE empresa = ? ORDER BY nome ASC", [empresa]);
-    return rows as any[];
+    const [r] = await currentPool.query("SELECT * FROM ContasBancarias WHERE empresa = ? ORDER BY nome ASC", [empresa]);
+    rows = r as any[];
+  } else {
+    const [r] = await currentPool.query("SELECT * FROM ContasBancarias ORDER BY nome ASC");
+    rows = r as any[];
   }
-  const [rows] = await currentPool.query("SELECT * FROM ContasBancarias ORDER BY nome ASC");
-  return rows as any[];
+  return rows.map((row) => ({
+    ...row,
+    saldoInicial: Number(row.saldoInicial || 0),
+    asaasSplitAtivo: row.asaasSplitAtivo !== undefined && row.asaasSplitAtivo !== null
+      ? Boolean(Number(row.asaasSplitAtivo))
+      : Boolean(row.asaasWalletId),
+    asaasSplitTipo: row.asaasSplitTipo || 'PERCENTAGE',
+    asaasSplitValor: row.asaasSplitValor !== undefined && row.asaasSplitValor !== null
+      ? Number(row.asaasSplitValor)
+      : 100,
+    isContaPrincipalAsaas: Boolean(Number(row.isContaPrincipalAsaas || 0))
+  }));
 }
 
 export async function upsertContaBancaria(c: any): Promise<void> {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   const idToUse = c.id || `conta_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+  const splitAtivo = c.asaasSplitAtivo !== undefined && c.asaasSplitAtivo !== null
+    ? (c.asaasSplitAtivo ? 1 : 0)
+    : (c.asaasWalletId ? 1 : 0);
+  const splitTipo = c.asaasSplitTipo === 'FIXED' ? 'FIXED' : 'PERCENTAGE';
+  const splitValor = c.asaasSplitValor !== undefined && c.asaasSplitValor !== '' && !isNaN(Number(c.asaasSplitValor))
+    ? Number(c.asaasSplitValor)
+    : 100;
+  const isPrincipal = c.isContaPrincipalAsaas ? 1 : 0;
 
   await currentPool.query(
-    `INSERT INTO ContasBancarias (id, nome, empresa, banco, agencia, conta, saldoInicial, status, asaasWalletId, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO ContasBancarias (
+       id, nome, empresa, banco, agencia, conta, saldoInicial, status,
+       asaasWalletId, asaasSplitAtivo, asaasSplitTipo, asaasSplitValor, isContaPrincipalAsaas,
+       createdAt, updatedAt
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        nome=VALUES(nome), empresa=VALUES(empresa), banco=VALUES(banco),
        agencia=VALUES(agencia), conta=VALUES(conta), saldoInicial=VALUES(saldoInicial),
-       status=VALUES(status), asaasWalletId=VALUES(asaasWalletId), updatedAt=VALUES(updatedAt)`,
+       status=VALUES(status), asaasWalletId=VALUES(asaasWalletId),
+       asaasSplitAtivo=VALUES(asaasSplitAtivo), asaasSplitTipo=VALUES(asaasSplitTipo),
+       asaasSplitValor=VALUES(asaasSplitValor), isContaPrincipalAsaas=VALUES(isContaPrincipalAsaas),
+       updatedAt=VALUES(updatedAt)`,
     [
       idToUse, c.nome, c.empresa || null, c.banco || null, c.agencia || null, c.conta || null,
-      c.saldoInicial || 0, c.status || 'ativo', c.asaasWalletId || null, c.createdAt || new Date().toISOString(),
+      c.saldoInicial || 0, c.status || 'ativo',
+      c.asaasWalletId ? String(c.asaasWalletId).trim() : null,
+      splitAtivo, splitTipo, splitValor, isPrincipal,
+      c.createdAt || new Date().toISOString(),
       c.updatedAt || new Date().toISOString()
     ]
   );

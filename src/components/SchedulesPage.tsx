@@ -45,15 +45,19 @@ import {
   Filter,
   Check,
   Send,
-  MessageCircle
+  MessageCircle,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  MessageSquare
 } from 'lucide-react';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import SearchableSelect, { SelectOption } from './shared/SearchableSelect';
 
-export type PierStatusKey = 'todos' | 'agendado' | 'no_pier' | 'navegando' | 'retornou' | 'guardada' | 'cancelado';
+export type PierStatusKey = 'todos' | 'agendado' | 'confirmado' | 'no_pier' | 'navegando' | 'retornou' | 'guardada' | 'cancelado';
 
 export function getPierStatus(res: Reserva): {
-  id: 'agendado' | 'no_pier' | 'navegando' | 'retornou' | 'guardada' | 'cancelado';
+  id: 'agendado' | 'confirmado' | 'no_pier' | 'navegando' | 'retornou' | 'guardada' | 'cancelado';
   label: string;
   bg: string;
   text: string;
@@ -109,12 +113,21 @@ export function getPierStatus(res: Reserva): {
       timeLabel: res.horaDescida ? `Descida: ${res.horaDescida}` : undefined
     };
   }
+  if (res.status === 'confirmado' || (res.statusMarina as string) === 'confirmada' || (res.statusMarina as string) === 'confirmado') {
+    return {
+      id: 'confirmado',
+      label: 'Confirmado',
+      bg: 'bg-[#EEF2FF]',
+      text: 'text-[#3758F9]',
+      dot: 'bg-[#3758F9]'
+    };
+  }
   return {
     id: 'agendado',
-    label: res.status === 'confirmado' ? 'Confirmado' : 'Agendado',
-    bg: res.status === 'confirmado' ? 'bg-[#EEF2FF]' : 'bg-[#F9FAFB]',
-    text: res.status === 'confirmado' ? 'text-[#3758F9]' : 'text-[#6B7280]',
-    dot: res.status === 'confirmado' ? 'bg-[#3758F9]' : 'bg-[#9CA3AF]'
+    label: 'Agendado',
+    bg: 'bg-[#F9FAFB]',
+    text: 'text-[#6B7280]',
+    dot: 'bg-[#9CA3AF]'
   };
 }
 
@@ -801,6 +814,7 @@ function DayAgendaSection({
     const counts: Record<PierStatusKey, number> = {
       todos: dailyReservations.length,
       agendado: 0,
+      confirmado: 0,
       no_pier: 0,
       navegando: 0,
       retornou: 0,
@@ -1010,7 +1024,8 @@ function DayAgendaSection({
           <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto subtle-scrollbar pb-1">
             {[
               { id: 'todos', label: 'Todos', count: pierStatusCounts.todos, dot: 'bg-[#111827]' },
-              { id: 'agendado', label: 'Agendado', count: pierStatusCounts.agendado, dot: 'bg-[#3758F9]' },
+              { id: 'agendado', label: 'Agendado', count: pierStatusCounts.agendado, dot: 'bg-[#9CA3AF]' },
+              { id: 'confirmado', label: 'Confirmado', count: pierStatusCounts.confirmado, dot: 'bg-[#3758F9]' },
               { id: 'no_pier', label: 'Pronto no Píer', count: pierStatusCounts.no_pier, dot: 'bg-[#22C55E]' },
               { id: 'navegando', label: 'Em Navegação', count: pierStatusCounts.navegando, dot: 'bg-[#0EA5E9]' },
               { id: 'retornou', label: 'No Píer (Retorno)', count: pierStatusCounts.retornou, dot: 'bg-[#F59E0B]' },
@@ -1346,6 +1361,13 @@ interface NewBookingModalProps {
   onSuccess: (msg: string) => void;
 }
 
+function getFirstTwoNames(fullName: string): string {
+  if (!fullName) return '';
+  const parts = fullName.trim().replace(/\s+/g, ' ').split(' ');
+  if (parts.length <= 2) return fullName;
+  return `${parts[0]} ${parts[1]}`;
+}
+
 function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingModalProps) {
   const [selectedBoatId, setSelectedBoatId] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
@@ -1357,6 +1379,16 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Success state & confirmation details
+  const [isSuccessState, setIsSuccessState] = useState(false);
+  const [confirmedData, setConfirmedData] = useState<{
+    boat: Embarcacao;
+    client: Cliente;
+    dates: string[];
+    observacoes: string;
+    isGoogleSynced: boolean;
+  } | null>(null);
 
   // Available cotistas based on chosen boat
   const availableOwners = useMemo(() => {
@@ -1420,6 +1452,14 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
 
   const handleRemoveDistinctDate = (dToRemove: string) => {
     setDistinctDates(prev => prev.filter(d => d !== dToRemove));
+  };
+
+  const handleFinish = () => {
+    if (confirmedData) {
+      onSuccess(`Reserva de ${getBoatCode(confirmedData.boat)} realizada com sucesso para ${confirmedData.dates.length} data(s)!`);
+    } else {
+      onClose();
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1510,7 +1550,14 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
         });
       }
 
-      onSuccess(`Reserva de ${getBoatCode(boat)} criada com sucesso para ${datesToBook.length} data(s)!`);
+      setConfirmedData({
+        boat,
+        client,
+        dates: datesToBook,
+        observacoes,
+        isGoogleSynced: isCalendarConnected(),
+      });
+      setIsSuccessState(true);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'Erro ao gravar reserva.');
@@ -1518,6 +1565,130 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
       setIsSubmitting(false);
     }
   };
+
+  // TELA DE CONFIRMAÇÃO COM CALENDÁRIO E WHATSAPP
+  if (isSuccessState && confirmedData) {
+    const { boat, client, dates, observacoes: obs, isGoogleSynced } = confirmedData;
+    const formattedDates = dates.map(d => {
+      const p = new Date(d + 'T12:00:00');
+      return isNaN(p.getTime())
+        ? d
+        : p.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+    });
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="bg-white rounded-xl shadow-2xl border border-[#E5E7EB] w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-[#E5E7EB] bg-slate-50/70 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#111827]">Reserva Confirmada com Sucesso!</h3>
+                <p className="text-xs text-[#6B7280]">
+                  O agendamento foi salvo. Confira o calendário da embarcação abaixo.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleFinish}
+              className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#111827] hover:bg-[#F3F4F6] cursor-pointer"
+              title="Fechar e atualizar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-5 overflow-y-auto flex-1 subtle-scrollbar">
+            {/* Reservation Summary Card */}
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#64748B] block mb-0.5">Embarcação</span>
+                  <p className="font-semibold text-[#1E293B] text-sm flex items-center gap-1.5">
+                    <span>{getBoatCode(boat)}</span>
+                    <span className="text-slate-400 font-normal">•</span>
+                    <span className="truncate">{boat.nome}</span>
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#64748B] block mb-0.5">Cotista / Coproprietário</span>
+                  <p className="font-semibold text-[#1E293B] text-sm truncate">{client.nome}</p>
+                  <p className="text-[11px] text-[#64748B]">
+                    {client.cota ? `Cota ${client.cota}` : 'Sem cota'}
+                    {client.telefone ? ` • ${client.telefone}` : ''}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#64748B] block mb-0.5">Data(s) da Saída</span>
+                  <p className="font-semibold text-[#1E293B] text-sm">
+                    {formattedDates.join(', ')}
+                  </p>
+                  <p className="text-[11px] text-[#64748B]">Dia Inteiro (8h às 18h)</p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#64748B] block mb-0.5">Google Agenda</span>
+                  {isGoogleSynced ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                      <Check className="w-3 h-3" /> Sincronizado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-slate-200 text-slate-700">
+                      Salvo Localmente
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {obs && (
+                <div className="mt-3 pt-2.5 border-t border-[#E2E8F0] text-xs text-[#475569]">
+                  <span className="font-semibold text-[#334155]">Observações: </span>
+                  <span>{obs}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Calendar Display */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#374151] uppercase tracking-wider flex items-center gap-1.5">
+                  <CalendarDays className="w-4 h-4 text-[#3758F9]" />
+                  Calendário Mensal da Embarcação
+                </span>
+                <span className="text-[11px] text-[#6B7280]">
+                  A reserva já está destacada na tabela abaixo
+                </span>
+              </div>
+
+              <div id="new-booking-calendar-container" className="rounded-xl border border-slate-200 bg-slate-50/40 p-1">
+                <MonthlyCalendarGenerator
+                  initialBoatId={boat.id}
+                  initialDate={dates[0]}
+                  autoExport={false}
+                  providedBoats={boats}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="px-6 py-3.5 border-t border-[#E5E7EB] bg-slate-50 flex items-center justify-end shrink-0">
+            <button
+              type="button"
+              onClick={handleFinish}
+              className="px-6 py-2.5 bg-[#3758F9] hover:bg-[#1B44C8] text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer shadow-xs inline-flex items-center gap-2"
+            >
+              <Check className="w-4 h-4" />
+              <span>Concluir e Fechar</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -1777,9 +1948,52 @@ function EditStatusModal({ reserva, onClose, onSuccess, onError }: EditStatusMod
   const [pessoasABordo, setPessoasABordo] = useState(String(reserva.pessoasABordo || '02'));
   const [observacoes, setObservacoes] = useState(reserva.observações || '');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [copiedManual, setCopiedManual] = useState(false);
 
   const boat = boatDB.getById(reserva.embarcacaoId);
   const client = clientDB.getById(reserva.clienteId);
+
+  // Gera o texto padronizado: "CONFIRMADO - M49 - JOSE PHELIPE AQUINO BRANDAO    |  Saída: 13:30"
+  const getConfirmationFormattedText = () => {
+    const boatCode = boat ? getBoatCode(boat) : (reserva.embarcacaoId ? `M${reserva.embarcacaoId}` : 'M00');
+    const clientName = (client?.nome || 'CLIENTE').trim().toUpperCase();
+    const saidaTime = (horaSaida || reserva.previsaoSaida || '13:30').trim();
+    return `CONFIRMADO - ${boatCode} - ${clientName}    |  Saída: ${saidaTime}`;
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      throw new Error('Clipboard API not available');
+    } catch {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        return successful;
+      } catch {
+        return false;
+      }
+    }
+  };
+
+  const handleManualCopy = async () => {
+    const text = getConfirmationFormattedText();
+    const success = await copyToClipboard(text);
+    if (success) {
+      setCopiedManual(true);
+      setTimeout(() => setCopiedManual(false), 2000);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1803,7 +2017,14 @@ function EditStatusModal({ reserva, onClose, onSuccess, onError }: EditStatusMod
         }
       }
 
-      onSuccess('Status do agendamento atualizado com sucesso!');
+      // Ao marcar como confirmado, copia para a área de transferência no formato solicitado
+      if (statusVal === 'confirmado') {
+        const textToCopy = getConfirmationFormattedText();
+        await copyToClipboard(textToCopy);
+        onSuccess(`Status confirmado! Texto copiado para a área de transferência: "${textToCopy}"`);
+      } else {
+        onSuccess('Status do agendamento atualizado com sucesso!');
+      }
     } catch (err: any) {
       console.error(err);
       onError(err.message || 'Erro ao atualizar agendamento.');
@@ -1822,7 +2043,7 @@ function EditStatusModal({ reserva, onClose, onSuccess, onError }: EditStatusMod
               {boat ? getBoatCode(boat) : 'Barco'} • {client ? client.nome : 'Cliente'} ({reserva.data})
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#111827]">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#111827] cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -1840,6 +2061,41 @@ function EditStatusModal({ reserva, onClose, onSuccess, onError }: EditStatusMod
               <option value="cancelado">Cancelado</option>
             </select>
           </div>
+
+          {/* Banner de Cópia Automática se Confirmado */}
+          {statusVal === 'confirmado' && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-emerald-900 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  Texto formatado para cópia:
+                </span>
+                <button
+                  type="button"
+                  onClick={handleManualCopy}
+                  className="px-2 py-0.5 bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-800 rounded font-medium text-[11px] inline-flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  {copiedManual ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span>Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3 text-emerald-700" />
+                      <span>Copiar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="font-mono text-[11px] bg-white/80 p-2 rounded border border-emerald-200/60 text-slate-800 break-all select-all">
+                {getConfirmationFormattedText()}
+              </p>
+              <p className="text-[10px] text-emerald-700">
+                ✨ Ao salvar, este texto será copiado automaticamente para sua área de transferência.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -1899,14 +2155,14 @@ function EditStatusModal({ reserva, onClose, onSuccess, onError }: EditStatusMod
               type="button"
               onClick={onClose}
               disabled={isUpdating}
-              className="px-4 py-2 border border-[#E5E7EB] rounded-lg text-sm font-medium text-[#374151] hover:bg-[#F3F4F6]"
+              className="px-4 py-2 border border-[#E5E7EB] rounded-lg text-sm font-medium text-[#374151] hover:bg-[#F3F4F6] cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={isUpdating}
-              className="px-5 py-2 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-sm font-medium shadow-xs"
+              className="px-5 py-2 bg-[#3758F9] hover:bg-[#1B44C8] text-white rounded-lg text-sm font-medium shadow-xs cursor-pointer"
             >
               {isUpdating ? 'Salvando...' : 'Salvar Alterações'}
             </button>

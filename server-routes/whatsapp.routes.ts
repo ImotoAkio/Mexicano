@@ -56,6 +56,25 @@ async function evolutionFetch(urlStr: string, options: RequestInit = {}): Promis
   });
 }
 
+function parseEvolutionError(errorText: string, fallbackText: string, recipient: string) {
+  try {
+    const parsed = JSON.parse(errorText);
+    if (parsed?.response?.message) {
+      const firstMsg = Array.isArray(parsed.response.message) ? parsed.response.message[0] : parsed.response.message;
+      if (firstMsg?.exists === false) {
+        return { isClientError: true, message: `O número ${firstMsg.number || recipient} não possui conta ativa no WhatsApp.` };
+      }
+      const msg = typeof firstMsg === 'string' ? firstMsg : (firstMsg?.message || JSON.stringify(firstMsg));
+      return { isClientError: false, message: msg };
+    }
+    if (parsed?.message) {
+      const msg = Array.isArray(parsed.message) ? parsed.message.join(", ") : parsed.message;
+      return { isClientError: false, message: msg };
+    }
+  } catch (e) {}
+  return { isClientError: false, message: errorText || fallbackText };
+}
+
 // Route: Get WhatsApp Connection Status (Evolution API)
 router.get("/whatsapp/status", requireAdminAuth, async (req, res) => {
   try {
@@ -530,8 +549,9 @@ router.post("/whatsapp/send-text", requireAdminAuth, whatsappLimiter, async (req
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Evolution API error:", response.status, errorText);
-      return res.status(502).json({ error: true, message: `Evolution API failure: ${response.statusText}` });
+      console.error("Evolution API sendText error:", response.status, errorText);
+      const errInfo = parseEvolutionError(errorText, response.statusText, cleanedNumber);
+      return res.status(errInfo.isClientError ? 400 : 502).json({ error: true, message: errInfo.message });
     }
 
     res.json({ success: true, message: "Message sent successfully" });
@@ -591,7 +611,9 @@ router.post("/whatsapp/send-custom", requireAdminAuth, whatsappLimiter, async (r
 
       if (!response.ok) {
         const errorText = await response.text();
-        return res.status(502).json({ error: true, message: `Erro ao enviar mídia via Evolution API: ${errorText}` });
+        console.error("Evolution API sendMedia error:", response.status, errorText);
+        const errInfo = parseEvolutionError(errorText, response.statusText, targetRecipient);
+        return res.status(errInfo.isClientError ? 400 : 502).json({ error: true, message: errInfo.message });
       }
     } else {
       const payload = {
@@ -607,7 +629,9 @@ router.post("/whatsapp/send-custom", requireAdminAuth, whatsappLimiter, async (r
 
       if (!response.ok) {
         const errorText = await response.text();
-        return res.status(502).json({ error: true, message: `Erro ao enviar mensagem via Evolution API: ${errorText}` });
+        console.error("Evolution API sendText error:", response.status, errorText);
+        const errInfo = parseEvolutionError(errorText, response.statusText, targetRecipient);
+        return res.status(errInfo.isClientError ? 400 : 502).json({ error: true, message: errInfo.message });
       }
     }
 

@@ -21,10 +21,25 @@ interface FinanceVisualizadorDrawerProps {
   fornecedores?: any[];
   embarcacoes?: any[];
   taxaJurosMensal?: number;
+  taxaMultaAtraso?: number;
 }
 
 export default function FinanceVisualizadorDrawer({
-  open, onClose, transacao, onEdit, onDelete, onBaixaManual, onGerarLink, onEnviarWhatsApp, mapPlanos, mapCentros, clientes = [], fornecedores = [], embarcacoes = [], taxaJurosMensal = 2.2
+  open,
+  onClose,
+  transacao,
+  onEdit,
+  onDelete,
+  onBaixaManual,
+  onGerarLink,
+  onEnviarWhatsApp,
+  mapPlanos,
+  mapCentros,
+  clientes = [],
+  fornecedores = [],
+  embarcacoes = [],
+  taxaJurosMensal = 2.2,
+  taxaMultaAtraso = 2.0
 }: FinanceVisualizadorDrawerProps) {
 
   if (!transacao) return null;
@@ -34,20 +49,24 @@ export default function FinanceVisualizadorDrawer({
     const today = new Date();
     today.setHours(12, 0, 0, 0);
     const diffTime = today.getTime() - due.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
   };
 
   const isOverdue = transacao.status === 'vencido' || (transacao.status === 'lancado' && new Date(transacao.dataVencimento + 'T23:59:59') < new Date());
 
   let interest = 0;
-  let totalWithInterest = parseFloat(transacao.valor || 0);
+  const baseVal = parseFloat(transacao.valor || 0);
+  let totalWithInterest = baseVal;
 
-  if (isOverdue && transacao.tipo === 'receita') {
+  if (isOverdue && transacao.tipo === 'receita' && transacao.status !== 'pago' && transacao.status !== 'cancelado') {
     const days = getDaysDiff(transacao.dataVencimento);
     if (days > 0) {
-      const ratePerDay = (taxaJurosMensal / 100) / 30;
-      interest = Number(transacao.valor) * ratePerDay * days;
-      totalWithInterest = Number(transacao.valor) + interest;
+      const fine = baseVal * (Math.max(0, taxaMultaAtraso) / 100);
+      const ratePerDay = (Math.max(0, taxaJurosMensal) / 100) / 30;
+      const interestOnly = baseVal * ratePerDay * days;
+      interest = Number((fine + interestOnly).toFixed(2));
+      totalWithInterest = Number((baseVal + interest).toFixed(2));
     }
   }
 
@@ -116,7 +135,7 @@ export default function FinanceVisualizadorDrawer({
                 {interest > 0 && (
                   <div className="text-[13px] font-medium text-[#e30000] mb-3 bg-[#fef0f0] px-2 py-0.5 rounded flex items-center justify-center gap-1">
                     <AlertTriangle className="w-3 h-3" />
-                    Inclui juros de R$ {interest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                    Inclui multa e juros de R$ {interest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
                   </div>
                 )}
                 <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold ${statusColor} ${interest === 0 ? 'mt-2' : ''}`}>
@@ -206,13 +225,13 @@ export default function FinanceVisualizadorDrawer({
                   </button>
                 )}
 
-                {transacao.tipo === 'receita' && transacao.status !== 'pago' && (
+                {transacao.tipo === 'receita' && transacao.status !== 'pago' && Boolean(transacao.clienteId) && (
                   <button
                     onClick={() => handleAction(onGerarLink)}
                     className="w-full bg-white hover:bg-[#f5f5f7] text-[#0071e3] border border-[#d2d2d7] py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-[15px] font-medium transition-colors cursor-pointer shadow-sm"
                   >
                     <Link className="w-5 h-5" />
-                    Gerar Cobrança (Asaas)
+                    {transacao.asaasPaymentUrl ? 'Copiar / Atualizar Cobrança (Asaas)' : 'Gerar Cobrança (Asaas)'}
                   </button>
                 )}
 

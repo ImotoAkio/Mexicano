@@ -29,11 +29,13 @@ import {
 } from "../server-db";
 
 import {
+  asaasFetch,
   getOrRegisterAsaasCustomer,
   createAsaasCharge,
   getPixQrCode,
   createAsaasBulkCharge
 } from "../server-asaas";
+import { reconcileAsaasPaidPayment } from "./webhook.routes";
 import { getDbPool, getConfigValue, setConfigValue } from "../server-db";
 
 function getGlobalEmpresaFromRole(role: string): string | null {
@@ -244,9 +246,11 @@ router.post("/fornecedores/save", requireAdminAuth, async (req, res) => {
 
 router.post("/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, async (req, res) => {
   const { id } = req.params;
-  const { billingType } = req.body;
+  const defaultBillingType = (await getConfigValue("fin_asaas_billing_type_padrao")) || "PIX";
+  const billingType = req.body?.billingType || defaultBillingType;
+  const forceNew = Boolean(req.body?.forceNew);
 
-  if (!["PIX", "BOLETO", "CREDIT_CARD"].includes(billingType)) {
+  if (!["PIX", "BOLETO", "CREDIT_CARD", "UNDEFINED"].includes(billingType)) {
     return res.status(400).json({ error: true, message: "Tipo de cobrança inválido" });
   }
 
@@ -290,26 +294,27 @@ router.post("/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, asy
     let asaasCustomerId = await getOrRegisterAsaasCustomer(client);
     let charge;
     try {
-      charge = await createAsaasCharge(tx, asaasCustomerId, billingType);
+      charge = await createAsaasCharge(tx, asaasCustomerId, billingType, { forceNew });
     } catch (chargeErr: any) {
       if (chargeErr.message && (chargeErr.message.toLowerCase().includes("customer") || chargeErr.message.toLowerCase().includes("cliente"))) {
         console.warn("[Asaas] Customer ID rejected by Asaas API. Clearing cached ID and retrying...");
         await currentPool.query("UPDATE Clientes SET asaasCustomerId = NULL WHERE id = ?", [client.id]);
         client.asaasCustomerId = null;
         asaasCustomerId = await getOrRegisterAsaasCustomer(client);
-        charge = await createAsaasCharge(tx, asaasCustomerId, billingType);
+        charge = await createAsaasCharge(tx, asaasCustomerId, billingType, { forceNew });
       } else {
         throw chargeErr;
       }
     }
 
     await currentPool.query(
-      "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ? WHERE id = ?",
+      "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ?, asaasBatchId = NULL WHERE id = ?",
       [charge.asaasPaymentId, charge.asaasPaymentUrl, tx.id]
     );
+    invalidateDbCache();
 
     let qrCode = null;
-    if (billingType === "PIX") {
+    if (billingType === "PIX" || billingType === "UNDEFINED") {
       try {
         qrCode = await getPixQrCode(charge.asaasPaymentId);
       } catch (qrErr: any) {
@@ -321,6 +326,8 @@ router.post("/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, asy
       success: true,
       asaasPaymentId: charge.asaasPaymentId,
       asaasPaymentUrl: charge.asaasPaymentUrl,
+      finalValue: charge.finalValue,
+      reused: charge.reused,
       qrCode
     });
   } catch (err: any) {
@@ -330,10 +337,10 @@ router.post("/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, asy
 });
 
 router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (req, res) => {
-  const { billingType } = req.body;
+  const { billingType = "PIX", transacoesIds, forceNew } = req.body || {};
 
-  if (billingType !== "PIX") {
-    return res.status(400).json({ error: true, message: "Tipo de cobrança inválido para fatura completa. Use PIX." });
+  if (!["PIX", "BOLETO", "UNDEFINED"].includes(billingType)) {
+    return res.status(400).json({ error: true, message: "Tipo de cobrança inválido para fatura." });
   }
 
   if (!(await isPagamentoOnlineHabilitado())) {
@@ -347,12 +354,30 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
 
   try {
     const user = (req as any).user;
+    let txs: any[] = [];
 
-    const [txRows] = await currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado')", [user.id]);
-    const txs = (txRows as any[]);
+    if (Array.isArray(transacoesIds) && transacoesIds.length > 0) {
+      const placeholders = transacoesIds.map(() => "?").join(",");
+      const [txRows] = await currentPool.query(
+        `SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND id IN (${placeholders}) AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado')`,
+        [user.id, ...transacoesIds]
+      );
+      txs = txRows as any[];
+    } else {
+      const diasJanela = Math.max(1, Number((await getConfigValue("fin_asaas_dias_fatura_atual")) || "30"));
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() + diasJanela);
+      const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`;
+
+      const [txRows] = await currentPool.query(
+        "SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado') AND dataVencimento <= ?",
+        [user.id, cutoffStr]
+      );
+      txs = txRows as any[];
+    }
 
     if (txs.length === 0) {
-      return res.status(400).json({ error: true, message: "Não há faturas pendentes para gerar cobrança." });
+      return res.status(400).json({ error: true, message: "Não há faturas pendentes no período atual para gerar cobrança." });
     }
 
     const [clientRows] = await currentPool.query("SELECT * FROM Clientes WHERE id = ?", [user.id]);
@@ -362,16 +387,24 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
     }
 
     let asaasCustomerId = await getOrRegisterAsaasCustomer(client);
-    let charge;
+    let charge: any;
+    const makeInvoiceCharge = async (customerId: string) => {
+      if (txs.length === 1) {
+        const single = await createAsaasCharge(txs[0], customerId, billingType, { forceNew: Boolean(forceNew) });
+        return { ...single, bulkRef: null, totalFinalValue: single.finalValue };
+      }
+      return await createAsaasBulkCharge(txs, customerId, billingType, { forceNew: Boolean(forceNew) });
+    };
+
     try {
-      charge = await createAsaasBulkCharge(txs, asaasCustomerId, billingType);
+      charge = await makeInvoiceCharge(asaasCustomerId);
     } catch (chargeErr: any) {
       if (chargeErr.message && (chargeErr.message.toLowerCase().includes("customer") || chargeErr.message.toLowerCase().includes("cliente"))) {
         console.warn("[Asaas] Customer ID rejected by Asaas API for bulk charge. Clearing cached ID and retrying...");
         await currentPool.query("UPDATE Clientes SET asaasCustomerId = NULL WHERE id = ?", [client.id]);
         client.asaasCustomerId = null;
         asaasCustomerId = await getOrRegisterAsaasCustomer(client);
-        charge = await createAsaasBulkCharge(txs, asaasCustomerId, billingType);
+        charge = await makeInvoiceCharge(asaasCustomerId);
       } else {
         throw chargeErr;
       }
@@ -379,13 +412,14 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
 
     for (const tx of txs) {
       await currentPool.query(
-        "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ? WHERE id = ?",
-        [charge.asaasPaymentId, charge.asaasPaymentUrl, tx.id]
+        "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ?, asaasBatchId = ? WHERE id = ?",
+        [charge.asaasPaymentId, charge.asaasPaymentUrl, charge.bulkRef || null, tx.id]
       );
     }
+    invalidateDbCache();
 
     let qrCode = null;
-    if (billingType === "PIX") {
+    if (billingType === "PIX" || billingType === "UNDEFINED") {
       try {
         qrCode = await getPixQrCode(charge.asaasPaymentId);
       } catch (qrErr: any) {
@@ -397,6 +431,9 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
       success: true,
       asaasPaymentId: charge.asaasPaymentId,
       asaasPaymentUrl: charge.asaasPaymentUrl,
+      finalValue: charge.totalFinalValue,
+      reused: charge.reused,
+      transacoesCount: txs.length,
       qrCode
     });
   } catch (err: any) {
@@ -408,7 +445,8 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
 
 
 router.post("/transacoes/gerar-asaas-lote", requireAdminAuth, sensitiveLimiter, async (req, res) => {
-  const { clienteId, transacoesIds, billingType } = req.body;
+  const defaultBillingType = (await getConfigValue("fin_asaas_billing_type_padrao")) || "PIX";
+  const { clienteId, transacoesIds, billingType = defaultBillingType, forceNew } = req.body || {};
 
   if (!clienteId || !transacoesIds || !Array.isArray(transacoesIds) || transacoesIds.length === 0) {
     return res.status(400).json({ error: true, message: "Parâmetros inválidos" });
@@ -438,13 +476,13 @@ router.post("/transacoes/gerar-asaas-lote", requireAdminAuth, sensitiveLimiter, 
     }
 
     let asaasCustomerId = await getOrRegisterAsaasCustomer(client);
-    // Para 1 transacao usa single, para multiplas usa bulk
-    let charge;
+    let charge: any;
     const makeCharge = async (customerId: string) => {
       if (txs.length === 1) {
-         return await createAsaasCharge(txs[0], customerId, billingType || "PIX");
+        const single = await createAsaasCharge(txs[0], customerId, billingType || "PIX", { forceNew: Boolean(forceNew) });
+        return { ...single, bulkRef: null, totalFinalValue: single.finalValue };
       } else {
-         return await createAsaasBulkCharge(txs, customerId, billingType || "PIX");
+        return await createAsaasBulkCharge(txs, customerId, billingType || "PIX", { forceNew: Boolean(forceNew) });
       }
     };
 
@@ -462,16 +500,17 @@ router.post("/transacoes/gerar-asaas-lote", requireAdminAuth, sensitiveLimiter, 
       }
     }
 
-    // Associa o ID e a URL a todas as transações incluídas
+    // Associa o ID, a URL e o BatchId (se lote) a todas as transações incluídas
     for (const tx of txs) {
       await currentPool.query(
-        "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ? WHERE id = ?",
-        [charge.asaasPaymentId, charge.asaasPaymentUrl, tx.id]
+        "UPDATE TransacoesFinanceiras SET asaasPaymentId = ?, asaasPaymentUrl = ?, asaasBatchId = ? WHERE id = ?",
+        [charge.asaasPaymentId, charge.asaasPaymentUrl, charge.bulkRef || null, tx.id]
       );
     }
+    invalidateDbCache();
 
     let qrCode = null;
-    if (billingType === "PIX" || charge.billingType === "PIX" || !billingType) {
+    if (billingType === "PIX" || billingType === "UNDEFINED" || !billingType) {
       try {
         qrCode = await getPixQrCode(charge.asaasPaymentId);
       } catch (qrErr: any) {
@@ -483,6 +522,8 @@ router.post("/transacoes/gerar-asaas-lote", requireAdminAuth, sensitiveLimiter, 
       success: true,
       asaasPaymentId: charge.asaasPaymentId,
       asaasPaymentUrl: charge.asaasPaymentUrl,
+      finalValue: charge.totalFinalValue,
+      reused: charge.reused,
       qrCode,
       transacoes: txs
     });
@@ -532,14 +573,20 @@ router.post("/centros-custo/save", requireAdminAuth, async (req, res) => {
 });
 
 // ----------------------------------------------------------------------
-// CONFIGURAÇÕES GLOBAIS (TAXA DE JUROS + LANÇAMENTO PADRÃO DE VENDAS)
+// CONFIGURAÇÕES GLOBAIS (TAXA DE JUROS + INTEGRAÇÃO ASAAS + LANÇAMENTOS PADRÃO)
 // ----------------------------------------------------------------------
-router.get("/configuracoes", requireAdminAuth, async (req, res) => {
+router.get("/configuracoes", requireAnyAuth, async (req, res) => {
   try {
     const taxaJurosMensal = await getConfigValue('fin_taxa_juros_mensal') || '2.2';
     const taxaMultaAtraso = await getConfigValue('fin_taxa_multa_atraso') || '2.0';
     const asaasContaBancariaId = await getConfigValue('fin_asaas_conta_bancaria_id') || '';
     const fin_asaas_split_enabled = await getConfigValue('fin_asaas_split_enabled') === '1';
+    const diasFaturaAtual = await getConfigValue('fin_asaas_dias_fatura_atual') || '30';
+    const billingTypePadrao = await getConfigValue('fin_asaas_billing_type_padrao') || 'PIX';
+    const registrarTaxaGatewayRaw = await getConfigValue('fin_asaas_registrar_taxa_gateway');
+    const registrarTaxaGateway = registrarTaxaGatewayRaw === null || registrarTaxaGatewayRaw === undefined
+      ? true
+      : registrarTaxaGatewayRaw === '1';
 
     // Padrão de Lançamento de Venda (Mexicano)
     const vendaPadraoEmpresa = await getConfigValue('venda_padrao_empresa') || 'Mexicano';
@@ -563,6 +610,9 @@ router.get("/configuracoes", requireAdminAuth, async (req, res) => {
         taxaMultaAtraso,
         asaasContaBancariaId,
         fin_asaas_split_enabled,
+        diasFaturaAtual,
+        billingTypePadrao,
+        registrarTaxaGateway,
         vendaPadraoEmpresa,
         vendaPadraoPlanoContasId,
         vendaPadraoCentroCustoId,
@@ -589,6 +639,9 @@ router.post("/configuracoes", requireAdminAuth, async (req, res) => {
       taxaMultaAtraso,
       asaasContaBancariaId,
       fin_asaas_split_enabled,
+      diasFaturaAtual,
+      billingTypePadrao,
+      registrarTaxaGateway,
       vendaPadraoEmpresa,
       vendaPadraoPlanoContasId,
       vendaPadraoCentroCustoId,
@@ -614,6 +667,15 @@ router.post("/configuracoes", requireAdminAuth, async (req, res) => {
     if (fin_asaas_split_enabled !== undefined) {
       await setConfigValue('fin_asaas_split_enabled', fin_asaas_split_enabled === '1' || fin_asaas_split_enabled === true ? '1' : '0');
     }
+    if (diasFaturaAtual !== undefined) {
+      await setConfigValue('fin_asaas_dias_fatura_atual', String(Math.max(1, Number(diasFaturaAtual) || 30)));
+    }
+    if (billingTypePadrao !== undefined) {
+      await setConfigValue('fin_asaas_billing_type_padrao', String(billingTypePadrao));
+    }
+    if (registrarTaxaGateway !== undefined) {
+      await setConfigValue('fin_asaas_registrar_taxa_gateway', registrarTaxaGateway === '1' || registrarTaxaGateway === true ? '1' : '0');
+    }
 
     // Salvar padrão de lançamento de Venda
     if (vendaPadraoEmpresa !== undefined) await setConfigValue('venda_padrao_empresa', String(vendaPadraoEmpresa));
@@ -630,6 +692,7 @@ router.post("/configuracoes", requireAdminAuth, async (req, res) => {
     if (taxaAdmPadraoCategoria !== undefined) await setConfigValue('taxa_adm_padrao_categoria', String(taxaAdmPadraoCategoria));
     if (taxaAdmPadraoValor !== undefined) await setConfigValue('taxa_adm_padrao_valor', String(taxaAdmPadraoValor));
 
+    invalidateDbCache();
     const io = (req.app as any).locals.io;
     if (io) io.emit('finance_config_update', req.body);
 
@@ -637,6 +700,83 @@ router.post("/configuracoes", requireAdminAuth, async (req, res) => {
   } catch (err: any) {
     console.error("[Post Configuracoes Error]", err);
     res.status(500).json({ error: true, message: err.message || "Failed to save configuracoes" });
+  }
+});
+
+router.get("/asaas-status/:paymentId", requireAnyAuth, async (req, res) => {
+  try {
+    const rawId = String(req.params.paymentId || "").trim();
+    const clienteId = String(req.query.clienteId || (req as any).user?.id || "").trim();
+    if (!rawId) {
+      return res.status(400).json({ error: true, message: "paymentId ausente" });
+    }
+
+    let resolvedPaymentId = rawId.startsWith("pay_") ? rawId : "";
+    const currentPool = getDbPool();
+
+    if (currentPool) {
+      if (resolvedPaymentId) {
+        const [rows] = await currentPool.query(
+          "SELECT status FROM TransacoesFinanceiras WHERE asaasPaymentId = ? AND tipo = 'receita'",
+          [resolvedPaymentId]
+        );
+        const txs = rows as any[];
+        if (txs.length > 0 && txs.every((t) => t.status === "pago")) {
+          invalidateDbCache();
+          return res.json({ success: true, paid: true, status: "RECEIVED" });
+        }
+      } else if (rawId === "bulk" && clienteId) {
+        const [rows] = await currentPool.query(
+          "SELECT asaasPaymentId, status FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND asaasPaymentId IS NOT NULL ORDER BY dataVencimento ASC",
+          [clienteId]
+        );
+        const txs = rows as any[];
+        const openWithPayId = txs.find((t) => t.status !== "pago" && t.asaasPaymentId);
+        if (openWithPayId) {
+          resolvedPaymentId = openWithPayId.asaasPaymentId;
+        } else if (txs.length > 0 && txs.every((t) => t.status === "pago")) {
+          invalidateDbCache();
+          return res.json({ success: true, paid: true, status: "RECEIVED" });
+        }
+      } else {
+        const [rows] = await currentPool.query(
+          "SELECT asaasPaymentId, status FROM TransacoesFinanceiras WHERE id = ? LIMIT 1",
+          [rawId]
+        );
+        const tx = (rows as any[])[0];
+        if (tx) {
+          if (tx.status === "pago") {
+            invalidateDbCache();
+            return res.json({ success: true, paid: true, status: "RECEIVED" });
+          }
+          if (tx.asaasPaymentId) {
+            resolvedPaymentId = tx.asaasPaymentId;
+          }
+        }
+      }
+    }
+
+    if (!resolvedPaymentId) {
+      return res.json({ success: true, paid: false, status: "PENDING" });
+    }
+
+    // Check directly on Asaas API in case webhook has not arrived yet (e.g., localhost or delay)
+    const payment = await asaasFetch(`/payments/${resolvedPaymentId}`);
+    const paidStatuses = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"];
+    const isPaid = paidStatuses.includes(String(payment?.status || ""));
+
+    if (isPaid) {
+      const io = (req.app as any)?.locals?.io;
+      await reconcileAsaasPaidPayment(payment, "PAYMENT_RECEIVED", io);
+    }
+
+    return res.json({
+      success: true,
+      paid: isPaid,
+      status: payment?.status || "PENDING"
+    });
+  } catch (err: any) {
+    return res.json({ success: false, paid: false, message: err.message });
   }
 });
 

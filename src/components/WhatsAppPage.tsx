@@ -334,18 +334,22 @@ export default function WhatsAppPage() {
   
   const generateExtratoBase64 = async (clientId: string) => {
     const captureEl = document.getElementById(`extrato-invoice-capture-${clientId}`) || document.getElementById(`bloqueio-invoice-capture-${clientId}`);
-    if (!captureEl) throw new Error("Elemento de extrato não encontrado");
+    if (!captureEl) {
+      console.error(`Elemento de extrato não encontrado para clientId: ${clientId}`);
+      throw new Error("Elemento de extrato não encontrado");
+    }
     
-    // Mostra brevemente se estiver escondido (necessário pro dom-to-image em alguns casos, mas ele tá num fixed offscreen)
+    // Pequeno intervalo para renderização do DOM
     await new Promise(r => setTimeout(r, 200));
 
     try {
       // @ts-ignore
       return await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 2, skipFonts: true, cacheBust: true });
     } catch(e) {
-      await new Promise(r => setTimeout(r, 600));
+      console.warn("Retentando gerar extrato com pixelRatio 1.5...", e);
+      await new Promise(r => setTimeout(r, 500));
       // @ts-ignore
-      return await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 1.5, skipFonts: true, cacheBust: true });
+      return await toPng(captureEl, { backgroundColor: '#ffffff', pixelRatio: 1.5, skipFonts: true });
     }
   };
 
@@ -355,6 +359,7 @@ export default function WhatsAppPage() {
       const b64 = await generateExtratoBase64(clientId);
       setExtratoPreviewImage(b64);
     } catch (err: any) {
+      console.error("Erro ao gerar prévia da imagem:", err);
       showToast("Erro ao gerar prévia da imagem.", "error");
     } finally {
       setExtratoGenerating(false);
@@ -367,10 +372,11 @@ export default function WhatsAppPage() {
       const base64Image = extratoPreviewImage || await generateExtratoBase64(clientId);
       const a = document.createElement('a');
       a.href = base64Image;
-      a.download = `Extrato_${clientName.replace(/s+/g, '_')}.png`;
+      a.download = `Extrato_${clientName.replace(/\s+/g, '_')}.png`;
       a.click();
       showToast("Extrato baixado!", "success");
     } catch (err: any) {
+      console.error("Falha ao baixar extrato:", err);
       showToast("Falha ao baixar extrato.", "error");
     } finally {
       setExtratoGenerating(false);
@@ -381,9 +387,10 @@ export default function WhatsAppPage() {
     const client = clientDB.getById(clientId);
     if (!client) return '';
     const unpaid = transacoes.filter(t => t.clienteId === clientId && t.status !== 'pago' && t.status !== 'cancelado');
-    let text = `Olá, *${formatFirstName(client.nome)}*! Tudo bem? ⚓
-
-`;
+    if (unpaid.length === 0) {
+      return `Olá, *${formatFirstName(client.nome)}*! Tudo bem? ⚓\n\nVerificamos em nosso sistema e seu cadastro está 100% regularizado, sem nenhuma pendência financeira em aberto.\n\nQualquer dúvida, estamos à disposição! 👍`;
+    }
+    let text = `Olá, *${formatFirstName(client.nome)}*! Tudo bem? ⚓\n\n`;
     text += `Constam em nosso sistema as seguintes pendências financeiras vinculadas ao seu cadastro:
 
 `;
@@ -452,8 +459,10 @@ export default function WhatsAppPage() {
     const client = clientDB.getById(clientId);
     if (!client || !client.telefone) return showToast("Cliente sem telefone válido.", "error");
     const text = generateExtratoText(clientId);
-    const wppNum = client.telefone.replace(/D/g, '');
-    const url = `https://wa.me/55${wppNum}?text=${encodeURIComponent(text)}`;
+    const clean = client.telefone.replace(/\D/g, '');
+    if (!clean) return showToast("Cliente sem telefone válido.", "error");
+    const withCountry = clean.startsWith('55') ? clean : `55${clean}`;
+    const url = `https://wa.me/${withCountry}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
 
@@ -882,6 +891,7 @@ const handleToggleSelectClient = (id: string) => {
   const [bloqueioSelectedIds, setBloqueioSelectedIds] = useState<string[]>([]);
   const [bloqueioSendingStatus, setBloqueioSendingStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
   const [bloqueioSendResults, setBloqueioSendResults] = useState<Record<string, 'pending' | 'sending' | 'success' | 'error'>>({});
+  const [bloqueioSendErrors, setBloqueioSendErrors] = useState<Record<string, string>>({});
   const [bloqueioReservations, setBloqueioReservations] = useState<Reserva[]>([]);
 
   const handleChangeBloqueioMode = (mode: 'vespera' | 'dia') => {
@@ -1022,8 +1032,8 @@ const handleToggleSelectClient = (id: string) => {
       setBloqueioSendResults(prev => ({ ...prev, [resId]: 'sending' }));
 
       try {
-        const endpoint = base64Image ? '/api/whatsapp/send-custom' : '/api/whatsapp/send-text';
-        const bodyPayload = base64Image ? {
+        let endpoint = base64Image ? '/api/whatsapp/send-custom' : '/api/whatsapp/send-text';
+        let bodyPayload: any = base64Image ? {
           number: client.telefone,
           text: text,
           media: base64Image,
@@ -1034,19 +1044,43 @@ const handleToggleSelectClient = (id: string) => {
           text: text
         };
 
-        const response = await fetch(endpoint, {
+        let response = await fetch(endpoint, {
           method: 'POST',
           headers,
           body: JSON.stringify(bodyPayload)
         });
-        if (!response.ok) throw new Error('Falha no envio');
+
+        // Fallback para envio de texto caso o envio com anexo de imagem falhe (ex: erro temporário de upload de mídia)
+        if (!response.ok && base64Image) {
+          const errData = await response.clone().json().catch(() => null);
+          if (errData?.message?.includes('não possui conta ativa no WhatsApp')) {
+            throw new Error(errData.message);
+          }
+          console.warn(`[Bloqueio] Envio de imagem falhou para ${client.nome}. Tentando fallback enviando somente texto...`);
+          response = await fetch('/api/whatsapp/send-text', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              number: client.telefone,
+              text: text
+            })
+          });
+        }
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => null);
+          const errDetail = errData?.message || response.statusText || 'Falha no envio';
+          console.error(`[Bloqueio] Falha definitiva no envio para ${client.nome}:`, errDetail);
+          throw new Error(errDetail);
+        }
 
         setBloqueioSendResults(prev => ({ ...prev, [resId]: 'success' }));
         reservationDB.update(resId, { 
           [bloqueioMode === 'vespera' ? 'bloqueioVesperaEnviado' : 'bloqueioDiaEnviado']: true 
         });
-      } catch (err) {
+      } catch (err: any) {
         setBloqueioSendResults(prev => ({ ...prev, [resId]: 'error' }));
+        setBloqueioSendErrors(prev => ({ ...prev, [resId]: err?.message || 'Falha no envio' }));
       }
       await sleep(4000);
     }
@@ -1814,7 +1848,14 @@ const handleToggleSelectClient = (id: string) => {
                         <div className="text-xs font-bold">
                           {status === 'sending' && <span className="text-blue-600 flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200"><RefreshCw className="w-3.5 h-3.5 animate-spin"/> Enviando...</span>}
                           {status === 'success' && <span className="text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200">✅ Enviado</span>}
-                          {status === 'error' && <span className="text-rose-700 bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200">❌ Erro</span>}
+                          {status === 'error' && (
+                            <span 
+                              className="text-rose-700 bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200 inline-flex items-center gap-1 cursor-help"
+                              title={bloqueioSendErrors[res.id] || 'Falha no envio'}
+                            >
+                              ❌ {bloqueioSendErrors[res.id]?.includes('não possui conta') ? 'Sem WhatsApp' : 'Erro'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2823,100 +2864,119 @@ const handleToggleSelectClient = (id: string) => {
          </div>
       )}
 
-      {/* Hidden processing block for Bloqueio Debit Invoices */}
-      <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none aria-hidden">
-          {bloqueioReservations.map(res => {
-            const client = clientDB.getById(res.clienteId);
-          if (!client) return null;
+      {/* Hidden processing block for Bloqueio Debit Invoices & Extratos */}
+      <div className="fixed -left-[9999px] top-0 pointer-events-none" aria-hidden="true">
+        {(() => {
+          const renderInvoiceCard = (captureId: string, client: Cliente) => {
+            const clientUnpaid = transacoes.filter(t => t.clienteId === client.id && t.status !== 'pago' && t.status !== 'cancelado');
+            const totalGeral = clientUnpaid.reduce((acc, t) => {
+              const { total } = calculateTransactionInterest(t);
+              return acc + total;
+            }, 0);
 
-          const clientUnpaid = transacoes.filter(t => t.clienteId === client.id && t.status !== 'pago' && t.status !== 'cancelado');
-          const totalGeral = clientUnpaid.reduce((acc, t) => {
-            const { total } = calculateTransactionInterest(t);
-            return acc + total;
-          }, 0);
+            return (
+              <div 
+                key={captureId} 
+                id={captureId} 
+                className="bg-white p-10 w-[800px] text-slate-800 font-sans shadow-none rounded-none border-none"
+              >
+                <div className="flex justify-between items-start mb-8 border-b-2 border-slate-900 pb-6">
+                  <img src={logoUrl} alt="Logo" className="h-16 object-contain" />
+                  <div className="text-right">
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Extrato de Débitos em Aberto</h1>
+                    <p className="text-slate-500 mt-1 font-semibold text-sm">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+                  </div>
+                </div>
+                
+                <div className="mb-8 bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                  <h2 className="text-2xl font-black text-slate-900">{client.nome}</h2>
+                  <p className="text-slate-600 text-sm mt-1 font-medium">Telefone: {client.telefone || 'Não informado'}</p>
+                  {client.email && <p className="text-slate-600 text-sm mt-0.5 font-medium">E-mail: {client.email}</p>}
+                  <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                    clientUnpaid.length > 0 
+                      ? 'bg-rose-100 text-rose-700 border border-rose-200' 
+                      : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                  }`}>
+                    {clientUnpaid.length > 0 ? '⚠️ Status de Cobrança: INADIMPLENTE' : '✅ Status de Cobrança: REGULARIZADO'}
+                  </div>
+                </div>
+
+                {clientUnpaid.length > 0 ? (
+                  <table className="w-full text-left mb-8 border-collapse">
+                    <thead className="bg-slate-100 border-y-2 border-slate-800">
+                      <tr>
+                        <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider">Categoria / Descrição</th>
+                        <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider">Vencimento</th>
+                        <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Valor Orig.</th>
+                        <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Juros/Atraso</th>
+                        <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 text-sm">
+                      {clientUnpaid.map(t => {
+                        const { interest, total } = calculateTransactionInterest(t);
+                        const catName = t.categoria ? t.categoria.replace('Servi??o', 'Serviço').replace('??', 'ç') : 'Lançamento';
+                        return (
+                          <tr key={t.id}>
+                            <td className="py-3.5 px-4 font-bold text-slate-900">
+                              {catName}
+                              {t.descricao && <p className="text-xs text-slate-500 font-normal mt-0.5">{t.descricao}</p>}
+                            </td>
+                            <td className="py-3.5 px-4 font-semibold text-slate-700">
+                              {t.dataVencimento ? t.dataVencimento.split('-').reverse().join('/') : '-'}
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-700 text-right font-mono">
+                              R$ {Number(t.valor).toFixed(2)}
+                            </td>
+                            <td className="py-3.5 px-4 text-rose-600 font-bold text-right font-mono">
+                              {interest > 0 ? `+ R$ ${interest.toFixed(2)}` : '-'}
+                            </td>
+                            <td className="py-3.5 px-4 font-black text-slate-900 text-right font-mono">
+                              R$ {total.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="p-6 bg-slate-50 rounded-xl border text-center text-slate-500 text-sm font-medium mb-8">
+                    Nenhuma pendência financeira ativa no cadastro. Conta 100% regularizada.
+                  </div>
+                )}
+
+                <div className="border-t-2 border-slate-900 pt-6 flex justify-between items-center">
+                  <div className="text-xs text-slate-400 font-medium">
+                    Mexicano Gestão Náutica • Central de Atendimento
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Total Geral Pendente</p>
+                    <p className="text-4xl font-black text-rose-600 tracking-tight font-mono">
+                      R$ {totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          };
 
           return (
-            <div 
-              key={`bloqueio-invoice-${client.id}`} 
-              id={`bloqueio-invoice-capture-${client.id}`} 
-              className="bg-white p-10 w-[800px] text-slate-800 font-sans shadow-none rounded-none border-none"
-            >
-              <div className="flex justify-between items-start mb-8 border-b-2 border-slate-900 pb-6">
-                <img src={logoUrl} alt="Logo" className="h-16 object-contain" />
-                <div className="text-right">
-                  <h1 className="text-3xl font-black text-slate-900 tracking-tight">Extrato de Débitos em Aberto</h1>
-                  <p className="text-slate-500 mt-1 font-semibold text-sm">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
-                </div>
-              </div>
-              
-              <div className="mb-8 bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                <h2 className="text-2xl font-black text-slate-900">{client.nome}</h2>
-                <p className="text-slate-600 text-sm mt-1 font-medium">Telefone: {client.telefone || 'Não informado'}</p>
-                {client.email && <p className="text-slate-600 text-sm mt-0.5 font-medium">E-mail: {client.email}</p>}
-                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-700 border border-rose-200 uppercase tracking-wider">
-                  ⚠️ Status de Cobrança: INADIMPLENTE
-                </div>
-              </div>
+            <>
+              {Array.from(new Set(bloqueioReservations.map(r => r.clienteId).filter(Boolean))).map(clientId => {
+                const client = clientDB.getById(clientId);
+                if (!client) return null;
+                return renderInvoiceCard(`bloqueio-invoice-capture-${client.id}`, client);
+              })}
 
-              {clientUnpaid.length > 0 ? (
-                <table className="w-full text-left mb-8 border-collapse">
-                  <thead className="bg-slate-100 border-y-2 border-slate-800">
-                    <tr>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider">Categoria / Descrição</th>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider">Vencimento</th>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Valor Orig.</th>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Juros/Atraso</th>
-                      <th className="py-3 px-4 font-bold text-xs text-slate-700 uppercase tracking-wider text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 text-sm">
-                    {clientUnpaid.map(t => {
-                      const { interest, total } = calculateTransactionInterest(t);
-                      const catName = t.categoria ? t.categoria.replace('Servi??o', 'Serviço').replace('??', 'ç') : 'Lançamento';
-                      return (
-                        <tr key={t.id}>
-                          <td className="py-3.5 px-4 font-bold text-slate-900">
-                            {catName}
-                            {t.descricao && <p className="text-xs text-slate-500 font-normal mt-0.5">{t.descricao}</p>}
-                          </td>
-                          <td className="py-3.5 px-4 font-semibold text-slate-700">
-                            {t.dataVencimento ? t.dataVencimento.split('-').reverse().join('/') : '-'}
-                          </td>
-                          <td className="py-3.5 px-4 text-slate-700 text-right font-mono">
-                            R$ {Number(t.valor).toFixed(2)}
-                          </td>
-                          <td className="py-3.5 px-4 text-rose-600 font-bold text-right font-mono">
-                            {interest > 0 ? `+ R$ ${interest.toFixed(2)}` : '-'}
-                          </td>
-                          <td className="py-3.5 px-4 font-black text-slate-900 text-right font-mono">
-                            R$ {total.toFixed(2)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="p-6 bg-slate-50 rounded-xl border text-center text-slate-500 text-sm font-medium mb-8">
-                  Pendência financeira ativa no cadastro. Entre em contato para maiores informações.
-                </div>
-              )}
-
-              <div className="border-t-2 border-slate-900 pt-6 flex justify-between items-center">
-                <div className="text-xs text-slate-400 font-medium">
-                  Mexicano Gestão Náutica • Central de Atendimento
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Total Geral Pendente</p>
-                  <p className="text-4xl font-black text-rose-600 tracking-tight font-mono">
-                    R$ {totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-              </div>
-            </div>
+              {extratoSelectedClientId && (() => {
+                const client = clientDB.getById(extratoSelectedClientId);
+                if (!client) return null;
+                return renderInvoiceCard(`extrato-invoice-capture-${client.id}`, client);
+              })()}
+            </>
           );
-          })}
-        </div>
+        })()}
+      </div>
 
     </div>
   );

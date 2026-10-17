@@ -137,25 +137,55 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     setTimeout(() => setIsRefreshing(false), 800); // Visual feedback time
   };
 
+  const boatsRef = useRef(boats);
+  const onRefreshRef = useRef(onRefresh);
+  const clientIdRef = useRef(client?.id);
   useEffect(() => {
-    const socket = io('/', { path: '/socket.io' });
+    boatsRef.current = boats;
+    onRefreshRef.current = onRefresh;
+    clientIdRef.current = client?.id;
+  }, [boats, onRefresh, client?.id]);
+
+  // Asaas Pix payment states
+  const [selectedTransactionDetails, setSelectedTransactionDetails] = useState<any>(null);
+  const [selectedTransactionForPix, setSelectedTransactionForPix] = useState<any>(null);
+  const [isGeneratingPix, setIsGeneratingPix] = useState(false);
+  const [pixQrCode, setPixQrCode] = useState<string | null>(null);
+  const [pixPayload, setPixPayload] = useState<string | null>(null);
+  const [pixError, setPixError] = useState<string | null>(null);
+  const [copiedPix, setCopiedPix] = useState(false);
+  const [activePixPaymentId, setActivePixPaymentId] = useState<string | null>(null);
+  const [pixPaymentConfirmed, setPixPaymentConfirmed] = useState(false);
+  const [pixPaidAt, setPixPaidAt] = useState<string>('');
+  const activePixRef = useRef<{ paymentId: string | null; txId: string | null }>({ paymentId: null, txId: null });
+
+  useEffect(() => {
+    activePixRef.current = {
+      paymentId: activePixPaymentId,
+      txId: selectedTransactionForPix?.id || null
+    };
+  }, [activePixPaymentId, selectedTransactionForPix]);
+
+  useEffect(() => {
+    const socket = io('/', {
+      path: '/socket.io',
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 10
+    });
 
     socket.on('marina_update', (data: any) => {
-      // Re-fetch data if the update is related to the client's boats
-      const isMyBoat = boats.some(b => b.id === data?.reservation?.embarcacaoId);
-      if (isMyBoat && onRefresh) {
-        onRefresh();
+      const isMyBoat = (boatsRef.current || []).some((b: any) => b.id === data?.reservation?.embarcacaoId);
+      if (isMyBoat && onRefreshRef.current) {
+        onRefreshRef.current();
       }
     });
 
     socket.on('marina_caixa_update', () => {
-       // Refresh just in case (finances/services updated)
-       if (onRefresh) onRefresh();
+      if (onRefreshRef.current) onRefreshRef.current();
     });
 
-    socket.on('chamado_update', (data: any) => {
-      // Refresh to get the latest maintenance status
-      if (onRefresh) onRefresh();
+    socket.on('chamado_update', () => {
+      if (onRefreshRef.current) onRefreshRef.current();
     });
 
     socket.on('config_updated', (data: any) => {
@@ -166,19 +196,92 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       }
     });
 
+    socket.on('asaas_payment_updated', (data: any) => {
+      if (data?.status === 'pago' && activePixRef.current.txId) {
+        const matchesPaymentId = data.paymentId && activePixRef.current.paymentId && String(data.paymentId) === String(activePixRef.current.paymentId);
+        const matchesTxId = Array.isArray(data.transactionIds) && data.transactionIds.includes(activePixRef.current.txId);
+        const matchesClientBulk = activePixRef.current.txId === 'bulk' && (!Array.isArray(data.clientIds) || data.clientIds.includes(clientIdRef.current));
+        if (matchesPaymentId || matchesTxId || matchesClientBulk || !data.paymentId) {
+          const now = new Date();
+          setPixPaidAt(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+          setPixPaymentConfirmed(true);
+        }
+      }
+      setSelectedTransactionDetails(null);
+      if (onRefreshRef.current) onRefreshRef.current();
+    });
+
     return () => {
       socket.disconnect();
     };
-  }, [boats, onRefresh]);
+  }, []);
 
-  // Asaas Pix payment states
-  const [selectedTransactionDetails, setSelectedTransactionDetails] = useState<any>(null);
-  const [selectedTransactionForPix, setSelectedTransactionForPix] = useState<any>(null);
-  const [isGeneratingPix, setIsGeneratingPix] = useState(false);
-  const [pixQrCode, setPixQrCode] = useState<string | null>(null);
-  const [pixPayload, setPixPayload] = useState<string | null>(null);
-  const [pixError, setPixError] = useState<string | null>(null);
-  const [copiedPix, setCopiedPix] = useState(false);
+  useEffect(() => {
+    const targetId = activePixPaymentId || selectedTransactionForPix?.id;
+    if (!selectedTransactionForPix || !targetId || !pixQrCode || pixPaymentConfirmed) return;
+    const token = localStorage.getItem('client_token');
+    if (!token) return;
+
+    const markConfirmed = () => {
+      const now = new Date();
+      setPixPaidAt(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+      setPixPaymentConfirmed(true);
+      if (onRefreshRef.current) onRefreshRef.current(true);
+    };
+
+    const checkPaymentStatus = async () => {
+      try {
+        // 1. Direct Asaas + DB status endpoint
+        const url = `/api/financeiro/asaas-status/${encodeURIComponent(targetId)}?clienteId=${encodeURIComponent(client?.id || '')}`;
+        const res = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          cache: 'no-store'
+        });
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const d = await res.json();
+          if (d?.paid) {
+            markConfirmed();
+            return;
+          }
+        }
+
+        // 2. Fallback: Force-refresh client transactions from MariaDB (/api/client/me?forceRefresh=true)
+        // Catches webhook updates written to the shared VPS database even if local server.ts wasn't restarted
+        const meRes = await fetch('/api/client/me?forceRefresh=true', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          cache: 'no-store'
+        });
+        if (meRes.ok && (meRes.headers.get('content-type') || '').includes('application/json')) {
+          const meData = await meRes.json();
+          const freshTxs: any[] = meData?.transacoes || [];
+          if (selectedTransactionForPix.id !== 'bulk') {
+            const matched = freshTxs.find((t: any) =>
+              String(t.id) === String(selectedTransactionForPix.id) ||
+              (activePixPaymentId && String(t.asaasPaymentId) === String(activePixPaymentId))
+            );
+            if (matched && matched.status === 'pago') {
+              markConfirmed();
+              return;
+            }
+          } else {
+            const matchedByPayId = activePixPaymentId
+              ? freshTxs.filter((t: any) => String(t.asaasPaymentId) === String(activePixPaymentId))
+              : [];
+            if (matchedByPayId.length > 0 && matchedByPayId.every((t: any) => t.status === 'pago')) {
+              markConfirmed();
+              return;
+            }
+          }
+        }
+      } catch {}
+    };
+
+    checkPaymentStatus();
+    const interval = setInterval(checkPaymentStatus, 3000);
+
+    return () => clearInterval(interval);
+  }, [selectedTransactionForPix, activePixPaymentId, pixQrCode, pixPaymentConfirmed, client?.id]);
 
   // Contatos de WhatsApp
   const FINANCEIRO_WHATSAPP = '558791229333';
@@ -190,6 +293,39 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       return false;
     }
   });
+
+  const [finConfig, setFinConfig] = useState<{
+    taxaJurosMensal: number;
+    taxaMultaAtraso: number;
+    diasFaturaAtual: number;
+  }>({
+    taxaJurosMensal: 2.2,
+    taxaMultaAtraso: 2.0,
+    diasFaturaAtual: 30
+  });
+
+  const getClientTxUpdatedValue = (t: any): { original: number; final: number; fees: number; isOverdue: boolean } => {
+    const baseVal = Number(t?.valor || 0);
+    if (!t || t.tipo !== 'receita' || t.status === 'pago' || t.status === 'cancelado' || !t.dataVencimento) {
+      return { original: baseVal, final: baseVal, fees: 0, isOverdue: false };
+    }
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (t.dataVencimento >= todayStr) {
+      return { original: baseVal, final: baseVal, fees: 0, isOverdue: false };
+    }
+    const due = new Date(t.dataVencimento + 'T12:00:00');
+    const todayRef = new Date(todayStr + 'T12:00:00');
+    const diffDays = Math.max(0, Math.floor((todayRef.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
+    if (diffDays <= 0) {
+      return { original: baseVal, final: baseVal, fees: 0, isOverdue: false };
+    }
+    const fine = baseVal * (Math.max(0, finConfig.taxaMultaAtraso) / 100);
+    const interest = baseVal * (Math.max(0, finConfig.taxaJurosMensal) / 100) * (diffDays / 30);
+    const fees = Number((fine + interest).toFixed(2));
+    const final = Number((baseVal + fees).toFixed(2));
+    return { original: baseVal, final, fees, isOverdue: true };
+  };
 
   useEffect(() => {
     const loadPagamentosFlag = () => {
@@ -203,6 +339,24 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           }
         })
         .catch(() => {});
+
+      const token = localStorage.getItem('client_token');
+      if (token) {
+        fetch('/api/financeiro/configuracoes', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(d => {
+            if (d?.success && d?.configuracoes) {
+              setFinConfig({
+                taxaJurosMensal: parseFloat(d.configuracoes.taxaJurosMensal ?? '2.2'),
+                taxaMultaAtraso: parseFloat(d.configuracoes.taxaMultaAtraso ?? '2.0'),
+                diasFaturaAtual: Math.max(1, parseInt(d.configuracoes.diasFaturaAtual ?? '30', 10) || 30)
+              });
+            }
+          })
+          .catch(() => {});
+      }
     };
     loadPagamentosFlag();
     const onVisible = () => { if (document.visibilityState === 'visible') loadPagamentosFlag(); };
@@ -224,12 +378,15 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   };
 
   const handleOpenPixPayment = async (t: any) => {
-    setSelectedTransactionForPix(t);
+    const calc = getClientTxUpdatedValue(t);
+    setSelectedTransactionForPix({ ...t, valor: calc.final, valorOriginal: calc.original });
     setIsGeneratingPix(true);
     setPixQrCode(null);
     setPixPayload(null);
     setPixError(null);
     setCopiedPix(false);
+    setPixPaymentConfirmed(false);
+    setActivePixPaymentId(t.asaasPaymentId || null);
 
     try {
       const token = localStorage.getItem('client_token');
@@ -244,11 +401,17 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       
       const resData = await response.json();
       if (response.ok && resData.success) {
+        if (resData.asaasPaymentId) {
+          setActivePixPaymentId(resData.asaasPaymentId);
+        }
+        if (resData.finalValue !== undefined) {
+          setSelectedTransactionForPix((prev: any) => prev ? { ...prev, valor: Number(resData.finalValue) } : prev);
+        }
         if (resData.qrCode) {
           setPixQrCode(resData.qrCode.encodedImage);
           setPixPayload(resData.qrCode.payload);
         } else {
-          setPixError("QR Code não retornado pelo Asaas.");
+          setPixError("QR Code não disponível no momento.");
         }
       } else {
         setPixError(resData.message || "Erro ao gerar PIX.");
@@ -260,13 +423,19 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     }
   };
 
-  const handleOpenBulkPixPayment = async () => {
+  const handleOpenBulkPixPayment = async (transacoesIds?: string[], customTotal?: number) => {
     setIsGeneratingPix(true);
     setPixQrCode(null);
     setPixPayload(null);
     setPixError(null);
     setCopiedPix(false);
-    setSelectedTransactionForPix({ id: 'bulk', descricao: 'Fatura Consolidada', valor: totalAberto });
+    setPixPaymentConfirmed(false);
+    setActivePixPaymentId(null);
+    setSelectedTransactionForPix({
+      id: 'bulk',
+      descricao: 'Fatura Atual Consolidada',
+      valor: customTotal !== undefined ? customTotal : totalAberto
+    });
 
     try {
       const token = localStorage.getItem('client_token');
@@ -276,16 +445,25 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ billingType: 'PIX' })
+        body: JSON.stringify({
+          billingType: 'PIX',
+          ...(Array.isArray(transacoesIds) && transacoesIds.length > 0 ? { transacoesIds } : {})
+        })
       });
       
       const resData = await response.json();
       if (response.ok && resData.success) {
+        if (resData.asaasPaymentId) {
+          setActivePixPaymentId(resData.asaasPaymentId);
+        }
+        if (resData.finalValue !== undefined) {
+          setSelectedTransactionForPix((prev: any) => prev ? { ...prev, valor: Number(resData.finalValue) } : prev);
+        }
         if (resData.qrCode) {
           setPixQrCode(resData.qrCode.encodedImage);
           setPixPayload(resData.qrCode.payload);
         } else {
-          setPixError("QR Code não retornado pelo Asaas.");
+          setPixError("QR Code não disponível no momento.");
         }
       } else {
         setPixError(resData.message || "Erro ao gerar PIX consolidado.");
@@ -359,7 +537,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   
   const totalAberto = transacoesList
     .filter((t: any) => t.status !== 'pago' && t.status !== 'cancelado' && (t.status === 'vencido' || (t.dataVencimento && t.dataVencimento < todayStr)))
-    .reduce((acc: number, t: any) => acc + (Number(t.valor) || 0), 0);
+    .reduce((acc: number, t: any) => acc + getClientTxUpdatedValue(t).final, 0);
 
 
 
@@ -1559,23 +1737,25 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             let futureList: any[] = [];
 
             if (financeTab === 'fatura') {
-              const thirtyDaysFromNow = new Date();
-              thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+              const windowLimitDate = new Date();
+              windowLimitDate.setDate(windowLimitDate.getDate() + (finConfig.diasFaturaAtual || 30));
 
               currentList = sortedTransacoes.filter(t => {
                 if (!t.dataVencimento) return true;
                 const vDate = new Date(t.dataVencimento + "T12:00:00");
-                return vDate <= thirtyDaysFromNow || t.status === 'vencido';
+                return vDate <= windowLimitDate || t.status === 'vencido';
               });
 
               futureList = sortedTransacoes.filter(t => {
                 if (!t.dataVencimento) return false;
                 const vDate = new Date(t.dataVencimento + "T12:00:00");
-                return vDate > thirtyDaysFromNow && t.status !== 'vencido';
+                return vDate > windowLimitDate && t.status !== 'vencido';
               });
             }
 
-            const renderTransaction = (t: any) => (
+            const renderTransaction = (t: any) => {
+              const calc = getClientTxUpdatedValue(t);
+              return (
               <div 
                 key={t.id} 
                 onClick={() => setSelectedTransactionDetails(t)}
@@ -1607,9 +1787,16 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                           <span className="text-sm font-medium text-white truncate pr-2" title={desc}>{desc}</span>
                         );
                       })()}
-                      <span className="text-sm font-semibold whitespace-nowrap text-white">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.valor)}
-                      </span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-sm font-semibold whitespace-nowrap text-white">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calc.final)}
+                        </span>
+                        {calc.isOverdue && calc.fees > 0 && (
+                          <span className="text-[9px] text-rose-400/80 whitespace-nowrap">
+                            Orig: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calc.original)} + encargos
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between items-center mt-1">
                       <span className="text-[11px] text-white/40">
@@ -1617,27 +1804,29 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                       </span>
                       <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                         t.status === 'pago' ? 'bg-emerald-500/10 text-emerald-400' :
-                        t.status === 'vencido' ? 'bg-rose-500/10 text-rose-400' :
+                        (t.status === 'vencido' || calc.isOverdue) ? 'bg-rose-500/10 text-rose-400' :
                         t.status === 'cancelado' ? 'bg-white/10 text-white/50' :
                         'bg-yellow-500/10 text-yellow-400'
                       }`}>
-                        {t.status.replace('_', ' ')}
+                        {(t.status === 'a_vencer' && calc.isOverdue) ? 'vencido' : t.status.replace('_', ' ')}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
-            );
+              );
+            };
 
             return (
               <div className="space-y-3">
-                {financeTab === 'fatura' && currentList.length > 1 && currentList.length > 0 && (() => {
-                  const totalAtual = currentList.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0);
+                {financeTab === 'fatura' && currentList.length > 1 && (() => {
+                  const totalAtual = Number(currentList.reduce((acc, curr) => acc + getClientTxUpdatedValue(curr).final, 0).toFixed(2));
+                  const currentIds = currentList.map(curr => curr.id);
                   const totalFmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAtual);
                   const bulkClass = "w-full mb-2 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-[#B69D74]/20 to-[#B69D74]/10 hover:from-[#B69D74]/30 hover:to-[#B69D74]/20 border border-[#B69D74]/20 rounded-2xl text-xs font-bold uppercase tracking-widest text-[#B69D74] transition-all duration-300 shadow-lg";
                   return pagamentosHabilitados ? (
                     <button 
-                      onClick={handleOpenBulkPixPayment}
+                      onClick={() => handleOpenBulkPixPayment(currentIds, totalAtual)}
                       className={bulkClass}
                     >
                       <QrCode className="w-4 h-4" />
@@ -3001,12 +3190,26 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </div>
 
             <div className="space-y-4 mb-6">
-              <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
-                <span className="text-xs text-white/40 uppercase tracking-widest">Valor</span>
-                <span className="text-sm font-semibold text-white">
-                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedTransactionDetails.valor)}
-                </span>
-              </div>
+              {(() => {
+                const detailCalc = getClientTxUpdatedValue(selectedTransactionDetails);
+                return (
+                  <>
+                    <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                      <span className="text-xs text-white/40 uppercase tracking-widest">Valor Atualizado</span>
+                      <div className="text-right">
+                        <span className="text-sm font-semibold text-white block">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.final)}
+                        </span>
+                        {detailCalc.isOverdue && detailCalc.fees > 0 && (
+                          <span className="text-[10px] text-rose-400">
+                            Original: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.original)} (+{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.fees)} multa/juros)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
               
               <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
                 <span className="text-xs text-white/40 uppercase tracking-widest">Vencimento</span>
@@ -3045,7 +3248,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   id="btn-pagar-transacao-whatsapp"
                   href={buildFinanceiroWhatsAppUrl(
                     `${selectedTransactionDetails.descricao || selectedTransactionDetails.categoria || 'lançamento'}${selectedTransactionDetails.dataVencimento ? ` - venc. ${selectedTransactionDetails.dataVencimento.split('-').reverse().join('/')}` : ''}`,
-                    selectedTransactionDetails.valor
+                    getClientTxUpdatedValue(selectedTransactionDetails).final
                   )}
                   target="_blank"
                   rel="noreferrer"
@@ -3094,93 +3297,244 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       {/* Modal de Pagamento Pix */}
       {selectedTransactionForPix && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[110] animate-in fade-in duration-300">
-          <div className="bg-[#1A1A1A]/95 border border-white/10 rounded-3xl w-full max-w-sm p-6 relative shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-300">
+          <div className={`bg-[#1A1A1A]/95 rounded-3xl w-full max-w-sm p-6 relative shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-500 overflow-hidden transition-all ${
+            pixPaymentConfirmed
+              ? 'border border-emerald-500/30 shadow-[0_0_55px_-12px_rgba(16,185,129,0.3)]'
+              : 'border border-white/10'
+          }`}>
+            {/* Ambient Radial Glow */}
+            <div className={`pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-56 h-56 rounded-full blur-[60px] transition-colors duration-700 ${
+              pixPaymentConfirmed ? 'bg-emerald-500/20' : 'bg-[#B69D74]/10'
+            }`} />
+
             <button 
-              onClick={() => setSelectedTransactionForPix(null)}
-              className="absolute top-4 right-4 text-white/40 hover:text-white hover:bg-white/5 p-1.5 rounded-full transition-colors"
+              onClick={() => {
+                setSelectedTransactionForPix(null);
+                setPixPaymentConfirmed(false);
+              }}
+              className="absolute top-4 right-4 text-white/40 hover:text-white hover:bg-white/5 p-1.5 rounded-full transition-colors z-10 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="text-center mt-2 mb-6">
-              <span className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Pagamento Instantâneo</span>
-              <h3 className="text-lg font-light text-white tracking-wide mt-1">Pagar com PIX</h3>
-              <p className="text-xs text-white/40 mt-1">
-                {selectedTransactionForPix.descricao || selectedTransactionForPix.categoria}
-              </p>
-              <div className="mt-3 text-2xl font-semibold text-white">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedTransactionForPix.valor)}
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center justify-center min-h-[220px]">
-              {isGeneratingPix ? (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-[#B69D74] border-t-transparent animate-spin"></div>
-                  <p className="text-xs text-white/40 font-medium">Gerando PIX no Asaas...</p>
-                </div>
-              ) : pixError ? (
-                <div className="flex flex-col items-center text-center p-4">
-                  <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-3">
-                    <X className="w-5 h-5" />
-                  </div>
-                  <p className="text-sm font-medium text-white max-w-[240px] leading-relaxed">{pixError}</p>
-                  <button 
-                    onClick={() => selectedTransactionForPix.id === 'bulk' ? handleOpenBulkPixPayment() : handleOpenPixPayment(selectedTransactionForPix)}
-                    className="mt-4 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-xs text-white transition-colors"
-                  >
-                    Tentar Novamente
-                  </button>
-                </div>
-              ) : pixQrCode ? (
-                <div className="flex flex-col items-center w-full">
-                  {/* QR Code Container */}
-                  <div className="bg-white p-3 rounded-2xl shadow-inner mb-5">
-                    <img 
-                      src={`data:image/png;base64,${pixQrCode}`} 
-                      alt="PIX QR Code" 
-                      className="w-40 h-40 object-contain"
+            <AnimatePresence mode="wait">
+              {pixPaymentConfirmed ? (
+                <motion.div
+                  key="pix-confirmed"
+                  initial={{ opacity: 0, scale: 0.92, y: 12 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                  transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className="relative z-10 flex flex-col items-center text-center pt-3 pb-1"
+                >
+                  {/* Animated Checkmark Emblem */}
+                  <div className="relative flex items-center justify-center w-24 h-24 mb-5">
+                    <motion.div
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: [1, 1.45, 1.65], opacity: [0.45, 0.15, 0] }}
+                      transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut" }}
+                      className="absolute inset-0 rounded-full border border-emerald-400/40 bg-emerald-500/10"
                     />
+                    <motion.div
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: [1, 1.25], opacity: [0.35, 0] }}
+                      transition={{ duration: 1.8, delay: 0.3, repeat: Infinity, ease: "easeOut" }}
+                      className="absolute inset-2 rounded-full border border-[#B69D74]/40"
+                    />
+                    <motion.div
+                      initial={{ scale: 0, rotate: -15 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.05 }}
+                      className="relative w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-500/25 via-emerald-500/15 to-[#B69D74]/20 border border-emerald-400/40 flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.25)]"
+                    >
+                      <svg className="w-10 h-10 text-emerald-400" viewBox="0 0 24 24" fill="none">
+                        <motion.path
+                          d="M5 13l4 4L19 7"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          initial={{ pathLength: 0, opacity: 0 }}
+                          animate={{ pathLength: 1, opacity: 1 }}
+                          transition={{ duration: 0.55, delay: 0.2, ease: "easeOut" }}
+                        />
+                      </svg>
+                    </motion.div>
                   </div>
 
-                  {/* Copia e Cola */}
-                  <div className="w-full bg-white/[0.02] border border-white/5 rounded-2xl p-3 mb-4">
-                    <p className="text-[9px] uppercase tracking-widest text-white/30 font-medium mb-1.5">Código Copia e Cola</p>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="text" 
-                        readOnly 
-                        value={pixPayload || ''} 
-                        className="flex-1 bg-transparent border-none text-xs text-white/70 select-all outline-none font-mono truncate"
-                      />
-                      <button 
-                        onClick={handleCopyPix}
-                        className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all shrink-0 ${
-                          copiedPix 
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                            : 'bg-[#B69D74]/20 hover:bg-[#B69D74]/30 text-[#B69D74] border border-[#B69D74]/30'
-                        }`}
-                      >
-                        {copiedPix ? 'Copiado!' : 'Copiar'}
-                      </button>
+                  {/* Status Pill */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.25, duration: 0.3 }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 mb-3"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[9px] uppercase tracking-widest font-bold text-emerald-400">
+                      Confirmado em Tempo Real
+                    </span>
+                  </motion.div>
+
+                  <motion.h3
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.32, duration: 0.3 }}
+                    className="text-xl font-light text-white tracking-wide"
+                  >
+                    Pagamento Recebido!
+                  </motion.h3>
+
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.38, duration: 0.3 }}
+                    className="text-xs text-white/50 mt-1 max-w-[240px] leading-relaxed"
+                  >
+                    Sua transação foi conciliada automaticamente com sucesso.
+                  </motion.p>
+
+                  {/* Receipt Summary Card */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.45, duration: 0.35 }}
+                    className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 mt-5 space-y-2.5 text-left"
+                  >
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[10px] uppercase tracking-widest text-white/35">Descrição</span>
+                      <span className="text-white/85 font-medium truncate max-w-[170px]">
+                        {selectedTransactionForPix.descricao || selectedTransactionForPix.categoria}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs border-t border-white/[0.04] pt-2.5">
+                      <span className="text-[10px] uppercase tracking-widest text-white/35">Valor Liquidado</span>
+                      <span className="text-sm font-semibold text-emerald-400">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedTransactionForPix.valor)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs border-t border-white/[0.04] pt-2.5">
+                      <span className="text-[10px] uppercase tracking-widest text-white/35">Horário</span>
+                      <span className="text-white/60 font-mono text-[11px]">
+                        Hoje{pixPaidAt ? ` às ${pixPaidAt}` : ''}
+                      </span>
+                    </div>
+                  </motion.div>
+
+                  <motion.button
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.55, duration: 0.3 }}
+                    onClick={() => {
+                      setSelectedTransactionForPix(null);
+                      setPixPaymentConfirmed(false);
+                      if (onRefresh) onRefresh();
+                    }}
+                    className="w-full mt-6 py-3.5 bg-gradient-to-r from-emerald-500/20 via-emerald-500/15 to-[#B69D74]/20 hover:from-emerald-500/30 hover:to-[#B69D74]/30 border border-emerald-500/30 rounded-2xl text-xs font-bold uppercase tracking-widest text-emerald-300 transition-all shadow-lg cursor-pointer"
+                  >
+                    Concluir
+                  </motion.button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="pix-waiting"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.25 }}
+                  className="relative z-10"
+                >
+                  <div className="text-center mt-2 mb-6">
+                    <span className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Pagamento Instantâneo</span>
+                    <h3 className="text-lg font-light text-white tracking-wide mt-1">Pagar com PIX</h3>
+                    <p className="text-xs text-white/40 mt-1">
+                      {selectedTransactionForPix.descricao || selectedTransactionForPix.categoria}
+                    </p>
+                    <div className="mt-3 text-2xl font-semibold text-white">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedTransactionForPix.valor)}
                     </div>
                   </div>
 
-                  <p className="text-[10px] text-white/40 text-center font-medium max-w-[200px] leading-relaxed">
-                    Abra o app do seu banco e escaneie o código QR acima ou utilize o Copia e Cola.
-                  </p>
-                </div>
-              ) : null}
-            </div>
+                  <div className="flex flex-col items-center justify-center min-h-[220px]">
+                    {isGeneratingPix ? (
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-8 h-8 rounded-full border-2 border-[#B69D74] border-t-transparent animate-spin"></div>
+                        <p className="text-xs text-white/40 font-medium">Gerando QR Code PIX...</p>
+                      </div>
+                    ) : pixError ? (
+                      <div className="flex flex-col items-center text-center p-4">
+                        <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-3">
+                          <X className="w-5 h-5" />
+                        </div>
+                        <p className="text-sm font-medium text-white max-w-[240px] leading-relaxed">{pixError}</p>
+                        <button 
+                          onClick={() => selectedTransactionForPix.id === 'bulk' ? handleOpenBulkPixPayment() : handleOpenPixPayment(selectedTransactionForPix)}
+                          className="mt-4 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-xs text-white transition-colors cursor-pointer"
+                        >
+                          Tentar Novamente
+                        </button>
+                      </div>
+                    ) : pixQrCode ? (
+                      <div className="flex flex-col items-center w-full">
+                        {/* QR Code Container */}
+                        <div className="bg-white p-3 rounded-2xl shadow-inner mb-5">
+                          <img 
+                            src={`data:image/png;base64,${pixQrCode}`} 
+                            alt="PIX QR Code" 
+                            className="w-40 h-40 object-contain"
+                          />
+                        </div>
 
-            <div className="mt-6 pt-4 border-t border-white/5 text-center">
-              <button
-                onClick={() => setSelectedTransactionForPix(null)}
-                className="text-xs text-white/40 hover:text-white transition-colors"
-              >
-                Voltar
-              </button>
-            </div>
+                        {/* Copia e Cola */}
+                        <div className="w-full bg-white/[0.02] border border-white/5 rounded-2xl p-3 mb-4">
+                          <p className="text-[9px] uppercase tracking-widest text-white/30 font-medium mb-1.5">Código Copia e Cola</p>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="text" 
+                              readOnly 
+                              value={pixPayload || ''} 
+                              className="flex-1 bg-transparent border-none text-xs text-white/70 select-all outline-none font-mono truncate"
+                            />
+                            <button 
+                              onClick={handleCopyPix}
+                              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all shrink-0 cursor-pointer ${
+                                copiedPix 
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                  : 'bg-[#B69D74]/20 hover:bg-[#B69D74]/30 text-[#B69D74] border border-[#B69D74]/30'
+                              }`}
+                            >
+                              {copiedPix ? 'Copiado!' : 'Copiar'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 mb-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#B69D74] animate-ping" />
+                          <span className="text-[10px] text-white/50 font-medium tracking-wide">
+                            Aguardando confirmação automática...
+                          </span>
+                        </div>
+
+                        <p className="text-[10px] text-white/35 text-center font-medium max-w-[210px] leading-relaxed">
+                          Abra o app do seu banco e escaneie o código QR acima ou utilize o Copia e Cola.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-white/5 text-center">
+                    <button
+                      onClick={() => {
+                        setSelectedTransactionForPix(null);
+                        setPixPaymentConfirmed(false);
+                      }}
+                      className="text-xs text-white/40 hover:text-white transition-colors cursor-pointer"
+                    >
+                      Voltar
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       )}

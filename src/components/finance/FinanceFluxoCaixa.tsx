@@ -20,7 +20,8 @@ function RowActions({
   onBaixaManual,
   onGerarLink,
   onEnviarWhatsApp,
-  isPago
+  isPago,
+  canGenerateAsaas = true
 }: {
   onEdit: () => void;
   onDelete: () => void;
@@ -28,6 +29,7 @@ function RowActions({
   onGerarLink: () => void;
   onEnviarWhatsApp: () => void;
   isPago: boolean;
+  canGenerateAsaas?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
@@ -101,18 +103,22 @@ function RowActions({
                 >
                   <CheckCircle2 className="w-4 h-4" /> Dar Baixa Manual
                 </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setOpen(false); onGerarLink(); }}
-                  className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#0071e3] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
-                >
-                  <CreditCard className="w-4 h-4" /> Gerar Link Asaas
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setOpen(false); onEnviarWhatsApp(); }}
-                  className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#34c759] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
-                >
-                  <Send className="w-4 h-4" /> Enviar WhatsApp
-                </button>
+                {canGenerateAsaas && (
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setOpen(false); onGerarLink(); }}
+                      className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#0071e3] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <CreditCard className="w-4 h-4" /> Gerar Link Asaas
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setOpen(false); onEnviarWhatsApp(); }}
+                      className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#1d1d1f] hover:bg-[#34c759] hover:text-white rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" /> Enviar WhatsApp
+                    </button>
+                  </>
+                )}
                 <div className="h-[1px] bg-black/[0.05] my-1 mx-2" />
               </>
             )}
@@ -310,30 +316,37 @@ export default function FinanceFluxoCaixa() {
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [taxaJurosMensal, setTaxaJurosMensal] = useState<number>(2.2);
+  const [taxaMultaAtraso, setTaxaMultaAtraso] = useState<number>(2.0);
+  const [billingTypePadrao, setBillingTypePadrao] = useState<string>('PIX');
 
   const getDaysDiff = (dateStr: string) => {
     const due = new Date(dateStr + 'T12:00:00'); // avoid timezone shifts
     const today = new Date();
     today.setHours(12, 0, 0, 0);
     const diffTime = today.getTime() - due.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
   };
 
   const calculateTransactionInterest = (t: TransacaoFinanceira) => {
-    if (t.tipo !== 'receita') return { days: 0, interest: 0, total: Number(t.valor) };
+    const baseVal = Number(t.valor || 0);
+    if (t.tipo !== 'receita' || t.status === 'pago' || t.status === 'cancelado') {
+      return { days: 0, interest: 0, total: baseVal };
+    }
 
     const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
-    if (!isOverdue) return { days: 0, interest: 0, total: Number(t.valor) };
+    if (!isOverdue) return { days: 0, interest: 0, total: baseVal };
 
     const days = getDaysDiff(t.dataVencimento);
-    if (days <= 0) return { days: 0, interest: 0, total: Number(t.valor) };
+    if (days <= 0) return { days: 0, interest: 0, total: baseVal };
 
-    const ratePerDay = (taxaJurosMensal / 100) / 30;
-    const interest = Number(t.valor) * ratePerDay * days;
-    const total = Number(t.valor) + interest;
+    const fine = baseVal * (Math.max(0, taxaMultaAtraso) / 100);
+    const ratePerDay = (Math.max(0, taxaJurosMensal) / 100) / 30;
+    const interestOnly = baseVal * ratePerDay * days;
+    const totalFees = Number((fine + interestOnly).toFixed(2));
+    const total = Number((baseVal + totalFees).toFixed(2));
 
-    return { days, interest, total };
+    return { days, interest: totalFees, total };
   };
 
   const fetchTransacoes = async () => {
@@ -349,7 +362,11 @@ export default function FinanceFluxoCaixa() {
       if (resConfig.ok) {
         const d = await resConfig.json();
         if (d.success && d.configuracoes) {
-          setTaxaJurosMensal(parseFloat(d.configuracoes.taxaJurosMensal || '2.2'));
+          setTaxaJurosMensal(parseFloat(d.configuracoes.taxaJurosMensal ?? '2.2'));
+          setTaxaMultaAtraso(parseFloat(d.configuracoes.taxaMultaAtraso ?? '2.0'));
+          if (d.configuracoes.billingTypePadrao) {
+            setBillingTypePadrao(d.configuracoes.billingTypePadrao);
+          }
         }
       }
 
@@ -458,7 +475,7 @@ export default function FinanceFluxoCaixa() {
     }
   };
 
-  const handleGerarLink = async (t: any) => {
+  const handleGerarLink = async (t: any, customBillingType?: string) => {
     try {
       const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
       const res = await fetch(`/api/financeiro/transacoes/${t.id}/gerar-asaas`, {
@@ -467,12 +484,23 @@ export default function FinanceFluxoCaixa() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ billingType: 'PIX' }) // default to PIX
+        body: JSON.stringify({ billingType: customBillingType || billingTypePadrao || 'PIX' })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        alert("Link gerado com sucesso! URL Copiada.");
-        navigator.clipboard.writeText(data.asaasPaymentUrl);
+        if (data.asaasPaymentUrl) {
+          navigator.clipboard.writeText(data.asaasPaymentUrl).catch(() => {});
+        }
+        setViewingTransacao((prev: any) =>
+          prev && prev.id === t.id
+            ? { ...prev, asaasPaymentId: data.asaasPaymentId, asaasPaymentUrl: data.asaasPaymentUrl }
+            : prev
+        );
+        alert(
+          data.reused
+            ? `Cobrança Asaas existente reutilizada e copiada para a área de transferência!\nValor: R$ ${Number(data.finalValue || t.valor).toFixed(2)}`
+            : `Cobrança Asaas gerada com sucesso! Link copiado para a área de transferência.\nValor: R$ ${Number(data.finalValue || t.valor).toFixed(2)}`
+        );
         fetchTransacoes();
       } else {
         alert(data.message || "Erro ao gerar link Asaas.");
@@ -825,6 +853,7 @@ export default function FinanceFluxoCaixa() {
                         <td className="px-4 py-3 whitespace-nowrap text-right">
                           <RowActions
                             isPago={t.status === 'pago'}
+                            canGenerateAsaas={t.tipo === 'receita' && Boolean(t.clienteId)}
                             onEdit={() => handleEdit(t)}
                             onDelete={() => handleDelete(t)}
                             onBaixaManual={() => handleBaixaManual(t)}
@@ -891,6 +920,7 @@ export default function FinanceFluxoCaixa() {
         fornecedores={fornecedoresList}
         embarcacoes={embarcacoesList}
         taxaJurosMensal={taxaJurosMensal}
+        taxaMultaAtraso={taxaMultaAtraso}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onBaixaManual={handleBaixaManual}

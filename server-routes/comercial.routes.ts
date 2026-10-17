@@ -95,7 +95,7 @@ router.post("/preferences", requireAdminAuth, upload.fields([{ name: 'logo', max
 // ==========================================
 // Vendas Comerciais (Lançamento de Vendas)
 // ==========================================
-router.get("/vendas", requireAdminAuth, async (req, res) => {
+router.get(["/vendas", "/comercial/vendas"], requireAdminAuth, async (req, res) => {
   try {
     const vendas = await getAllVendas();
     res.json({ success: true, vendas });
@@ -105,7 +105,7 @@ router.get("/vendas", requireAdminAuth, async (req, res) => {
   }
 });
 
-router.post("/vendas", requireAdminAuth, async (req, res) => {
+router.post(["/vendas", "/comercial/vendas"], requireAdminAuth, async (req, res) => {
   try {
     const user = (req as any).user;
     const payload = {
@@ -128,7 +128,7 @@ router.post("/vendas", requireAdminAuth, async (req, res) => {
   }
 });
 
-router.delete("/vendas/:id", requireAdminAuth, async (req, res) => {
+router.delete(["/vendas/:id", "/comercial/vendas/:id"], requireAdminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await cancelarVenda(id);

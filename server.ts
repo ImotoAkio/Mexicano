@@ -227,6 +227,7 @@ app.use('/api/leads', publicLeadsRoutes);
 app.use("/api", whatsappRoutes);
 
 app.use("/api/db", dbRoutes);
+app.use("/api/comercial", comercialRoutes);
 app.use("/api", comercialRoutes);
 app.use("/api", boletosRoutes);
 app.use("/api", feedbacksRoutes);

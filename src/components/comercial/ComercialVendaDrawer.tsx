@@ -322,9 +322,13 @@ export default function ComercialVendaDrawer({
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      }
       if (!res.ok || data.error) {
-        throw new Error(data.message || 'Falha ao lançar a venda.');
+        throw new Error(data.message || `Falha ao lançar a venda (Status ${res.status}).`);
       }
 
       // Sincronizar o banco em memória para refletir imediatamente o vínculo Cliente <-> Embarcação e Contrato
@@ -447,7 +451,7 @@ export default function ComercialVendaDrawer({
                     <option value="">-- Selecione a Embarcação --</option>
                     {boats.map(b => (
                       <option key={b.id} value={b.id}>
-                        {formatBoatName(b)} ({b.donos?.length || 0}/{b.totalCotas || 4} cotas)
+                        {formatBoatName(b.nome)} ({b.donos?.length || 0}/{b.totalCotas || 4} cotas)
                       </option>
                     ))}
                   </select>
@@ -913,7 +917,7 @@ export default function ComercialVendaDrawer({
                       Vínculo imediato de{' '}
                       <strong className="text-white">{selectedClient?.nome || 'Cliente'}</strong> à embarcação{' '}
                       <strong className="text-white">
-                        {selectedBoat ? formatBoatName(selectedBoat) : 'Embarcação'} ({cota})
+                        {selectedBoat ? formatBoatName(selectedBoat.nome) : 'Embarcação'} ({cota})
                       </strong>
                     </span>
                   </li>

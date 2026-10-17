@@ -176,11 +176,14 @@ export default function FinanceLancamentoDrawer({
       return;
     }
 
+    const selectedPlano = planosContas.find((p: any) => p.id === planoContasId);
+    const resolvedCategoria = selectedPlano?.descricao || editingItem?.categoria || 'Geral';
+
     if (editingItem) {
       onSave([{
         ...editingItem,
         tipo, empresa, valor: rawValue, dataVencimento: vencimento,
-        categoria: "", planoContasId, centroCustoId, descricao,
+        categoria: resolvedCategoria, planoContasId, centroCustoId, descricao,
         clienteId: tipo === 'receita' ? clienteId : undefined,
         fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
         embarcacaoId, contaBancariaId,
@@ -192,7 +195,7 @@ export default function FinanceLancamentoDrawer({
         empresa,
         valor: p.valor,
         dataVencimento: p.dataVencimento,
-        categoria: "",
+        categoria: resolvedCategoria,
         planoContasId,
         centroCustoId,
         descricao: `${descricao} (${p.numero}/${qtdParcelas})`,
@@ -216,7 +219,7 @@ export default function FinanceLancamentoDrawer({
          lancamentos.push({
             tipo, empresa, valor: rawValue,
             dataVencimento: pDate.toISOString().split('T')[0],
-            categoria: "", planoContasId, centroCustoId,
+            categoria: resolvedCategoria, planoContasId, centroCustoId,
             descricao: `${descricao} (${i + 1}/${qtdRecorrencias})`,
             clienteId: tipo === 'receita' ? clienteId : undefined,
             fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
@@ -231,7 +234,7 @@ export default function FinanceLancamentoDrawer({
     } else {
       onSave([{
         tipo, empresa, valor: rawValue, dataVencimento: vencimento,
-        categoria: "", planoContasId, centroCustoId, descricao, clienteId: tipo === 'receita' ? clienteId : undefined,
+        categoria: resolvedCategoria, planoContasId, centroCustoId, descricao, clienteId: tipo === 'receita' ? clienteId : undefined,
         fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
         embarcacaoId, contaBancariaId,
         status: 'lancado' as const

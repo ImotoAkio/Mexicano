@@ -42,6 +42,7 @@ export default function FinanceLancamentos() {
   const [centrosCusto, setCentrosCusto] = useState<any[]>([]);
   const [fornecedores, setFornecedores] = useState<any[]>([]);
   const [taxaJurosMensal, setTaxaJurosMensal] = useState<number>(2.2);
+  const [taxaMultaAtraso, setTaxaMultaAtraso] = useState<number>(2.0);
       
   // Tabs state: 'dashboard' | 'lancamentos' | 'atividades' | 'agenda' | 'cobranca' | 'configuracoes'
   
@@ -111,25 +112,30 @@ export default function FinanceLancamentos() {
     const today = new Date();
     today.setHours(12, 0, 0, 0);
     const diffTime = today.getTime() - due.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 0 ? diffDays : 0;
   };
 
   const calculateTransactionInterest = (t: TransacaoFinanceira) => {
-    if (t.tipo !== 'receita') return { days: 0, interest: 0, total: Number(t.valor) };
+    const baseVal = Number(t.valor || 0);
+    if (t.tipo !== 'receita' || t.status === 'pago' || t.status === 'cancelado') {
+      return { days: 0, interest: 0, total: baseVal };
+    }
     
     const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
     
-    if (!isOverdue) return { days: 0, interest: 0, total: Number(t.valor) };
+    if (!isOverdue) return { days: 0, interest: 0, total: baseVal };
 
     const days = getDaysDiff(t.dataVencimento);
-    if (days <= 0) return { days: 0, interest: 0, total: Number(t.valor) };
+    if (days <= 0) return { days: 0, interest: 0, total: baseVal };
 
-    const ratePerDay = (taxaJurosMensal / 100) / 30;
-    const interest = Number(t.valor) * ratePerDay * days;
-    const total = Number(t.valor) + interest;
+    const fine = baseVal * (Math.max(0, taxaMultaAtraso) / 100);
+    const ratePerDay = (Math.max(0, taxaJurosMensal) / 100) / 30;
+    const interestOnly = baseVal * ratePerDay * days;
+    const totalFees = Number((fine + interestOnly).toFixed(2));
+    const total = Number((baseVal + totalFees).toFixed(2));
 
-    return { days, interest, total };
+    return { days, interest: totalFees, total };
   };
 
   const generateDueDateForMonth = (startMonthStr: string, dueDay: number, monthOffset: number) => {
@@ -172,7 +178,8 @@ export default function FinanceLancamentos() {
         if (resConfig.ok) {
            const d = await resConfig.json();
            if (d.success && d.configuracoes) {
-               setTaxaJurosMensal(parseFloat(d.configuracoes.taxaJurosMensal || '2.2'));
+               setTaxaJurosMensal(parseFloat(d.configuracoes.taxaJurosMensal ?? '2.2'));
+               setTaxaMultaAtraso(parseFloat(d.configuracoes.taxaMultaAtraso ?? '2.0'));
            }
         }
       } catch (err) { console.error('Erro ao buscar dados complementares no financeiro:', err); }

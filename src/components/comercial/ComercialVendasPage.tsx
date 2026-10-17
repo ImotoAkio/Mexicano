@@ -62,11 +62,14 @@ export default function ComercialVendasPage() {
         credentials: 'include',
         headers: getAuthHeader()
       });
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
         if (Array.isArray(data.vendas)) {
           setVendas(data.vendas);
         }
+      } else if (!res.ok) {
+        console.warn('Resposta não OK do endpoint de vendas:', res.status);
       }
     } catch (err) {
       console.error('Erro ao buscar vendas:', err);
@@ -103,9 +106,13 @@ export default function ComercialVendasPage() {
         credentials: 'include',
         headers: getAuthHeader()
       });
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      }
       if (!res.ok || data.error) {
-        alert(data.message || 'Erro ao cancelar venda');
+        alert(data.message || `Erro ao cancelar venda (Status ${res.status})`);
         return;
       }
       fetchVendas(true);
