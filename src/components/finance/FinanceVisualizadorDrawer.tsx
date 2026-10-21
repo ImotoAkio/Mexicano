@@ -45,7 +45,7 @@ export default function FinanceVisualizadorDrawer({
   if (!transacao) return null;
 
   const getDaysDiff = (dateStr: string) => {
-    const due = new Date(dateStr + 'T12:00:00'); // avoid timezone shifts
+    const due = new Date(dateStr + 'T12:00:00');
     const today = new Date();
     today.setHours(12, 0, 0, 0);
     const diffTime = today.getTime() - due.getTime();
@@ -71,22 +71,22 @@ export default function FinanceVisualizadorDrawer({
   }
 
   let statusLabel = 'Pendente';
-  let statusColor = 'bg-[#f0f0f5] text-[#86868b]';
+  let statusColor = 'bg-stone-100 text-stone-600 border border-stone-200';
 
   if (transacao.status === 'pago') {
     statusLabel = transacao.asaasPaymentId ? 'Pago Auto' : 'Pago Manual';
-    statusColor = 'bg-[#e5fcf4] text-[#008f5d]';
+    statusColor = 'bg-emerald-50 text-emerald-700 border border-emerald-200/70';
   } else if (isOverdue) {
     statusLabel = 'Vencido';
-    statusColor = 'bg-[#fef0f0] text-[#e30000]';
+    statusColor = 'bg-rose-50 text-rose-700 border border-rose-200/70';
   } else if (transacao.tipo === 'despesa') {
     statusLabel = 'A Pagar';
-    statusColor = 'bg-[#fff5e5] text-[#bf4800]';
+    statusColor = 'bg-amber-50 text-amber-700 border border-amber-200/70';
   }
 
   const handleAction = (actionFn: (t: any) => void) => {
     onClose();
-    setTimeout(() => actionFn(transacao), 150); // wait for animation
+    setTimeout(() => actionFn(transacao), 150);
   };
 
   return (
@@ -98,129 +98,129 @@ export default function FinanceVisualizadorDrawer({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999]"
+            className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs z-[9999]"
           />
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-0 right-0 h-full w-full md:w-[500px] bg-[#f5f5f7] z-[10000] shadow-2xl flex flex-col"
+            className="fixed top-0 right-0 h-full w-full md:w-[480px] bg-white z-[10000] shadow-2xl flex flex-col border-l border-stone-200"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 bg-white border-b border-black/[0.04]">
+            <div className="flex items-center justify-between px-6 py-4.5 bg-stone-50/70 border-b border-stone-200/70 shrink-0">
               <div>
-                <h2 className="text-[17px] font-semibold text-[#1d1d1f] tracking-tight">Detalhes do Registro</h2>
-                <p className="text-[13px] text-[#86868b]">Id: {transacao.id}</p>
+                <h2 className="text-base font-bold text-stone-900">Detalhes do Registro</h2>
+                <p className="text-xs text-stone-500 font-mono">ID: {transacao.id}</p>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 bg-[#f5f5f7] rounded-full text-[#86868b] hover:text-[#1d1d1f] hover:bg-[#e5e5ea] transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Scrollable Body */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-12">
+            <div className="flex-1 overflow-y-auto subtle-scrollbar p-6 space-y-5 pb-10">
 
               {/* Highlight Card */}
-              <div className="bg-white rounded-2xl p-6 border border-black/[0.04] shadow-sm flex flex-col items-center justify-center text-center">
-                <div className={`text-[13px] font-semibold uppercase tracking-wider mb-2 ${transacao.tipo === 'receita' ? 'text-[#008f5d]' : 'text-[#e30000]'}`}>
+              <div className="bg-stone-50/70 rounded-2xl p-6 border border-stone-200/80 shadow-xs flex flex-col items-center justify-center text-center">
+                <div className={`text-xs font-bold uppercase tracking-wider mb-1.5 ${transacao.tipo === 'receita' ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {transacao.tipo === 'receita' ? 'Receita' : 'Despesa'}
                 </div>
-                <div className={`text-[36px] font-semibold tracking-tight mb-1 ${transacao.tipo === 'receita' ? 'text-[#008f5d]' : 'text-[#1d1d1f]'}`}>
+                <div className={`text-3xl font-bold tracking-tight mb-1 tabular-nums ${transacao.tipo === 'receita' ? 'text-emerald-600' : 'text-stone-900'}`}>
                    R$ {totalWithInterest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
                 </div>
                 {interest > 0 && (
-                  <div className="text-[13px] font-medium text-[#e30000] mb-3 bg-[#fef0f0] px-2 py-0.5 rounded flex items-center justify-center gap-1">
-                    <AlertTriangle className="w-3 h-3" />
+                  <div className="text-xs font-semibold text-rose-700 mb-2.5 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 flex items-center justify-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
                     Inclui multa e juros de R$ {interest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
                   </div>
                 )}
-                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold ${statusColor} ${interest === 0 ? 'mt-2' : ''}`}>
+                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${statusColor} ${interest === 0 ? 'mt-1' : ''}`}>
                   {statusLabel}
                 </div>
               </div>
 
               {/* Data List */}
-              <div className="bg-white rounded-2xl border border-black/[0.04] shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                  <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><FileText className="w-4 h-4"/> Descrição</span>
-                  <span className="text-[15px] font-semibold text-[#1d1d1f] text-right">{transacao.descricao}</span>
+              <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden divide-y divide-stone-100">
+                <div className="px-4 py-3 flex items-center justify-between text-xs">
+                  <span className="font-medium text-stone-500 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-stone-400"/> Descrição</span>
+                  <span className="font-bold text-stone-900 text-right truncate max-w-[60%]">{transacao.descricao}</span>
                 </div>
-                <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                  <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><Calendar className="w-4 h-4"/> Vencimento</span>
-                  <span className="text-[15px] font-semibold text-[#1d1d1f] text-right">{new Date(transacao.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                <div className="px-4 py-3 flex items-center justify-between text-xs">
+                  <span className="font-medium text-stone-500 flex items-center gap-2"><Calendar className="w-3.5 h-3.5 text-stone-400"/> Vencimento</span>
+                  <span className="font-bold text-stone-900 text-right">{new Date(transacao.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
                 </div>
                 {transacao.dataPagamento && (
-                  <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><Check className="w-4 h-4"/> Pagamento</span>
-                    <span className="text-[15px] font-semibold text-[#1d1d1f] text-right">{new Date(transacao.dataPagamento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                  <div className="px-4 py-3 flex items-center justify-between text-xs">
+                    <span className="font-medium text-stone-500 flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600"/> Pagamento</span>
+                    <span className="font-bold text-emerald-700 text-right">{new Date(transacao.dataPagamento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
                   </div>
                 )}
-                <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                  <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><MapPin className="w-4 h-4"/> Empresa</span>
-                  <span className="text-[15px] font-semibold text-[#1d1d1f] text-right">{transacao.empresa}</span>
+                <div className="px-4 py-3 flex items-center justify-between text-xs">
+                  <span className="font-medium text-stone-500 flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-stone-400"/> Empresa</span>
+                  <span className="font-bold text-stone-900 text-right">{transacao.empresa}</span>
                 </div>
-                <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                  <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><Hash className="w-4 h-4"/> Plano de Contas</span>
-                  <span className="text-[15px] font-semibold text-[#1d1d1f] text-right max-w-[60%] truncate" title={mapPlanos[transacao.planoContasId] || transacao.categoria}>{mapPlanos[transacao.planoContasId] || transacao.categoria || 'Não definido'}</span>
+                <div className="px-4 py-3 flex items-center justify-between text-xs">
+                  <span className="font-medium text-stone-500 flex items-center gap-2"><Hash className="w-3.5 h-3.5 text-stone-400"/> Plano de Contas</span>
+                  <span className="font-bold text-stone-900 text-right max-w-[60%] truncate" title={mapPlanos[transacao.planoContasId] || transacao.categoria}>{mapPlanos[transacao.planoContasId] || transacao.categoria || 'Não definido'}</span>
                 </div>
                 {transacao.centroCustoId && (
-                   <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                     <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><Hash className="w-4 h-4"/> Centro de Custo</span>
-                     <span className="text-[15px] font-semibold text-[#1d1d1f] text-right">{mapCentros[transacao.centroCustoId] || 'Não definido'}</span>
+                   <div className="px-4 py-3 flex items-center justify-between text-xs">
+                     <span className="font-medium text-stone-500 flex items-center gap-2"><Hash className="w-3.5 h-3.5 text-stone-400"/> Centro de Custo</span>
+                     <span className="font-bold text-stone-900 text-right">{mapCentros[transacao.centroCustoId] || 'Não definido'}</span>
                    </div>
                 )}
                 {transacao.clienteId && (
-                  <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><User className="w-4 h-4"/> Cliente</span>
-                    <span className="text-[15px] font-semibold text-[#1d1d1f] text-right truncate max-w-[60%]">
+                  <div className="px-4 py-3 flex items-center justify-between text-xs">
+                    <span className="font-medium text-stone-500 flex items-center gap-2"><User className="w-3.5 h-3.5 text-stone-400"/> Cliente</span>
+                    <span className="font-bold text-stone-900 text-right truncate max-w-[60%]">
                       {clientes?.find(c => c.id === transacao.clienteId)?.nome || transacao.clienteId}
                     </span>
                   </div>
                 )}
                 {transacao.fornecedorId && (
-                  <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><Briefcase className="w-4 h-4"/> Fornecedor</span>
-                    <span className="text-[15px] font-semibold text-[#1d1d1f] text-right truncate max-w-[60%]">
+                  <div className="px-4 py-3 flex items-center justify-between text-xs">
+                    <span className="font-medium text-stone-500 flex items-center gap-2"><Briefcase className="w-3.5 h-3.5 text-stone-400"/> Fornecedor</span>
+                    <span className="font-bold text-stone-900 text-right truncate max-w-[60%]">
                       {fornecedores?.find(f => f.id === transacao.fornecedorId)?.nomeFantasia || fornecedores?.find(f => f.id === transacao.fornecedorId)?.razaoSocial || transacao.fornecedorId}
                     </span>
                   </div>
                 )}
                 {transacao.embarcacaoId && (
-                  <div className="px-5 py-4 border-b border-black/[0.04] flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><Anchor className="w-4 h-4"/> Embarcação</span>
-                    <span className="text-[15px] font-semibold text-[#1d1d1f] text-right truncate max-w-[60%]">
+                  <div className="px-4 py-3 flex items-center justify-between text-xs">
+                    <span className="font-medium text-stone-500 flex items-center gap-2"><Anchor className="w-3.5 h-3.5 text-stone-400"/> Embarcação</span>
+                    <span className="font-bold text-stone-900 text-right truncate max-w-[60%]">
                       {embarcacoes?.find(e => e.id === transacao.embarcacaoId)?.nome || transacao.embarcacaoId}
                     </span>
                   </div>
                 )}
                 {transacao.asaasPaymentUrl && (
-                  <div className="px-5 py-4 border-b border-black/[0.04] flex flex-col gap-2">
-                    <span className="text-[13px] font-medium text-[#86868b] flex items-center gap-2"><Link className="w-4 h-4"/> Link de Pagamento (Asaas)</span>
-                    <a href={transacao.asaasPaymentUrl} target="_blank" rel="noopener noreferrer" className="text-[14px] text-[#0071e3] hover:underline truncate">
+                  <div className="px-4 py-3 flex flex-col gap-1.5 text-xs">
+                    <span className="font-medium text-stone-500 flex items-center gap-2"><Link className="w-3.5 h-3.5 text-sky-600"/> Link de Pagamento (Asaas)</span>
+                    <a href={transacao.asaasPaymentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-600 hover:underline font-mono truncate">
                       {transacao.asaasPaymentUrl}
                     </a>
                   </div>
                 )}
-                <div className="px-5 py-4 border-t border-black/[0.04] flex flex-col gap-1 bg-[#f5f5f7]/50">
-                  <span className="text-[11px] font-medium text-[#86868b] uppercase tracking-wider mb-1">Metadados</span>
-                  <span className="text-[13px] text-[#86868b]">Criado em: {new Date(transacao.createdAt).toLocaleString('pt-BR')}</span>
+                <div className="px-4 py-2.5 bg-stone-50 flex items-center justify-between text-[11px] text-stone-400">
+                  <span className="uppercase tracking-wider font-semibold">Registro</span>
+                  <span>{transacao.createdAt ? new Date(transacao.createdAt).toLocaleString('pt-BR') : 'Data não informada'}</span>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="space-y-3 pt-2">
-                <h3 className="text-[13px] font-semibold text-[#86868b] uppercase tracking-wider px-2">Ações Disponíveis</h3>
+              <div className="space-y-2.5 pt-2">
+                <h3 className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider px-1">Ações Disponíveis</h3>
 
                 {transacao.status !== 'pago' && (
                   <button
                     onClick={() => handleAction(onBaixaManual)}
-                    className="w-full bg-[#008f5d] hover:bg-[#007a4f] text-white py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-[15px] font-medium transition-colors cursor-pointer shadow-sm"
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-98"
                   >
-                    <Check className="w-5 h-5" />
+                    <Check className="w-4 h-4" />
                     Realizar Baixa Manual
                   </button>
                 )}
@@ -228,34 +228,34 @@ export default function FinanceVisualizadorDrawer({
                 {transacao.tipo === 'receita' && transacao.status !== 'pago' && Boolean(transacao.clienteId) && (
                   <button
                     onClick={() => handleAction(onGerarLink)}
-                    className="w-full bg-white hover:bg-[#f5f5f7] text-[#0071e3] border border-[#d2d2d7] py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-[15px] font-medium transition-colors cursor-pointer shadow-sm"
+                    className="w-full bg-white hover:bg-stone-50 text-sky-600 border border-stone-200 py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-98"
                   >
-                    <Link className="w-5 h-5" />
+                    <Link className="w-4 h-4" />
                     {transacao.asaasPaymentUrl ? 'Copiar / Atualizar Cobrança (Asaas)' : 'Gerar Cobrança (Asaas)'}
                   </button>
                 )}
 
                 <button
                   onClick={() => handleAction(onEnviarWhatsApp)}
-                  className="w-full bg-[#25D366] hover:bg-[#1DA851] text-white py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-[15px] font-medium transition-colors cursor-pointer shadow-sm"
+                  className="w-full bg-[#25D366] hover:bg-[#1DA851] text-white py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-98"
                 >
-                  <Send className="w-5 h-5" />
+                  <Send className="w-4 h-4" />
                   Compartilhar via WhatsApp
                 </button>
 
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-black/[0.04]">
+                <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-stone-200">
                   <button
                     onClick={() => handleAction(onEdit)}
-                    className="bg-white hover:bg-[#f5f5f7] border border-[#d2d2d7] text-[#1d1d1f] py-3 rounded-xl flex items-center justify-center gap-2 text-[14px] font-medium transition-colors cursor-pointer shadow-sm mt-3"
+                    className="bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer shadow-xs"
                   >
-                    <Edit2 className="w-4 h-4" />
+                    <Edit2 className="w-3.5 h-3.5 text-stone-400" />
                     Editar
                   </button>
                   <button
                     onClick={() => handleAction(onDelete)}
-                    className="bg-white hover:bg-[#fef0f0] border border-[#fef0f0] text-[#e30000] py-3 rounded-xl flex items-center justify-center gap-2 text-[14px] font-medium transition-colors cursor-pointer shadow-sm mt-3"
+                    className="bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer shadow-xs"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                     Excluir
                   </button>
                 </div>

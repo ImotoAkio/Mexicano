@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAdminAuth, requireAnyAuth } from "./middlewares";
 import {
+  getDbPool,
   getDbStatus,
   pullDatabase,
   deleteClient, upsertClient,
@@ -61,10 +62,49 @@ router.post("/save", requireAdminAuth, async (req, res) => {
         await upsertClient(data);
       }
     } else if (type === "boats") {
+      const user = (req as any).user;
+      const userRole = (user?.role || "").toLowerCase().trim();
+
+      if (userRole === "marina_gerente") {
+        if (action === "delete") {
+          const boatId = data.id || data;
+          const currentPool = getDbPool();
+          if (currentPool) {
+            const [empRows] = await currentPool.query("SELECT empresa FROM EmbarcacaoEmpresas WHERE embarcacaoId = ?", [boatId]);
+            const empList = (empRows as any[]).map(r => r.empresa);
+            const isVale = empList.includes("VALE") || empList.length === 0;
+            if (isVale) {
+              return res.status(403).json({ error: true, message: "Acesso negado: O Gerente da Marina não tem permissão para excluir embarcações vinculadas à Vale Náutica." });
+            }
+          }
+        } else {
+          // Upsert
+          const empresas = Array.isArray(data.empresas) ? data.empresas : [];
+          if (empresas.includes("VALE")) {
+            return res.status(403).json({ error: true, message: "Acesso negado: O Gerente da Marina não tem permissão para vincular embarcações à Vale Náutica." });
+          }
+          if (data.id) {
+            const currentPool = getDbPool();
+            if (currentPool) {
+              const [empRows] = await currentPool.query("SELECT empresa FROM EmbarcacaoEmpresas WHERE embarcacaoId = ?", [data.id]);
+              const empList = (empRows as any[]).map(r => r.empresa);
+              if (empList.includes("VALE") || (empList.length === 0 && !data.id.startsWith("boat_"))) {
+                return res.status(403).json({ error: true, message: "Acesso negado: O Gerente da Marina não tem permissão para editar embarcações vinculadas à Vale Náutica." });
+              }
+            }
+          }
+          if (!empresas.includes("MARINA")) {
+            data.empresas = [...empresas, "MARINA"];
+          }
+        }
+      }
+
       if (action === "delete") {
         await deleteBoat(data.id || data);
+        io.emit("marina_update", { action: 'delete', boat: data });
       } else {
         await upsertBoat(data);
+        io.emit("marina_update", { action: 'upsert', boat: data });
       }
     } else if (type === "reservations") {
       if (action === "delete") {

@@ -2276,6 +2276,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               boats={data?.boats}
               clients={data?.clients}
               onReload={fetchData}
+              userRole="marina_gerente"
+              operadorNome={operadorNome}
             />
           </div>
         )}

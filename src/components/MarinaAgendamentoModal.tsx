@@ -126,19 +126,26 @@ export default function MarinaAgendamentoModal({
     }
   };
 
-  // Filter boats: prioritize MARINA boats or boats with vaga
+  const isBoatMarina = (b: Embarcacao) => {
+    const bEmpresas = b.empresas || ['VALE'];
+    if (bEmpresas.includes('MARINA')) return true;
+    return clients.some(c => 
+      (c.embarcacaoId === b.id || (Array.isArray(c.embarcacoes) && c.embarcacoes.some(eb => eb.embarcacaoId === b.id)) || (Array.isArray(b.donos) && b.donos.includes(c.id))) &&
+      (c.empresas || ['VALE']).includes('MARINA')
+    );
+  };
+
+  // Filter boats: only MARINA boats or boats linked to MARINA clients
   const filteredBoats = useMemo(() => {
     const term = boatSearch.toLowerCase().trim();
     return boats.filter(b => {
+      // Exibir apenas embarcações vinculadas à Marina (diretamente ou via cliente)
+      if (!isBoatMarina(b)) return false;
+
       const matchTerm = !term || b.nome.toLowerCase().includes(term) || (b.vaga && b.vaga.toLowerCase().includes(term)) || (b.modelo && b.modelo.toLowerCase().includes(term));
       return matchTerm;
-    }).sort((a, b) => {
-      const aIsMarina = a.empresas?.includes('MARINA') ? 1 : 0;
-      const bIsMarina = b.empresas?.includes('MARINA') ? 1 : 0;
-      if (aIsMarina !== bIsMarina) return bIsMarina - aIsMarina;
-      return a.nome.localeCompare(b.nome);
-    });
-  }, [boats, boatSearch]);
+    }).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [boats, clients, boatSearch]);
 
   const selectedBoat = boats.find(b => b.id === selectedBoatId);
 
@@ -366,7 +373,7 @@ export default function MarinaAgendamentoModal({
                           </button>
                         ))
                       ) : (
-                        <p className="p-3 text-center text-xs text-slate-400">Nenhuma embarcação encontrada.</p>
+                        <p className="p-3 text-center text-xs text-slate-400">Nenhuma embarcação vinculada à Marina encontrada.</p>
                       )}
                     </div>
                   </div>

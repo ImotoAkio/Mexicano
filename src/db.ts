@@ -1,4 +1,5 @@
 import { Cliente, Embarcacao, Reserva, Manutencao, Chamado, TipoManutencao, Funcionario, Folga, Mecanico, EpiEntrega, CatalogoEpi, HistoricoEPIMensal, RegistroHoras, RegistroAcessorios, Fornecedor } from './types';
+import { normalizeCotaCode, getFirstAvailableCota, normalizeClientsCotasInPlace, DEFAULT_TOTAL_COTAS } from './utils/cotaUtils';
 
 // In-Memory Database Arrays (No LocalStorage)
 let memoryClients: Cliente[] = [];
@@ -91,18 +92,30 @@ export const clientDB = {
     return memoryClients.find(c => c.id === id);
   },
   create: (cliente: (Omit<Cliente, 'id' | 'dataCadastro'> & { id?: string; dataCadastro?: string }) | Cliente): Cliente => {
+    const normalizedEmbarcacoes = Array.isArray(cliente.embarcacoes) && cliente.embarcacoes.length > 0
+      ? cliente.embarcacoes.map((eb, idx) => ({
+          ...eb,
+          cota: normalizeCotaCode(eb.cota, idx + 1)
+        }))
+      : cliente.embarcacaoId
+      ? [{ embarcacaoId: cliente.embarcacaoId, cota: normalizeCotaCode(cliente.cota, 1) }]
+      : [];
+
     const newClient: Cliente = {
       status: 'ativo',
       ...cliente,
+      embarcacoes: normalizedEmbarcacoes,
+      embarcacaoId: normalizedEmbarcacoes[0]?.embarcacaoId || cliente.embarcacaoId || '',
+      cota: normalizedEmbarcacoes[0]?.cota || (cliente.cota ? normalizeCotaCode(cliente.cota, 1) : ''),
       id: (cliente as any).id || `cli_${Date.now()}`,
       dataCadastro: (cliente as any).dataCadastro || new Date().toISOString()
     };
     memoryClients.push(newClient);
 
     // Also link the owner to the boats
-    const targetBoatsList = cliente.embarcacoes && cliente.embarcacoes.length > 0
-      ? cliente.embarcacoes.map(eb => eb.embarcacaoId)
-      : [cliente.embarcacaoId];
+    const targetBoatsList = newClient.embarcacoes && newClient.embarcacoes.length > 0
+      ? Array.from(new Set(newClient.embarcacoes.map(eb => eb.embarcacaoId).filter(Boolean)))
+      : (newClient.embarcacaoId ? [newClient.embarcacaoId] : []);
 
     let boatsChanged = false;
     memoryBoats.forEach(b => {
@@ -135,15 +148,27 @@ export const clientDB = {
     
     const oldClient = memoryClients[idx];
     const oldBoatsList = oldClient.embarcacoes && oldClient.embarcacoes.length > 0
-      ? oldClient.embarcacoes.map(eb => eb.embarcacaoId)
-      : [oldClient.embarcacaoId];
+      ? Array.from(new Set(oldClient.embarcacoes.map(eb => eb.embarcacaoId).filter(Boolean)))
+      : [oldClient.embarcacaoId].filter(Boolean);
 
-    const updatedClient = { ...oldClient, ...updatedFields };
+    const merged = { ...oldClient, ...updatedFields };
+    if (Array.isArray(merged.embarcacoes) && merged.embarcacoes.length > 0) {
+      merged.embarcacoes = merged.embarcacoes.map((eb, i) => ({
+        ...eb,
+        cota: normalizeCotaCode(eb.cota, i + 1)
+      }));
+      merged.embarcacaoId = merged.embarcacoes[0].embarcacaoId;
+      merged.cota = merged.embarcacoes[0].cota;
+    } else if (merged.embarcacaoId) {
+      merged.cota = normalizeCotaCode(merged.cota, 1);
+    }
+
+    const updatedClient = merged;
     memoryClients[idx] = updatedClient;
 
     // Update boat ownerships
     const newBoatsList = updatedClient.embarcacoes && updatedClient.embarcacoes.length > 0
-      ? updatedClient.embarcacoes.map(eb => eb.embarcacaoId)
+      ? Array.from(new Set(updatedClient.embarcacoes.map(eb => eb.embarcacaoId).filter(Boolean)))
       : [updatedClient.embarcacaoId].filter(id => id);
 
     // Clean up from old boats if they are not in the new list, and add to new ones
@@ -226,6 +251,7 @@ export const boatDB = {
     return memoryBoats.map(b => {
       return {
         ...b,
+        totalCotas: b.totalCotas && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : DEFAULT_TOTAL_COTAS
       };
     });
   },
@@ -235,6 +261,7 @@ export const boatDB = {
   create: (boat: (Omit<Embarcacao, 'id'> & { id?: string }) | Embarcacao): Embarcacao => {
     const newBoat: Embarcacao = {
       ...boat,
+      totalCotas: boat.totalCotas && Number(boat.totalCotas) > 0 ? Number(boat.totalCotas) : DEFAULT_TOTAL_COTAS,
       id: (boat as any).id || `boat_${Date.now()}`
     };
     memoryBoats.push(newBoat);
@@ -249,7 +276,12 @@ export const boatDB = {
             c.embarcacoes = [];
           }
           if (!c.embarcacoes.some(eb => eb.embarcacaoId === newBoat.id)) {
-            c.embarcacoes.push({ embarcacaoId: newBoat.id, cota: '1/4' }); // default cota
+            const nextCota = getFirstAvailableCota(newBoat.id, memoryClients, newBoat);
+            c.embarcacoes.push({ embarcacaoId: newBoat.id, cota: nextCota });
+            if (!c.embarcacaoId) {
+              c.embarcacaoId = newBoat.id;
+              c.cota = nextCota;
+            }
             clientsChanged = true;
           }
         }
@@ -271,27 +303,52 @@ export const boatDB = {
     const idx = memoryBoats.findIndex(b => b.id === id);
     if (idx === -1) throw new Error('Embarcação não encontrada.');
     const oldBoat = memoryBoats[idx];
-    const updatedBoat = { ...oldBoat, ...updatedFields };
+    const updatedBoat = {
+      ...oldBoat,
+      ...updatedFields,
+      totalCotas:
+        updatedFields.totalCotas && Number(updatedFields.totalCotas) > 0
+          ? Number(updatedFields.totalCotas)
+          : oldBoat.totalCotas && Number(oldBoat.totalCotas) > 0
+          ? Number(oldBoat.totalCotas)
+          : DEFAULT_TOTAL_COTAS
+    };
     memoryBoats[idx] = updatedBoat;
 
     // Sync client records of their ownerships
     const modifiedClientIds = new Set<string>();
-    if (updatedFields.donos) {
-      const newDonos = updatedFields.donos;
+    if (updatedFields.donos !== undefined) {
+      const newDonos = Array.isArray(updatedFields.donos) ? updatedFields.donos : [];
 
       memoryClients.forEach(c => {
-        if (!c.embarcacoes) {
-          c.embarcacoes = [{ embarcacaoId: c.embarcacaoId, cota: c.cota }];
+        let currentEmbarcacoes = Array.isArray(c.embarcacoes) ? [...c.embarcacoes] : [];
+        if (c.embarcacaoId && !currentEmbarcacoes.some(eb => eb.embarcacaoId === c.embarcacaoId)) {
+          currentEmbarcacoes.push({ embarcacaoId: c.embarcacaoId, cota: normalizeCotaCode(c.cota, 1) });
         }
 
-        const ownsThisBoat = c.embarcacoes.some(eb => eb.embarcacaoId === id);
+        const ownsThisBoat = currentEmbarcacoes.some(eb => eb.embarcacaoId === id) || c.embarcacaoId === id;
         const shouldOwnThisBoat = newDonos.includes(c.id);
 
         if (!ownsThisBoat && shouldOwnThisBoat) {
-          c.embarcacoes.push({ embarcacaoId: id, cota: '1/4' }); // default cota
+          const nextCota = getFirstAvailableCota(id, memoryClients, updatedBoat);
+          currentEmbarcacoes.push({ embarcacaoId: id, cota: nextCota });
+          c.embarcacoes = currentEmbarcacoes;
+          if (!c.embarcacaoId) {
+            c.embarcacaoId = id;
+            c.cota = nextCota;
+          }
           modifiedClientIds.add(c.id);
         } else if (ownsThisBoat && !shouldOwnThisBoat) {
-          c.embarcacoes = c.embarcacoes.filter(eb => eb.embarcacaoId !== id);
+          c.embarcacoes = currentEmbarcacoes.filter(eb => eb.embarcacaoId !== id);
+          if (c.embarcacaoId === id) {
+            if (c.embarcacoes.length > 0) {
+              c.embarcacaoId = c.embarcacoes[0].embarcacaoId;
+              c.cota = c.embarcacoes[0].cota;
+            } else {
+              c.embarcacaoId = '';
+              c.cota = '';
+            }
+          }
           modifiedClientIds.add(c.id);
         }
       });
@@ -464,6 +521,8 @@ export const boatDB = {
         saveToRemoteDB('reservations', 'delete', { id: r.id });
       });
     }
+
+    notifyDbUpdate('boat_deleted');
   }
 };
 
@@ -1051,8 +1110,12 @@ export async function loadFromRemote(forceRefresh = false) {
       }
       const remoteData = await pullRes.json();
 
+      memoryBoats = (remoteData.boats || []).map((b: any) => ({
+        ...b,
+        totalCotas: b.totalCotas && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : DEFAULT_TOTAL_COTAS
+      }));
       memoryClients = remoteData.clients || [];
-      memoryBoats = remoteData.boats || [];
+      normalizeClientsCotasInPlace(memoryClients, memoryBoats);
       memoryReservations = remoteData.reservations || [];
       memoryManutencoes = remoteData.manutencoes || [];
       memoryMecanicos = remoteData.mecanicos || [];

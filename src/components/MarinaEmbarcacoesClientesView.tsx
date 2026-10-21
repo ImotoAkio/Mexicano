@@ -4,7 +4,7 @@ import {
   Clock, Wrench, CheckCircle2, AlertTriangle, Eye, X, ChevronRight,
   Shield, Layers, Sparkles, RefreshCw, Building2, User, Key,
   Check, ArrowUpDown, LayoutGrid, List, MapPin, Mail, Hash,
-  Compass, AlertCircle, FileText, Package
+  Compass, AlertCircle, FileText, Package, Plus, Edit2, Lock, ShieldCheck
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { Embarcacao, Cliente } from '../types';
@@ -12,6 +12,7 @@ import { boatDB, clientDB } from '../db';
 import { getBoatCode } from '../utils/boatUtils';
 import { formatBoatName } from '../utils/constants';
 import ClientProfileModal from './ClientProfileModal';
+import BoatModal from './BoatModal';
 
 import defaultJetImg from '../assets/images/jet.webp';
 import defaultLanchaImg from '../assets/images/lancha.webp';
@@ -20,6 +21,8 @@ interface MarinaEmbarcacoesClientesViewProps {
   boats?: Embarcacao[];
   clients?: Cliente[];
   onReload?: () => void;
+  userRole?: string;
+  operadorNome?: string;
 }
 
 type ViewMode = 'embarcacoes' | 'clientes';
@@ -27,12 +30,18 @@ type ViewMode = 'embarcacoes' | 'clientes';
 export default function MarinaEmbarcacoesClientesView({
   boats: propBoats,
   clients: propClients,
-  onReload
+  onReload,
+  userRole = 'marina_gerente',
+  operadorNome
 }: MarinaEmbarcacoesClientesViewProps) {
   // Dados locais sincronizados
   const [boats, setBoats] = useState<Embarcacao[]>(() => propBoats || boatDB.getAll() || []);
   const [clients, setClients] = useState<Cliente[]>(() => propClients || clientDB.getAll() || []);
   const [loading, setLoading] = useState(false);
+
+  // Modal de Criação / Edição de Embarcação (Marina)
+  const [isBoatModalOpen, setIsBoatModalOpen] = useState(false);
+  const [editingBoat, setEditingBoat] = useState<Embarcacao | null>(null);
 
   // Filtros e Visualização
   const [viewMode, setViewMode] = useState<ViewMode>('embarcacoes');
@@ -313,18 +322,97 @@ export default function MarinaEmbarcacoesClientesView({
     return `https://wa.me/${withCountry}`;
   };
 
+  // Regra de Negócio / Alçadas:
+  // Embarcações vinculadas à Vale: Somente Consulta (não pode editar nem excluir)
+  // Embarcações vinculadas à Marina (sem Vale): Gestão Plena (cadastrar, editar, excluir)
+  const isValeBoat = (boat: Embarcacao): boolean => {
+    const emp = boat.empresas && boat.empresas.length > 0 ? boat.empresas : ['VALE'];
+    return emp.includes('VALE');
+  };
+
+  const isMarinaBoat = (boat: Embarcacao): boolean => {
+    const emp = boat.empresas && boat.empresas.length > 0 ? boat.empresas : ['VALE'];
+    return emp.includes('MARINA') && !emp.includes('VALE');
+  };
+
+  const canEditBoat = (boat: Embarcacao): boolean => {
+    return isMarinaBoat(boat);
+  };
+
+  const handleOpenNewBoat = () => {
+    setEditingBoat(null);
+    setIsBoatModalOpen(true);
+  };
+
+  const handleEditBoat = (boat: Embarcacao) => {
+    if (isValeBoat(boat)) {
+      alert("Embarcações vinculadas à Vale Náutica estão disponíveis apenas para consulta e não podem ser editadas pelo Gerente de Marina.");
+      return;
+    }
+    setSelectedBoat(null);
+    setEditingBoat(boat);
+    setIsBoatModalOpen(true);
+  };
+
+  const handleDeleteBoat = async (id: string, name: string) => {
+    const boat = boats.find(b => b.id === id);
+    if (boat && isValeBoat(boat)) {
+      alert("Embarcações vinculadas à Vale Náutica não podem ser excluídas.");
+      return;
+    }
+    if (!window.confirm(`Tem certeza que deseja excluir a embarcação "${name}" da frota da Marina Club? Esta ação removerá o registro do sistema.`)) {
+      return;
+    }
+    try {
+      boatDB.delete(id);
+      const token = localStorage.getItem('admin_token');
+      await fetch('/api/db/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ type: 'boats', action: 'delete', data: { id } })
+      });
+      setBoats(prev => prev.filter(b => b.id !== id));
+      setIsBoatModalOpen(false);
+      setSelectedBoat(null);
+      if (onReload) onReload();
+    } catch (err: any) {
+      alert(err.message || 'Erro ao excluir embarcação.');
+    }
+  };
+
+  const handleSaveBoat = (savedBoat: Embarcacao) => {
+    setBoats(prev => {
+      const idx = prev.findIndex(b => b.id === savedBoat.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = savedBoat;
+        return copy;
+      }
+      return [savedBoat, ...prev];
+    });
+    setIsBoatModalOpen(false);
+    setEditingBoat(null);
+    if (onReload) onReload();
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-sans">
 
-      {/* ─── HEADER EXECUTIVO COM BADGE SOMENTE LEITURA ─── */}
+      {/* ─── HEADER EXECUTIVO COM BADGES E CADASTRO ─── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-[10px] font-black uppercase tracking-wider">
               Painel Gerencial da Marina
             </span>
-            <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold flex items-center gap-1">
-              <Eye className="w-3 h-3" /> Modo Consulta (Somente Leitura)
+            <span className="px-2.5 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 rounded-full text-[10px] font-bold flex items-center gap-1">
+              <Ship className="w-3 h-3 text-teal-600" /> Frota Marina: Gestão & Cadastro
+            </span>
+            <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-full text-[10px] font-bold flex items-center gap-1">
+              <Lock className="w-3 h-3 text-slate-400" /> Frota Vale: Somente Consulta
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1 flex items-center gap-2">
@@ -332,11 +420,20 @@ export default function MarinaEmbarcacoesClientesView({
             Embarcações & Clientes
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 font-medium">
-            Consulta rápida de frota, vagas de pátio, horímetros e cotistas vinculados da marina.
+            Gestão da frota vinculada da Marina, consulta geral de cotistas, vagas de pátio e horímetros.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <button
+            onClick={handleOpenNewBoat}
+            className="px-4 py-2 bg-[#186b77] hover:bg-[#12555f] text-white font-bold rounded-xl text-xs transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-md active:scale-95"
+            title="Cadastrar nova embarcação vinculada à Marina Club"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Cadastrar Embarcação</span>
+          </button>
+
           <button
             onClick={() => {
               loadData();
@@ -349,6 +446,35 @@ export default function MarinaEmbarcacoesClientesView({
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#186b77]' : ''}`} />
             <span>Atualizar</span>
           </button>
+        </div>
+      </div>
+
+      {/* ─── BANNER INFORMATIVO DE ALÇADA ─── */}
+      <div className="bg-gradient-to-r from-teal-50/70 via-slate-50 to-indigo-50/50 border border-slate-200/90 rounded-2xl p-3.5 sm:px-4 sm:py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-2xs">
+        <div className="flex items-start sm:items-center gap-3 text-slate-700">
+          <div className="p-2 rounded-xl bg-[#186b77]/10 text-[#186b77] shrink-0 border border-[#186b77]/20">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-extrabold text-slate-900">Regras de Acesso da Marina:</span>
+              <span className="px-2 py-0.5 rounded-md bg-teal-100/80 text-teal-800 text-[10px] font-bold">
+                Gestão Plena em Veículos Marina
+              </span>
+            </div>
+            <p className="text-slate-500 font-medium text-[11px] sm:text-xs mt-0.5">
+              Você pode <strong className="text-teal-800">cadastrar novas embarcações e editar livremente os veículos vinculados à Marina Club</strong>. Embarcações vinculadas à <strong className="text-indigo-700">Vale Náutica</strong> são exibidas apenas para consulta operacional.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-teal-200 text-teal-800 rounded-lg font-bold text-[11px] shadow-2xs">
+            <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" /> Marina: Edição & Cadastro
+          </span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 text-slate-500 rounded-lg font-bold text-[11px] shadow-2xs">
+            <Lock className="w-3.5 h-3.5 text-slate-400" /> Vale: Somente Leitura
+          </span>
         </div>
       </div>
 
@@ -570,6 +696,7 @@ export default function MarinaEmbarcacoesClientesView({
                   <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
                     <tr>
                       <th className="py-3.5 px-4">Embarcação</th>
+                      <th className="py-3.5 px-4">Empresa</th>
                       <th className="py-3.5 px-4">Vaga</th>
                       <th className="py-3.5 px-4">Horímetro</th>
                       <th className="py-3.5 px-4">Status</th>
@@ -583,6 +710,9 @@ export default function MarinaEmbarcacoesClientesView({
                       const isMaintenance = boat.emManutencao || boat.statusOperacional === 'em_manutencao';
                       const cotistas = boatCotistasMap.get(boat.id) || [];
                       const defaultImg = boat.tipo === 'jet' ? defaultJetImg : defaultLanchaImg;
+                      const isVale = isValeBoat(boat);
+                      const isMarina = isMarinaBoat(boat);
+                      const canEdit = canEditBoat(boat);
 
                       return (
                         <tr key={boat.id} className="hover:bg-slate-50/70 transition-colors">
@@ -605,6 +735,22 @@ export default function MarinaEmbarcacoesClientesView({
                                 </p>
                               </div>
                             </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            {isMarina ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 rounded-md text-[10px] font-bold">
+                                <Ship className="w-2.5 h-2.5 text-teal-600" /> Marina Club
+                              </span>
+                            ) : isVale ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200/80 rounded-md text-[10px] font-bold">
+                                <Lock className="w-2.5 h-2.5 text-indigo-500" /> Vale Náutica
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-md text-[10px] font-bold">
+                                {(boat.empresas || []).join(', ') || 'Outro'}
+                              </span>
+                            )}
                           </td>
 
                           <td className="py-3 px-4">
@@ -659,14 +805,31 @@ export default function MarinaEmbarcacoesClientesView({
                           </td>
 
                           <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => setSelectedBoat(boat)}
-                              className="px-3 py-1.5 bg-slate-100 hover:bg-[#186b77] hover:text-white text-slate-700 font-bold rounded-xl text-xs transition-all inline-flex items-center gap-1.5 cursor-pointer"
-                              title="Visualizar ficha técnica e cotistas"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>Ficha</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setSelectedBoat(boat)}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                                title="Visualizar ficha técnica e cotistas"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Ficha</span>
+                              </button>
+                              {canEdit ? (
+                                <button
+                                  onClick={() => handleEditBoat(boat)}
+                                  className="px-2.5 py-1.5 bg-[#186b77] hover:bg-[#12555f] text-white font-bold rounded-xl text-xs transition-all inline-flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                                  title="Editar dados da embarcação da Marina"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                  <span>Editar</span>
+                                </button>
+                              ) : (
+                                <span className="px-2 py-1 bg-slate-50 border border-slate-200 text-slate-400 font-bold rounded-xl text-[10px] inline-flex items-center gap-1 select-none" title="Embarcação vinculada à Vale Náutica (somente leitura)">
+                                  <Lock className="w-3 h-3" />
+                                  <span>Leitura</span>
+                                </span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -683,6 +846,9 @@ export default function MarinaEmbarcacoesClientesView({
                 const isMaintenance = boat.emManutencao || boat.statusOperacional === 'em_manutencao';
                 const cotistas = boatCotistasMap.get(boat.id) || [];
                 const defaultImg = boat.tipo === 'jet' ? defaultJetImg : defaultLanchaImg;
+                const isVale = isValeBoat(boat);
+                const isMarina = isMarinaBoat(boat);
+                const canEdit = canEditBoat(boat);
 
                 return (
                   <div
@@ -707,6 +873,16 @@ export default function MarinaEmbarcacoesClientesView({
                         </span>
 
                         <div className="flex items-center gap-1.5">
+                          {isMarina ? (
+                            <span className="px-2.5 py-1 bg-teal-500/90 backdrop-blur-md text-white font-bold text-[10px] rounded-xl flex items-center gap-1 shadow-md">
+                              <Ship className="w-3 h-3" /> Marina Club
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 bg-slate-950/80 backdrop-blur-md text-slate-200 font-bold text-[10px] rounded-xl flex items-center gap-1 shadow-md">
+                              <Lock className="w-3 h-3 text-indigo-400" /> Vale Náutica
+                            </span>
+                          )}
+
                           {isMaintenance ? (
                             <span className="px-2.5 py-1 bg-amber-500/90 backdrop-blur-md text-white font-bold text-[10px] rounded-xl flex items-center gap-1 shadow-md">
                               <Wrench className="w-3 h-3" /> Manutenção
@@ -821,14 +997,41 @@ export default function MarinaEmbarcacoesClientesView({
                         )}
                       </div>
 
-                      {/* Botão de Ficha Técnica Completa */}
-                      <button
-                        onClick={() => setSelectedBoat(boat)}
-                        className="w-full mt-2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-95"
-                      >
-                        <Eye className="w-4 h-4 text-slate-300" />
-                        <span>Ver Ficha Completa</span>
-                      </button>
+                      {/* Botões de Ação */}
+                      {canEdit ? (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <button
+                            onClick={() => setSelectedBoat(boat)}
+                            className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                            title="Ver ficha operacional e técnica"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Ficha</span>
+                          </button>
+                          <button
+                            onClick={() => handleEditBoat(boat)}
+                            className="py-2.5 bg-[#186b77] hover:bg-[#12555f] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                            title="Editar dados, cotistas, horímetro ou vaga da embarcação"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-white" />
+                            <span>Editar</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-1 mt-2">
+                          <button
+                            onClick={() => setSelectedBoat(boat)}
+                            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-95"
+                            title="Ver ficha operacional (somente leitura)"
+                          >
+                            <Eye className="w-4 h-4 text-slate-300" />
+                            <span>Ver Ficha (Somente Leitura)</span>
+                          </button>
+                          <p className="text-[10px] text-slate-400 text-center font-medium flex items-center justify-center gap-1 pt-0.5">
+                            <Lock className="w-2.5 h-2.5" /> Frota Vale Náutica (Bloqueado para edição)
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1015,7 +1218,9 @@ export default function MarinaEmbarcacoesClientesView({
                     {formatBoatName(selectedBoat.nome)}
                   </h3>
                   <p className="text-xs text-slate-400 font-medium">
-                    Ficha Técnica Operacional da Marina (Somente Leitura)
+                    {isMarinaBoat(selectedBoat)
+                      ? 'Ficha Técnica Operacional • Frota Marina Club (Gestão Habilitada)'
+                      : 'Ficha Técnica Operacional • Frota Vale Náutica (Somente Leitura)'}
                   </p>
                 </div>
               </div>
@@ -1190,15 +1395,42 @@ export default function MarinaEmbarcacoesClientesView({
 
             {/* Modal Footer */}
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
-              <span className="text-[11px] text-slate-500 font-medium">
-                Visualização somente leitura para o Gerente da Marina.
-              </span>
-              <button
-                onClick={() => setSelectedBoat(null)}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all cursor-pointer"
-              >
-                Fechar
-              </button>
+              {isMarinaBoat(selectedBoat) ? (
+                <>
+                  <span className="text-[11px] text-teal-800 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                    Embarcação da Marina Club • Edição permitida
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedBoat(null)}
+                      className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                    >
+                      Fechar
+                    </button>
+                    <button
+                      onClick={() => handleEditBoat(selectedBoat)}
+                      className="px-5 py-2 bg-[#186b77] hover:bg-[#12555f] text-white font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Editar Embarcação</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    Embarcação vinculada à Vale Náutica (somente leitura para o Gerente da Marina).
+                  </span>
+                  <button
+                    onClick={() => setSelectedBoat(null)}
+                    className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1210,6 +1442,23 @@ export default function MarinaEmbarcacoesClientesView({
           client={selectedClient}
           boats={boats}
           onClose={() => setSelectedClient(null)}
+        />
+      )}
+
+      {/* ─── MODAL DE CADASTRO / EDIÇÃO DE EMBARCAÇÃO (MARINA) ─── */}
+      {isBoatModalOpen && (
+        <BoatModal
+          isOpen={isBoatModalOpen}
+          onClose={() => {
+            setIsBoatModalOpen(false);
+            setEditingBoat(null);
+          }}
+          onSave={handleSaveBoat}
+          onDelete={handleDeleteBoat}
+          editingBoat={editingBoat}
+          clients={clients}
+          userRole={userRole}
+          lockEmpresa="MARINA"
         />
       )}
 

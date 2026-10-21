@@ -203,6 +203,7 @@ export interface Embarcacao {
   inscricao?: string; // N° de Inscrição na Marinha
   tipo_propulsao?: string; // Tipo de propulsão (ex: MOTOR, JET)
   capacidadePassageiros?: number; // Boat capacity
+  totalCotas?: number; // Total number of quotas (e.g. 4, 8, 12; default 8)
   potencia?: string; // Potência (ex: 250 HP)
   donos: string[]; // List of Cliente IDs (unlimited)
   googleCalendarId?: string; // Optional Google Calendar ID directly linked to the boat
@@ -870,6 +871,16 @@ export interface VendaComercial {
   totalRecebidoCota?: number;
   statusEntradaFinanceiro?: string;
 
+  // Dados de Contrato e Conclusão de Processos (joins com Clientes)
+  clienteStatusContrato?: StatusContrato;
+  clienteTipoContrato?: TipoContrato;
+  clienteContratoAquisicaoStatus?: StatusContrato;
+  clienteContratoAquisicaoArquivoUrl?: string | null;
+  clienteContratoAdmStatus?: StatusContrato;
+  clienteContratoAdmArquivoUrl?: string | null;
+  comissaoLiberadaManual?: boolean;
+  dataConclusaoProcesso?: string | null;
+
   observacoes?: string;
   status: 'ativa' | 'concluida' | 'cancelada';
   createdAt: string;
@@ -889,3 +900,77 @@ export interface ConfiguracaoLancamentoPadraoVenda {
   taxaAdmPadraoCategoria: string;
   taxaAdmPadraoValor: string;
 }
+
+// ==========================================
+// MÓDULO COMERCIAL — MOTOR DE COMISSÕES E BONIFICAÇÕES
+// ==========================================
+
+export interface FaixaComissaoCota {
+  id: string;
+  minCotas: number;
+  maxCotas: number | null; // null = sem limite superior (ex: 13+)
+  valorPorCota: number;
+  descricao?: string;
+}
+
+export interface FaixaBonusMensal {
+  id: string;
+  minCotas: number;
+  maxCotas: number | null; // null = sem limite superior (ex: 25+)
+  valorBonus: number;
+  descricao?: string;
+}
+
+export interface MembroEquipeComercial {
+  id: string;
+  nome: string;
+  cargo: string;
+  ativo: boolean;
+  salarioBaseCustom?: number | null;
+  vrCustom?: number | null;
+}
+
+export interface RequisitosVendaConcluida {
+  exigirEntradaPaga: boolean;
+  exigirComprovanteEntrada: boolean;
+  exigirContratoAquisicaoAssinado: boolean;
+  exigirContratoAdmAssinado: boolean;
+}
+
+export interface ConfigMotorComissoes {
+  salarioBase: number;
+  valeRefeicao: number;
+  diaCorteQuinzena1: number;
+  metaSemanalCotas: number;
+  semanasNoMesModo: 'auto' | '4' | '5';
+  regraSuperavitSemanal: boolean;
+  faixasComissao: FaixaComissaoCota[];
+  bonusSemanalProgressivo: number[]; // Ex: [100, 200, 300, 400, 500]
+  faixasBonusMensal: FaixaBonusMensal[];
+  requisitosVendaConcluida: RequisitosVendaConcluida;
+  equipeComercial: MembroEquipeComercial[];
+}
+
+export interface FechamentoQuinzenaComissao {
+  id: string;
+  competencia: string; // YYYY-MM
+  quinzena: 1 | 2;
+  status: 'aberto' | 'fechado' | 'pago';
+  cotasTotalPeriodo: number;
+  cotasNovasQuinzena: number;
+  valorUnitarioFaixa: number;
+  comissaoBasePorVendedor: number;
+  ajusteRetroativoPorVendedor: number;
+  bonusSemanalPorVendedor: number;
+  bonusMensalPorVendedor: number;
+  totalVariavelPorVendedor: number;
+  salarioFixoReferencia: number;
+  valeRefeicaoReferencia: number;
+  qtdVendedoresAtivos: number;
+  totalFolhaVariavelEquipe: number;
+  dataFechamento?: string | null;
+  fechadoPor?: string | null;
+  observacoes?: string | null;
+  updatedAt: string;
+}
+

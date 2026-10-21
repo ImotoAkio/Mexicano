@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
 import { 
   Anchor, X, Ship, User, Zap, ChevronDown, RefreshCw, 
-  ImageIcon, Edit2, Upload, Check 
-} from 'lucide-react';
+  ImageIcon, Edit2, Upload, Check, Trash2 } from 'lucide-react';
 import { boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente } from '../types';
 
@@ -11,18 +10,24 @@ interface BoatModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (boat: Embarcacao) => void;
+  onDelete?: (id: string, name: string) => void;
   editingBoat?: Embarcacao | null;
   clients?: Cliente[];
   showWhatsAppMapping?: boolean;
+  userRole?: string;
+  lockEmpresa?: string;
 }
 
 export default function BoatModal({
   isOpen,
   onClose,
   onSave,
+  onDelete,
   editingBoat = null,
   clients: propClients,
-  showWhatsAppMapping = true
+  showWhatsAppMapping = true,
+  userRole,
+  lockEmpresa
 }: BoatModalProps) {
   const [clients, setClients] = useState<Cliente[]>([]);
   const [tipo, setTipo] = useState<'jet' | 'lancha'>('lancha');
@@ -31,6 +36,9 @@ export default function BoatModal({
   const [modelo, setModelo] = useState('');
   const [fabricante, setFabricante] = useState('');
   const [ano, setAno] = useState<number>(new Date().getFullYear());
+  const [vaga, setVaga] = useState('');
+  const [horasMotor, setHorasMotor] = useState<number | ''>('');
+  const [tamanho, setTamanho] = useState<string | number>('');
   const [chassi, setChassi] = useState('');
   const [inscricao, setInscricao] = useState('');
   const [tipoPropulsao, setTipoPropulsao] = useState('MOTOR');
@@ -53,6 +61,8 @@ export default function BoatModal({
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  const isMarinaGerente = userRole === 'marina_gerente' || lockEmpresa === 'MARINA';
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
@@ -68,6 +78,7 @@ export default function BoatModal({
 
   useEffect(() => {
     if (isOpen) {
+      const defaultEmps = isMarinaGerente ? ['MARINA'] : ['VALE'];
       if (editingBoat) {
         setTipo(editingBoat.tipo || 'lancha');
         setNome(editingBoat.nome || '');
@@ -75,6 +86,9 @@ export default function BoatModal({
         setModelo(editingBoat.modelo || '');
         setFabricante(editingBoat.fabricante || '');
         setAno(editingBoat.ano || new Date().getFullYear());
+        setVaga(editingBoat.vaga || '');
+        setHorasMotor(editingBoat.horasMotor !== undefined ? editingBoat.horasMotor : '');
+        setTamanho(editingBoat.tamanho || '');
         setChassi(editingBoat.chassi || '');
         setInscricao(editingBoat.inscricao || '');
         setTipoPropulsao(editingBoat.tipo_propulsao || 'MOTOR');
@@ -99,7 +113,7 @@ export default function BoatModal({
         setImagemUrl(editingBoat.imagemUrl || '');
         setDocumentoUrl(editingBoat.documentoUrl || '');
         setSeguroUrl(editingBoat.seguroUrl || '');
-        setEmpresas(editingBoat.empresas && editingBoat.empresas.length > 0 ? editingBoat.empresas : ['VALE']);
+        setEmpresas(editingBoat.empresas && editingBoat.empresas.length > 0 ? editingBoat.empresas : defaultEmps);
         setIsAdvancedOpen(Boolean(mappedId || editingBoat.whatsappGroupId));
       } else {
         setTipo('lancha');
@@ -108,6 +122,9 @@ export default function BoatModal({
         setModelo('');
         setFabricante('');
         setAno(new Date().getFullYear());
+        setVaga('');
+        setHorasMotor('');
+        setTamanho('');
         setChassi('');
         setInscricao('');
         setTipoPropulsao('MOTOR');
@@ -121,11 +138,11 @@ export default function BoatModal({
         setImagemUrl('');
         setDocumentoUrl('');
         setSeguroUrl('');
-        setEmpresas(['VALE']);
+        setEmpresas(defaultEmps);
         setIsAdvancedOpen(false);
       }
     }
-  }, [isOpen, editingBoat]);
+  }, [isOpen, editingBoat, isMarinaGerente]);
 
   const handleFetchGroups = async () => {
     setIsFetchingGroups(true);
@@ -235,15 +252,28 @@ export default function BoatModal({
       return;
     }
 
+    if (isMarinaGerente && empresas.includes('VALE')) {
+      showToast('O Gerente da Marina não tem permissão para vincular veículos à Vale Náutica.', 'error');
+      return;
+    }
+
+    const finalEmpresas = isMarinaGerente
+      ? (empresas.includes('MARINA') ? empresas.filter(e => e !== 'VALE') : ['MARINA'])
+      : empresas;
+
     try {
       let savedBoat: Embarcacao;
       const boatPayload: any = {
+        ...(editingBoat || {}),
         tipo,
         nome: nome.trim(),
         numero: cleanNum,
         modelo: modelo.trim(),
         fabricante: fabricante.trim(),
         ano,
+        vaga: vaga.trim() || undefined,
+        horasMotor: horasMotor === '' ? 0 : Number(horasMotor),
+        tamanho: tamanho !== '' ? tamanho : undefined,
         chassi: chassi.trim() || undefined,
         inscricao: inscricao.trim() || undefined,
         tipo_propulsao: tipoPropulsao.trim() || undefined,
@@ -257,7 +287,7 @@ export default function BoatModal({
         imagemUrl: imagemUrl || undefined,
         documentoUrl: documentoUrl || undefined,
         seguroUrl: seguroUrl || undefined,
-        empresas
+        empresas: finalEmpresas
       };
 
       if (editingBoat) {
@@ -317,14 +347,26 @@ export default function BoatModal({
               <p className="text-xs text-slate-500">Preencha as informações do veículo náutico (navegação fluida por TAB)</p>
             </div>
           </div>
-          <button 
-            type="button"
-            onClick={onClose}
-            className="p-1.5 hover:bg-slate-200/70 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-            title="Fechar"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {editingBoat && onDelete && (
+              <button 
+                type="button"
+                onClick={() => onDelete(editingBoat.id, editingBoat.nome)}
+                className="p-1.5 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                title="Excluir Embarcação"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
+            <button 
+              type="button"
+              onClick={onClose}
+              className="p-1.5 hover:bg-slate-200/70 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+              title="Fechar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Form Container */}
@@ -423,6 +465,45 @@ export default function BoatModal({
                     placeholder="Ex: 2023"
                     value={ano || ''}
                     onChange={(e) => setAno(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Vaga no Pátio, Tamanho e Horímetro */}
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vaga Marina</label>
+                  <input
+                    id="input-boat-vaga"
+                    type="text"
+                    placeholder="Ex: Vaga 12 ou P-03"
+                    value={vaga}
+                    onChange={(e) => setVaga(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tamanho (Pés)</label>
+                  <input
+                    id="input-boat-tamanho"
+                    type="text"
+                    placeholder="Ex: 24 ou 24 pés"
+                    value={tamanho}
+                    onChange={(e) => setTamanho(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Horímetro (Horas)</label>
+                  <input
+                    id="input-boat-horas"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="Ex: 150"
+                    value={horasMotor}
+                    onChange={(e) => setHorasMotor(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white"
                   />
                 </div>
@@ -661,36 +742,73 @@ export default function BoatModal({
 
               {/* Vínculo com Empresa(s) */}
               <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">Empresas Vinculadas</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">Empresas Vinculadas</label>
+                  {isMarinaGerente && (
+                    <span className="text-[9px] text-teal-800 font-bold bg-teal-100/70 border border-teal-200 px-1.5 py-0.5 rounded">
+                      Frota Marina
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-col gap-2">
                   {[
                     { id: 'VALE', label: 'Vale Administradora', color: 'text-indigo-700 bg-indigo-50 border-indigo-200', tabIdx: 16 },
                     { id: 'MARINA', label: 'Marina Club', color: 'text-teal-700 bg-teal-50 border-teal-200', tabIdx: 17 },
                     { id: 'MEXICANO', label: 'Mexicano Lanchas', color: 'text-amber-700 bg-amber-50 border-amber-200', tabIdx: 18 },
-                  ].map(item => (
-                    <label key={item.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
-                      empresas.includes(item.id) ? item.color : 'bg-white text-slate-500 border-slate-200 opacity-70'
-                    }`}>
-                      <input
-                        type="checkbox"
-                        tabIndex={item.tabIdx}
-                        checked={empresas.includes(item.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setEmpresas([...empresas, item.id]);
-                          } else {
-                            if (empresas.length > 1) {
-                              setEmpresas(empresas.filter(x => x !== item.id));
-                            } else {
-                              showToast('Selecione pelo menos uma empresa.', 'error');
-                            }
-                          }
-                        }}
-                        className="w-3.5 h-3.5 rounded text-slate-900 focus:ring-slate-900 cursor-pointer"
-                      />
-                      <span>{item.label}</span>
-                    </label>
-                  ))}
+                  ].map(item => {
+                    const isDisabledForGerente = isMarinaGerente && item.id === 'VALE';
+                    const isLockedMarina = isMarinaGerente && item.id === 'MARINA';
+                    return (
+                      <label
+                        key={item.id}
+                        className={`inline-flex items-center justify-between px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                          isDisabledForGerente
+                            ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                            : empresas.includes(item.id)
+                            ? item.color + ' cursor-pointer'
+                            : 'bg-white text-slate-500 border-slate-200 opacity-70 cursor-pointer'
+                        }`}
+                        title={isDisabledForGerente ? "O Gerente de Marina gerencia exclusivamente veículos da Marina Club" : undefined}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            tabIndex={item.tabIdx}
+                            disabled={isDisabledForGerente || isLockedMarina}
+                            checked={empresas.includes(item.id)}
+                            onChange={(e) => {
+                              if (isDisabledForGerente) return;
+                              if (e.target.checked) {
+                                setEmpresas([...empresas, item.id]);
+                              } else {
+                                if (isLockedMarina) {
+                                  showToast('A embarcação da Marina deve obrigatoriamente manter o vínculo com Marina Club.', 'error');
+                                  return;
+                                }
+                                if (empresas.length > 1) {
+                                  setEmpresas(empresas.filter(x => x !== item.id));
+                                } else {
+                                  showToast('Selecione pelo menos uma empresa.', 'error');
+                                }
+                              }
+                            }}
+                            className="w-3.5 h-3.5 rounded text-slate-900 focus:ring-slate-900 cursor-pointer disabled:cursor-not-allowed"
+                          />
+                          <span>{item.label}</span>
+                        </div>
+                        {isDisabledForGerente && (
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            (Restrito à Vale)
+                          </span>
+                        )}
+                        {isLockedMarina && (
+                          <span className="text-[10px] text-teal-600 font-semibold">
+                            (Obrigatório)
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -763,7 +881,7 @@ export default function BoatModal({
                   ) : (
                     <div className="flex flex-col items-center text-slate-500">
                       <Upload className="w-4 h-4 mb-0.5" />
-                      <span className="text-[9px] font-bold uppercase">Apólice Seguro</span>
+                      <span className="text-[9px] font-bold uppercase">Apolice Seguro</span>
                     </div>
                   )}
                 </div>
@@ -773,25 +891,41 @@ export default function BoatModal({
           </div>
 
           {/* Action Buttons (Footer) */}
-          <div className="flex space-x-3 pt-3 border-t border-slate-100 shrink-0">
-            <button
-              id="cancel-save-boat"
-              type="button"
-              tabIndex={19}
-              onClick={onClose}
-              className="flex-1 sm:flex-initial sm:w-36 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer text-center"
-            >
-              Cancelar
-            </button>
-            <button
-              id="submit-save-boat"
-              type="submit"
-              tabIndex={20}
-              className="flex-1 sm:flex-initial sm:w-48 inline-flex items-center justify-center px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer"
-            >
-              <Check className="w-4 h-4 mr-1.5" />
-              Salvar Embarcação
-            </button>
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100 shrink-0">
+            <div>
+              {editingBoat && onDelete && (
+                <button
+                  id="delete-boat-modal-btn"
+                  type="button"
+                  onClick={() => onDelete(editingBoat.id, editingBoat.nome)}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Excluir Embarcação</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
+              <button
+                id="cancel-save-boat"
+                type="button"
+                tabIndex={19}
+                onClick={onClose}
+                className="flex-1 sm:flex-initial sm:w-36 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer text-center"
+              >
+                Cancelar
+              </button>
+              <button
+                id="submit-save-boat"
+                type="submit"
+                tabIndex={20}
+                className="flex-1 sm:flex-initial sm:w-48 inline-flex items-center justify-center px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer"
+              >
+                <Check className="w-4 h-4 mr-1.5" />
+                Salvar Embarcação
+              </button>
+            </div>
           </div>
 
         </form>

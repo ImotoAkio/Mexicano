@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import Select from "react-select";
 import {
   X, Check, DollarSign, Calendar, FileText, Wallet,
   Repeat, CreditCard, ChevronDown, ListPlus, Receipt,
-  TrendingUp, TrendingDown
+  TrendingUp, TrendingDown, Building2, User, Anchor,
+  Sliders, Plus, Loader2
 } from 'lucide-react';
 import { TransacaoFinanceira } from '../../types';
 
@@ -17,11 +17,12 @@ interface FinanceLancamentoDrawerProps {
   clientes?: any[];
   fornecedores?: any[];
   planosContas?: any[];
-
   centrosCusto?: any[];
   contasBancarias?: any[];
   embarcacoes?: any[];
 }
+
+type LancamentoTabId = 'valores' | 'classificacao' | 'vinculos' | 'repeticao';
 
 export default function FinanceLancamentoDrawer({
   open,
@@ -32,11 +33,11 @@ export default function FinanceLancamentoDrawer({
   clientes = [],
   fornecedores = [],
   planosContas = [],
-
   centrosCusto = [],
   contasBancarias = [],
   embarcacoes = []
 }: FinanceLancamentoDrawerProps) {
+  const [activeTab, setActiveTab] = useState<LancamentoTabId>('valores');
   const [tipo, setTipo] = useState<'receita' | 'despesa'>('receita');
   const [empresa, setEmpresa] = useState(defaultEmpresa === 'Todos' ? 'Mexicano' : defaultEmpresa);
 
@@ -59,9 +60,10 @@ export default function FinanceLancamentoDrawer({
   const [qtdRecorrencias, setQtdRecorrencias] = useState<number>(12);
   const [diaVencimentoRecorrente, setDiaVencimentoRecorrente] = useState<number>(new Date().getDate());
 
-  // Reset form when drawer opens
+  // Reset form when modal opens
   useEffect(() => {
     if (open) {
+      setActiveTab('valores');
       if (editingItem) {
         setTipo(editingItem.tipo as 'receita' | 'despesa' || 'receita');
         setEmpresa(editingItem.empresa || (defaultEmpresa === 'Todos' ? 'Mexicano' : defaultEmpresa));
@@ -106,90 +108,116 @@ export default function FinanceLancamentoDrawer({
         setDiaVencimentoRecorrente(new Date().getDate());
       }
     }
-  }, [open, defaultEmpresa, editingItem]);
+  }, [open, editingItem, defaultEmpresa]);
 
-  const rawValue = parseFloat(valor.replace(/\./g,'').replace(',','.')) || 0;
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
 
-  // Helper: create a date for a given month offset with a fixed day,
-  // clamping to the last day of the target month when needed (e.g. day 31 in February → 28/29)
-  const buildDateWithFixedDay = (baseDate: Date, monthOffset: number, fixedDay: number): Date => {
-    const d = new Date(baseDate);
-    d.setMonth(d.getMonth() + monthOffset);
-    // Clamp fixedDay to the last day of the resulting month
-    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    d.setDate(Math.min(fixedDay, lastDay));
-    return d;
+  if (!open) return null;
+
+  const rawValue = parseFloat(valor.replace(/\./g, '').replace(',', '.')) || 0;
+
+  // Split calculation
+  const getParcelas = () => {
+    if (!isRepetir || modoRepeticao !== 'parcelado' || qtdParcelas < 2 || rawValue <= 0) return [];
+    const baseDate = new Date(vencimento + 'T12:00:00');
+    const parcelas = [];
+    const valParcela = Number((rawValue / qtdParcelas).toFixed(2));
+    let diff = Number((rawValue - (valParcela * qtdParcelas)).toFixed(2));
+
+    for (let i = 0; i < qtdParcelas; i++) {
+      const pDate = new Date(baseDate);
+      if (frequencia === 'mensal') {
+        pDate.setMonth(pDate.getMonth() + i);
+      } else {
+        pDate.setDate(pDate.getDate() + (i * 7));
+      }
+
+      let currentVal = valParcela;
+      if (i === 0 && diff !== 0) {
+        currentVal = Number((valParcela + diff).toFixed(2));
+      }
+
+      parcelas.push({
+        numero: i + 1,
+        dataVencimento: pDate.toISOString().split('T')[0],
+        valor: currentVal
+      });
+    }
+    return parcelas;
   };
 
-  // Generate Preview for recurring mode
-  const recorrencias = React.useMemo(() => {
-    if (!isRepetir || modoRepeticao !== 'recorrente' || qtdRecorrencias < 1 || rawValue <= 0) return [];
+  const buildDateWithFixedDay = (base: Date, monthOffset: number, fixedDay: number) => {
+    const targetMonth = base.getMonth() + monthOffset;
+    const year = base.getFullYear() + Math.floor(targetMonth / 12);
+    const month = ((targetMonth % 12) + 12) % 12;
+    const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+    const clampedDay = Math.min(fixedDay, lastDayOfMonth);
+    return new Date(year, month, clampedDay, 12, 0, 0);
+  };
 
+  const getRecorrencias = () => {
+    if (!isRepetir || modoRepeticao !== 'recorrente' || qtdRecorrencias < 1 || rawValue <= 0) return [];
     const baseDate = new Date(vencimento + 'T12:00:00');
-    const parts = [];
+    const list = [];
 
     for (let i = 0; i < qtdRecorrencias; i++) {
       const pDate = buildDateWithFixedDay(baseDate, i, diaVencimentoRecorrente);
-      parts.push({
+      list.push({
         numero: i + 1,
         dataVencimento: pDate.toISOString().split('T')[0],
         valor: rawValue
       });
     }
-    return parts;
-  }, [isRepetir, modoRepeticao, qtdRecorrencias, diaVencimentoRecorrente, vencimento, rawValue]);
+    return list;
+  };
 
-  // Generate Preview
-  const parcelas = React.useMemo(() => {
-    if (!isRepetir || modoRepeticao !== 'parcelado' || qtdParcelas <= 1 || rawValue <= 0) return [];
-
-    // Split equally
-    let baseValue = Math.floor((rawValue / qtdParcelas) * 100) / 100;
-    const diff = Math.round((rawValue - (baseValue * qtdParcelas)) * 100) / 100;
-
-    const parts = [];
-    const baseDate = new Date(vencimento + 'T12:00:00');
-
-    for (let i = 0; i < qtdParcelas; i++) {
-       let pValue = baseValue;
-       if (i === 0) pValue += diff; // Add remainder to first parcel
-
-       let pDate = new Date(baseDate);
-       if (frequencia === 'mensal') {
-         pDate.setMonth(pDate.getMonth() + i);
-       } else {
-         pDate.setDate(pDate.getDate() + (i * 7));
-       }
-
-       parts.push({
-         numero: i + 1,
-         dataVencimento: pDate.toISOString().split('T')[0],
-         valor: pValue
-       });
-    }
-    return parts;
-  }, [isRepetir, modoRepeticao, qtdParcelas, frequencia, vencimento, rawValue]);
+  const parcelas = getParcelas();
+  const recorrencias = getRecorrencias();
 
   const handleSave = () => {
-    if (!valor || !vencimento || !planoContasId || !descricao) {
-      alert('Preencha os campos obrigatórios (Valor, Data, Plano de Contas, Descrição)');
+    if (!descricao.trim()) {
+      alert("Informe uma descrição para o lançamento.");
+      setActiveTab('valores');
+      return;
+    }
+    if (rawValue <= 0) {
+      alert("Informe um valor válido maior que zero.");
+      setActiveTab('valores');
+      return;
+    }
+    if (!planoContasId) {
+      alert("Selecione um Plano de Contas na aba Classificação.");
+      setActiveTab('classificacao');
       return;
     }
 
-    const selectedPlano = planosContas.find((p: any) => p.id === planoContasId);
-    const resolvedCategoria = selectedPlano?.descricao || editingItem?.categoria || 'Geral';
+    const selectedPlano = planosContas.find(p => p.id === planoContasId);
+    const resolvedCategoria = selectedPlano ? selectedPlano.descricao : (categoria || 'Geral');
 
     if (editingItem) {
       onSave([{
         ...editingItem,
-        tipo, empresa, valor: rawValue, dataVencimento: vencimento,
-        categoria: resolvedCategoria, planoContasId, centroCustoId, descricao,
+        tipo,
+        empresa,
+        valor: rawValue,
+        dataVencimento: vencimento,
+        categoria: resolvedCategoria,
+        planoContasId,
+        centroCustoId,
+        descricao,
         clienteId: tipo === 'receita' ? clienteId : undefined,
         fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
-        embarcacaoId, contaBancariaId,
-        status: editingItem.status || 'lancado'
+        embarcacaoId,
+        contaBancariaId
       }]);
-    } else if (isRepetir && modoRepeticao === 'parcelado' && parcelas.length > 0) {
+    } else if (isRepetir && modoRepeticao === 'parcelado') {
       const lancamentos = parcelas.map(p => ({
         tipo,
         empresa,
@@ -214,36 +242,49 @@ export default function FinanceLancamentoDrawer({
       const baseDate = new Date(vencimento + 'T12:00:00');
       const grupoId = `GRP-REC-${Date.now()}`;
 
-      for(let i=0; i<qtdRecorrencias; i++) {
-         const pDate = buildDateWithFixedDay(baseDate, i, diaVencimentoRecorrente);
-         lancamentos.push({
-            tipo, empresa, valor: rawValue,
-            dataVencimento: pDate.toISOString().split('T')[0],
-            categoria: resolvedCategoria, planoContasId, centroCustoId,
-            descricao: `${descricao} (${i + 1}/${qtdRecorrencias})`,
-            clienteId: tipo === 'receita' ? clienteId : undefined,
-            fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
-            embarcacaoId, contaBancariaId,
-            status: 'lancado' as const,
-            numeroParcela: i + 1,
-            totalParcelas: qtdRecorrencias,
-            grupoParcelamentoId: grupoId
-         });
+      for (let i = 0; i < qtdRecorrencias; i++) {
+        const pDate = buildDateWithFixedDay(baseDate, i, diaVencimentoRecorrente);
+        lancamentos.push({
+          tipo,
+          empresa,
+          valor: rawValue,
+          dataVencimento: pDate.toISOString().split('T')[0],
+          categoria: resolvedCategoria,
+          planoContasId,
+          centroCustoId,
+          descricao: `${descricao} (${i + 1}/${qtdRecorrencias})`,
+          clienteId: tipo === 'receita' ? clienteId : undefined,
+          fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
+          embarcacaoId,
+          contaBancariaId,
+          status: 'lancado' as const,
+          numeroParcela: i + 1,
+          totalParcelas: qtdRecorrencias,
+          grupoParcelamentoId: grupoId
+        });
       }
       onSave(lancamentos as any);
     } else {
       onSave([{
-        tipo, empresa, valor: rawValue, dataVencimento: vencimento,
-        categoria: resolvedCategoria, planoContasId, centroCustoId, descricao, clienteId: tipo === 'receita' ? clienteId : undefined,
+        tipo,
+        empresa,
+        valor: rawValue,
+        dataVencimento: vencimento,
+        categoria: resolvedCategoria,
+        planoContasId,
+        centroCustoId,
+        descricao,
+        clienteId: tipo === 'receita' ? clienteId : undefined,
         fornecedorId: tipo === 'despesa' ? fornecedorId : undefined,
-        embarcacaoId, contaBancariaId,
+        embarcacaoId,
+        contaBancariaId,
         status: 'lancado' as const
       }]);
     }
   };
 
   const handleValorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let v = e.target.value.replace(/\D/g,'');
+    let v = e.target.value.replace(/\D/g, '');
     if (!v) { setValor(''); return; }
 
     let num = (parseInt(v, 10) / 100).toFixed(2);
@@ -252,454 +293,666 @@ export default function FinanceLancamentoDrawer({
     setValor(str);
   };
 
-  return (
-    <AnimatePresence>
-      {open && (
-        <React.Fragment>
-          {/* Backdrop Scrim */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[90]"
-            onClick={onClose}
-          />
+  const selectCustomStyles = {
+    control: (base: any) => ({
+      ...base,
+      borderRadius: '0.75rem',
+      padding: '0.125rem 0.25rem',
+      borderColor: '#e7e5e4',
+      backgroundColor: '#ffffff',
+      boxShadow: 'none',
+      fontSize: '0.75rem',
+      fontWeight: 600,
+      '&:hover': { borderColor: '#a8a29e' }
+    }),
+    menu: (base: any) => ({
+      ...base,
+      borderRadius: '0.75rem',
+      overflow: 'hidden',
+      zIndex: 9999,
+      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+      border: '1px solid #e7e5e4',
+      fontSize: '0.75rem'
+    }),
+    option: (base: any, { isFocused }: any) => ({
+      ...base,
+      backgroundColor: isFocused ? '#f5f5f4' : 'white',
+      color: '#1c1917',
+      fontWeight: 500
+    }),
+    menuPortal: (base: any) => ({ ...base, zIndex: 9999 })
+  };
 
-          {/* Side-Over Drawer */}
-          <motion.div
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-y-0 right-0 w-full max-w-[540px] bg-[#f5f5f7] shadow-2xl z-[100] flex flex-col border-l border-white/50"
-          >
-            {/* Header */}
-            <div className="px-8 py-6 bg-white/70 backdrop-blur-xl border-b border-black/[0.04] flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tipo === 'receita' ? 'bg-[#008f5d]/10' : 'bg-[#e30000]/10'}`}>
-                  {tipo === 'receita' ? <TrendingUp className="w-5 h-5 text-[#008f5d]" /> : <TrendingDown className="w-5 h-5 text-[#e30000]" />}
+  const TABS = [
+    {
+      id: 'valores' as LancamentoTabId,
+      label: 'Natureza & Valores',
+      icon: DollarSign,
+      desc: 'Defina receita ou despesa, valor monetário, vencimento e descrição principal'
+    },
+    {
+      id: 'classificacao' as LancamentoTabId,
+      label: 'Classificação Contábil',
+      icon: ListPlus,
+      desc: 'Vincule o plano de contas gerencial, centro de custo e empresa'
+    },
+    {
+      id: 'vinculos' as LancamentoTabId,
+      label: 'Vínculos & Entidades',
+      icon: Building2,
+      desc: 'Defina cliente titular, fornecedor, conta bancária e embarcação vinculada'
+    },
+    {
+      id: 'repeticao' as LancamentoTabId,
+      label: 'Parcelar ou Repetir',
+      icon: Repeat,
+      desc: 'Configure parcelamentos fixos ou recorrências mensais automáticas',
+      badge: !editingItem && isRepetir ? (modoRepeticao === 'parcelado' ? `${qtdParcelas}x` : `${qtdRecorrencias}m`) : undefined
+    }
+  ];
+
+  const currentTabMeta = TABS.find(t => t.id === activeTab) || TABS[0];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-900/60 backdrop-blur-xs font-sans animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      {/* ─── MODAL CONTAINER (Padrão Split View da Referência Comercial) ─── */}
+      <div
+        className="bg-white rounded-3xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.18)] border border-stone-200/80 w-full max-w-4xl h-[90vh] max-h-[680px] flex flex-col md:flex-row overflow-hidden animate-in zoom-in-95 duration-150"
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={editingItem ? 'Editar Lançamento' : 'Novo Lançamento'}
+      >
+        {/* ================= COLUNA LATERAL ESQUERDA ================= */}
+        <aside className="w-full md:w-72 bg-stone-50/70 border-b md:border-b-0 md:border-r border-stone-200/70 p-6 flex flex-col justify-between shrink-0">
+          <div className="space-y-6">
+            
+            {/* Cabeçalho da Coluna Esquerda */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-xl bg-white border border-stone-200/80 shadow-2xs flex items-center justify-center shrink-0 ${
+                  tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600'
+                }`}>
+                  {tipo === 'receita' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                 </div>
-                <div>
-                  <h2 className="text-[20px] font-semibold text-[#1d1d1f] tracking-tight">Novo Lançamento</h2>
-                  <p className="text-[13px] font-medium text-[#86868b]">Cadastre uma nova transação</p>
-                </div>
+                <h3 className="font-bold text-[14px] text-stone-900 tracking-tight">
+                  {editingItem ? 'Editar Lançamento' : 'Novo Lançamento'}
+                </h3>
               </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-[#e5e5ea] flex items-center justify-center text-[#86868b] hover:text-[#1d1d1f] transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              <p className="text-[11px] text-stone-500 leading-relaxed font-normal">
+                {editingItem
+                  ? 'Atualização de valores, plano de contas e entidades vinculadas.'
+                  : 'Cadastre receitas ou despesas com conciliação contábil e parcelamento.'}
+              </p>
             </div>
 
-            {/* Scrollable Form Body */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <div className="p-8 space-y-8">
-
-                {/* 1. Tipo & Empresa Toggle */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[15px] font-semibold text-[#1d1d1f] tracking-tight">Natureza</h3>
-                  </div>
-                  <div className="flex bg-[#e5e5ea] p-1 rounded-xl">
-                    <button
-                      onClick={() => setTipo('receita')}
-                      className={`flex-1 py-2 text-[14px] font-semibold rounded-lg transition-all ${tipo === 'receita' ? 'bg-white shadow-sm text-[#008f5d]' : 'text-[#86868b] hover:text-[#1d1d1f]'}`}
-                    >
-                      Receita
-                    </button>
-                    <button
-                      onClick={() => setTipo('despesa')}
-                      className={`flex-1 py-2 text-[14px] font-semibold rounded-lg transition-all ${tipo === 'despesa' ? 'bg-white shadow-sm text-[#e30000]' : 'text-[#86868b] hover:text-[#1d1d1f]'}`}
-                    >
-                      Despesa
-                    </button>
-                  </div>
-
-                  <div className="pt-2">
-                     <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Empresa Destino</label>
-                     <select
-                       value={empresa}
-                       onChange={e => setEmpresa(e.target.value)}
-                       className="w-full bg-white border border-[#d2d2d7] rounded-xl px-4 py-3 text-[15px] text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30 transition-shadow appearance-none"
-                     >
-                       <option value="Mexicano">Mexicano</option>
-                       <option value="Vale Administradora">Vale Administradora</option>
-                       <option value="Marina Velho Chico">Marina Velho Chico</option>
-                     </select>
-                  </div>
-                </div>
-
-                {/* 2. Valores e Datas */}
-                <div className="bg-white rounded-2xl p-6 border border-black/[0.04] shadow-sm space-y-5">
-                   <h3 className="text-[15px] font-semibold text-[#1d1d1f] tracking-tight flex items-center gap-2">
-                     <DollarSign className="w-4 h-4 text-[#86868b]" /> Dados Principais
-                   </h3>
-
-                   <div className="grid grid-cols-2 gap-4">
-                     <div>
-                       <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Valor Total (R$)*</label>
-                       <input
-                         type="text"
-                         value={valor}
-                         onChange={handleValorChange}
-                         placeholder="0,00"
-                         className={`w-full bg-[#f5f5f7] border border-transparent rounded-xl px-4 py-3 text-[17px] font-semibold focus:outline-none focus:bg-white focus:border-[#0071e3] focus:ring-4 focus:ring-[#0071e3]/10 transition-all ${tipo === 'receita' ? 'text-[#008f5d]' : 'text-[#e30000]'}`}
-                       />
-                     </div>
-                     <div>
-                       <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Vencimento*</label>
-                       <input
-                         type="date"
-                         value={vencimento}
-                         onChange={e => setVencimento(e.target.value)}
-                         className="w-full bg-[#f5f5f7] border border-transparent rounded-xl px-4 py-3 text-[15px] font-medium text-[#1d1d1f] focus:outline-none focus:bg-white focus:border-[#0071e3] transition-all"
-                       />
-                     </div>
-                   </div>
-
-                   <div>
-                     <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Descrição do Lançamento*</label>
-                     <input
-                       type="text"
-                       value={descricao}
-                       onChange={e => setDescricao(e.target.value)}
-                       placeholder="Ex: Pagamento Fornecedor XYZ"
-                       className="w-full bg-[#f5f5f7] border border-transparent rounded-xl px-4 py-3 text-[15px] font-medium text-[#1d1d1f] focus:outline-none focus:bg-white focus:border-[#0071e3] transition-all"
-                     />
-                   </div>
-                </div>
-
-                {/* 3. Classificação */}
-                <div className="bg-white rounded-2xl p-6 border border-black/[0.04] shadow-sm space-y-5">
-                   <h3 className="text-[15px] font-semibold text-[#1d1d1f] tracking-tight flex items-center gap-2">
-                     <ListPlus className="w-4 h-4 text-[#86868b]" /> Classificação
-                   </h3>
-
-                   <div className="grid grid-cols-1 gap-4">
-                     <div>
-                       <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Plano de Contas*</label>
-                       <Select
-                         placeholder="Selecione o plano..."
-                         noOptionsMessage={() => "Nenhum plano encontrado"}
-                         options={planosContas
-                           .filter(p => !p.parentId && p.tipo === tipo)
-                           .map(parent => {
-                             const children = planosContas.filter(child => child.parentId === parent.id);
-                             const label = parent.codigoContabil ? `${parent.codigoContabil} - ${parent.descricao}` : parent.descricao;
-                             if (children.length > 0) {
-                               return {
-                                 label,
-                                 options: children.map(child => ({
-                                   value: child.id,
-                                   label: child.codigoContabil ? `${child.codigoContabil} - ${child.descricao}` : child.descricao
-                                 }))
-                               };
-                             }
-                             return { value: parent.id, label };
-                           })}
-                         value={planosContas.find(p => p.id === planoContasId) ? {
-                            value: planoContasId,
-                            label: planosContas.find(p => p.id === planoContasId)?.descricao
-                         } : null}
-                         onChange={(opt: any) => setPlanoContasId(opt?.value || "")}
-                         styles={{
-                           control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: 'transparent', backgroundColor: '#f5f5f7', boxShadow: 'none', '&:hover': { borderColor: 'transparent' } }),
-                           menu: (base) => ({ ...base, borderRadius: '0.75rem', overflow: 'hidden', zIndex: 9999 }),
-                           option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f0f0f5' : 'white', color: '#1d1d1f' }),
-                           menuPortal: (base) => ({ ...base, zIndex: 9999 })
-                         }}
-                         menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                         classNamePrefix="react-select"
-                       />
-                       
-                       <label className="block text-[13px] font-medium text-[#86868b] mt-4 mb-1.5 ml-1">Centro de Custo</label>
-                       <Select
-                         placeholder="Selecione o centro de custo..."
-                         isClearable
-                         noOptionsMessage={() => "Nenhum centro de custo"}
-                         options={centrosCusto
-                           .filter(c => c.status === 'ativo' && (c.empresa === 'Todos' || c.empresa === empresa))
-                           .map(c => ({ value: c.id, label: c.nome }))}
-                         value={centrosCusto.find(c => c.id === centroCustoId) ? {
-                            value: centroCustoId,
-                            label: centrosCusto.find(c => c.id === centroCustoId)?.nome || ''
-                         } : null}
-                         onChange={(opt: any) => setCentroCustoId(opt?.value || "")}
-                         styles={{
-                           control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: 'transparent', backgroundColor: '#f5f5f7', boxShadow: 'none', '&:hover': { borderColor: 'transparent' } }),
-                           menu: (base) => ({ ...base, borderRadius: '0.75rem', overflow: 'hidden', zIndex: 9999 }),
-                           option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f0f0f5' : 'white', color: '#1d1d1f' }),
-                           menuPortal: (base) => ({ ...base, zIndex: 9999 })
-                         }}
-                         menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                         classNamePrefix="react-select"
-                       />
-                     </div>
-
-                     <div className="grid grid-cols-2 gap-4">
-                       {tipo === 'receita' ? (
-                         <div>
-                           <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Cliente</label>
-                           <Select
-                             placeholder="Opcional..."
-                             isClearable
-                             noOptionsMessage={() => "Nenhum cliente"}
-                             options={clientes.map(c => ({ value: c.id, label: c.nome }))}
-                             value={clientes.find(c => c.id === clienteId) ? { value: clienteId, label: clientes.find(c => c.id === clienteId)?.nome } : null}
-                             onChange={(opt: any) => setClienteId(opt?.value || "")}
-                             styles={{
-                               control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: 'transparent', backgroundColor: '#f5f5f7', boxShadow: 'none', '&:hover': { borderColor: 'transparent' } }),
-                               menu: (base) => ({ ...base, borderRadius: '0.75rem', overflow: 'hidden', zIndex: 9999 }),
-                               option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f0f0f5' : 'white', color: '#1d1d1f' }),
-                               menuPortal: (base) => ({ ...base, zIndex: 9999 })
-                             }}
-                             menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                             classNamePrefix="react-select"
-                           />
-                         </div>
-                       ) : (
-                         <div>
-                           <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Fornecedor</label>
-                           <Select
-                             placeholder="Opcional..."
-                             isClearable
-                             noOptionsMessage={() => "Nenhum fornecedor"}
-                             options={fornecedores.map(f => ({ value: f.id, label: f.nome }))}
-                             value={fornecedores.find(f => f.id === fornecedorId) ? { value: fornecedorId, label: fornecedores.find(f => f.id === fornecedorId)?.nome } : null}
-                             onChange={(opt: any) => setFornecedorId(opt?.value || "")}
-                             styles={{
-                               control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: 'transparent', backgroundColor: '#f5f5f7', boxShadow: 'none', '&:hover': { borderColor: 'transparent' } }),
-                               menu: (base) => ({ ...base, borderRadius: '0.75rem', overflow: 'hidden', zIndex: 9999 }),
-                               option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f0f0f5' : 'white', color: '#1d1d1f' }),
-                               menuPortal: (base) => ({ ...base, zIndex: 9999 })
-                             }}
-                             menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                             classNamePrefix="react-select"
-                           />
-                         </div>
-                       )}
-
-                       <div>
-                         <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Conta Bancária</label>
-                         <Select
-                             placeholder="Nenhuma..."
-                             isClearable
-                             noOptionsMessage={() => "Nenhuma conta"}
-                             options={contasBancarias.map(c => ({ value: c.id, label: c.nome + (c.banco ? ' - ' + c.banco : '') }))}
-                             value={contasBancarias.find(c => c.id === contaBancariaId) ? { value: contaBancariaId, label: contasBancarias.find(c => c.id === contaBancariaId)?.nome } : null}
-                             onChange={(opt: any) => setContaBancariaId(opt?.value || "")}
-                             styles={{
-                               control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: 'transparent', backgroundColor: '#f5f5f7', boxShadow: 'none', '&:hover': { borderColor: 'transparent' } }),
-                               menu: (base) => ({ ...base, borderRadius: '0.75rem', overflow: 'hidden', zIndex: 9999 }),
-                               option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f0f0f5' : 'white', color: '#1d1d1f' }),
-                               menuPortal: (base) => ({ ...base, zIndex: 9999 })
-                             }}
-                             menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                             classNamePrefix="react-select"
-                           />
-                       </div>
-
-                       <div className="col-span-2">
-                         <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Embarcação</label>
-                         <Select
-                             placeholder="Opcional..."
-                             isClearable
-                             noOptionsMessage={() => "Nenhuma embarcação"}
-                             options={embarcacoes.map(e => ({ value: e.id, label: e.nome }))}
-                             value={embarcacoes.find(e => e.id === embarcacaoId) ? { value: embarcacaoId, label: embarcacoes.find(e => e.id === embarcacaoId)?.nome } : null}
-                             onChange={(opt: any) => setEmbarcacaoId(opt?.value || "")}
-                             styles={{
-                               control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: 'transparent', backgroundColor: '#f5f5f7', boxShadow: 'none', '&:hover': { borderColor: 'transparent' } }),
-                               menu: (base) => ({ ...base, borderRadius: '0.75rem', overflow: 'hidden', zIndex: 9999 }),
-                               option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f0f0f5' : 'white', color: '#1d1d1f' }),
-                               menuPortal: (base) => ({ ...base, zIndex: 9999 })
-                             }}
-                             menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                             classNamePrefix="react-select"
-                           />
-                       </div>
-                     </div>
-                   </div>
-                </div>
-
-                {/* 4. Split / Parcelamento */}
-                <div className={`rounded-2xl transition-all duration-300 ${isRepetir ? 'bg-[#f0f4ff] border border-[#0071e3]/20 shadow-sm' : 'bg-transparent border border-[#d2d2d7]/50 border-dashed hover:border-[#0071e3]/50 hover:bg-[#f0f4ff]/50'}`}>
+            {/* Menu Vertical de Navegação por Pílulas */}
+            <nav className="space-y-1">
+              {TABS.map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
                   <button
-                    onClick={() => setIsRepetir(!isRepetir)}
-                    className="w-full px-6 py-4 flex items-center justify-between group"
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
+                      isActive
+                        ? 'bg-white text-stone-900 shadow-xs border border-stone-200/80'
+                        : 'text-stone-500 hover:text-stone-900 hover:bg-stone-100/60'
+                    }`}
                   >
-                    <div className="flex items-center gap-3 text-[#1d1d1f]">
-                      <div className={`p-2 rounded-full transition-colors ${isRepetir ? 'bg-[#0071e3] text-white' : 'bg-[#e5e5ea] text-[#86868b] group-hover:text-[#0071e3]'}`}>
-                        <Repeat className="w-4 h-4" />
-                      </div>
-                      <span className="font-semibold text-[15px]">Repetir ou Parcelar</span>
+                    <div className="flex items-center gap-2.5">
+                      <Icon className="w-4 h-4 text-stone-600" />
+                      <span>{tab.label}</span>
                     </div>
-                    <div className={`w-10 h-6 rounded-full transition-colors duration-300 relative ${isRepetir ? 'bg-[#34c759]' : 'bg-[#d2d2d7]'}`}>
-                      <motion.div
-                         layout
-                         className="w-5 h-5 bg-white rounded-full absolute top-[2px] shadow-sm"
-                         animate={{ left: isRepetir ? 'calc(100% - 22px)' : '2px' }}
-                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    {tab.badge && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-200/80 text-stone-700">
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Rodapé da Coluna Esquerda: Cartão de Prévia */}
+          <div className="pt-4 border-t border-stone-200/60 space-y-2 mt-4">
+            <div className="bg-white p-3.5 rounded-xl border border-stone-200/80 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${
+                  tipo === 'receita' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                }`}>
+                  {tipo === 'receita' ? 'Receita' : 'Despesa'}
+                </span>
+                <span className="text-[11px] text-stone-500 font-medium truncate max-w-[120px]">
+                  {empresa}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-stone-400 font-medium block">Valor Previsto</span>
+                <span className={`text-base font-black tabular-nums ${
+                  tipo === 'receita' ? 'text-emerald-700' : 'text-rose-700'
+                }`}>
+                  {tipo === 'despesa' ? '- ' : '+ '}R$ {valor || '0,00'}
+                </span>
+              </div>
+              <div className="pt-1.5 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
+                <span>Vencimento:</span>
+                <span className="font-bold text-stone-800">
+                  {vencimento ? new Date(vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '--'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* ================= COLUNA DIREITA: CONTEÚDO PRINCIPAL ================= */}
+        <main className="flex-1 flex flex-col min-w-0 bg-white">
+          {/* Header da Coluna Direita */}
+          <header className="px-6 sm:px-8 py-5 border-b border-stone-200/70 flex items-center justify-between shrink-0">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-stone-900 tracking-tight">
+                {currentTabMeta.label}
+              </h2>
+              <p className="text-xs text-stone-500 font-normal mt-0.5">
+                {currentTabMeta.desc}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
+              title="Fechar (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </header>
+
+          {/* Área de Conteúdo Scrollável com Cards Padronizados */}
+          <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-4 subtle-scrollbar">
+
+            {/* TAB 1: NATUREZA & VALORES */}
+            {activeTab === 'valores' && (
+              <div className="space-y-4">
+                <div className="bg-stone-50/60 rounded-2xl p-5 border border-stone-200/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-stone-700">Tipo de Movimentação</span>
+                    <span className="text-xs text-stone-500">Selecione o fluxo do caixa</span>
+                  </div>
+
+                  <div className="flex bg-stone-200/70 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setTipo('receita')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        tipo === 'receita' ? 'bg-white shadow-xs text-emerald-700' : 'text-stone-500 hover:text-stone-900'
+                      }`}
+                    >
+                      Receita (+ Entrada)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTipo('despesa')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        tipo === 'despesa' ? 'bg-white shadow-xs text-rose-700' : 'text-stone-500 hover:text-stone-900'
+                      }`}
+                    >
+                      Despesa (- Saída)
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                        Valor Total (R$) *
+                      </label>
+                      <input
+                        type="text"
+                        value={valor}
+                        onChange={handleValorChange}
+                        placeholder="0,00"
+                        className={`w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-base font-bold focus:outline-hidden focus:border-stone-400 tabular-nums ${
+                          tipo === 'receita' ? 'text-emerald-700' : 'text-rose-700'
+                        }`}
                       />
                     </div>
-                  </button>
 
-                  <AnimatePresence>
-                    {isRepetir && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="px-6 pb-6 pt-2 border-t border-[#0071e3]/10">
-                           <div className="grid grid-cols-2 gap-4 mb-5">
-                             <div>
-                               <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Modo</label>
-                               <select
-                                 value={modoRepeticao}
-                                 onChange={e => setModoRepeticao(e.target.value as any)}
-                                 className="w-full bg-white border border-[#0071e3]/20 rounded-xl px-4 py-2.5 text-[14px] font-medium text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30 appearance-none"
-                               >
-                                 <option value="parcelado">Parcelado (Divide o valor)</option>
-                                 <option value="recorrente">Recorrente (Repete o valor)</option>
-                               </select>
-                             </div>
-                             <div>
-                               <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Frequência</label>
-                               <select
-                                 value={frequencia}
-                                 onChange={e => setFrequencia(e.target.value as any)}
-                                 className="w-full bg-white border border-[#0071e3]/20 rounded-xl px-4 py-2.5 text-[14px] font-medium text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30 appearance-none"
-                               >
-                                 <option value="mensal">Mensal</option>
-                                 <option value="semanal">Semanal</option>
-                               </select>
-                             </div>
-                           </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                        Data de Vencimento *
+                      </label>
+                      <input
+                        type="date"
+                        value={vencimento}
+                        onChange={e => setVencimento(e.target.value)}
+                        className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-stone-900 focus:outline-hidden focus:border-stone-400"
+                      />
+                    </div>
+                  </div>
 
-                           {modoRepeticao === 'parcelado' && (
-                             <div className="mb-5">
-                               <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Número de Parcelas</label>
-                               <div className="flex bg-white rounded-xl border border-[#0071e3]/20 overflow-hidden w-32">
-                                 <button onClick={() => setQtdParcelas(Math.max(2, qtdParcelas - 1))} className="px-3 hover:bg-[#f5f5f7] font-semibold text-[#1d1d1f] flex-1 border-r border-[#0071e3]/10">-</button>
-                                 <span className="flex-1 text-center py-2 text-[14px] font-semibold text-[#1d1d1f]">{qtdParcelas}</span>
-                                 <button onClick={() => setQtdParcelas(Math.min(48, qtdParcelas + 1))} className="px-3 hover:bg-[#f5f5f7] font-semibold text-[#1d1d1f] flex-1 border-l border-[#0071e3]/10">+</button>
-                               </div>
-                             </div>
-                           )}
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Descrição do Lançamento *
+                    </label>
+                    <input
+                      type="text"
+                      value={descricao}
+                      onChange={e => setDescricao(e.target.value)}
+                      placeholder="Ex: Pagamento Fornecedor Combustível, Taxa de Condomínio..."
+                      className="w-full h-10 px-3.5 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-stone-900 focus:outline-hidden focus:border-stone-400"
+                    />
+                  </div>
 
-                           {modoRepeticao === 'recorrente' && (
-                             <div className="space-y-4 mb-5">
-                               <div>
-                                 <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Quantidade de Recorrências</label>
-                                 <div className="flex bg-white rounded-xl border border-[#0071e3]/20 overflow-hidden w-32">
-                                   <button onClick={() => setQtdRecorrencias(Math.max(1, qtdRecorrencias - 1))} className="px-3 hover:bg-[#f5f5f7] font-semibold text-[#1d1d1f] flex-1 border-r border-[#0071e3]/10">-</button>
-                                   <span className="flex-1 text-center py-2 text-[14px] font-semibold text-[#1d1d1f]">{qtdRecorrencias}</span>
-                                   <button onClick={() => setQtdRecorrencias(Math.min(48, qtdRecorrencias + 1))} className="px-3 hover:bg-[#f5f5f7] font-semibold text-[#1d1d1f] flex-1 border-l border-[#0071e3]/10">+</button>
-                                 </div>
-                               </div>
-                               <div>
-                                 <label className="block text-[13px] font-medium text-[#86868b] mb-1.5 ml-1">Dia de Vencimento Fixo</label>
-                                 <div className="flex items-center gap-3">
-                                   <select
-                                     value={diaVencimentoRecorrente}
-                                     onChange={e => setDiaVencimentoRecorrente(Number(e.target.value))}
-                                     className="w-24 bg-white border border-[#0071e3]/20 rounded-xl px-4 py-2.5 text-[14px] font-semibold text-[#1d1d1f] text-center focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30 appearance-none"
-                                   >
-                                     {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
-                                       <option key={d} value={d}>{String(d).padStart(2, '0')}</option>
-                                     ))}
-                                   </select>
-                                   <span className="text-[13px] text-[#86868b] font-medium">de cada mês</span>
-                                 </div>
-                                 <p className="text-[12px] text-[#86868b] mt-1.5 ml-1">
-                                   Meses com menos dias terão vencimento no último dia (ex: dia 31 em fevereiro → dia 28/29)
-                                 </p>
-                               </div>
-                             </div>
-                           )}
-
-                           {/* Preview Render */}
-                           {(parcelas.length > 0 && rawValue > 0 && modoRepeticao === 'parcelado') && (
-                             <div className="bg-white rounded-xl border border-[#0071e3]/20 overflow-hidden">
-                               <div className="px-4 py-2 bg-[#f8fbff] border-b border-[#0071e3]/10 text-[12px] font-semibold text-[#0071e3] uppercase tracking-wider">
-                                 Pré-visualização ({parcelas.length} parcelas)
-                               </div>
-                               <div className="max-h-[160px] overflow-y-auto">
-                                 {parcelas.map((p, idx) => (
-                                   <div key={idx} className="flex justify-between items-center px-4 py-2 bg-white border-b border-[#f5f5f7] last:border-0">
-                                     <div className="flex items-center gap-3">
-                                       <span className="w-5 h-5 bg-[#f5f5f7] text-[#86868b] rounded text-[11px] font-bold flex items-center justify-center">{p.numero}</span>
-                                       <span className="text-[14px] text-[#1d1d1f] font-medium">Data: {new Date(p.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                                     </div>
-                                     <div className="text-[14px] font-semibold text-[#1d1d1f]">
-                                       R$ {p.valor.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}
-                                     </div>
-                                   </div>
-                                 ))}
-                               </div>
-                               <div className="px-4 py-3 bg-[#f5f5f7]/50 flex justify-between items-center border-t border-[#0071e3]/10">
-                                  <span className="text-[13px] font-medium text-[#86868b]">Total da Operação</span>
-                                  <span className="text-[15px] font-bold text-[#1d1d1f]">R$ {rawValue.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                               </div>
-                             </div>
-                           )}
-
-                           {(modoRepeticao === 'recorrente' && recorrencias.length > 0 && rawValue > 0) && (
-                             <div className="bg-white rounded-xl border border-[#0071e3]/20 overflow-hidden">
-                               <div className="px-4 py-2 bg-[#f8fbff] border-b border-[#0071e3]/10 text-[12px] font-semibold text-[#0071e3] uppercase tracking-wider">
-                                 Pré-visualização ({recorrencias.length} recorrências — Dia {String(diaVencimentoRecorrente).padStart(2, '0')})
-                               </div>
-                               <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
-                                 {recorrencias.map((p, idx) => (
-                                   <div key={idx} className="flex justify-between items-center px-4 py-2 bg-white border-b border-[#f5f5f7] last:border-0">
-                                     <div className="flex items-center gap-3">
-                                       <span className="w-5 h-5 bg-[#e5fcf4] text-[#008f5d] rounded text-[11px] font-bold flex items-center justify-center">{p.numero}</span>
-                                       <span className="text-[14px] text-[#1d1d1f] font-medium">{new Date(p.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                                     </div>
-                                     <div className="text-[14px] font-semibold text-[#1d1d1f]">
-                                       R$ {p.valor.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}
-                                     </div>
-                                   </div>
-                                 ))}
-                               </div>
-                               <div className="px-4 py-3 bg-[#f5f5f7]/50 flex justify-between items-center border-t border-[#0071e3]/10">
-                                  <span className="text-[13px] font-medium text-[#86868b]">Total da Operação</span>
-                                  <span className="text-[15px] font-bold text-[#1d1d1f]">R$ {(rawValue * qtdRecorrencias).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                               </div>
-                             </div>
-                           )}
-
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Empresa de Destino
+                    </label>
+                    <select
+                      value={empresa}
+                      onChange={e => setEmpresa(e.target.value)}
+                      className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-stone-900 focus:outline-hidden focus:border-stone-400"
+                    >
+                      <option value="Mexicano">Mexicano</option>
+                      <option value="Vale Administradora">Vale Administradora</option>
+                      <option value="Marina Velho Chico">Marina Velho Chico</option>
+                    </select>
+                  </div>
                 </div>
-
               </div>
-            </div>
+            )}
 
-            {/* Footer */}
-            <div className="px-8 py-5 flex items-center justify-end gap-3 bg-white/70 backdrop-blur-xl border-t border-black/[0.04]">
-              <button
-                onClick={onClose}
-                className="px-6 py-2.5 rounded-full text-[15px] font-medium text-[#1d1d1f] hover:bg-[#e5e5ea] transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                className="px-8 py-2.5 rounded-full text-[15px] font-semibold text-white bg-[#0071e3] hover:bg-[#0077ED] transition-colors shadow-sm"
-              >
-                Confirmar Lançamento
-              </button>
-            </div>
-          </motion.div>
-        </React.Fragment>
-      )}
-    </AnimatePresence>
+            {/* TAB 2: CLASSIFICAÇÃO CONTÁBIL */}
+            {activeTab === 'classificacao' && (
+              <div className="space-y-4">
+                <div className="bg-stone-50/60 rounded-2xl p-5 border border-stone-200/80 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <ListPlus className="w-4 h-4 text-stone-700" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">Parâmetros Contábeis</h4>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Plano de Contas *
+                    </label>
+                    <Select
+                      placeholder="Selecione o plano de contas..."
+                      noOptionsMessage={() => "Nenhum plano encontrado"}
+                      options={planosContas
+                        .filter(p => !p.parentId && p.tipo === tipo)
+                        .map(parent => {
+                          const children = planosContas.filter(child => child.parentId === parent.id);
+                          const label = parent.codigoContabil ? `${parent.codigoContabil} - ${parent.descricao}` : parent.descricao;
+                          if (children.length > 0) {
+                            return {
+                              label,
+                              options: children.map(child => ({
+                                value: child.id,
+                                label: child.codigoContabil ? `${child.codigoContabil} - ${child.descricao}` : child.descricao
+                              }))
+                            };
+                          }
+                          return { value: parent.id, label };
+                        })}
+                      value={planosContas.find(p => p.id === planoContasId) ? {
+                         value: planoContasId,
+                         label: planosContas.find(p => p.id === planoContasId)?.descricao
+                      } : null}
+                      onChange={(opt: any) => setPlanoContasId(opt?.value || "")}
+                      styles={selectCustomStyles}
+                      menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                      classNamePrefix="react-select"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Centro de Custo
+                    </label>
+                    <Select
+                      placeholder="Selecione o centro de custo..."
+                      isClearable
+                      noOptionsMessage={() => "Nenhum centro de custo ativo"}
+                      options={centrosCusto
+                        .filter(c => c.status === 'ativo' && (c.empresa === 'Todos' || c.empresa === empresa))
+                        .map(c => ({ value: c.id, label: c.nome }))}
+                      value={centrosCusto.find(c => c.id === centroCustoId) ? {
+                         value: centroCustoId,
+                         label: centrosCusto.find(c => c.id === centroCustoId)?.nome || ''
+                      } : null}
+                      onChange={(opt: any) => setCentroCustoId(opt?.value || "")}
+                      styles={selectCustomStyles}
+                      menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                      classNamePrefix="react-select"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Categoria Complementar (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={categoria}
+                      onChange={e => setCategoria(e.target.value)}
+                      placeholder="Sobrescrever categoria livremente se necessário..."
+                      className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-stone-900 focus:outline-hidden focus:border-stone-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: VÍNCULOS & ENTIDADES */}
+            {activeTab === 'vinculos' && (
+              <div className="space-y-4">
+                <div className="bg-stone-50/60 rounded-2xl p-5 border border-stone-200/80 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-stone-700" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">
+                      Entidades Vinculadas à Operação
+                    </h4>
+                  </div>
+
+                  {tipo === 'receita' ? (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                        Cliente Cotista
+                      </label>
+                      <Select
+                        placeholder="Buscar cliente cotista cadastrado..."
+                        isClearable
+                        noOptionsMessage={() => "Nenhum cliente encontrado"}
+                        options={clientes.map(c => ({ value: c.id, label: c.nome }))}
+                        value={clientes.find(c => c.id === clienteId) ? { value: clienteId, label: clientes.find(c => c.id === clienteId)?.nome } : null}
+                        onChange={(opt: any) => setClienteId(opt?.value || "")}
+                        styles={selectCustomStyles}
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        classNamePrefix="react-select"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                        Fornecedor / Beneficiário
+                      </label>
+                      <Select
+                        placeholder="Buscar fornecedor cadastrado..."
+                        isClearable
+                        noOptionsMessage={() => "Nenhum fornecedor encontrado"}
+                        options={fornecedores.map(f => ({ value: f.id, label: f.nomeFantasia || f.razaoSocial || f.nome }))}
+                        value={fornecedores.find(f => f.id === fornecedorId) ? { value: fornecedorId, label: fornecedores.find(f => f.id === fornecedorId)?.nomeFantasia || fornecedores.find(f => f.id === fornecedorId)?.nome } : null}
+                        onChange={(opt: any) => setFornecedorId(opt?.value || "")}
+                        styles={selectCustomStyles}
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        classNamePrefix="react-select"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                        Conta Bancária
+                      </label>
+                      <Select
+                        placeholder="Conta bancária de liquidação..."
+                        isClearable
+                        noOptionsMessage={() => "Nenhuma conta cadastrada"}
+                        options={contasBancarias.map(c => ({ value: c.id, label: `${c.nome} ${c.banco ? `(${c.banco})` : ''}` }))}
+                        value={contasBancarias.find(c => c.id === contaBancariaId) ? { value: contaBancariaId, label: contasBancarias.find(c => c.id === contaBancariaId)?.nome } : null}
+                        onChange={(opt: any) => setContaBancariaId(opt?.value || "")}
+                        styles={selectCustomStyles}
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        classNamePrefix="react-select"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                        Embarcação Vinculada
+                      </label>
+                      <Select
+                        placeholder="Embarcação (opcional)..."
+                        isClearable
+                        noOptionsMessage={() => "Nenhuma embarcação"}
+                        options={embarcacoes.map(e => ({ value: e.id, label: e.nome }))}
+                        value={embarcacoes.find(e => e.id === embarcacaoId) ? { value: embarcacaoId, label: embarcacoes.find(e => e.id === embarcacaoId)?.nome } : null}
+                        onChange={(opt: any) => setEmbarcacaoId(opt?.value || "")}
+                        styles={selectCustomStyles}
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        classNamePrefix="react-select"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: PARCELAMENTO & REPETIÇÃO */}
+            {activeTab === 'repeticao' && (
+              <div className="space-y-4">
+                {editingItem ? (
+                  <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 text-xs text-stone-500">
+                    O parcelamento e repetição em lote só estão disponíveis ao cadastrar novos lançamentos. Para lançamentos existentes, os valores são atualizados diretamente.
+                  </div>
+                ) : (
+                  <div className="bg-stone-50/60 rounded-2xl p-5 border border-stone-200/80 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">Repetir ou Parcelar</h4>
+                        <p className="text-xs text-stone-500">Gera múltiplos lançamentos programados de forma automática</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsRepetir(!isRepetir)}
+                        className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                          isRepetir ? 'bg-emerald-600' : 'bg-stone-300'
+                        }`}
+                      >
+                        <span
+                          className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-xs transition-transform ${
+                            isRepetir ? 'left-[22px]' : 'left-[2px]'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {isRepetir && (
+                      <div className="space-y-4 pt-2 border-t border-stone-200/80">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                              Modo de Repetição
+                            </label>
+                            <select
+                              value={modoRepeticao}
+                              onChange={e => setModoRepeticao(e.target.value as any)}
+                              className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-stone-900 focus:outline-hidden focus:border-stone-400"
+                            >
+                              <option value="parcelado">Parcelado (Divide o valor total)</option>
+                              <option value="recorrente">Recorrente (Repete o valor a cada mês)</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                              Frequência
+                            </label>
+                            <select
+                              value={frequencia}
+                              onChange={e => setFrequencia(e.target.value as any)}
+                              className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-stone-900 focus:outline-hidden focus:border-stone-400"
+                            >
+                              <option value="mensal">Mensal</option>
+                              <option value="semanal">Semanal</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {modoRepeticao === 'parcelado' && (
+                          <div className="space-y-1.5">
+                            <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                              Quantidade de Parcelas
+                            </label>
+                            <div className="flex bg-white rounded-xl border border-stone-200 overflow-hidden w-36">
+                              <button
+                                type="button"
+                                onClick={() => setQtdParcelas(Math.max(2, qtdParcelas - 1))}
+                                className="px-3 hover:bg-stone-50 font-bold text-stone-700 flex-1 border-r border-stone-200 cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <span className="flex-1 text-center py-2 text-xs font-bold text-stone-900">
+                                {qtdParcelas}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setQtdParcelas(Math.min(48, qtdParcelas + 1))}
+                                className="px-3 hover:bg-stone-50 font-bold text-stone-700 flex-1 border-l border-stone-200 cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {modoRepeticao === 'recorrente' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <div className="space-y-1.5">
+                              <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                                Quantidade de Meses
+                              </label>
+                              <div className="flex bg-white rounded-xl border border-stone-200 overflow-hidden w-36">
+                                <button
+                                  type="button"
+                                  onClick={() => setQtdRecorrencias(Math.max(1, qtdRecorrencias - 1))}
+                                  className="px-3 hover:bg-stone-50 font-bold text-stone-700 flex-1 border-r border-stone-200 cursor-pointer"
+                                >
+                                  -
+                                </button>
+                                <span className="flex-1 text-center py-2 text-xs font-bold text-stone-900">
+                                  {qtdRecorrencias}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setQtdRecorrencias(Math.min(48, qtdRecorrencias + 1))}
+                                  className="px-3 hover:bg-stone-50 font-bold text-stone-700 flex-1 border-l border-stone-200 cursor-pointer"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                                Dia de Vencimento Fixo
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={diaVencimentoRecorrente}
+                                  onChange={e => setDiaVencimentoRecorrente(Number(e.target.value))}
+                                  className="w-24 h-10 px-3 rounded-xl border border-stone-200 bg-white text-xs font-bold text-stone-900 focus:outline-hidden focus:border-stone-400"
+                                >
+                                  {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                                    <option key={d} value={d}>Dia {String(d).padStart(2, '0')}</option>
+                                  ))}
+                                </select>
+                                <span className="text-xs text-stone-500">de cada mês</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Prévia dos registros gerados */}
+                        {parcelas.length > 0 && modoRepeticao === 'parcelado' && (
+                          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+                            <div className="px-3.5 py-2 bg-stone-50 border-b border-stone-200 text-[11px] font-bold text-stone-700 uppercase tracking-wider">
+                              Pré-visualização do Plano ({parcelas.length} parcelas)
+                            </div>
+                            <div className="max-h-40 overflow-y-auto subtle-scrollbar divide-y divide-stone-100 text-xs">
+                              {parcelas.map((p, idx) => (
+                                <div key={idx} className="px-3.5 py-1.5 flex justify-between items-center">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-4 h-4 bg-stone-100 text-stone-600 rounded text-[10px] font-bold flex items-center justify-center">
+                                      {p.numero}
+                                    </span>
+                                    <span className="text-stone-700 font-medium">
+                                      {new Date(p.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                    </span>
+                                  </div>
+                                  <span className="font-bold text-stone-900 tabular-nums">
+                                    R$ {p.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {recorrencias.length > 0 && modoRepeticao === 'recorrente' && (
+                          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+                            <div className="px-3.5 py-2 bg-stone-50 border-b border-stone-200 text-[11px] font-bold text-stone-700 uppercase tracking-wider">
+                              Pré-visualização da Recorrência ({recorrencias.length} meses)
+                            </div>
+                            <div className="max-h-40 overflow-y-auto subtle-scrollbar divide-y divide-stone-100 text-xs">
+                              {recorrencias.map((p, idx) => (
+                                <div key={idx} className="px-3.5 py-1.5 flex justify-between items-center">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-4 h-4 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold flex items-center justify-center">
+                                      {p.numero}
+                                    </span>
+                                    <span className="text-stone-700 font-medium">
+                                      {new Date(p.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                    </span>
+                                  </div>
+                                  <span className="font-bold text-stone-900 tabular-nums">
+                                    R$ {p.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+          </div>
+
+          {/* Footer da Coluna Direita com Botões Padronizados */}
+          <footer className="px-6 sm:px-8 py-4 bg-stone-50/70 border-t border-stone-200/70 flex items-center justify-end gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-5 py-2.5 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 transition-colors cursor-pointer shadow-xs active:scale-95 flex items-center gap-1.5"
+            >
+              <Check className="w-3.5 h-3.5" />
+              {editingItem ? 'Salvar Alterações' : 'Confirmar Lançamento'}
+            </button>
+          </footer>
+        </main>
+      </div>
+    </div>
   );
 }
+
+// Alias para exportação com nome alternativo de modal
+export { FinanceLancamentoDrawer as FinanceLancamentoModal };

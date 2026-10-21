@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { boatDB, clientDB, syncWithRemote, onDbUpdate, isDbLoaded } from '../../db';
 import { Embarcacao, Cliente } from '../../types';
+import { getBoatCotaOccupancyMap, getBoatTotalCotas, getClientCotasForBoat } from '../../utils/cotaUtils';
 import ComercialBoatDrawer from './ComercialBoatDrawer';
 import ComercialBoatFilterDrawer, {
   BoatFilters,
@@ -98,6 +99,40 @@ export default function ComercialEmbarcacoesPage() {
     return map;
   }, [clients]);
 
+  // Mapa de cotistas consolidados por embarcação (garante sincronia total bidirecional)
+  const boatCotistasMap = useMemo(() => {
+    const map = new Map<string, Cliente[]>();
+
+    boats.forEach(boat => {
+      const clientMap = new Map<string, Cliente>();
+
+      // Se boat.donos é um array (mesmo vazio), ele é a autoridade máxima sobre os cotistas
+      if (Array.isArray(boat.donos)) {
+        boat.donos.forEach(id => {
+          const c = clientsMap.get(id);
+          if (c) clientMap.set(c.id, c);
+        });
+      } else {
+        // Fallback apenas para embarcações sem a propriedade donos
+        clients.forEach(c => {
+          const isLinked =
+            c.embarcacaoId === boat.id ||
+            (c.embarcacoes && c.embarcacoes.some(eb => eb.embarcacaoId === boat.id));
+          if (isLinked) {
+            clientMap.set(c.id, c);
+          }
+        });
+      }
+
+      const list = Array.from(clientMap.values()).sort((a, b) =>
+        (a.nome || '').localeCompare(b.nome || '')
+      );
+      map.set(boat.id, list);
+    });
+
+    return map;
+  }, [boats, clients, clientsMap]);
+
   // Estatísticas / KPIs
   const stats = useMemo(() => {
     const total = boats.length;
@@ -145,7 +180,8 @@ export default function ComercialEmbarcacoesPage() {
 
       // 4. Vínculo com Cotistas
       if (filters.vinculoCotistas !== 'all') {
-        const hasDonos = b.donos && b.donos.length > 0;
+        const cotistas = boatCotistasMap.get(b.id) || [];
+        const hasDonos = cotistas.length > 0;
         if (filters.vinculoCotistas === 'com_cotistas' && !hasDonos) return false;
         if (filters.vinculoCotistas === 'sem_cotistas' && hasDonos) return false;
       }
@@ -159,17 +195,17 @@ export default function ComercialEmbarcacoesPage() {
         const matchVaga = b.vaga?.toLowerCase().includes(term);
 
         // Checar nomes de cotistas vinculados
-        const matchDono = b.donos?.some(donoId => {
-          const c = clientsMap.get(donoId);
-          return c && c.nome?.toLowerCase().includes(term);
-        });
+        const cotistas = boatCotistasMap.get(b.id) || [];
+        const matchDono = cotistas.some(c =>
+          c.nome?.toLowerCase().includes(term) || (c.cpf && c.cpf.includes(term))
+        );
 
         return matchName || matchNumero || matchModelo || matchFabricante || matchVaga || matchDono;
       }
 
       return true;
     });
-  }, [boats, searchTerm, filters, clientsMap]);
+  }, [boats, searchTerm, filters, boatCotistasMap]);
 
   return (
     <div className="space-y-5">
@@ -439,9 +475,9 @@ export default function ComercialEmbarcacoesPage() {
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {filteredBoats.map(boat => {
-                  const donosList = (boat.donos || [])
-                    .map(id => clientsMap.get(id))
-                    .filter((c): c is Cliente => !!c);
+                  const donosList = boatCotistasMap.get(boat.id) || [];
+                  const occupiedMap = getBoatCotaOccupancyMap(boat.id, clients, boat);
+                  const totalCotasBoat = getBoatTotalCotas(boat, occupiedMap.size);
                   
                   const isDisponivel =
                     !boat.emManutencao &&
@@ -495,21 +531,32 @@ export default function ComercialEmbarcacoesPage() {
 
                       {/* Cotistas */}
                       <td className="py-3 px-4">
-                        {donosList.length > 0 ? (
-                          <div className="flex flex-col gap-0.5 max-w-[220px]">
-                            <div className="flex items-center gap-1">
-                              <span className="font-semibold text-stone-800 text-[11px]">
-                                {donosList.length} cotista{donosList.length > 1 ? 's' : ''}
+                        <div className="flex flex-col gap-0.5 max-w-[240px]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-stone-800 text-[11px] tabular-nums">
+                              {occupiedMap.size}/{totalCotasBoat} cotas
+                            </span>
+                            {donosList.length > 0 && (
+                              <span className="text-[10px] text-stone-400 tabular-nums">
+                                ({donosList.length} {donosList.length === 1 ? 'titular' : 'titulares'})
                               </span>
-                            </div>
-                            <span className="text-[10px] text-stone-400 truncate">
-                              {donosList.slice(0, 2).map(c => c.nome).join(', ')}
+                            )}
+                          </div>
+                          {donosList.length > 0 ? (
+                            <span className="text-[10px] text-stone-500 truncate">
+                              {donosList
+                                .slice(0, 2)
+                                .map(c => {
+                                  const cs = getClientCotasForBoat(c, boat.id, clients, boat);
+                                  return `${c.nome}${cs.length > 0 ? ` (${cs.join(', ')})` : ''}`;
+                                })
+                                .join(' • ')}
                               {donosList.length > 2 && ` +${donosList.length - 2}`}
                             </span>
-                          </div>
-                        ) : (
-                          <span className="text-stone-400 italic text-[11px]">Nenhum cotista</span>
-                        )}
+                          ) : (
+                            <span className="text-stone-400 italic text-[10px]">Todas as cotas livres</span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Horímetro */}
@@ -568,9 +615,9 @@ export default function ComercialEmbarcacoesPage() {
         /* VISUALIZAÇÃO EM GRADE (CARDS) */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {filteredBoats.map(boat => {
-            const donosList = (boat.donos || [])
-              .map(id => clientsMap.get(id))
-              .filter((c): c is Cliente => !!c);
+            const donosList = boatCotistasMap.get(boat.id) || [];
+            const occupiedMap = getBoatCotaOccupancyMap(boat.id, clients, boat);
+            const totalCotasBoat = getBoatTotalCotas(boat, occupiedMap.size);
 
             const isDisponivel =
               !boat.emManutencao &&
@@ -637,19 +684,22 @@ export default function ComercialEmbarcacoesPage() {
 
                   {/* Cotistas */}
                   <div className="mb-2">
-                    <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider block mb-1">
-                      Cotistas ({donosList.length})
+                    <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider block mb-1 tabular-nums">
+                      Cotas Ocupadas ({occupiedMap.size}/{totalCotasBoat})
                     </span>
                     {donosList.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {donosList.slice(0, 3).map(c => (
-                          <span
-                            key={c.id}
-                            className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-100 text-stone-700 truncate max-w-[140px]"
-                          >
-                            {c.nome}
-                          </span>
-                        ))}
+                        {donosList.slice(0, 3).map(c => {
+                          const cs = getClientCotasForBoat(c, boat.id, clients, boat);
+                          return (
+                            <span
+                              key={c.id}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-100 text-stone-700 truncate max-w-[160px]"
+                            >
+                              {c.nome} {cs.length > 0 ? `(${cs.join(', ')})` : ''}
+                            </span>
+                          );
+                        })}
                         {donosList.length > 3 && (
                           <span className="text-[10px] text-stone-400 font-medium">
                             +{donosList.length - 3}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   Ship,
@@ -13,10 +13,18 @@ import {
   Gauge,
   Camera,
   CheckCircle2,
-  FileText
+  FileText,
+  Search,
+  UserCheck,
+  UploadCloud,
+  Image as ImageIcon,
+  Trash2,
+  RefreshCw,
+  Edit2
 } from 'lucide-react';
 import { Embarcacao, Cliente } from '../../types';
-import { boatDB } from '../../db';
+import { boatDB, getAdminToken } from '../../db';
+import { DEFAULT_TOTAL_COTAS, getClientCotasForBoat } from '../../utils/cotaUtils';
 
 interface ComercialBoatDrawerProps {
   open: boolean;
@@ -50,6 +58,7 @@ export default function ComercialBoatDrawer({
   const [tamanho, setTamanho] = useState('');
   const [potencia, setPotencia] = useState('');
   const [capacidadePassageiros, setCapacidadePassageiros] = useState<number>(8);
+  const [totalCotas, setTotalCotas] = useState<number>(DEFAULT_TOTAL_COTAS);
   const [vaga, setVaga] = useState('');
 
   // Status & Operação
@@ -58,9 +67,17 @@ export default function ComercialBoatDrawer({
   const [empresas, setEmpresas] = useState<string[]>(['VALE']);
   const [imagemUrl, setImagemUrl] = useState('');
 
+  // Upload de Imagem
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Cotistas Vinculados
   const [selectedDonos, setSelectedDonos] = useState<string[]>([]);
   const [cotistaSearch, setCotistaSearch] = useState('');
+  const [cotistaFilterTab, setCotistaFilterTab] = useState<'todos' | 'vinculados' | 'disponiveis'>('todos');
 
   // Acessórios
   const [acessorios, setAcessorios] = useState({
@@ -93,12 +110,34 @@ export default function ComercialBoatDrawer({
       setTamanho(editingBoat.tamanho ? String(editingBoat.tamanho) : '');
       setPotencia(editingBoat.potencia || '');
       setCapacidadePassageiros(editingBoat.capacidadePassageiros || 8);
+      setTotalCotas(
+        editingBoat.totalCotas && Number(editingBoat.totalCotas) > 0
+          ? Number(editingBoat.totalCotas)
+          : DEFAULT_TOTAL_COTAS
+      );
       setVaga(editingBoat.vaga || '');
       setStatusOperacional(editingBoat.statusOperacional || (editingBoat.emManutencao ? 'em_manutencao' : 'disponivel'));
       setHorasMotor(editingBoat.horasMotor || editingBoat.horimetroActual || 0);
       setEmpresas(editingBoat.empresas && editingBoat.empresas.length > 0 ? editingBoat.empresas : ['VALE']);
       setImagemUrl(editingBoat.imagemUrl || '');
-      setSelectedDonos(editingBoat.donos || []);
+      
+      // A lista oficial de cotistas da embarcação é editingBoat.donos
+      let initialDonos: string[] = [];
+      if (Array.isArray(editingBoat.donos)) {
+        initialDonos = [...editingBoat.donos];
+      } else {
+        // Fallback apenas para embarcações antigas sem a propriedade donos
+        clients.forEach(c => {
+          const isLinked =
+            c.embarcacaoId === editingBoat.id ||
+            (c.embarcacoes && c.embarcacoes.some(eb => eb.embarcacaoId === editingBoat.id));
+          if (isLinked) {
+            initialDonos.push(c.id);
+          }
+        });
+      }
+      setSelectedDonos(initialDonos);
+
       setAcessorios({
         tenda: !!editingBoat.acessorios?.tenda,
         mesa: !!editingBoat.acessorios?.mesa,
@@ -116,6 +155,7 @@ export default function ComercialBoatDrawer({
       setTamanho('');
       setPotencia('');
       setCapacidadePassageiros(8);
+      setTotalCotas(DEFAULT_TOTAL_COTAS);
       setVaga('');
       setStatusOperacional('disponivel');
       setHorasMotor(0);
@@ -131,8 +171,90 @@ export default function ComercialBoatDrawer({
       });
     }
     setCotistaSearch('');
+    setCotistaFilterTab('todos');
     setErrorMessage(null);
+    setUploadError(null);
+    setIsUploadingImage(false);
+    setIsDragging(false);
+    setShowUrlInput(false);
   }, [open, editingBoat]);
+
+  // Handler de Upload de Imagem
+  const uploadImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Por favor, selecione um arquivo de imagem válido (PNG, JPG, WEBP).');
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setUploadError('A imagem não pode ultrapassar 8MB.');
+      return;
+    }
+
+    setIsUploadingImage(true);
+    setUploadError(null);
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const token = getAdminToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/upload/boat-image', {
+        method: 'POST',
+        headers,
+        body: formData
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.imageUrl) {
+        setImagemUrl(data.imageUrl);
+        setUploadError(null);
+      } else {
+        setUploadError(data.message || 'Erro ao realizar upload da imagem.');
+      }
+    } catch (err: any) {
+      console.error('Falha no upload da foto da embarcação:', err);
+      setUploadError('Não foi possível se comunicar com o servidor para enviar a imagem.');
+    } finally {
+      setIsUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadImageFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      uploadImageFile(file);
+    }
+  };
 
   const toggleEmpresa = (emp: string) => {
     if (empresas.includes(emp)) {
@@ -152,13 +274,65 @@ export default function ComercialBoatDrawer({
     }
   };
 
-  // Clientes para vincular como cotista
+  const handleRemoveAllDonos = () => {
+    setSelectedDonos([]);
+  };
+
+  // Mapa de Clientes por ID
+  const clientsMap = useMemo(() => {
+    const map = new Map<string, Cliente>();
+    clients.forEach(c => map.set(c.id, c));
+    return map;
+  }, [clients]);
+
+  // Lista dos cotistas que já estão vinculados
+  const vinculadosList = useMemo(() => {
+    return selectedDonos
+      .map(id => {
+        const client = clientsMap.get(id);
+        const cotas = editingBoat?.id
+          ? getClientCotasForBoat(client, editingBoat.id, clients, editingBoat)
+          : [];
+        const cota = cotas.length > 0 ? cotas.join(', ') : client?.cota;
+        return {
+          id,
+          nome: client?.nome || `Cliente ID: ${id}`,
+          cpf: client?.cpf,
+          telefone: client?.telefone,
+          cota,
+          cotasCount: Math.max(1, cotas.length),
+          client
+        };
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [selectedDonos, clientsMap, editingBoat, clients]);
+
+  // Clientes para vincular como cotista (busca e filtro sem corte artificial de 15)
   const filteredClients = useMemo(() => {
-    const term = cotistaSearch.toLowerCase().trim();
-    const sorted = [...clients].sort((a, b) => a.nome.localeCompare(b.nome));
-    if (!term) return sorted;
-    return sorted.filter(c => c.nome?.toLowerCase().includes(term) || c.cpf?.includes(term));
-  }, [clients, cotistaSearch]);
+    const term = cotistaSearch.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const termDigits = term.replace(/\D/g, '');
+
+    // Ordenar alfabeticamente
+    const sorted = [...clients].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+    return sorted.filter(c => {
+      const isSelected = selectedDonos.includes(c.id);
+      if (cotistaFilterTab === 'vinculados' && !isSelected) return false;
+      if (cotistaFilterTab === 'disponiveis' && isSelected) return false;
+
+      if (!term) return true;
+
+      const nomeNorm = (c.nome || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const cpfDigits = (c.cpf || '').replace(/\D/g, '');
+      const telDigits = (c.telefone || '').replace(/\D/g, '');
+
+      const matchNome = nomeNorm.includes(term);
+      const matchCpf = termDigits ? cpfDigits.includes(termDigits) : (c.cpf || '').toLowerCase().includes(term);
+      const matchTel = termDigits ? telDigits.includes(termDigits) : (c.telefone || '').toLowerCase().includes(term);
+
+      return matchNome || matchCpf || matchTel;
+    });
+  }, [clients, selectedDonos, cotistaSearch, cotistaFilterTab]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,6 +355,7 @@ export default function ComercialBoatDrawer({
         tamanho: tamanho.trim(),
         potencia: potencia.trim(),
         capacidadePassageiros: Number(capacidadePassageiros) || 0,
+        totalCotas: Math.max(1, Number(totalCotas) || DEFAULT_TOTAL_COTAS),
         vaga: vaga.trim(),
         statusOperacional,
         emManutencao: statusOperacional === 'em_manutencao',
@@ -466,6 +641,48 @@ export default function ComercialBoatDrawer({
               </div>
             </div>
 
+            {/* Capacidade de Cotas da Embarcação (C1..CN) */}
+            <div className="pt-2 border-t border-stone-100">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-semibold text-stone-600">
+                  Total de Cotas da Embarcação (C1 a C{Math.max(1, Number(totalCotas) || DEFAULT_TOTAL_COTAS)})
+                </label>
+                <span className="text-[10px] font-semibold text-stone-400 tabular-nums">
+                  Padrão sequencial C1..C{Math.max(1, Number(totalCotas) || DEFAULT_TOTAL_COTAS)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 flex-1">
+                  {[4, 6, 8, 10, 12].map(preset => {
+                    const isSelected = Number(totalCotas) === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setTotalCotas(preset)}
+                        className={`flex-1 h-9 rounded-lg border text-xs font-bold tabular-nums transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-mx-ink text-white border-mx-ink shadow-2xs'
+                            : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                        }`}
+                      >
+                        {preset} cotas
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={32}
+                  value={totalCotas}
+                  onChange={e => setTotalCotas(Math.max(1, Math.min(32, Number(e.target.value) || 1)))}
+                  title="Quantidade personalizada de cotas"
+                  className="w-18 h-9 px-2.5 rounded-lg border border-stone-200 text-xs font-bold text-stone-900 text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                />
+              </div>
+            </div>
+
             {/* Status Operacional */}
             <div className="pt-2 border-t border-stone-100">
               <label className="text-[11px] font-semibold text-stone-600 block mb-1.5">
@@ -534,48 +751,209 @@ export default function ComercialBoatDrawer({
           </section>
 
           {/* CARD 3: COTISTAS VINCULADOS */}
-          <section className="p-4 rounded-xl border border-stone-200/80 bg-white space-y-3">
-            <div className="flex items-center justify-between pb-1 border-b border-stone-100">
+          <section className="p-4 rounded-xl border border-stone-200/80 bg-white space-y-3.5">
+            {/* Cabeçalho da Seção */}
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
               <div className="flex items-center gap-2 text-stone-900">
-                <Users className="w-4 h-4 text-stone-500" />
-                <h3 className="text-[13px] font-semibold">Cotistas / Donos ({selectedDonos.length})</h3>
+                <Users className="w-4 h-4 text-stone-600" />
+                <h3 className="text-[13px] font-semibold text-stone-900">Cotistas / Donos</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-mx-ink-100 text-mx-ink">
+                  {vinculadosList.length} vinculado{vinculadosList.length !== 1 ? 's' : ''}
+                </span>
               </div>
-              <span className="text-[10px] text-stone-400">Vincular cotistas</span>
+              {vinculadosList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRemoveAllDonos}
+                  className="text-[10px] text-stone-400 hover:text-red-600 hover:underline transition-colors cursor-pointer"
+                  title="Desvincular todos os cotistas desta embarcação"
+                >
+                  Desvincular todos
+                </button>
+              )}
             </div>
 
-            <input
-              type="text"
-              placeholder="Buscar cliente por nome para vincular..."
-              value={cotistaSearch}
-              onChange={e => setCotistaSearch(e.target.value)}
-              className="w-full h-8 px-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:bg-white"
-            />
+            {/* MOSTRADOR DE COTISTAS JÁ VINCULADOS */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold text-stone-700 flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  Cotistas Já Vinculados ({vinculadosList.length})
+                </span>
+                <span className="text-[10px] text-stone-400">
+                  {vinculadosList.length === 0 ? 'Nenhum no momento' : 'Clique no ✕ para desvincular'}
+                </span>
+              </div>
 
-            <div className="border border-stone-200 rounded-lg max-h-36 overflow-y-auto divide-y divide-stone-100 bg-stone-50/50 p-1">
-              {filteredClients.slice(0, 15).map(c => {
-                const isSelected = selectedDonos.includes(c.id);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => toggleDono(c.id)}
-                    className={`w-full px-2.5 py-1.5 rounded text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'bg-mx-ink-100 text-mx-ink font-semibold'
-                        : 'hover:bg-white text-stone-700'
-                    }`}
-                  >
-                    <span className="truncate">{c.nome}</span>
+              {vinculadosList.length === 0 ? (
+                <div className="p-3 rounded-lg border border-dashed border-stone-200 bg-stone-50/60 text-center">
+                  <p className="text-[11px] text-stone-400">
+                    Nenhum cotista vinculado a esta embarcação ainda.
+                  </p>
+                  <p className="text-[10px] text-stone-400 mt-0.5">
+                    Selecione clientes na lista abaixo para vinculá-los como cotistas.
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-44 overflow-y-auto space-y-1.5 p-2 bg-stone-50/80 rounded-xl border border-stone-200/80">
+                  {vinculadosList.map(item => (
                     <div
-                      className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                        isSelected ? 'bg-mx-ink border-mx-ink text-white' : 'border-stone-300 bg-white'
-                      }`}
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white border border-stone-200/70 shadow-2xs hover:border-stone-300 transition-colors"
                     >
-                      {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-6 h-6 rounded-full bg-mx-ink-100 text-mx-ink font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {item.nome.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-semibold text-stone-900 truncate block">
+                            {item.nome}
+                          </span>
+                          <div className="flex items-center gap-2 text-[10px] text-stone-400">
+                            {item.cota && (
+                              <span className="font-medium text-stone-600 bg-stone-100 px-1.5 py-0.2 rounded">
+                                Cota: {item.cota}
+                              </span>
+                            )}
+                            {item.cpf && <span>CPF: {item.cpf}</span>}
+                            {item.telefone && !item.cpf && <span>Tel: {item.telefone}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleDono(item.id)}
+                        className="w-6 h-6 rounded-md flex items-center justify-center text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+                        title={`Desvincular ${item.nome}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* SELETOR / BUSCADOR DE COTISTAS DA BASE */}
+            <div className="pt-2 border-t border-stone-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-stone-700">
+                  Pesquisar e Selecionar Cotistas
+                </span>
+                <span className="text-[10px] text-stone-400">
+                  {filteredClients.length} de {clients.length} cliente{clients.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* Abas Rápidas */}
+              <div className="flex gap-1 p-0.5 bg-stone-100/80 rounded-lg text-[10px] font-medium text-stone-600">
+                <button
+                  type="button"
+                  onClick={() => setCotistaFilterTab('todos')}
+                  className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
+                    cotistaFilterTab === 'todos' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
+                  }`}
+                >
+                  Todos ({clients.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCotistaFilterTab('vinculados')}
+                  className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
+                    cotistaFilterTab === 'vinculados' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
+                  }`}
+                >
+                  Vinculados ({vinculadosList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCotistaFilterTab('disponiveis')}
+                  className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
+                    cotistaFilterTab === 'disponiveis' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
+                  }`}
+                >
+                  Disponíveis ({Math.max(0, clients.length - vinculadosList.length)})
+                </button>
+              </div>
+
+              {/* Campo de Busca */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar cotista por nome, CPF ou telefone..."
+                  value={cotistaSearch}
+                  onChange={e => setCotistaSearch(e.target.value)}
+                  className="w-full h-8 pl-8 pr-7 rounded-lg border border-stone-200 text-xs bg-stone-50/70 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:bg-white transition-all"
+                />
+                {cotistaSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCotistaSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs cursor-pointer"
+                    title="Limpar busca"
+                  >
+                    ×
                   </button>
-                );
-              })}
+                )}
+              </div>
+
+              {/* Lista Completa com Rolagem (SEM CORTE DE 15!) */}
+              <div className="border border-stone-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-stone-100 bg-stone-50/30 p-1">
+                {filteredClients.length === 0 ? (
+                  <div className="py-6 text-center text-stone-400 text-xs">
+                    <p className="font-medium text-stone-500">Nenhum cotista encontrado</p>
+                    <p className="text-[10px] text-stone-400 mt-0.5">
+                      {cotistaSearch
+                        ? `Nenhum resultado para "${cotistaSearch}"`
+                        : 'Não há clientes para a aba selecionada.'}
+                    </p>
+                  </div>
+                ) : (
+                  filteredClients.map(c => {
+                    const isSelected = selectedDonos.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => toggleDono(c.id)}
+                        className={`w-full px-2.5 py-1.5 rounded-md text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-mx-ink-100 text-mx-ink font-semibold'
+                            : 'hover:bg-white text-stone-700'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2">
+                          <span className="truncate block font-medium">{c.nome}</span>
+                          {(c.cpf || c.telefone) && (
+                            <span className="text-[10px] text-stone-400 truncate block">
+                              {c.cpf ? `CPF: ${c.cpf}` : ''}
+                              {c.cpf && c.telefone ? ' • ' : ''}
+                              {c.telefone ? `Tel: ${c.telefone}` : ''}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isSelected && (
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-mx-ink bg-mx-ink-200/50 px-1 py-0.2 rounded">
+                              Vinculado
+                            </span>
+                          )}
+                          <div
+                            className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                              isSelected ? 'bg-mx-ink border-mx-ink text-white' : 'border-stone-300 bg-white'
+                            }`}
+                          >
+                            {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </section>
 
@@ -586,17 +964,142 @@ export default function ComercialBoatDrawer({
               <h3 className="text-[13px] font-semibold">Mídia & Acessórios</h3>
             </div>
 
-            <div>
-              <label className="text-[11px] font-semibold text-stone-600 block mb-1">
-                URL da Foto da Embarcação
-              </label>
+            {/* Upload de Foto da Embarcação */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-stone-700 flex items-center gap-1.5">
+                  <ImageIcon className="w-3.5 h-3.5 text-stone-500" />
+                  <span>Foto da Embarcação</span>
+                </label>
+                {imagemUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setShowUrlInput(!showUrlInput)}
+                    className="text-[10px] text-stone-400 hover:text-stone-700 transition-colors cursor-pointer"
+                  >
+                    {showUrlInput ? 'Ocultar URL' : 'Ver URL direta'}
+                  </button>
+                )}
+              </div>
+
+              {/* Input de arquivo oculto */}
               <input
-                type="url"
-                value={imagemUrl}
-                onChange={e => setImagemUrl(e.target.value)}
-                placeholder="https://exemplo.com/foto-lancha.jpg"
-                className="w-full h-8 px-2.5 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                ref={fileInputRef}
+                type="file"
+                accept="image/png, image/jpeg, image/jpg, image/webp"
+                onChange={handleImageUpload}
+                className="hidden"
               />
+
+              {/* Mensagem de Erro de Upload */}
+              {uploadError && (
+                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200/80 text-red-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                  <span className="text-[11px] font-medium">{uploadError}</span>
+                </div>
+              )}
+
+              {/* Área de Upload / Preview */}
+              {isUploadingImage ? (
+                <div className="p-5 rounded-xl border-2 border-dashed border-mx-ink/40 bg-mx-ink-50/50 flex flex-col items-center justify-center text-center space-y-2">
+                  <RefreshCw className="w-6 h-6 text-mx-ink animate-spin" />
+                  <div>
+                    <span className="text-xs font-semibold text-mx-ink block">
+                      Enviando e otimizando imagem…
+                    </span>
+                    <span className="text-[10px] text-stone-500">
+                      Convertendo para formato otimizado WebP
+                    </span>
+                  </div>
+                </div>
+              ) : imagemUrl ? (
+                <div className="p-3 rounded-xl border border-stone-200 bg-stone-50/70 flex items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-16 h-12 rounded-lg overflow-hidden border border-stone-200 shadow-2xs shrink-0 bg-stone-100 flex items-center justify-center">
+                      <img
+                        src={imagemUrl}
+                        alt="Foto da embarcação"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-stone-900">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate">Foto vinculada com sucesso</span>
+                      </div>
+                      <span className="text-[10px] text-stone-400 truncate block mt-0.5" title={imagemUrl}>
+                        {imagemUrl.startsWith('/uploads/') ? 'Armazenada no servidor local' : imagemUrl}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                      title="Selecionar outra imagem"
+                    >
+                      <Edit2 className="w-3 h-3 text-stone-500" />
+                      <span>Trocar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImagemUrl('');
+                        setUploadError(null);
+                      }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                      title="Remover foto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`p-5 rounded-xl border-2 border-dashed transition-all text-center cursor-pointer flex flex-col items-center justify-center space-y-1.5 group ${
+                    isDragging
+                      ? 'border-mx-ink bg-mx-ink-50/60 scale-[0.99]'
+                      : 'border-stone-200 bg-stone-50/60 hover:border-mx-ink/40 hover:bg-stone-50'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-white border border-stone-200/90 shadow-2xs flex items-center justify-center text-stone-500 group-hover:text-mx-ink group-hover:border-mx-ink/30 transition-colors">
+                    <UploadCloud className="w-5 h-5 text-stone-500 group-hover:text-mx-ink transition-colors" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-stone-800 block">
+                      Clique para selecionar ou arraste a foto aqui
+                    </span>
+                    <span className="text-[10px] text-stone-400 block mt-0.5">
+                      PNG, JPG ou WEBP (máx. 8MB) • Otimização automática
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Opção de inserir ou editar link manual */}
+              {showUrlInput && (
+                <div className="pt-2">
+                  <span className="text-[10px] font-medium text-stone-500 block mb-1">
+                    Caminho / URL da Imagem:
+                  </span>
+                  <input
+                    type="text"
+                    value={imagemUrl}
+                    onChange={e => setImagemUrl(e.target.value)}
+                    placeholder="https://exemplo.com/foto-lancha.jpg"
+                    className="w-full h-8 px-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50/50 text-stone-800 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:bg-white transition-all font-mono text-[11px]"
+                  />
+                </div>
+              )}
             </div>
 
             <div>

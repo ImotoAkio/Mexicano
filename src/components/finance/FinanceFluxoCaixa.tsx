@@ -12,6 +12,8 @@ import FinanceVisualizadorDrawer from './FinanceVisualizadorDrawer';
 import { generateFinanceReportPDF } from '../../utils/pdfGenerator';
 import Select from 'react-select';
 import { clientDB } from '../../db';
+import { FinanceBulkActionsModal } from './FinanceBulkModals';
+import { PageHeader, MetricCard, Button } from '../tailadmin';
 
 // Tooltip/3-dot Menu Component
 function RowActions({
@@ -319,6 +321,10 @@ export default function FinanceFluxoCaixa() {
   const [taxaMultaAtraso, setTaxaMultaAtraso] = useState<number>(2.0);
   const [billingTypePadrao, setBillingTypePadrao] = useState<string>('PIX');
 
+  // Multi-selection & Bulk Actions State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkModal, setBulkModal] = useState<'baixa' | 'delete' | 'edit' | 'asaas' | null>(null);
+
   const getDaysDiff = (dateStr: string) => {
     const due = new Date(dateStr + 'T12:00:00'); // avoid timezone shifts
     const today = new Date();
@@ -578,110 +584,269 @@ export default function FinanceFluxoCaixa() {
   const metricPagar = filteredTransacoes.filter(t => t.tipo === 'despesa' && t.status !== 'pago').reduce((acc, curr) => acc + (parseFloat(curr.valor)||0), 0);
   const metricSaldo = filteredTransacoes.filter(t => t.status === 'pago').reduce((acc, curr) => acc + (curr.tipo === 'receita' ? (parseFloat(curr.valor)||0) : -(parseFloat(curr.valor)||0)), 0);
 
+  // Multi-selection calculations
+  const selectedTransactions = transacoes.filter(t => selectedIds.includes(String(t.id)));
+  const isAllSelected = filteredTransacoes.length > 0 && filteredTransacoes.every(t => selectedIds.includes(String(t.id)));
+  const isSomeSelected = filteredTransacoes.some(t => selectedIds.includes(String(t.id))) && !isAllSelected;
+
+  const handleToggleSelect = (id: any) => {
+    const strId = String(id);
+    setSelectedIds(prev =>
+      prev.includes(strId) ? prev.filter(x => x !== strId) : [...prev, strId]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      const filteredIdSet = new Set(filteredTransacoes.map(t => String(t.id)));
+      setSelectedIds(prev => prev.filter(id => !filteredIdSet.has(id)));
+    } else {
+      const combined = new Set([...selectedIds, ...filteredTransacoes.map(t => String(t.id))]);
+      setSelectedIds(Array.from(combined));
+    }
+  };
+
+  const clearSelection = () => setSelectedIds([]);
+
+  const selectedReceitas = selectedTransactions.filter(t => t.tipo === 'receita').reduce((sum, t) => sum + (parseFloat(t.valor) || 0), 0);
+  const selectedDespesas = selectedTransactions.filter(t => t.tipo === 'despesa').reduce((sum, t) => sum + (parseFloat(t.valor) || 0), 0);
+  const selectedTotal = selectedReceitas - selectedDespesas;
+  const selectedPagasCount = selectedTransactions.filter(t => t.status === 'pago').length;
+
+  const handleConfirmBulkBaixa = async (dataPagamento: string, contaBancariaId?: string) => {
+    const updatedTxs = selectedTransactions.map(t => ({
+      ...t,
+      status: 'pago',
+      dataPagamento,
+      ...(contaBancariaId ? { contaBancariaId } : {})
+    }));
+
+    const updatedMap = new Map(updatedTxs.map(t => [String(t.id), t]));
+    setTransacoes(prev => prev.map(t => updatedMap.get(String(t.id)) || t));
+
+    const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+    const res = await fetch('/api/financeiro/transacoes/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ action: 'upsert', data: updatedTxs })
+    });
+
+    if (!res.ok) {
+      fetchTransacoes();
+      throw new Error("Erro ao salvar baixa em lote.");
+    } else {
+      fetchTransacoes();
+      clearSelection();
+    }
+  };
+
+  const handleBulkReopen = async () => {
+    if (!window.confirm(`Deseja reabrir ${selectedTransactions.length} lançamentos e torná-los pendentes novamente?`)) return;
+
+    const updatedTxs = selectedTransactions.map(t => ({
+      ...t,
+      status: 'lancado',
+      dataPagamento: null
+    }));
+
+    const updatedMap = new Map(updatedTxs.map(t => [String(t.id), t]));
+    setTransacoes(prev => prev.map(t => updatedMap.get(String(t.id)) || t));
+
+    try {
+      const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+      const res = await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ action: 'upsert', data: updatedTxs })
+      });
+      if (res.ok) {
+        fetchTransacoes();
+        clearSelection();
+      } else {
+        alert("Erro ao reabrir lançamentos.");
+        fetchTransacoes();
+      }
+    } catch (e) {
+      alert("Erro de conexão.");
+      fetchTransacoes();
+    }
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+    const idsToDelete = [...selectedIds];
+
+    // Optimistic UI update
+    setTransacoes(prev => prev.filter(t => !idsToDelete.includes(String(t.id))));
+
+    try {
+      const deletePromises = idsToDelete.map(id =>
+        fetch('/api/financeiro/transacoes/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ action: 'delete', data: { id } })
+        })
+      );
+
+      const responses = await Promise.all(deletePromises);
+      const allOk = responses.every(r => r.ok);
+
+      if (!allOk) {
+        fetchTransacoes();
+        throw new Error("Erro ao excluir alguns lançamentos.");
+      } else {
+        clearSelection();
+        fetchTransacoes();
+      }
+    } catch (err) {
+      fetchTransacoes();
+      throw err;
+    }
+  };
+
+  const handleConfirmBulkEdit = async (fields: any) => {
+    const updatedTxs = selectedTransactions.map(t => ({
+      ...t,
+      ...fields
+    }));
+
+    const updatedMap = new Map(updatedTxs.map(t => [String(t.id), t]));
+    setTransacoes(prev => prev.map(t => updatedMap.get(String(t.id)) || t));
+
+    const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+    const res = await fetch('/api/financeiro/transacoes/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ action: 'upsert', data: updatedTxs })
+    });
+
+    if (!res.ok) {
+      fetchTransacoes();
+      throw new Error("Erro ao atualizar lançamentos em lote.");
+    } else {
+      fetchTransacoes();
+      clearSelection();
+    }
+  };
+
+  const handleBulkExportPDF = () => {
+    if (selectedTransactions.length === 0) return;
+    generateFinanceReportPDF({
+      empresa: empresaFiltro,
+      tab: `Seleção (${selectedTransactions.length} lançamentos)`,
+      dataInicio,
+      dataFim,
+      transacoes: selectedTransactions
+    });
+  };
+
+
 
   return (
-    <div className="w-full h-full bg-[#f5f5f7] flex flex-col pt-8">
+    <div className="w-full flex flex-col space-y-6">
 
-      {/* HEADER SECTION - Multi-Tenant Global Filter + Title */}
-      <div className="px-8 pb-6 flex flex-col gap-6 shrink-0 z-20 relative">
-        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-4">
-          <div>
-            <h1 className="text-[32px] font-semibold text-[#1d1d1f] tracking-tight leading-none mb-2">
-              Central de Movimentações
-            </h1>
-            <p className="text-[15px] font-medium text-[#86868b] tracking-tight">
-              Acompanhe lançamentos, baixas e inadimplentes de forma inteligente.
-            </p>
+      {/* HEADER SECTION - TailAdmin PageHeader */}
+      <PageHeader
+        pageTitle="Fluxo de Caixa"
+        breadcrumbs={[
+          { label: "Financeiro" },
+          { label: "Fluxo de Caixa" }
+        ]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Empresa selector pill */}
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80 shadow-xs overflow-x-auto max-w-full gap-1">
+              {companies.map(empresa => {
+                const isActive = empresaFiltro === empresa;
+                return (
+                  <button
+                    key={empresa}
+                    onClick={() => setEmpresaFiltro(empresa)}
+                    className={`relative px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                      isActive
+                        ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                  >
+                    {empresa}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Button
+              variant="outline"
+              size="md"
+              startIcon={<FileText className="w-4 h-4 text-slate-500" />}
+              onClick={() => generateFinanceReportPDF({
+                empresa: empresaFiltro,
+                tab: activeTab,
+                dataInicio,
+                dataFim,
+                transacoes: filteredTransacoes
+              })}
+            >
+              Relatório PDF
+            </Button>
+
+            <Button
+              variant="primary"
+              size="md"
+              startIcon={<Plus className="w-4 h-4" />}
+              onClick={() => setIsLancamentoDrawerOpen(true)}
+            >
+              Novo Lançamento
+            </Button>
           </div>
+        }
+      />
 
-          <div className="flex flex-wrap items-center gap-4">
-             {/* Apple-style Segmented Control for Companies */}
-             <div className="flex bg-[#e5e5ea]/50 p-1 rounded-full backdrop-blur-xl border border-white/50 shadow-sm relative overflow-x-auto custom-scrollbar max-w-full">
-               {companies.map(empresa => {
-                 const isActive = empresaFiltro === empresa;
-                 return (
-                   <button
-                     key={empresa}
-                     onClick={() => setEmpresaFiltro(empresa)}
-                     className={`relative z-10 px-5 py-2 text-[14px] font-medium rounded-full transition-colors whitespace-nowrap cursor-pointer ${
-                       isActive ? 'text-[#1d1d1f]' : 'text-[#86868b] hover:text-[#1d1d1f]'
-                     }`}
-                   >
-                     {isActive && (
-                       <motion.div
-                         layoutId="activeCompanyFluxo"
-                         className="absolute inset-0 bg-white rounded-full shadow-sm border border-black/[0.04]"
-                         transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }}
-                         style={{ zIndex: -1 }}
-                       />
-                     )}
-                     {empresa}
-                   </button>
-                 )
-               })}
-             </div>
+      {/* Quick Metrics Bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+        <MetricCard
+          title="A Receber"
+          value={`R$ ${metricReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          icon={<TrendingUp className="w-6 h-6 text-emerald-600" />}
+          iconBgColor="bg-emerald-50 text-emerald-600 border border-emerald-100"
+          badgeText="Entradas"
+          badgeColor="success"
+          subtitle={metricReceberJuros > 0 ? `+ R$ ${metricReceberJuros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} em juros/multa` : "Valores pendentes de recebimento"}
+        />
 
-                          <button
-               onClick={() => generateFinanceReportPDF({
-                 empresa: empresaFiltro,
-                 tab: activeTab,
-                 dataInicio,
-                 dataFim,
-                 transacoes: filteredTransacoes
-               })}
-               className="px-6 py-2.5 bg-white border border-black/[0.08] hover:bg-[#f5f5f7] text-[#1d1d1f] flex items-center gap-2 rounded-full font-semibold text-[15px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all active:scale-[0.98]"
-             >
-               <FileText className="w-5 h-5" /> Relatório
-             </button>
-             <button
-               onClick={() => setIsLancamentoDrawerOpen(true)}
-               className="px-6 py-2.5 bg-[#0071e3] hover:bg-[#0077ED] text-white flex items-center gap-2 rounded-full font-semibold text-[15px] shadow-[0_4px_14px_rgba(0,113,227,0.3)] transition-all active:scale-[0.98]"
-             >
-               <Plus className="w-5 h-5" /> Novo Lançamento
-             </button>
-          </div>
-        </div>
+        <MetricCard
+          title="A Pagar"
+          value={`R$ ${metricPagar.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          icon={<TrendingDown className="w-6 h-6 text-rose-600" />}
+          iconBgColor="bg-rose-50 text-rose-600 border border-rose-100"
+          badgeText="Saídas"
+          badgeColor="error"
+          subtitle="Valores pendentes de pagamento"
+        />
 
-        {/* Quick Metrics Bar */}
-        <div className="grid grid-cols-3 gap-6">
-           <div className="bg-white rounded-2xl p-5 border border-black/[0.04] shadow-sm flex items-center justify-between">
-             <div>
-               <p className="text-[13px] font-semibold text-[#86868b] tracking-wide uppercase mb-1">A Receber</p>
-               <p className="text-[24px] font-semibold text-[#1d1d1f] tracking-tight text-[#008f5d]">
-                 R$ {metricReceber.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-                 {metricReceberJuros > 0 && (
-                   <span className="text-[14px] text-[#e30000] ml-2">(+R$ {metricReceberJuros.toLocaleString('pt-BR', {minimumFractionDigits: 2})})</span>
-                 )}
-               </p>
-             </div>
-             <div className="w-12 h-12 bg-[#008f5d]/10 rounded-full flex items-center justify-center">
-               <TrendingUp className="w-6 h-6 text-[#008f5d]" />
-             </div>
-           </div>
+        <MetricCard
+          title="Saldo Liquidado (Pago)"
+          value={`R$ ${metricSaldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          icon={<Wallet className="w-6 h-6 text-blue-600" />}
+          iconBgColor="bg-blue-50 text-blue-600 border border-blue-100"
+          badgeText={metricSaldo >= 0 ? "Positivo" : "Negativo"}
+          badgeColor={metricSaldo >= 0 ? "info" : "error"}
+          subtitle="Saldo efetivo liquidado"
+        />
+      </div>
 
-           <div className="bg-white rounded-2xl p-5 border border-black/[0.04] shadow-sm flex items-center justify-between">
-             <div>
-               <p className="text-[13px] font-semibold text-[#86868b] tracking-wide uppercase mb-1">A Pagar</p>
-               <p className="text-[24px] font-semibold text-[#1d1d1f] tracking-tight text-[#e30000]">R$ {metricPagar.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-             </div>
-             <div className="w-12 h-12 bg-[#e30000]/10 rounded-full flex items-center justify-center">
-               <TrendingDown className="w-6 h-6 text-[#e30000]" />
-             </div>
-           </div>
-
-           <div className="bg-white rounded-2xl p-5 border border-black/[0.04] shadow-sm flex items-center justify-between">
-             <div>
-               <p className="text-[13px] font-semibold text-[#86868b] tracking-wide uppercase mb-1">Efetivado (Saldo Pago)</p>
-               <p className="text-[24px] font-semibold text-[#1d1d1f] tracking-tight flex items-center gap-2">
-                 R$ {metricSaldo.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-                 {metricSaldo > 0 && <ArrowUpRight className="w-5 h-5 text-[#008f5d]" />}
-               </p>
-             </div>
-             <div className="w-12 h-12 bg-[#0071e3]/10 rounded-full flex items-center justify-center">
-               <Wallet className="w-6 h-6 text-[#0071e3]" />
-             </div>
-           </div>
-        </div>
+      <div className="flex flex-col gap-6">
 
         {/* Toolbar: Search, Filters & Tabs */}
         <div className="flex justify-between items-center bg-white/70 backdrop-blur-xl border border-black/[0.04] rounded-[1.5rem] p-2 shadow-sm">
@@ -740,6 +905,43 @@ export default function FinanceFluxoCaixa() {
       {/* DATA GRID */}
       <div className="flex-1 px-8 pb-8 flex flex-col min-h-0">
         <div className="flex-1 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-black/[0.04] overflow-hidden flex flex-col">
+          {/* Top selection banner */}
+          <AnimatePresence>
+            {selectedIds.length > 0 && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="px-6 py-2.5 bg-[#0071e3]/[0.08] border-b border-[#0071e3]/15 flex items-center justify-between text-[13px] shrink-0 overflow-hidden"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold text-[#0071e3]">
+                    {selectedIds.length} {selectedIds.length === 1 ? 'item selecionado' : 'itens selecionados'}
+                  </span>
+                  <span className="text-[#86868b]">•</span>
+                  <span className="text-[#1d1d1f] font-medium">
+                    Total Líquido: <strong>R$ {selectedTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleToggleSelectAll}
+                    className="font-medium text-[#0071e3] hover:underline cursor-pointer"
+                  >
+                    {isAllSelected ? "Desmarcar todos" : `Selecionar todos (${filteredTransacoes.length})`}
+                  </button>
+                  <span className="text-[#c7c7cc]">•</span>
+                  <button
+                    onClick={clearSelection}
+                    className="font-medium text-[#86868b] hover:text-[#1d1d1f] cursor-pointer"
+                  >
+                    Limpar seleção
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar">
 
             {loading ? (
@@ -759,6 +961,25 @@ export default function FinanceFluxoCaixa() {
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 bg-white/90 backdrop-blur-xl z-[40] shadow-sm">
                   <tr>
+                    <th className="px-3 py-3 w-12 border-b border-black/[0.04] text-center">
+                      <div className="flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={handleToggleSelectAll}
+                          className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all cursor-pointer ${
+                            isAllSelected
+                              ? 'bg-[#0071e3] border-[#0071e3] text-white shadow-sm'
+                              : isSomeSelected
+                              ? 'bg-[#0071e3]/15 border-[#0071e3] text-[#0071e3]'
+                              : 'border-[#c7c7cc] bg-white hover:border-[#86868b]'
+                          }`}
+                          title={isAllSelected ? "Desmarcar todos" : "Selecionar todos os visíveis"}
+                        >
+                          {isAllSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          {isSomeSelected && <div className="w-2.5 h-1 bg-[#0071e3] rounded-full" />}
+                        </button>
+                      </div>
+                    </th>
                     <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] w-32 border-b border-black/[0.04]">Data/Venc.</th>
                     <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] border-b border-black/[0.04]">Descrição</th>
                     <th className="px-4 py-3 text-[12px] font-semibold text-[#86868b] uppercase tracking-[0.05em] border-b border-black/[0.04]">Cliente/Fornec.</th>
@@ -770,6 +991,7 @@ export default function FinanceFluxoCaixa() {
                 </thead>
                 <tbody className="divide-y divide-[#f5f5f7]">
                   {filteredTransacoes.map((t, idx) => {
+                    const isSelected = selectedIds.includes(String(t.id));
                     const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
                     let statusLabel = 'Pendente';
                     let statusColor = 'bg-[#f0f0f5] text-[#86868b]';
@@ -796,8 +1018,28 @@ export default function FinanceFluxoCaixa() {
                         transition={{ delay: idx * 0.02 }}
                         key={t.id || idx}
                         onClick={() => setViewingTransacao(t)}
-                        className="group hover:bg-[#f5f5f7]/50 transition-colors cursor-pointer"
+                        className={`group transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#0071e3]/[0.08] hover:bg-[#0071e3]/[0.12]'
+                            : 'hover:bg-[#f5f5f7]/50'
+                        }`}
                       >
+                        <td className="px-3 py-3 w-12 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSelect(t.id)}
+                              className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#0071e3] border-[#0071e3] text-white shadow-sm'
+                                  : 'border-[#c7c7cc] bg-white group-hover:border-[#86868b]'
+                              }`}
+                              aria-label={`Selecionar ${t.descricao}`}
+                            >
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </button>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="text-[14px] font-semibold text-[#1d1d1f]">
                             {new Date(t.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}
@@ -926,6 +1168,116 @@ export default function FinanceFluxoCaixa() {
         onBaixaManual={handleBaixaManual}
         onGerarLink={handleGerarLink}
         onEnviarWhatsApp={handleEnviarWhatsApp}
+      />
+
+      {/* Floating Bulk Actions Dock — Light, clean & elegant */}
+      <AnimatePresence>
+        {selectedIds.length > 0 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0, scale: 0.95 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 80, opacity: 0, scale: 0.95 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-white/95 text-stone-900 backdrop-blur-2xl px-3.5 py-2 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.06)] border border-stone-200/90 flex items-center gap-2.5 max-w-[95vw] overflow-x-auto scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
+            <div className="flex items-center gap-2 pr-3 border-r border-stone-200 shrink-0">
+              <span className="w-5 h-5 rounded-md bg-stone-100 text-stone-800 border border-stone-200 text-[11px] font-bold flex items-center justify-center">
+                {selectedIds.length}
+              </span>
+              <span className="text-xs font-semibold text-stone-600 whitespace-nowrap">
+                {selectedIds.length === 1 ? 'selecionado' : 'selecionados'}
+              </span>
+              <div className="text-xs font-bold text-stone-900 whitespace-nowrap ml-0.5 bg-stone-100/90 border border-stone-200/80 px-2 py-0.5 rounded-lg tabular-nums">
+                R$ {selectedTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => setBulkModal('baixa')}
+                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                title="Dar Baixa / Marcar como Pago"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Dar Baixa</span>
+              </button>
+
+              {selectedPagasCount > 0 && (
+                <button
+                  onClick={handleBulkReopen}
+                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100/80 text-amber-800 border border-amber-200/80 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                  title="Reabrir Lançamentos (Marcar como Pendente)"
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Reabrir</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => setBulkModal('asaas')}
+                className="px-3 py-1.5 bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                title="Gerar Cobrança Asaas / Link de Pagamento"
+              >
+                <CreditCard className="w-3.5 h-3.5 text-sky-600" />
+                <span>Cobrança Asaas</span>
+              </button>
+
+              <button
+                onClick={() => setBulkModal('edit')}
+                className="px-3 py-1.5 bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                title="Editar Dados em Lote"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-stone-500" />
+                <span>Editar</span>
+              </button>
+
+              <button
+                onClick={handleBulkExportPDF}
+                className="px-3 py-1.5 bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                title="Exportar Relatório PDF dos Selecionados"
+              >
+                <FileText className="w-3.5 h-3.5 text-stone-500" />
+                <span>PDF</span>
+              </button>
+
+              <button
+                onClick={() => setBulkModal('delete')}
+                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100/80 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                title="Excluir Lançamentos Selecionados"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Excluir</span>
+              </button>
+            </div>
+
+            <div className="pl-1 border-l border-stone-200 shrink-0">
+              <button
+                onClick={clearSelection}
+                className="p-1 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors cursor-pointer"
+                title="Desmarcar todos"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Unificado de Ações em Lote — Padrão Comercial Split View */}
+      <FinanceBulkActionsModal
+        open={Boolean(bulkModal)}
+        initialTab={bulkModal || 'baixa'}
+        onClose={() => setBulkModal(null)}
+        selectedTransactions={selectedTransactions}
+        contasBancarias={contasBancariasList}
+        planosList={planosList}
+        centrosList={centrosList}
+        companies={companies}
+        onConfirmBaixa={handleConfirmBulkBaixa}
+        onConfirmDelete={handleConfirmBulkDelete}
+        onConfirmEdit={handleConfirmBulkEdit}
+        onExportPDF={handleBulkExportPDF}
+        onSuccessAsaas={fetchTransacoes}
       />
     </div>
   );

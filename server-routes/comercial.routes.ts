@@ -8,7 +8,12 @@ import {
   upsertUserPreferences,
   getAllVendas,
   createVendaCompleta,
-  cancelarVenda
+  cancelarVenda,
+  getMotorComissoesConfig,
+  saveMotorComissoesConfig,
+  getComissoesFechamentos,
+  upsertComissaoFechamento,
+  updateVendaProcessoComissao
 } from "../server-db";
 import { uploadToR2 } from "../server-r2";
 
@@ -139,11 +144,88 @@ router.delete(["/vendas/:id", "/comercial/vendas/:id"], requireAdminAuth, async 
       io.emit('finance_update', { type: 'venda_cancelled', vendaId: id });
     }
 
-    res.json(result);
+    res.json({ success: true, message: 'Venda cancelada com sucesso', id });
   } catch (err: any) {
     console.error("[DELETE /api/comercial/vendas/:id Error]:", err);
     res.status(500).json({ error: true, message: err.message || "Erro ao cancelar venda" });
   }
 });
 
+router.patch(["/vendas/:id/processos", "/comercial/vendas/:id/processos"], requireAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const vendaAtualizada = await updateVendaProcessoComissao(id, req.body || {});
+
+    const io = (req.app as any).locals.io;
+    if (io) {
+      io.emit('venda_updated', { id, venda: vendaAtualizada });
+    }
+
+    res.json({ success: true, venda: vendaAtualizada });
+  } catch (err: any) {
+    console.error("[PATCH /api/comercial/vendas/:id/processos Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao atualizar processos da venda" });
+  }
+});
+
+// ==========================================
+// Motor de Comissões e Bonificações (Config & Fechamentos)
+// ==========================================
+router.get(["/comissoes/config", "/comercial/comissoes/config"], requireAdminAuth, async (req, res) => {
+  try {
+    const config = await getMotorComissoesConfig();
+    res.json({ success: true, config });
+  } catch (err: any) {
+    console.error("[GET /api/comercial/comissoes/config Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao carregar configuração de comissões" });
+  }
+});
+
+router.put(["/comissoes/config", "/comercial/comissoes/config"], requireAdminAuth, async (req, res) => {
+  try {
+    const config = await saveMotorComissoesConfig(req.body || {});
+    res.json({ success: true, config });
+  } catch (err: any) {
+    console.error("[PUT /api/comercial/comissoes/config Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao salvar configuração de comissões" });
+  }
+});
+
+router.post(["/comissoes/config", "/comercial/comissoes/config"], requireAdminAuth, async (req, res) => {
+  try {
+    const config = await saveMotorComissoesConfig(req.body || {});
+    res.json({ success: true, config });
+  } catch (err: any) {
+    console.error("[POST /api/comercial/comissoes/config Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao salvar configuração de comissões" });
+  }
+});
+
+router.get(["/comissoes/fechamentos", "/comercial/comissoes/fechamentos"], requireAdminAuth, async (req, res) => {
+  try {
+    const competencia = typeof req.query.competencia === 'string' ? req.query.competencia : undefined;
+    const fechamentos = await getComissoesFechamentos(competencia);
+    res.json({ success: true, fechamentos });
+  } catch (err: any) {
+    console.error("[GET /api/comercial/comissoes/fechamentos Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao buscar fechamentos quinzenais" });
+  }
+});
+
+router.post(["/comissoes/fechamentos", "/comercial/comissoes/fechamentos"], requireAdminAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const payload = {
+      ...req.body,
+      fechadoPor: req.body.fechadoPor || user?.nome || user?.username || 'Administrador'
+    };
+    const fechamento = await upsertComissaoFechamento(payload);
+    res.json({ success: true, fechamento });
+  } catch (err: any) {
+    console.error("[POST /api/comercial/comissoes/fechamentos Error]:", err);
+    res.status(500).json({ error: true, message: err.message || "Erro ao salvar fechamento quinzenal" });
+  }
+});
+
 export default router;
+

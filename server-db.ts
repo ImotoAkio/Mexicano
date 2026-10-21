@@ -338,6 +338,15 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN capacidadePassageiros INT;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN totalCotas INT DEFAULT 8;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN vaga VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN tamanho VARCHAR(50);`);
+    } catch (e) {}
 
     // 3. Reservas Table
     await connection.query(`
@@ -1381,13 +1390,45 @@ export async function initializeDatabase() {
         contaBancariaId VARCHAR(50),
         observacoes TEXT,
         status VARCHAR(30) DEFAULT 'ativa',
+        comissaoLiberadaManual TINYINT(1) DEFAULT 0,
+        dataConclusaoProcesso VARCHAR(20),
         createdAt VARCHAR(50) NOT NULL,
         INDEX idx_vendas_data (dataVenda),
         INDEX idx_vendas_cliente (clienteId),
         INDEX idx_vendas_embarcacao (embarcacaoId)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+    try { await connection.query(`ALTER TABLE Vendas ADD COLUMN comissaoLiberadaManual TINYINT(1) DEFAULT 0;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Vendas ADD COLUMN dataConclusaoProcesso VARCHAR(20);`); } catch (e) {}
     console.log("✅ Vendas table ready.");
+
+    // ── Comercial Comissões — Fechamentos Quinzenais ──
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS ComissoesFechamentos (
+        id VARCHAR(80) PRIMARY KEY,
+        competencia VARCHAR(20) NOT NULL,
+        quinzena INT NOT NULL,
+        status VARCHAR(30) DEFAULT 'aberto',
+        cotasTotalPeriodo INT DEFAULT 0,
+        cotasNovasQuinzena INT DEFAULT 0,
+        valorUnitarioFaixa DECIMAL(12, 2) DEFAULT 0.00,
+        comissaoBasePorVendedor DECIMAL(12, 2) DEFAULT 0.00,
+        ajusteRetroativoPorVendedor DECIMAL(12, 2) DEFAULT 0.00,
+        bonusSemanalPorVendedor DECIMAL(12, 2) DEFAULT 0.00,
+        bonusMensalPorVendedor DECIMAL(12, 2) DEFAULT 0.00,
+        totalVariavelPorVendedor DECIMAL(12, 2) DEFAULT 0.00,
+        salarioFixoReferencia DECIMAL(12, 2) DEFAULT 1621.00,
+        valeRefeicaoReferencia DECIMAL(12, 2) DEFAULT 250.00,
+        qtdVendedoresAtivos INT DEFAULT 1,
+        totalFolhaVariavelEquipe DECIMAL(12, 2) DEFAULT 0.00,
+        dataFechamento VARCHAR(30),
+        fechadoPor VARCHAR(150),
+        observacoes TEXT,
+        updatedAt VARCHAR(50) NOT NULL,
+        UNIQUE KEY uk_comp_quinzena (competencia, quinzena)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ ComissoesFechamentos table ready.");
 
     connection.release();
     isInitialized = true;
@@ -1482,6 +1523,23 @@ export async function pullDatabase(forceFresh = false) {
     }
   });
 
+  // Helper para padronizar códigos de cota (C1, C2, C3...) e migrar legados ('1/4', 'Cota', etc.)
+  const parseExplicitCota = (raw: any): string | null => {
+    if (raw === undefined || raw === null) return null;
+    const s = String(raw).trim().toUpperCase();
+    if (!s || s.includes('/') || s.includes('%') || s === 'COTA' || s === 'N/A') return null;
+    const m = s.match(/^(?:COTA|C)[\s\-_]*0*(\d+)$/i);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > 0 && n <= 64) return `C${n}`;
+    }
+    if (/^0*\d+$/.test(s)) {
+      const n = parseInt(s, 10);
+      if (n > 0 && n <= 64) return `C${n}`;
+    }
+    return null;
+  };
+
   // Parse JSON serializations back to rich arrays/objects
   const parsedClients = (clients as any[]).map(c => {
     let list = undefined;
@@ -1521,6 +1579,62 @@ export async function pullDatabase(forceFresh = false) {
     };
   });
 
+  // Padronizar cotas em todos os clientes carregados (convertendo '1/4', 'Cota', etc. para C1, C2...)
+  const occupiedByBoat = new Map<string, Set<string>>();
+  const getOccupiedSet = (boatId: string) => {
+    if (!occupiedByBoat.has(boatId)) occupiedByBoat.set(boatId, new Set());
+    return occupiedByBoat.get(boatId)!;
+  };
+
+  parsedClients.forEach((c: any) => {
+    if (c.status === 'inativo') return;
+    if (Array.isArray(c.embarcacoes) && c.embarcacoes.length > 0) {
+      c.embarcacoes.forEach((eb: any) => {
+        if (!eb?.embarcacaoId) return;
+        const exp = parseExplicitCota(eb.cota);
+        if (exp) {
+          eb.cota = exp;
+          getOccupiedSet(eb.embarcacaoId).add(exp);
+        }
+      });
+    } else if (c.embarcacaoId) {
+      const exp = parseExplicitCota(c.cota);
+      if (exp) {
+        c.cota = exp;
+        getOccupiedSet(c.embarcacaoId).add(exp);
+      }
+    }
+  });
+
+  const allocateNextFreeSlot = (boatId: string): string => {
+    if (!boatId) return 'C1';
+    const set = getOccupiedSet(boatId);
+    let slot = 1;
+    while (set.has(`C${slot}`)) slot++;
+    const code = `C${slot}`;
+    set.add(code);
+    return code;
+  };
+
+  parsedClients.forEach((c: any) => {
+    if (Array.isArray(c.embarcacoes) && c.embarcacoes.length > 0) {
+      c.embarcacoes.forEach((eb: any) => {
+        if (!eb?.embarcacaoId) {
+          eb.cota = parseExplicitCota(eb?.cota) || 'C1';
+          return;
+        }
+        eb.cota = parseExplicitCota(eb.cota) || allocateNextFreeSlot(eb.embarcacaoId);
+      });
+      c.embarcacaoId = c.embarcacoes[0].embarcacaoId;
+      c.cota = c.embarcacoes[0].cota;
+    } else if (c.embarcacaoId) {
+      c.cota = parseExplicitCota(c.cota) || allocateNextFreeSlot(c.embarcacaoId);
+      c.embarcacoes = [{ embarcacaoId: c.embarcacaoId, cota: c.cota }];
+    } else if (c.cota) {
+      c.cota = parseExplicitCota(c.cota) || 'C1';
+    }
+  });
+
   const parsedBoats = (boats as any[]).map(b => {
     let donosList: string[] = [];
     if (b.donos) {
@@ -1533,6 +1647,8 @@ export async function pullDatabase(forceFresh = false) {
     return {
       ...b,
       empresas: embarcacaoEmpresasMap.get(b.id) || ['VALE'],
+      vaga: b.vaga || '',
+      tamanho: b.tamanho || '',
       chassi: b.chassi || '',
       inscricao: b.inscricao || '',
       tipo_propulsao: b.tipo_propulsao || '',
@@ -1543,6 +1659,7 @@ export async function pullDatabase(forceFresh = false) {
       temSom: b.temSom === 1 || b.temSom === true,
       acessorios: b.acessorios ? JSON.parse(b.acessorios) : undefined,
       capacidadePassageiros: b.capacidadePassageiros !== null && b.capacidadePassageiros !== undefined ? Number(b.capacidadePassageiros) : undefined,
+      totalCotas: b.totalCotas !== null && b.totalCotas !== undefined && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : 8,
       horasMotor: b.horasMotor ? Number(b.horasMotor) : 0,
       ultimaAtualizacaoHoras: b.ultimaAtualizacaoHoras || undefined,
       horasUltimaManutencao: b.horasUltimaManutencao ? Number(b.horasUltimaManutencao) : 0,
@@ -1858,8 +1975,8 @@ export async function upsertBoat(boat: any) {
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -1884,7 +2001,10 @@ export async function upsertBoat(boat: any) {
       ultimaAtualizacaoHoras = VALUES(ultimaAtualizacaoHoras),
       horasUltimaManutencao = VALUES(horasUltimaManutencao),
       historicoHoras = VALUES(historicoHoras),
-      capacidadePassageiros = VALUES(capacidadePassageiros)
+      capacidadePassageiros = VALUES(capacidadePassageiros),
+      totalCotas = VALUES(totalCotas),
+      vaga = VALUES(vaga),
+      tamanho = VALUES(tamanho)
   `;
 
   await currentPool.query(query, [
@@ -1912,7 +2032,10 @@ export async function upsertBoat(boat: any) {
     boat.ultimaAtualizacaoHoras || null,
     boat.horasUltimaManutencao !== undefined ? Number(boat.horasUltimaManutencao) : 0,
     historicoHorasJson,
-    boat.capacidadePassageiros !== undefined && boat.capacidadePassageiros !== null ? Number(boat.capacidadePassageiros) : null
+    boat.capacidadePassageiros !== undefined && boat.capacidadePassageiros !== null ? Number(boat.capacidadePassageiros) : null,
+    boat.totalCotas !== undefined && boat.totalCotas !== null && Number(boat.totalCotas) > 0 ? Number(boat.totalCotas) : 8,
+    boat.vaga || null,
+    boat.tamanho !== undefined && boat.tamanho !== null && boat.tamanho !== '' ? String(boat.tamanho) : null
   ]);
 
   if (boat.empresas && Array.isArray(boat.empresas)) {
@@ -2403,7 +2526,7 @@ export async function getAdminByUsername(username: string) {
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
   const [rows] = await currentPool.query(
-    "SELECT * FROM AdminUsers WHERE username = ?",
+    "SELECT a.*, f.nome as funcionarioNome, f.cargo as funcionarioCargo FROM AdminUsers a LEFT JOIN Funcionarios f ON a.funcionarioId = f.id WHERE a.username = ?",
     [username]
   );
 
@@ -4527,6 +4650,21 @@ function formatNumberToBRLString(val: number): string {
   return fixed.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
+const MONTH_NAMES_PT = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
+function getMonthNameFromDateStr(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const parts = String(dateStr).split('-');
+  if (parts.length >= 2) {
+    const m = parseInt(parts[1], 10);
+    if (m >= 1 && m <= 12) return MONTH_NAMES_PT[m - 1];
+  }
+  return '';
+}
+
 export async function getNextCodigoVenda(): Promise<string> {
   const currentPool = getDbPool();
   const year = new Date().getFullYear();
@@ -4555,6 +4693,13 @@ export async function getAllVendas(): Promise<any[]> {
   const [rows] = await currentPool.query(`
     SELECT v.*,
            c.nome AS clienteNome, c.cpf AS clienteCpf, c.telefone AS clienteTelefone,
+           c.statusContrato AS clienteStatusContrato,
+           c.tipoContrato AS clienteTipoContrato,
+           c.contratoAquisicaoStatus AS clienteContratoAquisicaoStatus,
+           c.contratoAquisicaoArquivoUrl AS clienteContratoAquisicaoArquivoUrl,
+           c.contratoAdmStatus AS clienteContratoAdmStatus,
+           c.contratoAdmArquivoUrl AS clienteContratoAdmArquivoUrl,
+           c.contratos AS clienteContratosRaw,
            e.nome AS embarcacaoNome, e.numero AS embarcacaoNumero, e.modelo AS embarcacaoModelo
     FROM Vendas v
     LEFT JOIN Clientes c ON v.clienteId = c.id
@@ -4598,8 +4743,43 @@ export async function getAllVendas(): Promise<any[]> {
       totalRecebidoCota += Number(v.valorEntrada) || 0;
     }
 
+    // Avaliar status dos contratos de Aquisição e Administração (incluindo fallback no array JSON contratos)
+    let parsedContratos: any[] = [];
+    if (v.clienteContratosRaw) {
+      try {
+        parsedContratos = typeof v.clienteContratosRaw === 'string'
+          ? JSON.parse(v.clienteContratosRaw)
+          : v.clienteContratosRaw;
+      } catch {
+        parsedContratos = [];
+      }
+    }
+
+    let aquisicaoStatus = v.clienteContratoAquisicaoStatus || 'sem_contrato';
+    let admStatus = v.clienteContratoAdmStatus || 'sem_contrato';
+
+    if (Array.isArray(parsedContratos) && parsedContratos.length > 0) {
+      const hasAqAssinado = parsedContratos.some(ct => ct.tipo === 'aquisicao' && ct.status === 'assinado');
+      const hasAdmAssinado = parsedContratos.some(ct => ct.tipo === 'adm' && ct.status === 'assinado');
+      if (hasAqAssinado) aquisicaoStatus = 'assinado';
+      if (hasAdmAssinado) admStatus = 'assinado';
+    }
+
+    if (v.clienteStatusContrato === 'assinado') {
+      if (v.clienteTipoContrato === 'ambos') {
+        aquisicaoStatus = 'assinado';
+        admStatus = 'assinado';
+      } else if (v.clienteTipoContrato === 'aquisicao' && aquisicaoStatus === 'sem_contrato') {
+        aquisicaoStatus = 'assinado';
+      } else if (v.clienteTipoContrato === 'adm' && admStatus === 'sem_contrato') {
+        admStatus = 'assinado';
+      }
+    }
+
+    const { clienteContratosRaw, ...restVenda } = v;
+
     return {
-      ...v,
+      ...restVenda,
       embarcacaoNome: v.embarcacaoNome
         ? `${v.embarcacaoNumero ? `M${String(v.embarcacaoNumero).replace(/^M/i, '')} - ` : ''}${v.embarcacaoNome}`
         : 'Embarcação',
@@ -4618,7 +4798,15 @@ export async function getAllVendas(): Promise<any[]> {
       parcelasPagas,
       parcelasVencidas,
       totalRecebidoCota: Math.round(totalRecebidoCota * 100) / 100,
-      statusEntradaFinanceiro
+      statusEntradaFinanceiro,
+      clienteStatusContrato: v.clienteStatusContrato || 'sem_contrato',
+      clienteTipoContrato: v.clienteTipoContrato || 'aquisicao',
+      clienteContratoAquisicaoStatus: aquisicaoStatus,
+      clienteContratoAquisicaoArquivoUrl: v.clienteContratoAquisicaoArquivoUrl || null,
+      clienteContratoAdmStatus: admStatus,
+      clienteContratoAdmArquivoUrl: v.clienteContratoAdmArquivoUrl || null,
+      comissaoLiberadaManual: v.comissaoLiberadaManual === 1 || v.comissaoLiberadaManual === true,
+      dataConclusaoProcesso: v.dataConclusaoProcesso || null
     };
   });
 }
@@ -4654,7 +4842,8 @@ export async function createVendaCompleta(payload: any): Promise<any> {
     const dataVenda = payload.dataVenda || todayStr;
     const clienteId = payload.clienteId;
     const embarcacaoId = payload.embarcacaoId;
-    const cota = payload.cota || 'C1';
+    const rawCotaMatch = String(payload.cota || 'C1').trim().toUpperCase().match(/(?:COTA|C)?[\s\-_]*0*(\d+)/i);
+    const cota = rawCotaMatch ? `C${parseInt(rawCotaMatch[1], 10)}` : 'C1';
 
     if (!clienteId || !embarcacaoId) {
       throw new Error("Cliente e Embarcação são obrigatórios para lançar uma venda.");
@@ -4669,14 +4858,47 @@ export async function createVendaCompleta(payload: any): Promise<any> {
     const boatRow = (boatRows as any[])[0];
     if (!boatRow) throw new Error("Embarcação não encontrada no banco de dados.");
 
+    // Validar exclusividade da cota nesta embarcação (outro cliente ativo não pode ocupar a mesma cota)
+    const [activeCliRows] = await connection.query(
+      "SELECT id, nome, embarcacaoId, cota, embarcacoes FROM Clientes WHERE (status IS NULL OR status != 'inativo') AND id != ?",
+      [clienteId]
+    );
+    for (const other of activeCliRows as any[]) {
+      let otherEbs: any[] = [];
+      if (other.embarcacoes) {
+        try {
+          otherEbs = typeof other.embarcacoes === 'string' ? JSON.parse(other.embarcacoes) : other.embarcacoes;
+          if (!Array.isArray(otherEbs)) otherEbs = [];
+        } catch {
+          otherEbs = [];
+        }
+      }
+      const hasSameCotaInList = otherEbs.some((eb: any) => {
+        if (!eb || eb.embarcacaoId !== embarcacaoId) return false;
+        const m = String(eb.cota || '').trim().toUpperCase().match(/^(?:COTA|C)[\s\-_]*0*(\d+)$/i);
+        return m ? `C${parseInt(m[1], 10)}` === cota : false;
+      });
+      const hasSamePrimary =
+        otherEbs.length === 0 &&
+        other.embarcacaoId === embarcacaoId &&
+        (() => {
+          const m = String(other.cota || '').trim().toUpperCase().match(/^(?:COTA|C)[\s\-_]*0*(\d+)$/i);
+          return m ? `C${parseInt(m[1], 10)}` === cota : false;
+        })();
+
+      if (hasSameCotaInList || hasSamePrimary) {
+        throw new Error(`A cota ${cota} já pertence ao titular ${other.nome} nesta embarcação.`);
+      }
+    }
+
     const boatLabel = boatRow.numero
       ? `M${String(boatRow.numero).replace(/^M/i, '')} - ${boatRow.nome}`
       : boatRow.nome;
 
     const valorTotal = Number(payload.valorTotal) || 0;
     const valorEntrada = Number(payload.valorEntrada) || 0;
-    const dataVencimentoEntrada = payload.dataVencimentoEntrada || dataVenda;
-    const formaPagamentoEntrada = payload.formaPagamentoEntrada || 'PIX / Transferência';
+    const dataVencimentoEntrada = payload.dataVencimentoEntrada || payload.dataEntrada || dataVenda;
+    const formaPagamentoEntrada = payload.formaPagamentoEntrada || payload.formaPagamento || 'PIX / Transferência';
     const entradaPaga = Boolean(payload.entradaPaga);
     const comprovanteEntrada = payload.comprovanteEntrada || null;
 
@@ -4688,14 +4910,14 @@ export async function createVendaCompleta(payload: any): Promise<any> {
       ? Number(payload.valorParcela)
       : (numParcelas > 0 ? Math.round((valorRemanescente / numParcelas) * 100) / 100 : 0);
     const diaVencimento = Number(payload.diaVencimento) || 10;
-    const dataPrimeiraParcela = payload.dataPrimeiraParcela || buildDueDateWithFixedDay(dataVenda, 1, diaVencimento);
-    const formaPagamentoParcelas = payload.formaPagamentoParcelas || 'Boleto / PIX';
+    const dataPrimeiraParcela = payload.dataPrimeiraParcela || payload.primeiroVencimento || buildDueDateWithFixedDay(dataVenda, 1, diaVencimento);
+    const formaPagamentoParcelas = payload.formaPagamentoParcelas || payload.formaPagamento || 'Boleto / PIX';
 
-    const gerouTaxaAdm = Boolean(payload.gerouTaxaAdm);
+    const gerouTaxaAdm = Boolean(payload.gerouTaxaAdm !== undefined ? payload.gerouTaxaAdm : payload.gerarTaxaAdm);
     const valorTaxaAdm = Number(payload.valorTaxaAdm) || 0;
     const mesesTaxaAdm = Math.max(0, Number(payload.mesesTaxaAdm) || 12);
     const diaVencimentoTaxaAdm = Number(payload.diaVencimentoTaxaAdm) || diaVencimento;
-    const dataPrimeiraTaxaAdm = payload.dataPrimeiraTaxaAdm || dataPrimeiraParcela;
+    const dataPrimeiraTaxaAdm = payload.dataPrimeiraTaxaAdm || payload.primeiroVencimentoTaxaAdm || dataPrimeiraParcela;
 
     const empresaVenda = payload.empresa || vendaPadraoEmpresa;
     const planoContasIdVenda = payload.planoContasId || vendaPadraoPlanoContasId;
@@ -4744,7 +4966,9 @@ export async function createVendaCompleta(payload: any): Promise<any> {
         dataVencimento: dataVencimentoEntrada,
         dataPagamento: dataPagtoEntrada,
         status: statusEntrada,
-        descricao: `Entrada Cota ${cota} - ${boatLabel} (${clientRow.nome})`,
+        descricao: getMonthNameFromDateStr(dataVencimentoEntrada)
+          ? `Entrada - ${getMonthNameFromDateStr(dataVencimentoEntrada)}`
+          : 'Entrada',
         clienteId,
         embarcacaoId,
         comprovante: comprovanteEntrada,
@@ -4774,6 +4998,8 @@ export async function createVendaCompleta(payload: any): Promise<any> {
           ? dataPrimeiraParcela
           : buildDueDateWithFixedDay(dataPrimeiraParcela, i, diaVencimento);
         const statusParc = venc < todayStr ? 'vencido' : 'lancado';
+        const mesParc = getMonthNameFromDateStr(venc);
+        const descParc = mesParc ? `Parcela de Cota - ${mesParc}` : `Parcela de Cota`;
 
         await upsertTransacao({
           id: `fin_vnd_parc_${ts}_${i + 1}`,
@@ -4783,7 +5009,7 @@ export async function createVendaCompleta(payload: any): Promise<any> {
           dataVencimento: venc,
           dataPagamento: null,
           status: statusParc,
-          descricao: `Parcela Cota ${cota} - ${boatLabel} (${i + 1}/${numParcelas})`,
+          descricao: descParc,
           clienteId,
           embarcacaoId,
           comprovante: null,
@@ -4816,6 +5042,8 @@ export async function createVendaCompleta(payload: any): Promise<any> {
           ? dataPrimeiraTaxaAdm
           : buildDueDateWithFixedDay(dataPrimeiraTaxaAdm, i, diaVencimentoTaxaAdm);
         const statusAdm = vencAdm < todayStr ? 'vencido' : 'lancado';
+        const mesAdm = getMonthNameFromDateStr(vencAdm);
+        const descAdm = mesAdm ? `Taxa de Administração - ${mesAdm}` : `Taxa de Administração`;
 
         await upsertTransacao({
           id: `fin_vnd_adm_${ts}_${i + 1}`,
@@ -4825,7 +5053,7 @@ export async function createVendaCompleta(payload: any): Promise<any> {
           dataVencimento: vencAdm,
           dataPagamento: null,
           status: statusAdm,
-          descricao: `Taxa de Administração - Cota ${cota} - ${boatLabel} (${i + 1}/${mesesTaxaAdm})`,
+          descricao: descAdm,
           clienteId,
           embarcacaoId,
           comprovante: null,
@@ -4863,19 +5091,24 @@ export async function createVendaCompleta(payload: any): Promise<any> {
         clientEmbarcacoes = [];
       }
     } else if (clientRow.embarcacaoId) {
-      clientEmbarcacoes = [{ embarcacaoId: clientRow.embarcacaoId, cota: clientRow.cota || 'C1' }];
+      const m = String(clientRow.cota || 'C1').trim().toUpperCase().match(/(?:COTA|C)?[\s\-_]*0*(\d+)/i);
+      clientEmbarcacoes = [{ embarcacaoId: clientRow.embarcacaoId, cota: m ? `C${parseInt(m[1], 10)}` : 'C1' }];
     }
+
+    // Normalizar cotas já existentes no array do cliente e permitir múltiplas cotas no mesmo barco (ex: C1 e C2)
+    clientEmbarcacoes = clientEmbarcacoes.map((eb: any, idx: number) => {
+      const m = String(eb?.cota || '').trim().toUpperCase().match(/(?:COTA|C)?[\s\-_]*0*(\d+)/i);
+      return {
+        ...eb,
+        cota: m && !String(eb?.cota || '').includes('/') ? `C${parseInt(m[1], 10)}` : `C${idx + 1}`
+      };
+    });
 
     const alreadyHasBoatCota = clientEmbarcacoes.some(
       (eb: any) => eb.embarcacaoId === embarcacaoId && eb.cota === cota
     );
     if (!alreadyHasBoatCota) {
-      const existingIdx = clientEmbarcacoes.findIndex((eb: any) => eb.embarcacaoId === embarcacaoId);
-      if (existingIdx !== -1) {
-        clientEmbarcacoes[existingIdx] = { ...clientEmbarcacoes[existingIdx], embarcacaoId, cota };
-      } else {
-        clientEmbarcacoes.push({ embarcacaoId, cota });
-      }
+      clientEmbarcacoes.push({ embarcacaoId, cota });
     }
 
     let currentContratoValores: any = {};
@@ -5013,3 +5246,271 @@ export async function cancelarVenda(id: string): Promise<void> {
   }
   invalidateDbCache();
 }
+
+// ─────────────────────────────────────────────────────────────
+// ────── MÓDULO COMERCIAL — MOTOR DE COMISSÕES E BÔNUS ─────────
+// ─────────────────────────────────────────────────────────────
+
+const COMISSOES_CONFIG_KEY = 'comercial_motor_comissoes_config';
+
+export function getDefaultMotorComissoesConfig() {
+  return {
+    salarioBase: 1621.00,
+    valeRefeicao: 250.00,
+    diaCorteQuinzena1: 15,
+    metaSemanalCotas: 4,
+    semanasNoMesModo: 'auto' as 'auto' | '4' | '5',
+    regraSuperavitSemanal: true,
+    faixasComissao: [
+      { id: 'fx_1', minCotas: 0, maxCotas: 4, valorPorCota: 0, descricao: 'Faixa Inicial (0 a 4 cotas)' },
+      { id: 'fx_2', minCotas: 5, maxCotas: 8, valorPorCota: 100, descricao: 'Faixa Bronze (5 a 8 cotas)' },
+      { id: 'fx_3', minCotas: 9, maxCotas: 12, valorPorCota: 150, descricao: 'Faixa Prata (9 a 12 cotas)' },
+      { id: 'fx_4', minCotas: 13, maxCotas: null, valorPorCota: 200, descricao: 'Faixa Ouro (13+ cotas)' }
+    ],
+    bonusSemanalProgressivo: [100, 200, 300, 400, 500],
+    faixasBonusMensal: [
+      { id: 'bm_1', minCotas: 16, maxCotas: 20, valorBonus: 300, descricao: 'Volume 16 a 20 cotas' },
+      { id: 'bm_2', minCotas: 21, maxCotas: 24, valorBonus: 1000, descricao: 'Volume 21 a 24 cotas' },
+      { id: 'bm_3', minCotas: 25, maxCotas: null, valorBonus: 2000, descricao: 'Volume 25+ cotas' }
+    ],
+    requisitosVendaConcluida: {
+      exigirEntradaPaga: true,
+      exigirComprovanteEntrada: true,
+      exigirContratoAquisicaoAssinado: true,
+      exigirContratoAdmAssinado: true
+    },
+    equipeComercial: [
+      { id: 'vend_1', nome: 'Consultor Comercial 01', cargo: 'Vendedor Comercial', ativo: true, salarioBaseCustom: null, vrCustom: null },
+      { id: 'vend_2', nome: 'Consultor Comercial 02', cargo: 'Vendedor Comercial', ativo: true, salarioBaseCustom: null, vrCustom: null }
+    ]
+  };
+}
+
+export async function getMotorComissoesConfig(): Promise<any> {
+  const defaults = getDefaultMotorComissoesConfig();
+  try {
+    const raw = await getConfigValue(COMISSOES_CONFIG_KEY);
+    if (!raw) {
+      // Se ainda não existir configuração salva, tentar popular equipe comercial a partir de Funcionarios do setor comercial
+      const currentPool = getDbPool();
+      if (currentPool) {
+        const [funcRows] = await currentPool.query(
+          "SELECT id, nome, cargo, setor FROM Funcionarios WHERE LOWER(setor) LIKE '%comercial%' OR LOWER(cargo) LIKE '%vendedor%' OR LOWER(cargo) LIKE '%comercial%'"
+        );
+        const funcs = funcRows as any[];
+        if (funcs.length > 0) {
+          defaults.equipeComercial = funcs.map(f => ({
+            id: f.id,
+            nome: f.nome,
+            cargo: f.cargo || 'Vendedor Comercial',
+            ativo: true,
+            salarioBaseCustom: null,
+            vrCustom: null
+          }));
+        }
+      }
+      return defaults;
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      ...defaults,
+      ...parsed,
+      requisitosVendaConcluida: {
+        ...defaults.requisitosVendaConcluida,
+        ...(parsed.requisitosVendaConcluida || {})
+      },
+      faixasComissao: Array.isArray(parsed.faixasComissao) && parsed.faixasComissao.length > 0
+        ? parsed.faixasComissao
+        : defaults.faixasComissao,
+      bonusSemanalProgressivo: Array.isArray(parsed.bonusSemanalProgressivo) && parsed.bonusSemanalProgressivo.length > 0
+        ? parsed.bonusSemanalProgressivo
+        : defaults.bonusSemanalProgressivo,
+      faixasBonusMensal: Array.isArray(parsed.faixasBonusMensal)
+        ? parsed.faixasBonusMensal
+        : defaults.faixasBonusMensal,
+      equipeComercial: Array.isArray(parsed.equipeComercial) && parsed.equipeComercial.length > 0
+        ? parsed.equipeComercial
+        : defaults.equipeComercial
+    };
+  } catch (err) {
+    console.error("[getMotorComissoesConfig Error]:", err);
+    return defaults;
+  }
+}
+
+export async function saveMotorComissoesConfig(config: any): Promise<any> {
+  const current = await getMotorComissoesConfig();
+  const merged = {
+    ...current,
+    ...config,
+    salarioBase: Number(config.salarioBase ?? current.salarioBase) || 0,
+    valeRefeicao: Number(config.valeRefeicao ?? current.valeRefeicao) || 0,
+    diaCorteQuinzena1: Math.min(28, Math.max(1, Number(config.diaCorteQuinzena1 ?? current.diaCorteQuinzena1) || 15)),
+    metaSemanalCotas: Math.max(1, Number(config.metaSemanalCotas ?? current.metaSemanalCotas) || 4),
+    semanasNoMesModo: config.semanasNoMesModo || current.semanasNoMesModo || 'auto',
+    regraSuperavitSemanal: config.regraSuperavitSemanal !== undefined ? Boolean(config.regraSuperavitSemanal) : current.regraSuperavitSemanal,
+    requisitosVendaConcluida: {
+      ...current.requisitosVendaConcluida,
+      ...(config.requisitosVendaConcluida || {})
+    },
+    faixasComissao: Array.isArray(config.faixasComissao) ? config.faixasComissao : current.faixasComissao,
+    bonusSemanalProgressivo: Array.isArray(config.bonusSemanalProgressivo) ? config.bonusSemanalProgressivo.map(Number) : current.bonusSemanalProgressivo,
+    faixasBonusMensal: Array.isArray(config.faixasBonusMensal) ? config.faixasBonusMensal : current.faixasBonusMensal,
+    equipeComercial: Array.isArray(config.equipeComercial) ? config.equipeComercial : current.equipeComercial
+  };
+
+  await setConfigValue(COMISSOES_CONFIG_KEY, JSON.stringify(merged));
+  return merged;
+}
+
+export async function getComissoesFechamentos(competencia?: string): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  let query = "SELECT * FROM ComissoesFechamentos";
+  const params: any[] = [];
+  if (competencia) {
+    query += " WHERE competencia = ?";
+    params.push(competencia);
+  }
+  query += " ORDER BY competencia DESC, quinzena ASC";
+
+  const [rows] = await currentPool.query(query, params);
+  return (rows as any[]).map(r => ({
+    ...r,
+    quinzena: Number(r.quinzena) as 1 | 2,
+    cotasTotalPeriodo: Number(r.cotasTotalPeriodo) || 0,
+    cotasNovasQuinzena: Number(r.cotasNovasQuinzena) || 0,
+    valorUnitarioFaixa: Number(r.valorUnitarioFaixa) || 0,
+    comissaoBasePorVendedor: Number(r.comissaoBasePorVendedor) || 0,
+    ajusteRetroativoPorVendedor: Number(r.ajusteRetroativoPorVendedor) || 0,
+    bonusSemanalPorVendedor: Number(r.bonusSemanalPorVendedor) || 0,
+    bonusMensalPorVendedor: Number(r.bonusMensalPorVendedor) || 0,
+    totalVariavelPorVendedor: Number(r.totalVariavelPorVendedor) || 0,
+    salarioFixoReferencia: Number(r.salarioFixoReferencia) || 1621,
+    valeRefeicaoReferencia: Number(r.valeRefeicaoReferencia) || 250,
+    qtdVendedoresAtivos: Number(r.qtdVendedoresAtivos) || 1,
+    totalFolhaVariavelEquipe: Number(r.totalFolhaVariavelEquipe) || 0
+  }));
+}
+
+export async function upsertComissaoFechamento(payload: any): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const competencia = String(payload.competencia || '').trim();
+  const quinzena = Number(payload.quinzena) === 2 ? 2 : 1;
+  if (!/^\d{4}-\d{2}$/.test(competencia)) {
+    throw new Error("Competência inválida. Use o formato YYYY-MM.");
+  }
+
+  const nowIso = new Date().toISOString();
+  const id = payload.id || `fech_${competencia}_q${quinzena}`;
+  const status = payload.status || 'fechado';
+  const dataFechamento = status === 'aberto' ? null : (payload.dataFechamento || nowIso.split('T')[0]);
+
+  await currentPool.query(
+    `INSERT INTO ComissoesFechamentos (
+      id, competencia, quinzena, status,
+      cotasTotalPeriodo, cotasNovasQuinzena, valorUnitarioFaixa,
+      comissaoBasePorVendedor, ajusteRetroativoPorVendedor,
+      bonusSemanalPorVendedor, bonusMensalPorVendedor, totalVariavelPorVendedor,
+      salarioFixoReferencia, valeRefeicaoReferencia,
+      qtdVendedoresAtivos, totalFolhaVariavelEquipe,
+      dataFechamento, fechadoPor, observacoes, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      status = VALUES(status),
+      cotasTotalPeriodo = VALUES(cotasTotalPeriodo),
+      cotasNovasQuinzena = VALUES(cotasNovasQuinzena),
+      valorUnitarioFaixa = VALUES(valorUnitarioFaixa),
+      comissaoBasePorVendedor = VALUES(comissaoBasePorVendedor),
+      ajusteRetroativoPorVendedor = VALUES(ajusteRetroativoPorVendedor),
+      bonusSemanalPorVendedor = VALUES(bonusSemanalPorVendedor),
+      bonusMensalPorVendedor = VALUES(bonusMensalPorVendedor),
+      totalVariavelPorVendedor = VALUES(totalVariavelPorVendedor),
+      salarioFixoReferencia = VALUES(salarioFixoReferencia),
+      valeRefeicaoReferencia = VALUES(valeRefeicaoReferencia),
+      qtdVendedoresAtivos = VALUES(qtdVendedoresAtivos),
+      totalFolhaVariavelEquipe = VALUES(totalFolhaVariavelEquipe),
+      dataFechamento = VALUES(dataFechamento),
+      fechadoPor = VALUES(fechadoPor),
+      observacoes = VALUES(observacoes),
+      updatedAt = VALUES(updatedAt)`,
+    [
+      id,
+      competencia,
+      quinzena,
+      status,
+      Number(payload.cotasTotalPeriodo) || 0,
+      Number(payload.cotasNovasQuinzena) || 0,
+      Number(payload.valorUnitarioFaixa) || 0,
+      Number(payload.comissaoBasePorVendedor) || 0,
+      Number(payload.ajusteRetroativoPorVendedor) || 0,
+      Number(payload.bonusSemanalPorVendedor) || 0,
+      Number(payload.bonusMensalPorVendedor) || 0,
+      Number(payload.totalVariavelPorVendedor) || 0,
+      Number(payload.salarioFixoReferencia) || 1621,
+      Number(payload.valeRefeicaoReferencia) || 250,
+      Number(payload.qtdVendedoresAtivos) || 1,
+      Number(payload.totalFolhaVariavelEquipe) || 0,
+      dataFechamento,
+      payload.fechadoPor || 'Administrador',
+      payload.observacoes || null,
+      nowIso
+    ]
+  );
+
+  const list = await getComissoesFechamentos(competencia);
+  return list.find(item => item.quinzena === quinzena) || null;
+}
+
+export async function updateVendaProcessoComissao(vendaId: string, payload: any): Promise<any> {
+  invalidateDbCache();
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const [rows] = await currentPool.query("SELECT * FROM Vendas WHERE id = ?", [vendaId]);
+  const venda = (rows as any[])[0];
+  if (!venda) throw new Error("Venda não encontrada.");
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (payload.comissaoLiberadaManual !== undefined) {
+    const lib = payload.comissaoLiberadaManual ? 1 : 0;
+    const dataConc = lib ? (payload.dataConclusaoProcesso || venda.dataVenda || todayStr) : null;
+    await currentPool.query(
+      "UPDATE Vendas SET comissaoLiberadaManual = ?, dataConclusaoProcesso = ? WHERE id = ?",
+      [lib, dataConc, vendaId]
+    );
+  }
+
+  if (payload.marcarEntradaPaga && venda.transacaoEntradaId) {
+    await currentPool.query(
+      "UPDATE TransacoesFinanceiras SET status = 'pago', dataPagamento = COALESCE(dataPagamento, ?) WHERE id = ?",
+      [todayStr, venda.transacaoEntradaId]
+    );
+    await currentPool.query("UPDATE Vendas SET entradaPaga = 1 WHERE id = ?", [vendaId]);
+  } else if (payload.marcarEntradaPaga) {
+    await currentPool.query("UPDATE Vendas SET entradaPaga = 1 WHERE id = ?", [vendaId]);
+  }
+
+  if (payload.marcarContratoAquisicaoAssinado && venda.clienteId) {
+    await currentPool.query(
+      "UPDATE Clientes SET contratoAquisicaoStatus = 'assinado', contratoAquisicaoDataAssinatura = COALESCE(contratoAquisicaoDataAssinatura, ?) WHERE id = ?",
+      [todayStr, venda.clienteId]
+    );
+  }
+
+  if (payload.marcarContratoAdmAssinado && venda.clienteId) {
+    await currentPool.query(
+      "UPDATE Clientes SET contratoAdmStatus = 'assinado', contratoAdmDataAssinatura = COALESCE(contratoAdmDataAssinatura, ?), statusContrato = 'assinado' WHERE id = ?",
+      [todayStr, venda.clienteId]
+    );
+  }
+
+  invalidateDbCache();
+  const todas = await getAllVendas();
+  return todas.find(v => v.id === vendaId) || null;
+}
+

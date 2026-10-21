@@ -30,6 +30,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
+import { useComercialSettings } from './ComercialSettingsModal';
 
 /* ───────────────────────── Shared ───────────────────────── */
 
@@ -70,17 +71,59 @@ function Delta({ value, positive }: { value: string; positive: boolean }) {
 
 /* ───────────────────────── KPI cards ───────────────────────── */
 
-const KPIS = [
-  { label: 'Novos leads', value: '1.284', delta: '15,5%', positive: true, prev: '1.112', icon: UserPlus },
-  { label: 'Visitas agendadas', value: '326', delta: '8,4%', positive: true, prev: '301', icon: CalendarCheck },
-  { label: 'Propostas enviadas', value: '148', delta: '10,5%', positive: false, prev: '165', icon: Send },
-  { label: 'Contratos fechados', value: '64', delta: '4,4%', positive: true, prev: '61', icon: FileSignature },
-];
-
 export function KpiRow() {
+  const [settings] = useComercialSettings();
+
+  const leadsAtual = 1284;
+  const contratosAtual = 64;
+  const metaLeads = settings.metaNovosLeads || 1284;
+  const metaContratos = settings.metaNovosContratos || 64;
+
+  const leadsPct = Math.min(100, Math.round((leadsAtual / Math.max(1, metaLeads)) * 100));
+  const contratosPct = Math.min(100, Math.round((contratosAtual / Math.max(1, metaContratos)) * 100));
+
+  const kpis = [
+    {
+      label: 'Novos leads',
+      value: leadsAtual.toLocaleString('pt-BR'),
+      delta: '15,5%',
+      positive: true,
+      prev: '1.112',
+      metaLabel: `Meta: ${metaLeads.toLocaleString('pt-BR')} (${leadsPct}%)`,
+      progress: leadsPct,
+      icon: UserPlus,
+    },
+    {
+      label: 'Visitas agendadas',
+      value: '326',
+      delta: '8,4%',
+      positive: true,
+      prev: '301',
+      icon: CalendarCheck,
+    },
+    {
+      label: 'Propostas enviadas',
+      value: '148',
+      delta: '10,5%',
+      positive: false,
+      prev: '165',
+      icon: Send,
+    },
+    {
+      label: 'Contratos fechados',
+      value: contratosAtual.toLocaleString('pt-BR'),
+      delta: '4,4%',
+      positive: true,
+      prev: '61',
+      metaLabel: `Meta: ${metaContratos.toLocaleString('pt-BR')} (${contratosPct}%)`,
+      progress: contratosPct,
+      icon: FileSignature,
+    },
+  ];
+
   return (
     <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-      {KPIS.map(k => {
+      {kpis.map(k => {
         const Icon = k.icon;
         return (
           <Card key={k.label} className="p-4">
@@ -92,9 +135,24 @@ export function KpiRow() {
               <span className="text-[26px] leading-none font-semibold text-stone-900 tabular-nums tracking-tight">{k.value}</span>
               <Delta value={k.delta} positive={k.positive} />
             </div>
-            <p className="mt-2 text-[11px] text-stone-400">
-              vs. <span className="tabular-nums">{k.prev}</span> no período anterior
-            </p>
+            {k.metaLabel ? (
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-stone-500">
+                  <span className="font-medium text-stone-600">{k.metaLabel}</span>
+                  <span className="text-stone-400">vs. {k.prev}</span>
+                </div>
+                <div className="h-1 w-full bg-stone-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-mx-ink rounded-full transition-all duration-300"
+                    style={{ width: `${k.progress}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-[11px] text-stone-400">
+                vs. <span className="tabular-nums">{k.prev}</span> no período anterior
+              </p>
+            )}
           </Card>
         );
       })}
@@ -121,11 +179,14 @@ const REVENUE = [
   { d: '14 out', atual: 14200, anterior: 8800 },
 ];
 
-function RevenueTooltip({ active, payload, label }: any) {
+function RevenueTooltip({ active, payload, label, hideValues }: any) {
   if (!active || !payload?.length) return null;
   const atual = payload.find((p: any) => p.dataKey === 'atual')?.value ?? 0;
   const anterior = payload.find((p: any) => p.dataKey === 'anterior')?.value ?? 0;
-  const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  const fmt = (n: number) =>
+    hideValues
+      ? 'R$ •••••'
+      : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
   return (
     <div className="rounded-lg bg-white border border-stone-200 shadow-lg px-3 py-2 text-[11px]">
       <p className="font-semibold text-stone-900 mb-1">{label} 2026</p>
@@ -148,16 +209,44 @@ const SEGMENTS = [
 ];
 
 export function RevenueCard() {
+  const [settings] = useComercialSettings();
+  const hide = settings.ocultarValoresDashboard;
+  const faturamento = settings.faturamentoAtual || 486200;
+  const meta = settings.metaMensalFaturamento || 600000;
+  const pct = Math.min(100, Math.round((faturamento / Math.max(1, meta)) * 100));
+
+  const formatCompactBRL = (val: number) => {
+    if (hide) return 'R$ ••••••';
+    if (val >= 1000) {
+      return `R$ ${(val / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}K`;
+    }
+    return `R$ ${val.toLocaleString('pt-BR')}`;
+  };
+
   return (
     <Card className="p-5">
-      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,200px)_1fr] gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,220px)_1fr] gap-4">
         <div className="flex flex-col">
           <h3 className="text-[13px] font-semibold text-stone-900">Receita total</h3>
           <div className="mt-auto pt-6 md:pt-0">
-            <p className="text-[34px] leading-none font-semibold text-stone-900 tracking-tight tabular-nums">R$ 486,2K</p>
+            <p className="text-[32px] leading-none font-semibold text-stone-900 tracking-tight tabular-nums">
+              {formatCompactBRL(faturamento)}
+            </p>
             <p className="mt-2 flex items-center gap-1.5 text-[11px] text-stone-400">
               <Delta value="24,4%" positive /> vs. período anterior
             </p>
+            <div className="mt-3 pt-2.5 border-t border-stone-100 space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-stone-500 font-medium">Meta: {formatCompactBRL(meta)}</span>
+                <span className="font-bold text-stone-800 tabular-nums">{pct}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-mx-ink rounded-full transition-all duration-300"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
         <div className="h-[150px] -mr-2">
@@ -181,10 +270,10 @@ export function RevenueCard() {
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 10, fill: '#a8a09b' }}
-                tickFormatter={v => (v === 0 ? '0' : `${v / 1000}K`)}
+                tickFormatter={v => (hide ? '•••' : v === 0 ? '0' : `${v / 1000}K`)}
                 ticks={[0, 5000, 10000, 15000]}
               />
-              <Tooltip content={<RevenueTooltip />} cursor={{ stroke: '#d6cdc8', strokeDasharray: '3 3' }} />
+              <Tooltip content={<RevenueTooltip hideValues={hide} />} cursor={{ stroke: '#d6cdc8', strokeDasharray: '3 3' }} />
               <Area type="monotone" dataKey="anterior" stroke="#d6cdc8" strokeDasharray="4 4" strokeWidth={1.5} fill="none" dot={false} />
               <Area type="monotone" dataKey="atual" stroke="#2b1120" strokeWidth={2} fill="url(#revFill)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }} />
             </AreaChart>
@@ -225,6 +314,11 @@ const PLANS = [
 ];
 
 export function TopPlansCard() {
+  const [settings] = useComercialSettings();
+  const isCompact = settings.densidadeTabelas === 'compacta';
+  const hide = settings.ocultarValoresDashboard;
+  const rowPy = isCompact ? 'py-1.5' : 'py-3';
+
   return (
     <Card className="p-5">
       <CardHeader title="Planos mais vendidos" />
@@ -244,22 +338,22 @@ export function TopPlansCard() {
               const Icon = p.icon;
               return (
                 <tr key={p.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/70 transition-colors">
-                  <td className="py-3 pl-5 text-stone-500 tabular-nums">{p.id}</td>
-                  <td className="py-3">
+                  <td className={`${rowPy} pl-5 text-stone-500 tabular-nums`}>{p.id}</td>
+                  <td className={rowPy}>
                     <div className="flex items-center gap-2.5">
-                      <span className="w-7 h-7 rounded-lg bg-stone-100 flex items-center justify-center text-stone-700">
+                      <span className={`${isCompact ? 'w-6 h-6' : 'w-7 h-7'} rounded-lg bg-stone-100 flex items-center justify-center text-stone-700`}>
                         <Icon className="w-3.5 h-3.5" />
                       </span>
                       <span className="font-medium text-stone-800 truncate">{p.name}</span>
                     </div>
                   </td>
-                  <td className="py-3 text-right text-stone-500 tabular-nums">{p.sold}</td>
-                  <td className="py-3 text-right">
+                  <td className={`${rowPy} text-right text-stone-500 tabular-nums`}>{p.sold}</td>
+                  <td className={`${rowPy} text-right`}>
                     <span className="inline-block rounded-md bg-mx-green-50 text-mx-green font-semibold px-1.5 py-0.5 tabular-nums">
-                      {p.revenue}
+                      {hide ? 'R$ ••••••' : p.revenue}
                     </span>
                   </td>
-                  <td className="py-3 pr-5 text-right text-stone-500 tabular-nums">
+                  <td className={`${rowPy} pr-5 text-right text-stone-500 tabular-nums`}>
                     <span className="inline-flex items-center gap-1">
                       <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> ({p.rating})
                     </span>

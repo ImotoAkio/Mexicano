@@ -257,6 +257,8 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
       boatDB.delete(deleteConfirmation.id);
       showToast('Embarcação excluída com sucesso.');
       setDeleteConfirmation(null);
+      setIsModalOpen(false);
+      setEditingId(null);
       handleRefresh();
     } catch (err: any) {
       showToast(err.message || 'Erro ao remover embarcação', 'error');
@@ -725,6 +727,16 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                     >
                       <Edit2 className="w-3.5 h-3.5 stroke-[2.5]" />
                     </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        initiateDelete(boat.id, boat.nome);
+                      }}
+                      className="p-1.5 bg-white/90 backdrop-blur-sm border border-rose-100 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 shadow-sm transition-all cursor-pointer active:scale-90"
+                      title="Excluir Embarcação"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
                   </div>
 
                   <div className="flex flex-col mb-4">
@@ -838,6 +850,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={() => handleRefresh()}
+        onDelete={(id, name) => initiateDelete(id, name)}
         editingBoat={editingId ? boats.find(b => b.id === editingId) : null}
         clients={clients}
         showWhatsAppMapping={showWhatsAppMapping}

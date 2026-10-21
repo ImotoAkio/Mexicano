@@ -25,6 +25,7 @@ const ClientDashboardPage = lazy(() => import('./components/ClientDashboardPage'
 const MarinaDashboard = lazy(() => import('./components/MarinaDashboard'));
 const MarinaOperadorDashboard = lazy(() => import('./components/MarinaOperadorDashboard'));
 const ComercialDashboard = lazy(() => import('./components/comercial/ComercialDashboard'));
+const FinanceiroDashboard = lazy(() => import('./components/finance/FinanceiroDashboard'));
 const UsersPage = lazy(() => import('./components/UsersPage'));
 const FeedbackForm = lazy(() => import('./components/FeedbackForm'));
 const FeedbackAdmin = lazy(() => import('./components/FeedbackAdmin'));
@@ -156,8 +157,12 @@ export default function App() {
   const [adminRole, setAdminRole] = useState<string | null>(() => {
     return localStorage.getItem('admin_role') || null;
   });
-  const [adminName, setAdminName] = useState<string>('');
-  const [adminUsername, setAdminUsername] = useState<string>('');
+  const [adminName, setAdminName] = useState<string>(() => {
+    return localStorage.getItem('admin_name') || localStorage.getItem('admin_username') || '';
+  });
+  const [adminUsername, setAdminUsername] = useState<string>(() => {
+    return localStorage.getItem('admin_username') || '';
+  });
   const [isRoleLoading, setIsRoleLoading] = useState(false);
   const [isAdminDbLoaded, setIsAdminDbLoaded] = useState(false);
   const [dbData, setDbData] = useState<any>({});
@@ -205,7 +210,7 @@ export default function App() {
 
   // Fetch admin role
   useEffect(() => {
-    if (isAuthenticated && !adminRole && !isRoleLoading) {
+    if (isAuthenticated && (!adminRole || !adminName) && !isRoleLoading) {
       setIsRoleLoading(true);
       fetch('/api/auth/validate', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
@@ -216,6 +221,7 @@ export default function App() {
           setAdminRole(data.role as any);
           localStorage.setItem('admin_role', data.role || '');
           setAdminName(data.nome || data.username || 'Operador');
+          localStorage.setItem('admin_name', data.nome || data.username || 'Operador');
           setAdminUsername(data.username || '');
           localStorage.setItem('admin_username', data.username || '');
           const roleStr = (data.role || '').toLowerCase().trim();
@@ -633,15 +639,27 @@ export default function App() {
     );
   }
 
+  if (normalizedRole === 'financeiro') {
+    return (
+      <div className="admin-panel h-full w-full">
+        <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-[#f6f3f0]"><div className="w-8 h-8 border-4 border-[#2b1120] border-t-transparent rounded-full animate-spin"></div></div>}>
+          <FinanceiroDashboard onLogout={handleLogout} operadorNome={adminName} />
+        </Suspense>
+      </div>
+    );
+  }
+
   return (
-    <div className="admin-panel h-screen w-full flex bg-[#eaeff3] text-slate-900 font-sans overflow-hidden">
+    <div className="admin-panel h-screen w-full flex bg-[#f8fafc] text-slate-900 font-sans overflow-hidden">
       
       {/* Mobile Top Bar */}
       <div className="md:hidden fixed top-[env(safe-area-inset-top)] left-0 right-0 h-14 bg-white border-b border-slate-100 z-50 flex items-center justify-between px-4">
         <div className="flex items-center space-x-2">
-          <Logo className={`h-8 w-auto ${isPecasServicos ? 'text-[#B69D74]' : 'text-[#186b77]'}`} />
+          <Logo className={`h-8 w-auto ${isPecasServicos ? 'text-[#B69D74]' : isFinanceiro ? 'text-brand-500' : 'text-[#186b77]'}`} />
           {isPecasServicos ? (
             <span className="text-xs font-black text-slate-800 uppercase">Vale Administradora</span>
+          ) : isFinanceiro ? (
+            <span className="text-xs font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded border border-brand-200 uppercase">Financeiro</span>
           ) : (
             <span className="text-xs font-bold text-[#186b77] bg-teal-50 px-2 py-0.5 rounded border border-teal-100 uppercase">Admin</span>
           )}
@@ -667,7 +685,7 @@ export default function App() {
           {/* Logo & Header */}
           <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 shrink-0">
             <div className="flex items-center space-x-3 overflow-hidden">
-              <Logo className={`h-8 w-auto ${isPecasServicos ? 'text-[#B69D74]' : 'text-[#186b77]'}`} />
+              <Logo className={`h-8 w-auto ${isPecasServicos ? 'text-[#B69D74]' : isFinanceiro ? 'text-brand-500' : 'text-[#186b77]'}`} />
               {isPecasServicos && isSidebarOpen && (
                 <div className="flex flex-col overflow-hidden">
                   <span className="text-xs font-black text-slate-800 leading-tight tracking-tight uppercase truncate">
@@ -675,6 +693,16 @@ export default function App() {
                   </span>
                   <span className="text-[10px] font-bold text-[#B69D74] leading-none truncate">
                     Peças & Serviços
+                  </span>
+                </div>
+              )}
+              {isFinanceiro && isSidebarOpen && (
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-xs font-black text-slate-800 leading-tight tracking-tight uppercase truncate">
+                    Painel Financeiro
+                  </span>
+                  <span className="text-[10px] font-bold text-brand-600 leading-none truncate">
+                    Gestão Integrada
                   </span>
                 </div>
               )}
@@ -709,7 +737,7 @@ export default function App() {
                       className={`
                         w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer
                         ${isActive 
-                          ? 'bg-[#186b77] text-white shadow-xs' 
+                          ? (isFinanceiro || activeTab.startsWith('finance-') ? 'bg-brand-500 text-white shadow-xs' : 'bg-[#186b77] text-white shadow-xs') 
                           : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}
                       `}
                     >

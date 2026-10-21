@@ -3,6 +3,7 @@ import { TransacaoFinanceira } from '../../types';
 import { Calendar, Filter, FileText, Download, Building, DollarSign } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { toPng } from 'html-to-image';
+import { PageHeader, ComponentCard, Button, Badge } from '../tailadmin';
 
 export default function FinanceRelatorios() {
   const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
@@ -58,50 +59,47 @@ export default function FinanceRelatorios() {
     }
   };
 
-  const toggleEmpresa = (emp: string) => {
+  const toggleEmpresa = (empresa: string) => {
     setSelectedEmpresas(prev => ({
       ...prev,
-      [emp]: !prev[emp]
+      [empresa]: !prev[empresa]
     }));
   };
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  };
+  const filteredTransacoes = useMemo(() => {
+    return transacoes.filter(t => {
+      // Data
+      if (dateStart && t.dataVencimento < dateStart) return false;
+      if (dateEnd && t.dataVencimento > dateEnd) return false;
 
-  // Process data for DRE
-  const dreData = useMemo(() => {
-    // 1. Filter transacoes
-    let filtered = transacoes.filter(t => t.status === 'pago'); // DRE typically realized
+      // Status
+      if (t.status !== 'pago') return false;
 
-    if (dateStart) {
-      filtered = filtered.filter(t => (t.dataPagamento || t.dataVencimento) >= dateStart);
-    }
-    if (dateEnd) {
-      filtered = filtered.filter(t => (t.dataPagamento || t.dataVencimento) <= dateEnd);
-    }
+      // Empresa
+      const emp = t.empresa || 'Mexicano';
+      if (!selectedEmpresas[emp]) return false;
 
-    filtered = filtered.filter(t => {
-      const emp = t.empresa || 'Mexicano'; // fallback
-      return selectedEmpresas[emp] === true;
+      return true;
     });
+  }, [transacoes, dateStart, dateEnd, selectedEmpresas]);
 
+  // Group by plano de contas
+  const dreData = useMemo(() => {
     const receitas: Record<string, number> = {};
     const despesas: Record<string, number> = {};
-
     let totalReceitas = 0;
     let totalDespesas = 0;
 
-    filtered.forEach(t => {
-      const plano = planosContas.find((p: any) => p.id === t.planoContasId);
-      const cat = plano ? plano.descricao : (t.categoria || 'Sem Categoria');
-      const val = Number(t.valor);
+    filteredTransacoes.forEach(t => {
+      const plano = planosContas.find(p => p.id === t.planoContasId);
+      const categoryName = plano ? plano.descricao : (t.categoria || 'Outros');
+      const val = parseFloat(t.valor as any) || 0;
 
       if (t.tipo === 'receita') {
-        receitas[cat] = (receitas[cat] || 0) + val;
+        receitas[categoryName] = (receitas[categoryName] || 0) + val;
         totalReceitas += val;
-      } else {
-        despesas[cat] = (despesas[cat] || 0) + val;
+      } else if (t.tipo === 'despesa') {
+        despesas[categoryName] = (despesas[categoryName] || 0) + val;
         totalDespesas += val;
       }
     });
@@ -113,7 +111,11 @@ export default function FinanceRelatorios() {
       totalDespesas,
       saldo: totalReceitas - totalDespesas
     };
-  }, [transacoes, dateStart, dateEnd, selectedEmpresas, planosContas]);
+  }, [filteredTransacoes, planosContas]);
+
+  const formatCurrency = (val: number) => {
+    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
 
   const handleExport = async () => {
     if (!dreRef.current) return;
@@ -126,13 +128,12 @@ export default function FinanceRelatorios() {
 
       const imgProps = doc.getImageProperties(canvas);
       const imgRatio = imgProps.width / imgProps.height;
-      const pdfRatio = pdfWidth / pdfHeight;
 
       let drawWidth = pdfWidth;
       let drawHeight = pdfWidth / imgRatio;
 
       if (drawHeight > pdfHeight) {
-        doc.addPage(); // If extremely long, maybe paginate? Simple approach for now.
+        doc.addPage();
       }
 
       doc.addImage(canvas, 'PNG', 0, 0, drawWidth, drawHeight);
@@ -146,143 +147,158 @@ export default function FinanceRelatorios() {
   };
 
   if (loading) {
-    return <div className="flex justify-center items-center h-screen text-slate-800">Carregando...</div>;
+    return (
+      <div className="flex flex-col justify-center items-center h-72 gap-3 bg-white rounded-2xl border border-slate-200">
+        <div className="w-8 h-8 border-3 border-brand-200 border-t-brand-500 rounded-full animate-spin" />
+        <span className="text-xs text-slate-500 font-medium">Carregando relatório e DRE...</span>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="w-6 h-6 text-indigo-400" />
-            Relatórios & DRE (Demonstrativo de Resultados)
-          </h2>
-          <p className="text-slate-500 mt-1">Gere relatórios detalhados agrupados por plano de contas e empresa.</p>
-        </div>
+    <div className="w-full flex flex-col space-y-6">
+      <PageHeader
+        pageTitle="Relatórios & Demonstrativo de Resultados (DRE)"
+        subtitle="Gere relatórios gerenciais consolidados agrupados por plano de contas e empresa"
+        breadcrumbs={[
+          { label: "Financeiro" },
+          { label: "Relatórios & DRE" }
+        ]}
+        actions={
+          <Button
+            variant="primary"
+            size="md"
+            startIcon={<Download className="w-4 h-4" />}
+            onClick={handleExport}
+            isLoading={isExporting}
+          >
+            Exportar PDF (DRE)
+          </Button>
+        }
+      />
 
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow cursor-pointer transition-colors flex items-center gap-2 disabled:opacity-50"
-        >
-          <Download className="w-4 h-4" />
-          {isExporting ? 'Processando...' : 'Exportar PDF Relatório Operacional'}
-        </button>
-      </div>
+      {/* Filters Card */}
+      <ComponentCard
+        title="Parâmetros do Relatório"
+        subtitle="Defina o período e as empresas a consolidar"
+      >
+        <div className="flex flex-col md:flex-row gap-6">
+          {/* Date Form */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-slate-400" /> Período
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateStart}
+                onChange={(e) => setDateStart(e.target.value)}
+                className="bg-white border border-slate-200 text-slate-800 text-xs sm:text-sm py-2 px-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+              <span className="text-xs text-slate-400">até</span>
+              <input
+                type="date"
+                value={dateEnd}
+                onChange={(e) => setDateEnd(e.target.value)}
+                className="bg-white border border-slate-200 text-slate-800 text-xs sm:text-sm py-2 px-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </div>
+          </div>
 
-      <div className="bg-slate-50 border border-slate-200 shadow-sm p-4 rounded-xl flex flex-col md:flex-row gap-6">
-        {/* Date Form */}
-        <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-            <Calendar className="w-4 h-4" /> Período
-          </h3>
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={dateStart}
-              onChange={(e) => setDateStart(e.target.value)}
-              className="bg-white border border-slate-200 text-slate-800 p-2 rounded focus:outline-none focus:border-indigo-500"
-            />
-            <span className="text-slate-500">até</span>
-            <input
-              type="date"
-              value={dateEnd}
-              onChange={(e) => setDateEnd(e.target.value)}
-              className="bg-white border border-slate-200 text-slate-800 p-2 rounded focus:outline-none focus:border-indigo-500"
-            />
+          {/* Empresas Form */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Building className="w-3.5 h-3.5 text-slate-400" /> Empresas
+            </span>
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              {['Marina Velho Chico', 'Vale Administradora', 'Mexicano'].map(emp => (
+                <label key={emp} className="flex items-center gap-2 text-xs sm:text-sm font-medium text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedEmpresas[emp] || false}
+                    onChange={() => toggleEmpresa(emp)}
+                    className="w-4 h-4 text-brand-500 bg-white border-slate-300 rounded focus:ring-brand-500 focus:ring-2"
+                  />
+                  {emp}
+                </label>
+              ))}
+            </div>
           </div>
         </div>
-
-        {/* Empresas Form */}
-        <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-            <Building className="w-4 h-4" /> Empresas
-          </h3>
-          <div className="flex items-center gap-3">
-            {['Marina Velho Chico', 'Vale Administradora', 'Mexicano'].map(emp => (
-              <label key={emp} className="flex items-center gap-2 text-slate-800 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={selectedEmpresas[emp] || false}
-                  onChange={() => toggleEmpresa(emp)}
-                  className="w-4 h-4 text-indigo-600 bg-white border-gray-500 rounded focus:ring-indigo-500 focus:ring-2"
-                />
-                {emp}
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
+      </ComponentCard>
 
       {/* DRE Area */}
       <div
         ref={dreRef}
-        className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6 md:p-8"
+        className="bg-white border border-slate-200/90 shadow-xs rounded-2xl p-6 md:p-8"
         style={{ backgroundColor: isExporting ? '#ffffff' : '' }}
       >
-        <div className="text-center mb-8 border-b border-slate-200 pb-4">
-          <h1 className="text-xl font-bold text-slate-800">Demonstrativo de Resultado Operacional (DRE)</h1>
-          <p className="text-slate-500 text-sm mt-1">
+        <div className="text-center mb-8 border-b border-slate-100 pb-5">
+          <h2 className="text-xl font-bold text-slate-900">Demonstrativo de Resultado Operacional (DRE)</h2>
+          <p className="text-slate-500 text-xs sm:text-sm mt-1">
             Período: {dateStart ? new Date(dateStart + 'T12:00:00').toLocaleDateString('pt-BR') : 'Início'} a {dateEnd ? new Date(dateEnd + 'T12:00:00').toLocaleDateString('pt-BR') : 'Fim'}
           </p>
-          <div className="flex justify-center gap-2 mt-2">
+          <div className="flex justify-center gap-2 mt-3">
             {Object.keys(selectedEmpresas).filter(k => selectedEmpresas[k]).map(e => (
-              <span key={e} className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold rounded text-slate-600">{e}</span>
+              <Badge key={e} color="light" size="sm">
+                {e}
+              </Badge>
             ))}
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Receitas */}
-          <div>
-            <h3 className="text-lg font-bold text-emerald-400 mb-4 border-b border-emerald-500/20 pb-2">Receitas (Entradas)</h3>
-            <div className="space-y-3">
-              {Object.keys(dreData.receitas).length === 0 && <p className="text-slate-400 text-sm">Sem receitas no período.</p>}
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-5">
+            <h3 className="text-sm font-bold text-emerald-700 mb-4 border-b border-emerald-200 pb-2 flex justify-between items-center">
+              <span>Receitas Operacionais (Entradas)</span>
+              <span>{formatCurrency(dreData.totalReceitas)}</span>
+            </h3>
+            <div className="space-y-2.5">
+              {Object.keys(dreData.receitas).length === 0 && <p className="text-slate-400 text-xs">Sem receitas realizadas no período.</p>}
               {Object.entries(dreData.receitas)
                 .sort((a,b) => b[1] - a[1])
                 .map(([cat, val]) => (
-                <div key={cat} className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600">{cat}</span>
-                  <span className="text-slate-800 font-medium">{formatCurrency(val)}</span>
+                <div key={cat} className="flex justify-between items-center text-xs sm:text-sm py-1 border-b border-emerald-100/50 last:border-0">
+                  <span className="text-slate-700">{cat}</span>
+                  <span className="font-semibold text-slate-900">{formatCurrency(val)}</span>
                 </div>
               ))}
-            </div>
-            <div className="mt-4 pt-3 flex justify-between items-center border-t border-slate-200">
-              <span className="font-bold text-emerald-400">Total Receitas</span>
-              <span className="font-bold text-emerald-400">{formatCurrency(dreData.totalReceitas)}</span>
             </div>
           </div>
 
           {/* Despesas */}
-          <div>
-            <h3 className="text-lg font-bold text-rose-400 mb-4 border-b border-rose-500/20 pb-2">Despesas (Saídas)</h3>
-            <div className="space-y-3">
-              {Object.keys(dreData.despesas).length === 0 && <p className="text-slate-400 text-sm">Sem despesas no período.</p>}
+          <div className="rounded-xl border border-rose-100 bg-rose-50/30 p-5">
+            <h3 className="text-sm font-bold text-rose-700 mb-4 border-b border-rose-200 pb-2 flex justify-between items-center">
+              <span>Despesas Operacionais (Saídas)</span>
+              <span>{formatCurrency(dreData.totalDespesas)}</span>
+            </h3>
+            <div className="space-y-2.5">
+              {Object.keys(dreData.despesas).length === 0 && <p className="text-slate-400 text-xs">Sem despesas realizadas no período.</p>}
               {Object.entries(dreData.despesas)
                 .sort((a,b) => b[1] - a[1])
                 .map(([cat, val]) => (
-                <div key={cat} className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600">{cat}</span>
-                  <span className="text-slate-800 font-medium">{formatCurrency(val)}</span>
+                <div key={cat} className="flex justify-between items-center text-xs sm:text-sm py-1 border-b border-rose-100/50 last:border-0">
+                  <span className="text-slate-700">{cat}</span>
+                  <span className="font-semibold text-slate-900">{formatCurrency(val)}</span>
                 </div>
               ))}
-            </div>
-             <div className="mt-4 pt-3 flex justify-between items-center border-t border-slate-200">
-              <span className="font-bold text-rose-400">Total Despesas</span>
-              <span className="font-bold text-rose-400">{formatCurrency(dreData.totalDespesas)}</span>
             </div>
           </div>
         </div>
 
         {/* Resumo Final */}
-        <div className="mt-8 pt-6 border-t-2 border-slate-200">
-          <div className="flex flex-col items-center justify-center p-6 rounded-xl border border-slate-200 shadow-sm bg-slate-50">
-            <span className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-              <DollarSign className="w-5 h-5"/>
-              Resultado Operacional (Saldo)
+        <div className="mt-8 pt-6 border-t border-slate-100">
+          <div className="flex flex-col items-center justify-center p-6 rounded-2xl border border-slate-200/80 bg-slate-50/60">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <DollarSign className="w-4 h-4 text-brand-500"/>
+              Resultado Operacional Líquido
             </span>
-            <span className={`text-4xl font-black ${dreData.saldo >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+            <span className={`text-3xl sm:text-4xl font-extrabold ${dreData.saldo >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
               {formatCurrency(dreData.saldo)}
+            </span>
+            <span className="text-xs text-slate-400 mt-1">
+              Receitas Realizadas - Despesas Realizadas
             </span>
           </div>
         </div>

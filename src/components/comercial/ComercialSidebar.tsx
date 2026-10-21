@@ -1,26 +1,24 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import {
   LayoutDashboard,
-  UserPlus,
-  FileText,
   Users,
   Ship,
   FileSignature,
   DollarSign,
   Wallet,
-  ChevronDown,
-  BarChart3,
-  Megaphone,
   Settings,
-  HelpCircle,
   PanelLeftClose,
   PanelLeftOpen,
   Target,
   X,
+  ArrowRight,
 } from 'lucide-react';
 import logoMexicano from '../../assets/images/logo_mexicano_trim.png';
 import { clientDB, onDbUpdate } from '../../db';
 import { loadComercialSettings, ComercialSettings } from './ComercialSettingsModal';
+import { VendaComercial, ConfigMotorComissoes } from '../../types';
+import { DEFAULT_MOTOR_COMISSOES_CONFIG, calculateComissoesResumo, getCurrentMonthKey } from '../../utils/comissaoUtils';
 
 interface NavItem {
   id: string;
@@ -29,25 +27,13 @@ interface NavItem {
   badge?: string;
 }
 
-const MAIN_NAV: NavItem[] = [
+const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'vendas', label: 'Vendas', icon: DollarSign },
-  { id: 'leads', label: 'Leads', icon: UserPlus, badge: '46' },
-  { id: 'propostas', label: 'Propostas', icon: FileText },
+  { id: 'comissoes', label: 'Comissões', icon: Wallet },
   { id: 'clientes', label: 'Clientes', icon: Users },
   { id: 'embarcacoes', label: 'Embarcações', icon: Ship },
   { id: 'contratos', label: 'Contratos', icon: FileSignature },
-];
-
-const FINANCE_CHILDREN = [
-  { id: 'comissoes', label: 'Comissões' },
-  { id: 'recebimentos', label: 'Recebimentos' },
-  { id: 'relatorios', label: 'Relatórios' },
-];
-
-const SECONDARY_NAV: NavItem[] = [
-  { id: 'analises', label: 'Análises', icon: BarChart3 },
-  { id: 'campanhas', label: 'Campanhas', icon: Megaphone },
 ];
 
 interface ComercialSidebarProps {
@@ -65,27 +51,122 @@ export default function ComercialSidebar({
   collapsed = false,
   onToggleCollapse,
 }: ComercialSidebarProps) {
-  const [financeOpen, setFinanceOpen] = useState(true);
   const [metaSettings, setMetaSettings] = useState<ComercialSettings>(() => loadComercialSettings());
 
+  // Vendas e Configuração de Comissões em Tempo Real
+  const [vendas, setVendas] = useState<VendaComercial[]>([]);
+  const [comissoesConfig, setComissoesConfig] = useState<ConfigMotorComissoes>(() => {
+    try {
+      const saved = localStorage.getItem('comercial_motor_comissoes_config');
+      if (saved) return { ...DEFAULT_MOTOR_COMISSOES_CONFIG, ...JSON.parse(saved) };
+    } catch {}
+    return DEFAULT_MOTOR_COMISSOES_CONFIG;
+  });
+
+  const getAuthHeader = (): Record<string, string> => {
+    const token = localStorage.getItem('admin_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const fetchVendasAndConfig = async () => {
+    try {
+      const headers = getAuthHeader();
+      const [vendasRes, cfgRes] = await Promise.all([
+        fetch('/api/comercial/vendas', { credentials: 'include', headers }),
+        fetch('/api/comercial/comissoes/config', { credentials: 'include', headers }),
+      ]);
+
+      if (vendasRes.ok) {
+        const vData = await vendasRes.json();
+        if (Array.isArray(vData.vendas)) {
+          setVendas(vData.vendas);
+        }
+      }
+
+      if (cfgRes.ok) {
+        const cData = await cfgRes.json();
+        if (cData.config) {
+          setComissoesConfig(cData.config);
+          localStorage.setItem('comercial_motor_comissoes_config', JSON.stringify(cData.config));
+        }
+      }
+    } catch {
+      // Falha silenciosa de sincronização em segundo plano
+    }
+  };
+
   useEffect(() => {
+    fetchVendasAndConfig();
+
     const handleSettingsUpdate = (e: Event) => {
       const customEvent = e as CustomEvent;
       if (customEvent.detail) {
         setMetaSettings(customEvent.detail);
       }
     };
+
+    const handleVendaUpdated = () => {
+      fetchVendasAndConfig();
+    };
+
     window.addEventListener('comercial-settings-updated', handleSettingsUpdate);
-    return () => window.removeEventListener('comercial-settings-updated', handleSettingsUpdate);
+    window.addEventListener('comercial-venda-updated', handleVendaUpdated);
+    window.addEventListener('comercial-comissoes-updated', handleVendaUpdated);
+    window.addEventListener('db_updated', handleVendaUpdated);
+    window.addEventListener('db_synced', handleVendaUpdated);
+
+    // Conexão Socket.io para acompanhar vendas e comissões em tempo real instantâneo
+    const socket = io('/', {
+      path: '/socket.io',
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 10,
+    });
+
+    socket.on('venda_created', handleVendaUpdated);
+    socket.on('venda_cancelled', handleVendaUpdated);
+    socket.on('venda_updated', handleVendaUpdated);
+    socket.on('finance_update', handleVendaUpdated);
+
+    const unsubDb = onDbUpdate(() => {
+      fetchVendasAndConfig();
+    });
+
+    return () => {
+      window.removeEventListener('comercial-settings-updated', handleSettingsUpdate);
+      window.removeEventListener('comercial-venda-updated', handleVendaUpdated);
+      window.removeEventListener('comercial-comissoes-updated', handleVendaUpdated);
+      window.removeEventListener('db_updated', handleVendaUpdated);
+      window.removeEventListener('db_synced', handleVendaUpdated);
+      socket.disconnect();
+      unsubDb();
+    };
   }, []);
 
+  // Resumo de comissões e faturamento em tempo real do mês atual
+  const currentMonthKey = getCurrentMonthKey();
+  const resumoComissoes = useMemo(() => {
+    return calculateComissoesResumo(vendas, comissoesConfig, currentMonthKey);
+  }, [vendas, comissoesConfig, currentMonthKey]);
+
   const metaTarget = metaSettings.metaMensalFaturamento || 600000;
-  const faturamentoAtual = metaSettings.faturamentoAtual || 486200;
+  const faturamentoAtual =
+    resumoComissoes.faturamentoRealMes > 0
+      ? resumoComissoes.faturamentoRealMes
+      : (metaSettings.faturamentoAtual || 0);
+
   const progressPercent = Math.min(100, Math.round((faturamentoAtual / metaTarget) * 100));
+  const totalCotasMes = resumoComissoes.totalCotasMes;
+  const comissaoTotalVendedor = resumoComissoes.totalVariavelPorVendedor;
 
   const formatK = (val: number) => {
+    if (metaSettings.ocultarValoresDashboard) return 'R$ ••••';
     const k = val / 1000;
     return `R$ ${k.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}K`;
+  };
+
+  const formatBRL = (val: number) => {
+    if (metaSettings.ocultarValoresDashboard) return 'R$ ••••';
+    return `R$ ${(Number(val) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const [pendingContractsCount, setPendingContractsCount] = useState(() => {
@@ -111,8 +192,22 @@ export default function ComercialSidebar({
   const renderItem = (item: NavItem) => {
     const isActive = active === item.id;
     const Icon = item.icon;
-    const badgeText = item.id === 'contratos' && pendingContractsCount > 0 ? String(pendingContractsCount) : item.badge;
-    const isPendingContractsBadge = item.id === 'contratos' && pendingContractsCount > 0;
+    const showPendingContracts =
+      item.id === 'contratos' && pendingContractsCount > 0 && metaSettings.notificarContratosPendentes;
+    const showComissoesBadge = item.id === 'comissoes' && totalCotasMes > 0;
+
+    let badgeText: string | undefined = undefined;
+    let badgeType: 'contracts' | 'comissoes' | 'default' = 'default';
+
+    if (showPendingContracts) {
+      badgeText = String(pendingContractsCount);
+      badgeType = 'contracts';
+    } else if (showComissoesBadge) {
+      badgeText = `${totalCotasMes} ${totalCotasMes === 1 ? 'cota' : 'cotas'}`;
+      badgeType = 'comissoes';
+    } else if (item.badge) {
+      badgeText = item.badge;
+    }
 
     return (
       <button
@@ -137,18 +232,28 @@ export default function ComercialSidebar({
         <Icon className="w-4 h-4 shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
         {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
         {!collapsed && badgeText && (
-          <span className={`text-[10px] font-semibold rounded-md px-1.5 py-0.5 tabular-nums ${
-            isPendingContractsBadge
-              ? 'text-amber-700 bg-amber-100'
-              : 'text-mx-green bg-mx-green-50'
-          }`}>
+          <span
+            className={`text-[10px] font-semibold rounded-md px-1.5 py-0.5 tabular-nums ${
+              badgeType === 'contracts'
+                ? 'text-amber-700 bg-amber-100'
+                : badgeType === 'comissoes'
+                ? 'text-emerald-700 bg-emerald-50 border border-emerald-200/60'
+                : 'text-mx-green bg-mx-green-50'
+            }`}
+          >
             {badgeText}
           </span>
         )}
         {collapsed && badgeText && (
-          <span className={`absolute top-2 right-3 w-2 h-2 rounded-full ring-2 ring-white ${
-            isPendingContractsBadge ? 'bg-amber-500' : 'bg-mx-green'
-          }`} />
+          <span
+            className={`absolute top-2 right-3 w-2 h-2 rounded-full ring-2 ring-white ${
+              badgeType === 'contracts'
+                ? 'bg-amber-500'
+                : badgeType === 'comissoes'
+                ? 'bg-emerald-500'
+                : 'bg-mx-green'
+            }`}
+          />
         )}
       </button>
     );
@@ -202,108 +307,84 @@ export default function ComercialSidebar({
         </div>
       )}
 
-      {/* Navigation */}
+      {/* Navigation — Apenas os módulos ativos */}
       <nav className={`flex-1 overflow-y-auto hide-scrollbar ${collapsed ? 'px-2' : 'px-3'} pt-2 space-y-0.5`}>
-        {MAIN_NAV.map(renderItem)}
-
-        <div className="my-2.5 h-px bg-stone-100" />
-
-        {/* Grupo Finanças */}
-        {!collapsed ? (
-          <>
-            <button
-              onClick={() => setFinanceOpen(v => !v)}
-              className="w-full flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13px] font-medium text-stone-600 hover:bg-stone-100 hover:text-stone-900 transition-colors cursor-pointer"
-            >
-              <Wallet className="w-4 h-4" strokeWidth={1.75} />
-              <span className="flex-1 text-left">Finanças</span>
-              <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform ${financeOpen ? '' : '-rotate-90'}`} />
-            </button>
-            {financeOpen && (
-              <div className="pl-[38px] space-y-0.5 pb-1">
-                {FINANCE_CHILDREN.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => onSelect(c.id)}
-                    className={`w-full text-left h-8 px-2 rounded-md text-[13px] transition-colors cursor-pointer ${
-                      active === c.id ? 'text-mx-ink font-semibold' : 'text-stone-500 hover:text-stone-900'
-                    }`}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <button
-            onClick={() => onSelect('comissoes')}
-            title="Finanças (Comissões, Recebimentos, Relatórios)"
-            className={`w-full flex items-center justify-center h-10 rounded-lg text-[13px] transition-colors cursor-pointer ${
-              ['comissoes', 'recebimentos', 'relatorios'].includes(active)
-                ? 'bg-mx-ink-100 text-mx-ink font-semibold'
-                : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
-            }`}
-          >
-            <Wallet className="w-4 h-4" strokeWidth={1.75} />
-          </button>
-        )}
-
-        {SECONDARY_NAV.map(renderItem)}
+        {NAV_ITEMS.map(renderItem)}
 
         <div className="my-2.5 h-px bg-stone-100" />
 
         {renderItem({ id: 'config', label: 'Configurações', icon: Settings })}
-        {renderItem({ id: 'ajuda', label: 'Ajuda e suporte', icon: HelpCircle })}
       </nav>
 
-      {/* Card de Meta — Fixo na base da sidebar */}
+      {/* Card de Comissões & Metas — Minimalista no padrão Mexicano */}
       {!collapsed ? (
         <div className="shrink-0 p-3 pt-1">
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-[#2152ff] via-[#1a3ec9] to-[#0d1e66] p-4 text-white shadow-lg">
-            {/* Micro-dot pattern da imagem de referência */}
-            <div
-              className="pointer-events-none absolute inset-0 opacity-25"
-              style={{
-                backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.45) 1px, transparent 1px)',
-                backgroundSize: '8px 8px',
-              }}
-            />
+          <div
+            onClick={() => onSelect('comissoes')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') onSelect('comissoes');
+            }}
+            className="group relative overflow-hidden rounded-xl bg-[#2B1120] p-3 text-white shadow-xs border border-[#3e1b30] hover:border-[#5a2747] transition-all cursor-pointer select-none"
+          >
+            {/* Efeito de brilho suave no hover */}
+            <div className="pointer-events-none absolute -top-8 -right-8 w-20 h-20 rounded-full bg-white/[0.04] group-hover:bg-white/[0.08] transition-colors blur-lg" />
 
-            <div className="relative">
-              {/* Ícone squircle branco com sombra */}
-              <div className="w-9 h-9 rounded-xl bg-white shadow-md flex items-center justify-center text-blue-600 mb-3">
-                <Target className="w-5 h-5" strokeWidth={2.25} />
-              </div>
-
-              <h4 className="text-[13px] font-bold text-white tracking-tight">
-                Meta do Mês!
-              </h4>
-              <p className="text-[11px] text-blue-100/80 leading-snug mt-1">
-                {formatK(faturamentoAtual)} de {formatK(metaTarget)} atingidos neste mês.
-              </p>
-
-              {/* Barra de progresso */}
-              <div className="mt-3 space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] font-semibold text-white/90">
-                  <span>Progresso</span>
-                  <span className="text-blue-200">{progressPercent}%</span>
+            {/* Cabeçalho */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-amber-300">
+                  <Target className="w-3.5 h-3.5" strokeWidth={2.25} />
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-white/20 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-blue-300 via-white to-blue-200 shadow-xs transition-all duration-500"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
+                <span className="text-[11px] font-semibold text-stone-200 tracking-tight">
+                  Comissão Mensal
+                </span>
               </div>
+              {totalCotasMes > 0 ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 tabular-nums">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {totalCotasMes} {totalCotasMes === 1 ? 'cota' : 'cotas'}
+                </span>
+              ) : (
+                <span className="text-[10px] font-medium text-stone-400 tabular-nums">
+                  0 cotas
+                </span>
+              )}
+            </div>
 
-              {/* Botão de ação */}
-              <button
-                onClick={() => onSelect('config')}
-                className="mt-3.5 w-full h-8 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-semibold text-[11px] shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center"
-              >
-                Configurar metas
-              </button>
+            {/* Valor individual e VGV */}
+            <div className="my-1.5">
+              <div className="flex items-baseline justify-between">
+                <div className="text-base font-bold text-white tabular-nums tracking-tight">
+                  {formatBRL(comissaoTotalVendedor)}
+                </div>
+                <span className="text-[10px] text-stone-400">/ vendedor</span>
+              </div>
+              <div className="text-[10px] text-stone-300/90 leading-snug mt-0.5 tabular-nums flex items-center justify-between">
+                <span>VGV: {formatK(faturamentoAtual)}</span>
+                <span className="text-stone-400">Meta: {formatK(metaTarget)}</span>
+              </div>
+            </div>
+
+            {/* Barra de Progresso Minimalista */}
+            <div className="mt-2.5 space-y-1">
+              <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-emerald-400 transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[9px] text-stone-400 tabular-nums">
+                <span>Progresso da Meta</span>
+                <span className="font-semibold text-stone-300">{progressPercent}%</span>
+              </div>
+            </div>
+
+            {/* Rodapé / Link discreto de ação */}
+            <div className="mt-2.5 pt-2 border-t border-white/10 flex items-center justify-between text-[10px] text-stone-300 group-hover:text-white transition-colors">
+              <span className="font-medium">Abrir painel de comissões</span>
+              <ArrowRight className="w-3 h-3 text-stone-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
             </div>
           </div>
         </div>
@@ -311,12 +392,15 @@ export default function ComercialSidebar({
         /* Versão compacta / ícone quando recolhida */
         <div className="shrink-0 p-3 pt-1 flex justify-center">
           <button
-            onClick={onToggleCollapse}
-            className="w-11 h-11 rounded-xl bg-gradient-to-b from-[#2152ff] via-[#1a3ec9] to-[#0d1e66] text-white flex items-center justify-center shadow-md hover:scale-105 transition-all cursor-pointer relative group"
-            title={`Meta Comercial: ${formatK(faturamentoAtual)} (${progressPercent}% atingida) — Clique para expandir`}
+            type="button"
+            onClick={() => onSelect('comissoes')}
+            className="w-10 h-10 rounded-xl bg-[#2B1120] text-white flex items-center justify-center border border-[#3e1b30] shadow-xs hover:border-[#5a2747] hover:scale-105 transition-all cursor-pointer relative group"
+            title={`Comissões: ${formatBRL(comissaoTotalVendedor)} (${totalCotasMes} cotas) • VGV: ${formatK(faturamentoAtual)} (${progressPercent}%)`}
           >
-            <Target className="w-5 h-5 text-white" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-white" />
+            <Target className="w-4 h-4 text-amber-300" />
+            {totalCotasMes > 0 && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-white animate-pulse" />
+            )}
           </button>
         </div>
       )}

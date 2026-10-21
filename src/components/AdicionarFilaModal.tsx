@@ -65,17 +65,29 @@ export default function AdicionarFilaModal({
     }
   }, [isOpen]);
 
+  const isBoatMarina = (b: Embarcacao) => {
+    const bEmpresas = b.empresas || ['VALE'];
+    if (bEmpresas.includes('MARINA')) return true;
+    return clients.some(c => 
+      (c.embarcacaoId === b.id || (Array.isArray(c.embarcacoes) && c.embarcacoes.some(eb => eb.embarcacaoId === b.id)) || (Array.isArray(b.donos) && b.donos.includes(c.id))) &&
+      (c.empresas || ['VALE']).includes('MARINA')
+    );
+  };
+
   const filteredBoats = useMemo(() => {
     const term = boatSearch.toLowerCase().trim();
     return boats.filter(b => {
-      return !term || b.nome.toLowerCase().includes(term) || (b.vaga && b.vaga.toLowerCase().includes(term)) || (b.modelo && b.modelo.toLowerCase().includes(term));
-    }).sort((a, b) => {
-      const aIsMarina = a.empresas?.includes('MARINA') ? 1 : 0;
-      const bIsMarina = b.empresas?.includes('MARINA') ? 1 : 0;
-      if (aIsMarina !== bIsMarina) return bIsMarina - aIsMarina;
-      return a.nome.localeCompare(b.nome);
-    });
-  }, [boats, boatSearch]);
+      // Exibir apenas embarcações vinculadas à Marina (diretamente ou via cliente)
+      if (!isBoatMarina(b)) return false;
+
+      return (
+        !term ||
+        b.nome.toLowerCase().includes(term) ||
+        (b.vaga && b.vaga.toLowerCase().includes(term)) ||
+        (b.modelo && b.modelo.toLowerCase().includes(term))
+      );
+    }).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [boats, clients, boatSearch]);
 
   const selectedBoat = boats.find(b => b.id === selectedBoatId);
 
@@ -241,24 +253,31 @@ export default function AdicionarFilaModal({
                     />
                   </div>
                   <div className="max-h-48 overflow-y-auto p-1 space-y-0.5 subtle-scrollbar">
-                    {filteredBoats.map(b => (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedBoatId(b.id);
-                          setIsSelectOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between p-2 rounded-lg text-xs text-left cursor-pointer transition-colors ${
-                          b.id === selectedBoatId ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        <div className="truncate font-semibold">{b.nome}</div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {b.vaga && <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold">Vaga {b.vaga}</span>}
-                        </div>
-                      </button>
-                    ))}
+                    {filteredBoats.length > 0 ? (
+                      filteredBoats.map(b => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedBoatId(b.id);
+                            setIsSelectOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between p-2 rounded-lg text-xs text-left cursor-pointer transition-colors ${
+                            b.id === selectedBoatId ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <div className="truncate font-semibold">{b.nome}</div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {b.vaga && <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold">Vaga {b.vaga}</span>}
+                            <span className="text-[9px] font-extrabold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">Marina</span>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        Nenhuma embarcação vinculada à Marina encontrada.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

@@ -77,7 +77,17 @@ router.post("/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, 
   try {
     const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
     if (action === 'delete') {
-      await deleteTransacao(data.id || data);
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          await deleteTransacao(typeof item === 'object' && item?.id ? item.id : item);
+        }
+      } else if (data?.ids && Array.isArray(data.ids)) {
+        for (const id of data.ids) {
+          await deleteTransacao(id);
+        }
+      } else {
+        await deleteTransacao(data.id || data);
+      }
     } else if (action === 'delete_all') {
       await deleteAllTransacoes();
     } else if (action === 'delete_by_clients') {

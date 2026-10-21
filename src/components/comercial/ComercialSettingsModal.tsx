@@ -56,6 +56,35 @@ export const DEFAULT_COMERCIAL_SETTINGS: ComercialSettings = {
 
 const STORAGE_KEY = 'comercial_user_settings';
 
+export function playNotificationBeep(force = false): void {
+  try {
+    const current = loadComercialSettings();
+    if (!force && !current.somNotificacoes) return;
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    // Primeiro tom suave (E5 -> 659.25Hz) e segundo tom (A5 -> 880Hz)
+    const freqs = [659.25, 880];
+    freqs.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+      gain.gain.setValueAtTime(0.001, now + idx * 0.09);
+      gain.gain.exponentialRampToValueAtTime(0.08, now + idx * 0.09 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.09 + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.09);
+      osc.stop(now + idx * 0.09 + 0.2);
+    });
+  } catch {
+    // Ignorar se o navegador bloquear autoplay de áudio
+  }
+}
+
 export function loadComercialSettings(): ComercialSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -75,22 +104,64 @@ export function saveComercialSettings(settings: ComercialSettings): void {
     if (settings.nome) {
       localStorage.setItem('admin_name', settings.nome);
     }
+    localStorage.setItem('comercial_sidebar_collapsed', String(Boolean(settings.sidebarColapsadaPadrao)));
     window.dispatchEvent(new CustomEvent('comercial-settings-updated', { detail: settings }));
   } catch (err) {
     console.error('Erro ao salvar configurações do Comercial:', err);
   }
 }
 
+export function updateComercialSettings(partial: Partial<ComercialSettings>): ComercialSettings {
+  const next = { ...loadComercialSettings(), ...partial };
+  saveComercialSettings(next);
+  return next;
+}
+
+export function useComercialSettings(): [ComercialSettings, (partial: Partial<ComercialSettings>) => void] {
+  const [settings, setSettingsState] = useState<ComercialSettings>(() => loadComercialSettings());
+
+  useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const custom = e as CustomEvent<ComercialSettings>;
+      if (custom.detail) {
+        setSettingsState({ ...DEFAULT_COMERCIAL_SETTINGS, ...custom.detail });
+      } else {
+        setSettingsState(loadComercialSettings());
+      }
+    };
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY || e.key === null) {
+        setSettingsState(loadComercialSettings());
+      }
+    };
+    window.addEventListener('comercial-settings-updated', handleUpdate);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('comercial-settings-updated', handleUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  const update = (partial: Partial<ComercialSettings>) => {
+    const updated = updateComercialSettings(partial);
+    setSettingsState(updated);
+  };
+
+  return [settings, update];
+}
+
 interface ComercialSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialTab?: 'perfil' | 'metas' | 'notificacoes' | 'interface' | 'atalhos';
+  onNavigateShortcut?: (target: string) => void;
 }
 
 export default function ComercialSettingsModal({
   isOpen,
   onClose,
   initialTab = 'perfil',
+  onNavigateShortcut,
 }: ComercialSettingsModalProps) {
   const [activeTab, setActiveTab] = useState<'perfil' | 'metas' | 'notificacoes' | 'interface' | 'atalhos'>(initialTab);
   const [settings, setSettings] = useState<ComercialSettings>(loadComercialSettings);
@@ -105,24 +176,40 @@ export default function ComercialSettingsModal({
     }
   }, [isOpen, initialTab]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSave = () => {
     setIsSaving(true);
     saveComercialSettings(settings);
+    if (settings.somNotificacoes) {
+      playNotificationBeep(true);
+    }
     setTimeout(() => {
       setIsSaving(false);
       setSaveSuccess(true);
       setTimeout(() => {
         setSaveSuccess(false);
         onClose();
-      }, 700);
-    }, 300);
+      }, 600);
+    }, 250);
   };
 
   const handleResetDefaults = () => {
     if (window.confirm('Restaurar configurações para o padrão?')) {
       setSettings(DEFAULT_COMERCIAL_SETTINGS);
+      saveComercialSettings(DEFAULT_COMERCIAL_SETTINGS);
     }
   };
 
@@ -414,13 +501,34 @@ export default function ComercialSettingsModal({
                     className="flex items-center justify-between p-3.5 rounded-2xl border border-stone-200/70 bg-stone-50/50 hover:bg-stone-100/40 transition-colors cursor-pointer"
                   >
                     <div className="pr-3">
-                      <p className="text-xs font-bold text-stone-900">{item.title}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-stone-900">{item.title}</p>
+                        {item.key === 'somNotificacoes' && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              playNotificationBeep(true);
+                            }}
+                            className="px-2 py-0.5 rounded-md bg-white border border-stone-200 text-[10px] font-semibold text-stone-600 hover:text-stone-900 hover:border-stone-300 transition-colors cursor-pointer"
+                          >
+                            Testar som
+                          </button>
+                        )}
+                      </div>
                       <p className="text-[11px] text-stone-500 mt-0.5">{item.desc}</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={settings[item.key]}
-                      onChange={e => setSettings({ ...settings, [item.key]: e.target.checked })}
+                      onChange={e => {
+                        const checked = e.target.checked;
+                        setSettings({ ...settings, [item.key]: checked });
+                        if (item.key === 'somNotificacoes' && checked) {
+                          playNotificationBeep(true);
+                        }
+                      }}
                       className="w-4 h-4 rounded text-stone-900 focus:ring-stone-400 cursor-pointer shrink-0"
                     />
                   </label>
@@ -433,20 +541,23 @@ export default function ComercialSettingsModal({
               <div className="space-y-3">
                 <div className="p-3.5 rounded-2xl border border-stone-200/70 bg-stone-50/50 space-y-2">
                   <p className="text-xs font-bold text-stone-900">Densidade visual das tabelas</p>
-                  <p className="text-[11px] text-stone-500">Ajuste o espaçamento vertical entre linhas</p>
+                  <p className="text-[11px] text-stone-500">Ajuste o espaçamento vertical entre linhas nas listagens do sistema</p>
                   <div className="grid grid-cols-2 gap-2 pt-1">
-                    {(['confortavel', 'compacta'] as const).map(d => (
+                    {([
+                      { id: 'confortavel', label: 'Confortável' },
+                      { id: 'compacta', label: 'Compacta' },
+                    ] as const).map(d => (
                       <button
-                        key={d}
+                        key={d.id}
                         type="button"
-                        onClick={() => setSettings({ ...settings, densidadeTabelas: d })}
-                        className={`h-9 px-3 rounded-xl border text-xs font-semibold capitalize transition-all cursor-pointer ${
-                          settings.densidadeTabelas === d
+                        onClick={() => setSettings({ ...settings, densidadeTabelas: d.id })}
+                        className={`h-9 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          settings.densidadeTabelas === d.id
                             ? 'border-stone-900 bg-white text-stone-900 shadow-2xs'
                             : 'border-stone-200 bg-stone-100/50 text-stone-600 hover:bg-white'
                         }`}
                       >
-                        {d}
+                        {d.label}
                       </button>
                     ))}
                   </div>
@@ -468,7 +579,7 @@ export default function ComercialSettingsModal({
                 <label className="flex items-center justify-between p-3.5 rounded-2xl border border-stone-200/70 bg-stone-50/50 hover:bg-stone-100/40 transition-colors cursor-pointer">
                   <div className="pr-3">
                     <p className="text-xs font-bold text-stone-900">Ocultar valores monetários no Dashboard</p>
-                    <p className="text-[11px] text-stone-500 mt-0.5">Substitui cifras por asteriscos para privacidade</p>
+                    <p className="text-[11px] text-stone-500 mt-0.5">Substitui cifras por asteriscos para privacidade em reuniões</p>
                   </div>
                   <input
                     type="checkbox"
@@ -484,22 +595,36 @@ export default function ComercialSettingsModal({
             {activeTab === 'atalhos' && (
               <div className="space-y-2">
                 {[
-                  { label: 'Busca rápida de cotistas', shortcut: 'Ctrl + K' },
-                  { label: 'Fechar modais e formulários', shortcut: 'Esc' },
-                  { label: 'Ir para Dashboard', shortcut: 'Alt + D' },
-                  { label: 'Ir para Clientes', shortcut: 'Alt + C' },
-                  { label: 'Ir para Embarcações', shortcut: 'Alt + E' },
-                  { label: 'Ir para Contratos', shortcut: 'Alt + T' },
+                  { label: 'Busca rápida de cotistas', shortcut: 'Ctrl + K', action: 'search' },
+                  { label: 'Fechar modais e formulários', shortcut: 'Esc', action: 'close' },
+                  { label: 'Ir para Dashboard', shortcut: 'Alt + D', action: 'dashboard' },
+                  { label: 'Ir para Vendas', shortcut: 'Alt + V', action: 'vendas' },
+                  { label: 'Ir para Clientes', shortcut: 'Alt + C', action: 'clientes' },
+                  { label: 'Ir para Embarcações', shortcut: 'Alt + E', action: 'embarcacoes' },
+                  { label: 'Ir para Contratos', shortcut: 'Alt + T', action: 'contratos' },
                 ].map(item => (
-                  <div
+                  <button
                     key={item.label}
-                    className="h-10 px-4 rounded-2xl border border-stone-200/70 bg-stone-50/50 flex items-center justify-between"
+                    type="button"
+                    onClick={() => {
+                      if (item.action === 'close') {
+                        onClose();
+                      } else if (onNavigateShortcut) {
+                        onClose();
+                        onNavigateShortcut(item.action);
+                      }
+                    }}
+                    className="w-full h-10 px-4 rounded-2xl border border-stone-200/70 bg-stone-50/50 hover:bg-stone-100/70 transition-colors flex items-center justify-between cursor-pointer text-left group"
+                    title="Clique para testar este atalho agora"
                   >
-                    <span className="text-xs font-semibold text-stone-800">{item.label}</span>
-                    <kbd className="text-[10px] font-mono font-bold text-stone-600 bg-white border border-stone-200 rounded-lg px-2 py-0.5 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-xs font-semibold text-stone-800 group-hover:text-stone-950">{item.label}</span>
+                    </div>
+                    <kbd className="text-[10px] font-mono font-bold text-stone-600 bg-white border border-stone-200 rounded-lg px-2 py-0.5 shadow-2xs group-hover:border-stone-300">
                       {item.shortcut}
                     </kbd>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

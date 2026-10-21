@@ -3,7 +3,7 @@ import { TransacaoFinanceira } from '../../types';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend
 } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface FinanceDashboardProps {
@@ -11,13 +11,21 @@ interface FinanceDashboardProps {
   isAdmin?: boolean;
   empresaFiltro?: string;
   planosContas?: any[];
+  privacyMode?: boolean;
 }
 
-export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, planosContas = [] }: FinanceDashboardProps) {
+export default function FinanceDashboard({
+  transacoes,
+  isAdmin,
+  empresaFiltro,
+  planosContas = [],
+  privacyMode = false,
+}: FinanceDashboardProps) {
   const [projectionDays, setProjectionDays] = useState<15 | 30>(15);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const formatCurrency = (value: number) => {
+    if (privacyMode) return 'R$ ••••';
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
@@ -42,19 +50,19 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
     filteredTransacoes.forEach(t => {
       // Saldo Consolidado
       if (t.status === 'pago') {
-        if (t.tipo === 'receita') totalReceitasPagas += Number(t.valor);
-        else totalDespesasPagas += Number(t.valor);
+        if (t.tipo === 'receita') totalReceitasPagas += Number(t.valor) || 0;
+        else totalDespesasPagas += Number(t.valor) || 0;
       }
 
       // Inadimplência: Receita Vencida ou Lançada mas com data anterior a hoje
       if (t.tipo === 'receita' && (t.status === 'vencido' || (t.status === 'lancado' && t.dataVencimento < todayStr))) {
-        inadimplenciaCalc += Number(t.valor);
+        inadimplenciaCalc += Number(t.valor) || 0;
       }
 
       // A Receber / A Pagar no Mês Atual (Aberto)
       if (t.dataVencimento.startsWith(currentMonthStr) && t.status !== 'pago' && t.status !== 'cancelado') {
-        if (t.tipo === 'receita') aReceberCalc += Number(t.valor);
-        if (t.tipo === 'despesa') aPagarCalc += Number(t.valor);
+        if (t.tipo === 'receita') aReceberCalc += Number(t.valor) || 0;
+        if (t.tipo === 'despesa') aPagarCalc += Number(t.valor) || 0;
       }
     });
 
@@ -92,9 +100,9 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
         if (t.dataVencimento >= todayStr && t.dataVencimento <= endDateISO) {
           if (data[t.dataVencimento]) {
             if (t.tipo === 'receita') {
-              data[t.dataVencimento].entradas += Number(t.valor);
+              data[t.dataVencimento].entradas += Number(t.valor) || 0;
             } else {
-              data[t.dataVencimento].saidas += Number(t.valor);
+              data[t.dataVencimento].saidas += Number(t.valor) || 0;
             }
           }
         }
@@ -104,16 +112,14 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
     return Object.values(data);
   }, [filteredTransacoes, projectionDays]);
 
-  // Mini-DRE Data Grouping (All historical or current month? Let's use current month closed/expected)
+  // Mini-DRE Data Grouping
   const miniDreData = useMemo(() => {
     const today = new Date();
     const currentMonthStr = today.toISOString().substring(0, 7);
 
-    // Group by category for the current month
     const groups: Record<string, { category: string; type: 'receita' | 'despesa'; total: number; amountPaid: number; transactions: TransacaoFinanceira[] }> = {};
 
     filteredTransacoes.forEach(t => {
-      // Only include current month transactions
       if (t.dataVencimento.startsWith(currentMonthStr) && t.status !== 'cancelado') {
         const plano = planosContas.find((p: any) => p.id === t.planoContasId);
         const catKey = plano ? plano.descricao : (t.categoria || 'Sem Categoria');
@@ -126,9 +132,9 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
             transactions: []
           };
         }
-        groups[catKey].total += Number(t.valor);
+        groups[catKey].total += Number(t.valor) || 0;
         if (t.status === 'pago') {
-          groups[catKey].amountPaid += Number(t.valor);
+          groups[catKey].amountPaid += Number(t.valor) || 0;
         }
         groups[catKey].transactions.push(t);
       }
@@ -142,173 +148,250 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
   }, [filteredTransacoes, planosContas]);
 
   return (
-    <div className="space-y-6 animate-fade-in relative max-w-7xl mx-auto w-full">
-      {/* 1. KPIs Superiores */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="space-y-4 lg:space-y-5 w-full">
+      {/* 1. Cards de Métricas / KPIs Superiores (Estilo Padrão Comercial) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        
         {/* Saldo Consolidado */}
-        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-white/50 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-[14px] font-medium text-[#86868b]">Saldo Consolidado</h3>
-            <div className="w-8 h-8 rounded-full bg-[#10b981]/10 flex items-center justify-center">
-              <DollarSign className="w-4 h-4 text-[#10b981]" />
+        <div className="bg-white rounded-xl border border-stone-200/80 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500">Saldo Consolidado</span>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`text-[10px] font-semibold rounded-md px-1.5 py-0.5 ${
+                  saldo >= 0
+                    ? 'text-emerald-700 bg-emerald-50 border border-emerald-200/60'
+                    : 'text-rose-700 bg-rose-50 border border-rose-200/60'
+                }`}
+              >
+                {saldo >= 0 ? 'Positivo' : 'Atenção'}
+              </span>
+              <div className="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center text-stone-700">
+                <Wallet className="w-4 h-4" />
+              </div>
             </div>
           </div>
-          <div>
-            <p className="text-[28px] font-semibold text-[#1d1d1f] tracking-tight leading-none mb-1">
+          <div className="mt-2">
+            <div className={`text-xl font-bold tabular-nums ${saldo >= 0 ? 'text-stone-900' : 'text-rose-600'}`}>
               {formatCurrency(saldo)}
-            </p>
-            <p className="text-[12px] font-medium text-[#86868b]">Saldo líquido pago das contas</p>
+            </div>
+            <div className="text-xs text-stone-400 mt-0.5 truncate">
+              Saldo líquido liquidado das contas
+            </div>
           </div>
         </div>
 
-        {/* Inadimplência */}
-        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-white/50 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-[14px] font-medium text-[#86868b]">Total Inadimplência</h3>
-            <div className="w-8 h-8 rounded-full bg-[#ef4444]/10 flex items-center justify-center">
-              <AlertCircle className="w-4 h-4 text-[#ef4444]" />
+        {/* A Receber (Mês) */}
+        <div className="bg-white rounded-xl border border-stone-200/80 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500">A Receber (Mês)</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold rounded-md px-1.5 py-0.5 text-emerald-700 bg-emerald-50 border border-emerald-200/60">
+                Entradas
+              </span>
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
+                <TrendingUp className="w-4 h-4" />
+              </div>
             </div>
           </div>
-          <div>
-            <p className="text-[28px] font-semibold text-[#ef4444] tracking-tight leading-none mb-1">
-              {formatCurrency(inadimplencia)}
-            </p>
-            <p className="text-[12px] font-medium text-[#86868b]">Receitas em atraso</p>
-          </div>
-        </div>
-
-        {/* A Receber no Mês */}
-        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-white/50 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-[14px] font-medium text-[#86868b]">A Receber (Mês)</h3>
-            <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4 text-[#0071e3]" />
-            </div>
-          </div>
-          <div>
-            <p className="text-[28px] font-semibold text-[#1d1d1f] tracking-tight leading-none mb-1">
+          <div className="mt-2">
+            <div className="text-xl font-bold text-emerald-700 tabular-nums">
               {formatCurrency(aReceberMes)}
-            </p>
-            <p className="text-[12px] font-medium text-[#86868b]">Valores esperados este mês</p>
+            </div>
+            <div className="text-xs text-stone-400 mt-0.5 truncate">
+              Receitas programadas neste mês
+            </div>
           </div>
         </div>
 
-        {/* A Pagar no Mês */}
-        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-white/50 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-[14px] font-medium text-[#86868b]">A Pagar (Mês)</h3>
-            <div className="w-8 h-8 rounded-full bg-[#f59e0b]/10 flex items-center justify-center">
-              <TrendingDown className="w-4 h-4 text-[#f59e0b]" />
+        {/* A Pagar (Mês) */}
+        <div className="bg-white rounded-xl border border-stone-200/80 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500">A Pagar (Mês)</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold rounded-md px-1.5 py-0.5 text-amber-700 bg-amber-50 border border-amber-200/60">
+                Saídas
+              </span>
+              <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
+                <TrendingDown className="w-4 h-4" />
+              </div>
             </div>
           </div>
-          <div>
-            <p className="text-[28px] font-semibold text-[#1d1d1f] tracking-tight leading-none mb-1">
+          <div className="mt-2">
+            <div className="text-xl font-bold text-amber-700 tabular-nums">
               {formatCurrency(aPagarMes)}
-            </p>
-            <p className="text-[12px] font-medium text-[#86868b]">Despesas programadas este mês</p>
+            </div>
+            <div className="text-xs text-stone-400 mt-0.5 truncate">
+              Despesas programadas neste mês
+            </div>
           </div>
         </div>
+
+        {/* Total Inadimplência */}
+        <div className="bg-white rounded-xl border border-stone-200/80 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500">Total Inadimplência</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold rounded-md px-1.5 py-0.5 text-rose-700 bg-rose-50 border border-rose-200/60">
+                Vencidos
+              </span>
+              <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
+          <div className="mt-2">
+            <div className="text-xl font-bold text-rose-600 tabular-nums">
+              {formatCurrency(inadimplencia)}
+            </div>
+            <div className="text-xs text-stone-400 mt-0.5 truncate">
+              Receitas pendentes em atraso
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* 2. Gráfico: Projeção de Fluxo de Caixa */}
-      <div className="bg-white/80 backdrop-blur-xl p-6 rounded-3xl border border-white/50 shadow-sm">
-        <div className="flex justify-between items-center mb-6">
+      <div className="bg-white rounded-xl border border-stone-200/80 p-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h2 className="text-[18px] font-semibold text-[#1d1d1f]">Projeção de Fluxo de Caixa</h2>
-            <p className="text-[13px] font-medium text-[#86868b]">Entradas vs Saídas programadas para os próximos dias</p>
+            <h2 className="text-sm font-bold text-stone-900 tracking-tight">Projeção de Fluxo de Caixa</h2>
+            <p className="text-xs text-stone-500 mt-0.5">
+              Entradas vs Saídas programadas para os próximos dias ({empresaFiltro === 'Todos' ? 'Consolidado' : empresaFiltro})
+            </p>
           </div>
 
-          <div className="flex bg-[#e5e5ea]/50 p-1 rounded-full">
+          <div className="inline-flex rounded-lg bg-stone-100 p-0.5 border border-stone-200/70 gap-0.5 self-start sm:self-auto">
             {[15, 30].map(days => {
               const active = projectionDays === days;
               return (
                 <button
                   key={days}
                   onClick={() => setProjectionDays(days as 15 | 30)}
-                  className={`relative z-10 px-4 py-1.5 text-[13px] font-medium rounded-full transition-colors cursor-pointer ${
-                    active ? 'text-[#1d1d1f]' : 'text-[#86868b] hover:text-[#1d1d1f]'
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    active
+                      ? 'bg-white text-stone-900 shadow-xs border border-stone-200/60 font-bold'
+                      : 'text-stone-500 hover:text-stone-900'
                   }`}
                 >
-                  {active && (
-                    <motion.div
-                      layoutId="projectionDaysToggle"
-                      className="absolute inset-0 bg-white rounded-full shadow-sm border border-black/[0.04]"
-                      transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }}
-                      style={{ zIndex: -1 }}
-                    />
-                  )}
                   {days} Dias
                 </button>
-              )
+              );
             })}
           </div>
         </div>
 
-        <div className="w-full h-72 min-w-0 min-h-[288px]">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={288}>
+        <div className="w-full h-80 min-w-0">
+          <ResponsiveContainer width="100%" height="100%">
             <LineChart data={projectionData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5ea" />
-              <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#86868b' }} dy={10} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#78716c' }} dy={10} />
               <YAxis
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 12, fill: '#86868b' }}
-                tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000) + 'k' : value}`}
+                tick={{ fontSize: 11, fill: '#78716c' }}
+                tickFormatter={(value) => privacyMode ? '•••' : `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
               />
               <RechartsTooltip
                 formatter={(value: number) => formatCurrency(value)}
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }}
+                contentStyle={{
+                  borderRadius: '12px',
+                  border: '1px solid #e7e5e4',
+                  boxShadow: '0 4px 12px -2px rgba(0, 0, 0, 0.08)',
+                  backgroundColor: '#ffffff',
+                  fontSize: '12px'
+                }}
               />
-              <Legend iconType="circle" wrapperStyle={{ fontSize: 13, paddingTop: '10px' }} />
-              <Line type="monotone" dataKey="entradas" name="Entradas Previstas" stroke="#10b981" strokeWidth={3} dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-              <Line type="monotone" dataKey="saidas" name="Saídas Previstas" stroke="#ef4444" strokeWidth={3} dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+              <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: '16px' }} />
+              <Line
+                type="monotone"
+                dataKey="entradas"
+                name="Entradas Previstas"
+                stroke="#4f7d32"
+                strokeWidth={2.5}
+                dot={{ r: 3, strokeWidth: 2, fill: '#ffffff' }}
+                activeDot={{ r: 5, fill: '#4f7d32' }}
+              />
+              <Line
+                type="monotone"
+                dataKey="saidas"
+                name="Saídas Previstas"
+                stroke="#b4402f"
+                strokeWidth={2.5}
+                dot={{ r: 3, strokeWidth: 2, fill: '#ffffff' }}
+                activeDot={{ r: 5, fill: '#b4402f' }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* 3. Mini-DRE */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/50 shadow-sm overflow-hidden flex flex-col">
-        <div className="p-6 pb-4 border-b border-black/[0.05]">
-          <h2 className="text-[18px] font-semibold text-[#1d1d1f]">Mini-DRE (Mês Atual)</h2>
-          <p className="text-[13px] font-medium text-[#86868b]">Análise de Receitas e Despesas por Categoria / Plano de Contas</p>
+      {/* 3. Mini-DRE (Mês Atual) */}
+      <div className="bg-white rounded-xl border border-stone-200/80 shadow-xs overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-stone-900 tracking-tight">Mini-DRE (Mês Atual)</h2>
+            <p className="text-xs text-stone-500 mt-0.5">
+              Demonstrativo de Resultados resumido por categoria / plano de contas
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-stone-500">Resultado do Mês:</span>
+            <span
+              className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                (miniDreData.dreReceitas.reduce((acc, curr) => acc + curr.total, 0) -
+                  miniDreData.dreDespesas.reduce((acc, curr) => acc + curr.total, 0)) >= 0
+                  ? 'text-emerald-700 bg-emerald-50 border border-emerald-200/60'
+                  : 'text-rose-700 bg-rose-50 border border-rose-200/60'
+              }`}
+            >
+              {formatCurrency(
+                miniDreData.dreReceitas.reduce((acc, curr) => acc + curr.total, 0) -
+                miniDreData.dreDespesas.reduce((acc, curr) => acc + curr.total, 0)
+              )}
+            </span>
+          </div>
         </div>
 
-        <div className="p-0 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-black/[0.05]">
+        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-stone-100">
 
           {/* Coluna Receitas */}
-          <div className="flex-1 p-6 bg-[#10b981]/5">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-[15px] font-semibold text-[#008f5d]">Entradas Operacionais</h3>
-              <p className="text-[16px] font-bold text-[#008f5d]">
+          <div className="p-4 sm:p-5 space-y-3">
+            <div className="flex justify-between items-center pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-stone-900">Entradas Operacionais</h3>
+                  <span className="text-[11px] text-stone-500">Categorias de faturamento</span>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-md tabular-nums">
                 {formatCurrency(miniDreData.dreReceitas.reduce((acc, curr) => acc + curr.total, 0))}
-              </p>
+              </span>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               {miniDreData.dreReceitas.length === 0 && (
-                <p className="text-[#86868b] text-[13px]">Nenhuma receita no mês atual.</p>
+                <p className="text-stone-400 text-xs py-4 text-center">Nenhuma receita registrada no mês atual.</p>
               )}
               {miniDreData.dreReceitas.map((group) => {
                 const isExpanded = expandedRow === `rec-${group.category}`;
                 return (
-                  <div key={group.category} className="bg-white rounded-xl border border-black/[0.05] overflow-hidden">
+                  <div key={group.category} className="rounded-lg border border-stone-200/70 bg-stone-50/50 overflow-hidden transition-all">
                     <button
                       onClick={() => setExpandedRow(isExpanded ? null : `rec-${group.category}`)}
-                      className="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-black/[0.02] transition-colors"
+                      className="w-full flex items-center justify-between p-3 cursor-pointer hover:bg-stone-100/70 transition-colors text-left"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#10b981]/10 flex items-center justify-center">
-                          <TrendingUp className="w-4 h-4 text-[#10b981]" />
-                        </div>
-                        <span className="text-[14px] font-medium text-[#1d1d1f]">{group.category}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
+                      <span className="text-xs font-semibold text-stone-800 truncate pr-2">{group.category}</span>
+                      <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right">
-                          <p className="text-[14px] font-semibold text-[#1d1d1f]">{formatCurrency(group.total)}</p>
-                          <p className="text-[11px] text-[#86868b]">{formatCurrency(group.amountPaid)} realizado</p>
+                          <p className="text-xs font-bold text-stone-900 tabular-nums">{formatCurrency(group.total)}</p>
+                          <p className="text-[10px] text-stone-400 tabular-nums">{formatCurrency(group.amountPaid)} realizado</p>
                         </div>
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-[#86868b]" /> : <ChevronDown className="w-4 h-4 text-[#86868b]" />}
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-stone-400" /> : <ChevronDown className="w-3.5 h-3.5 text-stone-400" />}
                       </div>
                     </button>
 
@@ -318,19 +401,25 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          className="px-4 pb-4 pt-1"
+                          className="px-3 pb-2 pt-0.5"
                         >
-                          <div className="pt-3 border-t border-black/[0.05] space-y-2">
+                          <div className="pt-2 border-t border-stone-200/60 space-y-1.5">
                             {group.transactions.map((t, i) => (
-                              <div key={t.id || i} className="flex justify-between items-center text-[13px]">
-                                <span className="text-[#86868b] truncate max-w-[200px]" title={t.descricao}>
-                                  {t.descricao}
+                              <div key={t.id || i} className="flex justify-between items-center text-[11px] py-1 border-b border-stone-100 last:border-0">
+                                <span className="text-stone-600 truncate max-w-[220px]" title={t.descricao}>
+                                  {t.descricao || 'Sem descrição'}
                                 </span>
-                                <div className="flex items-center gap-4">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold ${t.status === 'pago' ? 'bg-[#10b981]/15 text-[#008f5d]' : 'bg-[#f59e0b]/15 text-[#b45309]'}`}>
+                                <div className="flex items-center gap-2.5 shrink-0">
+                                  <span
+                                    className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                                      t.status === 'pago'
+                                        ? 'text-emerald-700 bg-emerald-50 border border-emerald-200/60'
+                                        : 'text-amber-700 bg-amber-50 border border-amber-200/60'
+                                    }`}
+                                  >
                                     {t.status}
                                   </span>
-                                  <span className="font-medium text-[#1d1d1f] w-24 text-right">
+                                  <span className="font-semibold text-stone-900 w-20 text-right tabular-nums">
                                     {formatCurrency(Number(t.valor))}
                                   </span>
                                 </div>
@@ -347,38 +436,41 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
           </div>
 
           {/* Coluna Despesas */}
-          <div className="flex-1 p-6 bg-[#ef4444]/5">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-[15px] font-semibold text-[#e30000]">Saídas Operacionais</h3>
-              <p className="text-[16px] font-bold text-[#e30000]">
+          <div className="p-4 sm:p-5 space-y-3">
+            <div className="flex justify-between items-center pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600 border border-rose-100">
+                  <TrendingDown className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-stone-900">Saídas Operacionais</h3>
+                  <span className="text-[11px] text-stone-500">Categorias de despesas</span>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-0.5 rounded-md tabular-nums">
                 {formatCurrency(miniDreData.dreDespesas.reduce((acc, curr) => acc + curr.total, 0))}
-              </p>
+              </span>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               {miniDreData.dreDespesas.length === 0 && (
-                <p className="text-[#86868b] text-[13px]">Nenhuma despesa no mês atual.</p>
+                <p className="text-stone-400 text-xs py-4 text-center">Nenhuma despesa registrada no mês atual.</p>
               )}
               {miniDreData.dreDespesas.map((group) => {
                 const isExpanded = expandedRow === `desp-${group.category}`;
                 return (
-                  <div key={group.category} className="bg-white rounded-xl border border-black/[0.05] overflow-hidden">
+                  <div key={group.category} className="rounded-lg border border-stone-200/70 bg-stone-50/50 overflow-hidden transition-all">
                     <button
                       onClick={() => setExpandedRow(isExpanded ? null : `desp-${group.category}`)}
-                      className="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-black/[0.02] transition-colors"
+                      className="w-full flex items-center justify-between p-3 cursor-pointer hover:bg-stone-100/70 transition-colors text-left"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#ef4444]/10 flex items-center justify-center">
-                          <TrendingDown className="w-4 h-4 text-[#ef4444]" />
-                        </div>
-                        <span className="text-[14px] font-medium text-[#1d1d1f]">{group.category}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
+                      <span className="text-xs font-semibold text-stone-800 truncate pr-2">{group.category}</span>
+                      <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right">
-                          <p className="text-[14px] font-semibold text-[#1d1d1f]">{formatCurrency(group.total)}</p>
-                          <p className="text-[11px] text-[#86868b]">{formatCurrency(group.amountPaid)} realizado</p>
+                          <p className="text-xs font-bold text-stone-900 tabular-nums">{formatCurrency(group.total)}</p>
+                          <p className="text-[10px] text-stone-400 tabular-nums">{formatCurrency(group.amountPaid)} realizado</p>
                         </div>
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-[#86868b]" /> : <ChevronDown className="w-4 h-4 text-[#86868b]" />}
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-stone-400" /> : <ChevronDown className="w-3.5 h-3.5 text-stone-400" />}
                       </div>
                     </button>
 
@@ -388,19 +480,25 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          className="px-4 pb-4 pt-1"
+                          className="px-3 pb-2 pt-0.5"
                         >
-                          <div className="pt-3 border-t border-black/[0.05] space-y-2">
+                          <div className="pt-2 border-t border-stone-200/60 space-y-1.5">
                             {group.transactions.map((t, i) => (
-                              <div key={t.id || i} className="flex justify-between items-center text-[13px]">
-                                <span className="text-[#86868b] truncate max-w-[200px]" title={t.descricao}>
-                                  {t.descricao}
+                              <div key={t.id || i} className="flex justify-between items-center text-[11px] py-1 border-b border-stone-100 last:border-0">
+                                <span className="text-stone-600 truncate max-w-[220px]" title={t.descricao}>
+                                  {t.descricao || 'Sem descrição'}
                                 </span>
-                                <div className="flex items-center gap-4">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold ${t.status === 'pago' ? 'bg-[#10b981]/15 text-[#008f5d]' : 'bg-[#f59e0b]/15 text-[#b45309]'}`}>
+                                <div className="flex items-center gap-2.5 shrink-0">
+                                  <span
+                                    className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                                      t.status === 'pago'
+                                        ? 'text-emerald-700 bg-emerald-50 border border-emerald-200/60'
+                                        : 'text-amber-700 bg-amber-50 border border-amber-200/60'
+                                    }`}
+                                  >
                                     {t.status}
                                   </span>
-                                  <span className="font-medium text-[#1d1d1f] w-24 text-right">
+                                  <span className="font-semibold text-stone-900 w-20 text-right tabular-nums">
                                     {formatCurrency(Number(t.valor))}
                                   </span>
                                 </div>
@@ -417,7 +515,6 @@ export default function FinanceDashboard({ transacoes, isAdmin, empresaFiltro, p
           </div>
 
         </div>
-
       </div>
     </div>
   );

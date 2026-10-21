@@ -37,7 +37,7 @@ authRoutes.post("/admin", authLimiter, async (req, res) => {
     }
 
     // Buscar o nome do funcionário vinculado ao usuário
-    let funcionarioNome = admin.nome || admin.username;
+    let funcionarioNome = admin.funcionarioNome || admin.nome || admin.username;
     if (admin.funcionarioId) {
       try {
         const dbData = await pullDatabase();
@@ -230,7 +230,9 @@ authRoutes.get("/validate", async (req, res) => {
     if (decoded.username) {
       try {
         const admin = await getAdminByUsername(decoded.username);
-        if (admin && admin.funcionarioId) {
+        if (admin && admin.funcionarioNome) {
+          funcionarioNome = admin.funcionarioNome;
+        } else if (admin && admin.funcionarioId) {
           const dbData = await pullDatabase();
           const func = (dbData.funcionarios || []).find((f: any) => f.id === admin.funcionarioId);
           if (func && func.nome) {

@@ -4,15 +4,11 @@ import {
   Plus,
   Search,
   RefreshCw,
-  Ship,
-  User,
   Calendar,
   CheckCircle2,
   Clock,
   AlertCircle,
   FileSignature,
-  ExternalLink,
-  Trash2,
   Layers,
   TrendingUp,
   Wallet,
@@ -109,13 +105,23 @@ export default function ComercialVendasPage() {
       let data: any = {};
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
-        data = await res.json();
+        const text = await res.text();
+        if (text && text.trim()) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = {};
+          }
+        }
       }
       if (!res.ok || data.error) {
         alert(data.message || `Erro ao cancelar venda (Status ${res.status})`);
         return;
       }
       fetchVendas(true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('comercial-venda-updated'));
+      }
     } catch (err) {
       console.error('Erro ao cancelar venda:', err);
       alert('Erro ao comunicar com o servidor.');
@@ -177,18 +183,13 @@ export default function ComercialVendasPage() {
   };
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="bg-white rounded-2xl border border-stone-200/80 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+    <div className="space-y-5">
+      {/* 1. Cabeçalho da Página (Alinhado ao padrão Comercial) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-bold text-stone-900 tracking-tight">Lançamento de Vendas</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Comercial ↔ Financeiro
-            </span>
-          </div>
-          <p className="text-xs text-stone-500 mt-1">
-            Registre vendas de cotas, anexe o comprovante da entrada, vincule o cliente à embarcação e gere as parcelas automaticamente no Financeiro.
+          <h1 className="text-2xl font-bold tracking-tight text-stone-900">Lançamento de Vendas</h1>
+          <p className="text-xs text-stone-500 mt-0.5">
+            Registre vendas de cotas, anexe o comprovante da entrada, vincule o cliente à embarcação e gere as parcelas no Financeiro.
           </p>
         </div>
 
@@ -197,97 +198,109 @@ export default function ComercialVendasPage() {
             type="button"
             onClick={() => fetchVendas()}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-xs font-bold text-stone-700 transition-all cursor-pointer"
+            className="h-9 px-3.5 rounded-lg bg-white border border-stone-200/90 hover:bg-stone-50 text-stone-700 flex items-center gap-2 text-xs font-medium transition-colors cursor-pointer shadow-xs disabled:opacity-60"
             title="Atualizar lista de vendas"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
-            <span className="hidden sm:inline">Atualizar</span>
+            <RefreshCw className={`w-3.5 h-3.5 text-stone-500 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Atualizando…' : 'Sincronizar'}</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsVendaDrawerOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+            className="h-9 px-4 rounded-lg bg-mx-ink hover:bg-mx-ink-700 text-white flex items-center gap-2 text-xs font-semibold shadow-[0_4px_12px_-4px_rgba(43,17,32,0.6)] transition-all cursor-pointer"
           >
-            <Plus className="w-4 h-4 text-emerald-400" />
-            <span>Lançar Nova Venda</span>
+            <Plus className="w-4 h-4" />
+            <span>Nova Venda</span>
           </button>
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* 2. Cards de Métricas / KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="bg-white rounded-2xl border border-stone-200/80 p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-stone-400 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">VGV Total (Vendas Ativas)</span>
-            <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-700">
+        <div className="bg-white rounded-xl border border-stone-200/80 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500">VGV Total (Vendas Ativas)</span>
+            <div className="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center text-stone-600">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-extrabold text-stone-900">{formatBRL(stats.vgvTotal)}</div>
-          <div className="text-[11px] text-stone-500 mt-1 font-medium">
-            {stats.totalAtivas} {stats.totalAtivas === 1 ? 'cota vendida ativa' : 'cotas vendidas ativas'}
+          <div className="mt-2">
+            <div className="text-xl font-bold text-stone-900 tabular-nums">{formatBRL(stats.vgvTotal)}</div>
+            <div className="text-xs text-stone-400 mt-0.5 tabular-nums">
+              {stats.totalAtivas} {stats.totalAtivas === 1 ? 'cota vendida ativa' : 'cotas vendidas ativas'}
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-stone-200/80 p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-stone-400 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Total em Entradas</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-700">
+        <div className="bg-white rounded-xl border border-stone-200/80 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500">Total em Entradas</span>
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-extrabold text-emerald-700">{formatBRL(stats.totalEntradas)}</div>
-          <div className="text-[11px] text-stone-500 mt-1 font-medium">
-            {stats.entradasLiquidadas} de {stats.totalAtivas} entradas pagas
+          <div className="mt-2">
+            <div className="text-xl font-bold text-emerald-700 tabular-nums">{formatBRL(stats.totalEntradas)}</div>
+            <div className="text-xs text-stone-400 mt-0.5 tabular-nums">
+              {stats.entradasLiquidadas} de {stats.totalAtivas} entradas pagas
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-stone-200/80 p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-stone-400 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Total Recebido (Cotas)</span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-700">
+        <div className="bg-white rounded-xl border border-stone-200/80 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500">Total Recebido (Cotas)</span>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
               <Wallet className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-extrabold text-indigo-700">{formatBRL(stats.totalRecebidoFinanceiro)}</div>
-          <div className="text-[11px] text-stone-500 mt-1 font-medium">
-            Entrada + parcelas baixadas no Financeiro
+          <div className="mt-2">
+            <div className="text-xl font-bold text-blue-700 tabular-nums">{formatBRL(stats.totalRecebidoFinanceiro)}</div>
+            <div className="text-xs text-stone-400 mt-0.5">
+              Entrada + parcelas baixadas
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-stone-200/80 p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-stone-400 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Parcelas Vencidas</span>
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-              stats.totalParcelasVencidas > 0 ? 'bg-rose-50 text-rose-600' : 'bg-stone-100 text-stone-500'
-            }`}>
+        <div className="bg-white rounded-xl border border-stone-200/80 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-stone-500">Parcelas Vencidas</span>
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                stats.totalParcelasVencidas > 0 ? 'bg-rose-50 text-rose-600' : 'bg-stone-100 text-stone-500'
+              }`}
+            >
               <AlertCircle className="w-4 h-4" />
             </div>
           </div>
-          <div className={`text-xl font-extrabold ${
-            stats.totalParcelasVencidas > 0 ? 'text-rose-600' : 'text-stone-900'
-          }`}>
-            {stats.totalParcelasVencidas}
-          </div>
-          <div className="text-[11px] text-stone-500 mt-1 font-medium">
-            {stats.totalParcelasVencidas > 0
-              ? 'Parcelas aguardando baixa no Financeiro'
-              : 'Nenhuma parcela de venda em atraso'}
+          <div className="mt-2">
+            <div
+              className={`text-xl font-bold tabular-nums ${
+                stats.totalParcelasVencidas > 0 ? 'text-rose-600' : 'text-stone-900'
+              }`}
+            >
+              {stats.totalParcelasVencidas}
+            </div>
+            <div className="text-xs text-stone-400 mt-0.5">
+              {stats.totalParcelasVencidas > 0
+                ? 'Aguardando baixa no Financeiro'
+                : 'Nenhuma parcela em atraso'}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Barra de Filtros */}
-      <div className="bg-white rounded-2xl border border-stone-200/80 p-4 flex flex-col lg:flex-row items-stretch lg:items-center gap-3 shadow-2xs">
+      {/* 3. Barra de Filtros */}
+      <div className="bg-white rounded-xl border border-stone-200/80 p-3 flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5 shadow-xs">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             placeholder="Buscar por código (VND-0001), cliente, CPF ou embarcação..."
-            className="w-full pl-10 pr-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-medium text-stone-900 focus:bg-white focus:border-stone-400 outline-none"
+            className="w-full h-10 pl-9 pr-4 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:bg-white focus:border-mx-ink transition-all"
           />
         </div>
 
@@ -295,7 +308,7 @@ export default function ComercialVendasPage() {
           <select
             value={boatFilter}
             onChange={e => setBoatFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-700 outline-none"
+            className="h-10 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs font-medium text-stone-700 focus:outline-none focus:border-mx-ink cursor-pointer"
           >
             <option value="all">Todas as Embarcações</option>
             {boats.map(b => (
@@ -308,7 +321,7 @@ export default function ComercialVendasPage() {
           <select
             value={entradaFilter}
             onChange={e => setEntradaFilter(e.target.value as any)}
-            className="px-3 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-700 outline-none"
+            className="h-10 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs font-medium text-stone-700 focus:outline-none focus:border-mx-ink cursor-pointer"
           >
             <option value="all">Entrada: Todas</option>
             <option value="paga">Entrada Paga</option>
@@ -318,7 +331,7 @@ export default function ComercialVendasPage() {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as any)}
-            className="px-3 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-700 outline-none"
+            className="h-10 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs font-medium text-stone-700 focus:outline-none focus:border-mx-ink cursor-pointer"
           >
             <option value="ativas">Vendas Ativas</option>
             <option value="cancelada">Canceladas</option>
@@ -327,29 +340,31 @@ export default function ComercialVendasPage() {
         </div>
       </div>
 
-      {/* Tabela de Vendas */}
-      <div className="bg-white rounded-2xl border border-stone-200/80 overflow-hidden shadow-2xs">
+      {/* 4. Tabela de Vendas */}
+      <div className="bg-white rounded-xl border border-stone-200/80 overflow-hidden shadow-xs">
         {isLoading ? (
           <div className="p-12 text-center text-stone-400 text-xs font-semibold animate-pulse">
             Carregando histórico de vendas...
           </div>
         ) : filteredVendas.length === 0 ? (
           <div className="p-12 text-center space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-stone-100 text-stone-500 flex items-center justify-center mx-auto">
-              <DollarSign className="w-6 h-6" />
+            <div className="w-11 h-11 rounded-xl bg-stone-100 text-stone-500 flex items-center justify-center mx-auto">
+              <DollarSign className="w-5 h-5" />
             </div>
             <div className="text-sm font-bold text-stone-800">Nenhuma venda encontrada</div>
             <p className="text-xs text-stone-500 max-w-md mx-auto">
-              Clique em <strong>"Lançar Nova Venda"</strong> para vincular um cliente a uma embarcação e gerar automaticamente a entrada e as parcelas de cota no módulo Financeiro.
+              Clique em <strong>"Nova Venda"</strong> para vincular um cliente a uma embarcação e gerar automaticamente a entrada e as parcelas de cota no módulo Financeiro.
             </p>
-            <button
-              type="button"
-              onClick={() => setIsVendaDrawerOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition-all cursor-pointer"
-            >
-              <Plus className="w-4 h-4 text-emerald-400" />
-              Lançar Primeira Venda
-            </button>
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setIsVendaDrawerOpen(true)}
+                className="h-9 px-4 rounded-lg bg-mx-ink hover:bg-mx-ink-700 text-white inline-flex items-center gap-2 text-xs font-semibold shadow-[0_4px_12px_-4px_rgba(43,17,32,0.6)] transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nova Venda</span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -385,14 +400,14 @@ export default function ComercialVendasPage() {
                       {/* Código / Data */}
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-stone-900">{venda.codigoVenda}</span>
+                          <span className="font-mono font-bold text-stone-900 tabular-nums">{venda.codigoVenda}</span>
                           {isCancelled && (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-700">
                               CANCELADA
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-stone-500 flex items-center gap-1 mt-0.5">
+                        <div className="text-[11px] text-stone-500 flex items-center gap-1 mt-0.5 tabular-nums">
                           <Calendar className="w-3 h-3" />
                           {formatDateBR(venda.dataVenda)}
                         </div>
@@ -401,7 +416,7 @@ export default function ComercialVendasPage() {
                       {/* Cliente */}
                       <td className="px-4 py-3.5">
                         <div className="font-bold text-stone-900">{venda.clienteNome || 'Cliente'}</div>
-                        <div className="text-[11px] text-stone-500">
+                        <div className="text-[11px] text-stone-500 tabular-nums">
                           {venda.clienteCpf || venda.clienteTelefone || '-'}
                         </div>
                       </td>
@@ -410,18 +425,18 @@ export default function ComercialVendasPage() {
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-stone-800">{venda.embarcacaoNome || 'Embarcação'}</span>
-                          <span className="px-2 py-0.5 rounded-lg bg-stone-900 text-white text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded-md bg-mx-ink-100 text-mx-ink text-[10px] font-bold tabular-nums">
                             {venda.cota}
                           </span>
                         </div>
                         <div className="text-[10px] text-stone-400 mt-0.5">
-                          {venda.formaPagamento || 'Boleto / PIX'}
+                          {(venda as any).formaPagamento || 'Boleto / PIX'}
                         </div>
                       </td>
 
                       {/* Valor Total */}
-                      <td className="px-4 py-3.5 text-right">
-                        <div className="font-extrabold text-stone-900">{formatBRL(venda.valorTotal)}</div>
+                      <td className="px-4 py-3.5 text-right tabular-nums">
+                        <div className="font-bold text-stone-900">{formatBRL(venda.valorTotal)}</div>
                         <div className="text-[10px] text-stone-500">
                           Recebido: {formatBRL(venda.totalRecebidoCota || 0)}
                         </div>
@@ -432,7 +447,7 @@ export default function ComercialVendasPage() {
                         {venda.valorEntrada > 0 ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-stone-800">{formatBRL(venda.valorEntrada)}</span>
+                              <span className="font-bold text-stone-800 tabular-nums">{formatBRL(venda.valorEntrada)}</span>
                               <span
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                   isEntradaPaid
@@ -456,7 +471,7 @@ export default function ComercialVendasPage() {
                                 href={venda.comprovanteEntrada}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-600 hover:text-stone-900 hover:underline"
                               >
                                 <Paperclip className="w-3 h-3" />
                                 Ver Comprovante
@@ -472,7 +487,7 @@ export default function ComercialVendasPage() {
                       <td className="px-4 py-3.5">
                         {venda.numParcelas > 0 ? (
                           <div className="space-y-1 min-w-[155px]">
-                            <div className="flex items-center justify-between text-[11px]">
+                            <div className="flex items-center justify-between text-[11px] tabular-nums">
                               <span className="font-bold text-stone-800">
                                 {venda.numParcelas}x de {formatBRL(venda.valorParcela)}
                               </span>
@@ -486,7 +501,7 @@ export default function ComercialVendasPage() {
                                 style={{ width: `${progressPct}%` }}
                               />
                             </div>
-                            <div className="flex items-center justify-between text-[10px] text-stone-400">
+                            <div className="flex items-center justify-between text-[10px] text-stone-400 tabular-nums">
                               <span>Venc. dia {venda.diaVencimento}</span>
                               {(venda.parcelasVencidas || 0) > 0 && (
                                 <span className="text-rose-600 font-bold">
@@ -506,7 +521,7 @@ export default function ComercialVendasPage() {
                       <td className="px-4 py-3.5 text-center">
                         {venda.gerouTaxaAdm ? (
                           <span
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 tabular-nums"
                             title={`${venda.mesesTaxaAdm}x de ${formatBRL(venda.valorTaxaAdm)}`}
                           >
                             <Layers className="w-3 h-3" />
@@ -525,10 +540,10 @@ export default function ComercialVendasPage() {
                               <button
                                 type="button"
                                 onClick={() => setContractViewerClient(clientObj)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-bold transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-semibold transition-colors cursor-pointer"
                                 title="Abrir Contrato de Aquisição do Cliente"
                               >
-                                <FileSignature className="w-3.5 h-3.5 text-stone-700" />
+                                <FileSignature className="w-3.5 h-3.5 text-stone-600" />
                                 Contrato
                               </button>
                               <button
@@ -562,7 +577,7 @@ export default function ComercialVendasPage() {
         )}
       </div>
 
-      {/* Drawer de Lançamento de Venda */}
+      {/* Modal de Lançamento de Venda */}
       <ComercialVendaDrawer
         open={isVendaDrawerOpen}
         onClose={() => setIsVendaDrawerOpen(false)}
