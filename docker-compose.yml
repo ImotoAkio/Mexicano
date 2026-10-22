@@ -50,6 +50,37 @@ services:
         - "traefik.http.routers.mexicano.tls=true"
         - "traefik.http.routers.mexicano.tls.certresolver=myresolver"
 
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    image: ghcr.io/imotoakio/mexicano-mcp:latest
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=${DB_HOST:-84.247.143.102}
+      - DB_PORT=${DB_PORT:-13306}
+      - DB_USER=${DB_MCP_USER:-mcp_readonly}
+      - DB_PASSWORD=${DB_MCP_PASSWORD:-${DB_PASSWORD}}
+      - DB_NAME=${DB_NAME:-gestao_nautica}
+      - MCP_PORT=3001
+      - MCP_API_KEY=${MCP_API_KEY}
+    networks:
+      - echonet
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.mcp.rule=Host(`mcp-mexicano.echo.dev.br`)"
+        - "traefik.http.routers.mcp.entrypoints=websecure"
+        - "traefik.http.services.mcp.loadbalancer.server.port=3001"
+        - "traefik.http.routers.mcp.tls=true"
+        - "traefik.http.routers.mcp.tls.certresolver=myresolver"
+
 networks:
   echonet:
     external: true

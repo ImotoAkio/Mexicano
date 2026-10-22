@@ -16,7 +16,9 @@ import {
   Wrench,
   AlertTriangle,
   Building2,
-  RotateCcw
+  RotateCcw,
+  Eye,
+  Lock
 } from 'lucide-react';
 import { boatDB, clientDB, syncWithRemote, onDbUpdate, isDbLoaded } from '../../db';
 import { Embarcacao, Cliente } from '../../types';
@@ -27,7 +29,16 @@ import ComercialBoatFilterDrawer, {
   DEFAULT_BOAT_FILTERS
 } from './ComercialBoatFilterDrawer';
 
-export default function ComercialEmbarcacoesPage() {
+interface ComercialEmbarcacoesPageProps {
+  userRole?: string;
+}
+
+export default function ComercialEmbarcacoesPage({ userRole }: ComercialEmbarcacoesPageProps = {}) {
+  const effectiveRole = (userRole || localStorage.getItem('admin_role') || 'comercial').toLowerCase().trim();
+  const isMarinaGerente = effectiveRole === 'marina_gerente' || effectiveRole === 'marina';
+  const isComercial = effectiveRole === 'comercial';
+  const isAdmin = effectiveRole === 'admin';
+
   const [boats, setBoats] = useState<Embarcacao[]>([]);
   const [clients, setClients] = useState<Cliente[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,6 +53,45 @@ export default function ComercialEmbarcacoesPage() {
   // Drawer de Cadastro/Edição
   const [selectedBoatForEdit, setSelectedBoatForEdit] = useState<Embarcacao | null>(null);
   const [isNewBoatOpen, setIsNewBoatOpen] = useState(false);
+
+  // Verificador de Permissões:
+  // - Admin: edita tudo
+  // - Comercial: edita Vale e Mexicano (Marina pura é consulta)
+  // - Gerente Marina: consulta apenas embarcações com Vale, mas pode criar/editar/excluir Marina
+  const canEditBoat = (boat: Embarcacao | null | undefined): boolean => {
+    if (!boat) return true;
+    if (isAdmin) return true;
+
+    const boatEmpresas = (boat.empresas && boat.empresas.length > 0) ? boat.empresas : ['VALE'];
+    const hasVale = boatEmpresas.includes('VALE');
+    const hasMexicano = boatEmpresas.includes('MEXICANO');
+
+    if (isMarinaGerente) {
+      // Se estiver vinculada à Vale Náutica, Gerente da Marina tem somente permissão de consulta
+      if (hasVale) return false;
+      // Embarcações da Marina (ou sem vínculo Vale): controle total
+      return true;
+    }
+
+    if (isComercial) {
+      // Comercial pode gerenciar Vale e Mexicano
+      if (hasVale || hasMexicano) return true;
+      // Embarcações puras da Marina não podem ser alteradas pelo Comercial
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleDeleteBoat = (id: string, name: string) => {
+    try {
+      boatDB.delete(id);
+      loadData();
+    } catch (err: any) {
+      console.error('Erro ao excluir embarcação:', err);
+      alert('Não foi possível excluir a embarcação: ' + (err.message || 'Erro desconhecido'));
+    }
+  };
 
   // Carregar dados
   const loadData = () => {
@@ -212,9 +262,20 @@ export default function ComercialEmbarcacoesPage() {
       {/* 1. Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-stone-900">Embarcações da Frota</h1>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Gerencie as lanchas, jet skis, vagas e distribuição de cotas da frota comercial.
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold tracking-tight text-stone-900">
+              {isMarinaGerente ? 'Embarcações da Marina' : 'Embarcações da Frota'}
+            </h1>
+            {isMarinaGerente && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                Painel Marina Club
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-stone-500">
+            {isMarinaGerente
+              ? 'Consulte a frota náutica e gerencie as embarcações próprias da Marina com total autonomia.'
+              : 'Gerencie as lanchas, jet skis, vagas e distribuição de cotas da frota comercial.'}
           </p>
         </div>
 
@@ -238,6 +299,26 @@ export default function ComercialEmbarcacoesPage() {
           </button>
         </div>
       </div>
+
+      {/* Alerta de Regra Operacional Marina Club */}
+      {isMarinaGerente && (
+        <div className="p-3.5 rounded-xl bg-indigo-50/80 border border-indigo-100 flex items-center justify-between gap-3 text-xs text-indigo-900 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
+              <Ship className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-bold text-indigo-950 block">Regra de Acesso e Permissões</span>
+              <span className="text-[11px] text-indigo-700">
+                Embarcações vinculadas à Marina possuem permissão completa (cadastro, edição e exclusão). Embarcações da Vale Náutica estão disponíveis exclusivamente em modo de consulta.
+              </span>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-800 text-[10px] font-bold shrink-0">
+            Gerente Marina
+          </span>
+        </div>
+      )}
 
       {/* 2. KPIs de Embarcações */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -590,13 +671,23 @@ export default function ComercialEmbarcacoesPage() {
 
                       {/* Ações */}
                       <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => setSelectedBoatForEdit(boat)}
-                          className="p-1.5 rounded-md hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
-                          title="Editar embarcação"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canEditBoat(boat) ? (
+                          <button
+                            onClick={() => setSelectedBoatForEdit(boat)}
+                            className="p-1.5 rounded-md hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
+                            title="Editar embarcação"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setSelectedBoatForEdit(boat)}
+                            className="p-1.5 rounded-md hover:bg-amber-100/70 text-amber-700 hover:text-amber-900 transition-colors cursor-pointer"
+                            title="Consultar dados da embarcação (Somente Consulta)"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -717,12 +808,25 @@ export default function ComercialEmbarcacoesPage() {
                   <span className="text-[11px] text-stone-400 tabular-nums">
                     {(boat.horasMotor || boat.horimetroActual) ? `${boat.horasMotor || boat.horimetroActual}h de motor` : 'Sem horímetro'}
                   </span>
-                  <button
-                    onClick={() => setSelectedBoatForEdit(boat)}
-                    className="px-2.5 py-1 rounded-md text-xs font-semibold text-mx-ink bg-mx-ink-100 hover:bg-mx-ink hover:text-white transition-colors cursor-pointer"
-                  >
-                    Editar
-                  </button>
+                  {canEditBoat(boat) ? (
+                    <button
+                      onClick={() => setSelectedBoatForEdit(boat)}
+                      className="px-2.5 py-1 rounded-md text-xs font-semibold text-mx-ink bg-mx-ink-100 hover:bg-mx-ink hover:text-white transition-colors cursor-pointer flex items-center gap-1"
+                      title="Editar embarcação"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      <span>Editar</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setSelectedBoatForEdit(boat)}
+                      className="px-2.5 py-1 rounded-md text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                      title="Consultar dados da embarcação (Somente Consulta)"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Consultar</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -745,6 +849,9 @@ export default function ComercialEmbarcacoesPage() {
         open={!!selectedBoatForEdit}
         editingBoat={selectedBoatForEdit}
         clients={clients}
+        isReadOnly={!canEditBoat(selectedBoatForEdit)}
+        userRole={effectiveRole}
+        onDelete={handleDeleteBoat}
         onClose={() => setSelectedBoatForEdit(null)}
         onSave={saved => {
           setSelectedBoatForEdit(null);
@@ -756,6 +863,8 @@ export default function ComercialEmbarcacoesPage() {
         open={isNewBoatOpen}
         editingBoat={null}
         clients={clients}
+        isReadOnly={false}
+        userRole={effectiveRole}
         onClose={() => setIsNewBoatOpen(false)}
         onSave={saved => {
           setIsNewBoatOpen(false);

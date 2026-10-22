@@ -1172,13 +1172,13 @@ export default function FinanceFluxoCaixa() {
 
       {/* Floating Bulk Actions Dock — Light, clean & elegant */}
       <AnimatePresence>
-        {selectedIds.length > 0 && (
+        {selectedIds.length > 0 && !bulkModal && !isLancamentoDrawerOpen && !viewingTransacao && !isFilterDrawerOpen && (
           <motion.div
             initial={{ y: 80, opacity: 0, scale: 0.95 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 80, opacity: 0, scale: 0.95 }}
             transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-white/95 text-stone-900 backdrop-blur-2xl px-3.5 py-2 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.06)] border border-stone-200/90 flex items-center gap-2.5 max-w-[95vw] overflow-x-auto scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[40] bg-white/95 text-stone-900 backdrop-blur-2xl px-3.5 py-2 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.06)] border border-stone-200/90 flex items-center gap-2.5 max-w-[95vw] overflow-x-auto scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           >
             <div className="flex items-center gap-2 pr-3 border-r border-stone-200 shrink-0">
               <span className="w-5 h-5 rounded-md bg-stone-100 text-stone-800 border border-stone-200 text-[11px] font-bold flex items-center justify-center">

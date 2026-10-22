@@ -1,13 +1,74 @@
 import { getDbPool, getConfigValue } from "./server-db";
 
+/**
+ * Intelligently resolves Asaas environment and endpoint.
+ * Detects based on key prefix ($aact_prod_ vs $aact_hmlg_), explicit environment, or fallback.
+ */
+export function resolveAsaasEnvironment(apiKey: string, explicitEnv?: string, explicitUrl?: string): {
+  environment: "production" | "sandbox";
+  baseUrl: string;
+} {
+  const cleanKey = (apiKey || "").trim();
+
+  // 1. High-fidelity key prefix auto-detection:
+  if (cleanKey.startsWith("$aact_prod_")) {
+    return { environment: "production", baseUrl: "https://api.asaas.com/v3" };
+  }
+  if (cleanKey.startsWith("$aact_hmlg_")) {
+    return { environment: "sandbox", baseUrl: "https://api-sandbox.asaas.com/v3" };
+  }
+
+  // 2. Explicit environment flag (e.g. ASAAS_ENVIRONMENT=production | sandbox)
+  const envNorm = String(explicitEnv || "").toLowerCase().trim();
+  if (envNorm === "production" || envNorm === "prod") {
+    return { environment: "production", baseUrl: "https://api.asaas.com/v3" };
+  }
+  if (envNorm === "sandbox" || envNorm === "hmlg" || envNorm === "test" || envNorm === "homologacao") {
+    return { environment: "sandbox", baseUrl: "https://api-sandbox.asaas.com/v3" };
+  }
+
+  // 3. Fallback from explicit URL if provided
+  const cleanUrl = String(explicitUrl || "").trim().replace(/\/+$/, "");
+  if (cleanUrl) {
+    const isSandbox = cleanUrl.includes("sandbox");
+    return { environment: isSandbox ? "sandbox" : "production", baseUrl: cleanUrl };
+  }
+
+  // Default safely to production
+  return { environment: "production", baseUrl: "https://api.asaas.com/v3" };
+}
+
+// Helper to resolve Asaas credentials and environment
+export async function getAsaasConfig(): Promise<{ apiKey: string; baseUrl: string; environment: "production" | "sandbox" }> {
+  const dbKey = ((await getConfigValue("asaas_api_key")) || "").trim();
+  const envKey = (process.env.ASAAS_API_KEY || "").trim();
+  const apiKey = dbKey || envKey;
+
+  const dbEnv = ((await getConfigValue("asaas_environment")) || "").trim();
+  const envEnv = (process.env.ASAAS_ENVIRONMENT || "").trim();
+  const explicitEnv = dbEnv || envEnv;
+
+  const dbUrl = ((await getConfigValue("asaas_api_url")) || "").trim();
+  const envUrl = (process.env.ASAAS_API_URL || "").trim();
+  const explicitUrl = dbUrl || envUrl;
+
+  const { environment, baseUrl } = resolveAsaasEnvironment(apiKey, explicitEnv, explicitUrl);
+
+  return {
+    apiKey,
+    baseUrl,
+    environment
+  };
+}
+
 // Helper for Asaas API fetch
 export async function asaasFetch(endpoint: string, options: any = {}) {
-  const apiKey = process.env.ASAAS_API_KEY || await getConfigValue("asaas_api_key");
-  const baseUrl = process.env.ASAAS_API_URL || await getConfigValue("asaas_api_url") || "https://api-sandbox.asaas.com/v3";
-  const url = `${baseUrl}${endpoint}`;
+  const { apiKey, baseUrl } = await getAsaasConfig();
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const url = `${baseUrl}${cleanEndpoint}`;
 
   if (!apiKey) {
-    throw new Error("A API Key do Asaas não está configurada.");
+    throw new Error("A API Key do Asaas não está configurada no sistema. Acesse Integrações para configurar.");
   }
 
   const headers = {
@@ -24,7 +85,10 @@ export async function asaasFetch(endpoint: string, options: any = {}) {
 
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
-    const errMsg = errBody.errors?.[0]?.description || `Erro HTTP ${res.status}`;
+    const errList = Array.isArray(errBody.errors)
+      ? errBody.errors.map((e: any) => e.description || e.message).filter(Boolean).join("; ")
+      : "";
+    const errMsg = errList || errBody.message || errBody.error || `Erro HTTP ${res.status}`;
     throw new Error(errMsg);
   }
 
@@ -82,13 +146,15 @@ export async function silenceAsaasCustomerNotifications(customerId: string): Pro
  * and has ALL Asaas notifications (SMS, Email, WhatsApp, Voice) completely disabled.
  */
 export async function getOrRegisterAsaasCustomer(client: any): Promise<string> {
-  const cpfCnpj = client.cpf ? String(client.cpf).replace(/\D/g, "") : "";
+  const rawCpf = client.cpf || client.cpfCnpj || client.documento;
+  const cpfCnpj = rawCpf ? String(rawCpf).replace(/\D/g, "") : "";
   if (!cpfCnpj || (cpfCnpj.length !== 11 && cpfCnpj.length !== 14)) {
     throw new Error(
       `O cliente "${client.nome || client.id}" não possui um CPF ou CNPJ válido cadastrado (obrigatório pelo Asaas para emitir cobranças). Atualize o cadastro do cliente primeiro.`
     );
   }
 
+  const clientName = (client.nome || "Cliente").trim();
   const currentPool = getDbPool();
 
   if (client.asaasCustomerId) {
@@ -100,7 +166,7 @@ export async function getOrRegisterAsaasCustomer(client: any): Promise<string> {
           await asaasFetch(`/customers/${client.asaasCustomerId}`, {
             method: "PUT",
             body: JSON.stringify({
-              name: client.nome,
+              name: clientName,
               cpfCnpj,
               notificationDisabled: true
             })
@@ -123,7 +189,7 @@ export async function getOrRegisterAsaasCustomer(client: any): Promise<string> {
         await asaasFetch(`/customers/${asaasId}`, {
           method: "PUT",
           body: JSON.stringify({
-            name: client.nome,
+            name: clientName,
             cpfCnpj,
             notificationDisabled: true
           })
@@ -141,7 +207,7 @@ export async function getOrRegisterAsaasCustomer(client: any): Promise<string> {
 
   // Register new customer with notificationDisabled: true and without sharing phone/email with Asaas
   const payload: any = {
-    name: client.nome,
+    name: clientName,
     cpfCnpj,
     externalReference: client.id,
     notificationDisabled: true
@@ -185,17 +251,27 @@ export async function calculateTransactionAsaasValue(
 
   const originalValue = Number(t.valor || 0);
   let finalValue = originalValue;
-  let finalDueDate = t.dataVencimento || todayStr;
+
+  let rawDue = t.dataVencimento ? String(t.dataVencimento).split("T")[0].trim() : todayStr;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(rawDue)) {
+    const [d, m, y] = rawDue.split("/");
+    rawDue = `${y}-${m}-${d}`;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDue)) {
+    rawDue = todayStr;
+  }
+
+  let finalDueDate = rawDue;
   let descriptionNote = "";
   let isOverdue = false;
   let fineAmount = 0;
   let interestAmount = 0;
 
-  if (t.dataVencimento && t.dataVencimento < todayStr && t.status !== "pago") {
+  if (rawDue < todayStr && t.status !== "pago") {
     isOverdue = true;
     finalDueDate = todayStr;
 
-    const due = new Date(t.dataVencimento + "T12:00:00");
+    const due = new Date(rawDue + "T12:00:00");
     const todayRef = new Date(todayStr + "T12:00:00");
     const diffTime = todayRef.getTime() - due.getTime();
     const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
@@ -212,6 +288,10 @@ export async function calculateTransactionAsaasValue(
         descriptionNote = ` (Original: R$ ${originalValue.toFixed(2)} + R$ ${totalFees.toFixed(2)} multa/juros)`;
       }
     }
+  }
+
+  if (finalValue <= 0) {
+    throw new Error(`O valor da cobrança para "${t.descricao || t.id}" deve ser maior que zero (R$ ${finalValue.toFixed(2)}).`);
   }
 
   return {
@@ -486,7 +566,7 @@ export async function createAsaasCharge(
 
   return {
     asaasPaymentId: result.id,
-    asaasPaymentUrl: result.invoiceUrl,
+    asaasPaymentUrl: result.invoiceUrl || result.bankSlipUrl || result.paymentLink || "",
     finalValue: calc.finalValue,
     reused: false
   };
@@ -578,7 +658,7 @@ export async function createAsaasBulkCharge(
 
   return {
     asaasPaymentId: result.id,
-    asaasPaymentUrl: result.invoiceUrl,
+    asaasPaymentUrl: result.invoiceUrl || result.bankSlipUrl || result.paymentLink || "",
     bulkRef,
     totalFinalValue,
     reused: false

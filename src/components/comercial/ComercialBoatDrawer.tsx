@@ -20,7 +20,8 @@ import {
   Image as ImageIcon,
   Trash2,
   RefreshCw,
-  Edit2
+  Edit2,
+  Lock
 } from 'lucide-react';
 import { Embarcacao, Cliente } from '../../types';
 import { boatDB, getAdminToken } from '../../db';
@@ -30,18 +31,28 @@ interface ComercialBoatDrawerProps {
   open: boolean;
   onClose: () => void;
   onSave: (savedBoat: Embarcacao) => void;
+  onDelete?: (id: string, name: string) => void;
   editingBoat?: Embarcacao | null;
   clients: Cliente[];
+  isReadOnly?: boolean;
+  userRole?: string;
 }
 
 export default function ComercialBoatDrawer({
   open,
   onClose,
   onSave,
+  onDelete,
   editingBoat = null,
-  clients = []
+  clients = [],
+  isReadOnly = false,
+  userRole
 }: ComercialBoatDrawerProps) {
   const isEditing = !!editingBoat;
+
+  const effectiveRole = (userRole || localStorage.getItem('admin_role') || 'comercial').toLowerCase().trim();
+  const isMarinaGerente = effectiveRole === 'marina_gerente' || effectiveRole === 'marina';
+  const isComercial = effectiveRole === 'comercial';
 
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -159,7 +170,7 @@ export default function ComercialBoatDrawer({
       setVaga('');
       setStatusOperacional('disponivel');
       setHorasMotor(0);
-      setEmpresas(['VALE']);
+      setEmpresas(isMarinaGerente ? ['MARINA'] : ['VALE']);
       setImagemUrl('');
       setSelectedDonos([]);
       setAcessorios({
@@ -177,7 +188,7 @@ export default function ComercialBoatDrawer({
     setIsUploadingImage(false);
     setIsDragging(false);
     setShowUrlInput(false);
-  }, [open, editingBoat]);
+  }, [open, editingBoat, isMarinaGerente]);
 
   // Handler de Upload de Imagem
   const uploadImageFile = async (file: File) => {
@@ -257,6 +268,15 @@ export default function ComercialBoatDrawer({
   };
 
   const toggleEmpresa = (emp: string) => {
+    if (isReadOnly) return;
+    if (isMarinaGerente && emp === 'VALE') {
+      setErrorMessage('Gerente da Marina não pode vincular embarcações à Vale Náutica.');
+      return;
+    }
+    if (isComercial && emp === 'MARINA') {
+      setErrorMessage('Usuários do Comercial não podem vincular embarcações exclusivas da Marina.');
+      return;
+    }
     if (empresas.includes(emp)) {
       if (empresas.length > 1) {
         setEmpresas(empresas.filter(e => e !== emp));
@@ -267,6 +287,7 @@ export default function ComercialBoatDrawer({
   };
 
   const toggleDono = (clienteId: string) => {
+    if (isReadOnly) return;
     if (selectedDonos.includes(clienteId)) {
       setSelectedDonos(selectedDonos.filter(id => id !== clienteId));
     } else {
@@ -275,6 +296,7 @@ export default function ComercialBoatDrawer({
   };
 
   const handleRemoveAllDonos = () => {
+    if (isReadOnly) return;
     setSelectedDonos([]);
   };
 
@@ -336,9 +358,18 @@ export default function ComercialBoatDrawer({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) return;
+
     if (!nome.trim()) {
       setErrorMessage('Por favor, informe o nome da embarcação.');
       return;
+    }
+
+    // Validação e higienização de empresas conforme o perfil
+    let finalEmpresas = [...empresas];
+    if (isMarinaGerente) {
+      finalEmpresas = finalEmpresas.filter(e => e !== 'VALE');
+      if (finalEmpresas.length === 0) finalEmpresas.push('MARINA');
     }
 
     setIsSaving(true);
@@ -361,7 +392,7 @@ export default function ComercialBoatDrawer({
         emManutencao: statusOperacional === 'em_manutencao',
         horasMotor: Number(horasMotor) || 0,
         horimetroActual: Number(horasMotor) || 0,
-        empresas,
+        empresas: finalEmpresas,
         imagemUrl: imagemUrl.trim(),
         donos: selectedDonos,
         acessorios
@@ -400,7 +431,7 @@ export default function ComercialBoatDrawer({
       {/* Drawer Panel */}
       <aside
         role="dialog"
-        aria-label={isEditing ? 'Editar embarcação' : 'Nova embarcação'}
+        aria-label={isReadOnly ? 'Consultar embarcação' : isEditing ? 'Editar embarcação' : 'Nova embarcação'}
         className={`absolute top-3 right-3 bottom-3 w-[calc(100%-1.5rem)] sm:w-[500px] lg:w-[540px] bg-white rounded-2xl shadow-2xl flex flex-col transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
           open ? 'translate-x-0 opacity-100 pointer-events-auto' : 'translate-x-[110%] opacity-0 pointer-events-none'
         }`}
@@ -413,30 +444,37 @@ export default function ComercialBoatDrawer({
             </div>
             <div className="min-w-0">
               <h2 className="text-[14px] font-semibold text-stone-900 truncate">
-                {isEditing ? (nome || 'Editar embarcação') : 'Nova embarcação'}
+                {isReadOnly ? (nome || 'Consultar embarcação') : isEditing ? (nome || 'Editar embarcação') : 'Nova embarcação'}
               </h2>
               <p className="text-[11px] text-stone-400 truncate">
-                {isEditing ? `ID: ${editingBoat?.id}` : 'Cadastro de frota náutica'}
+                {isReadOnly ? `ID: ${editingBoat?.id} • Somente Leitura` : isEditing ? `ID: ${editingBoat?.id}` : 'Cadastro de frota náutica'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <span
-              className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
-                statusOperacional === 'disponivel'
-                  ? 'bg-emerald-50 text-emerald-700'
+            {isReadOnly ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                <Lock className="w-3 h-3" />
+                Consulta
+              </span>
+            ) : (
+              <span
+                className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                  statusOperacional === 'disponivel'
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : statusOperacional === 'em_manutencao'
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'bg-red-50 text-red-700'
+                }`}
+              >
+                {statusOperacional === 'disponivel'
+                  ? 'Disponível'
                   : statusOperacional === 'em_manutencao'
-                  ? 'bg-amber-50 text-amber-700'
-                  : 'bg-red-50 text-red-700'
-              }`}
-            >
-              {statusOperacional === 'disponivel'
-                ? 'Disponível'
-                : statusOperacional === 'em_manutencao'
-                ? 'Manutenção'
-                : 'Pendência'}
-            </span>
+                  ? 'Manutenção'
+                  : 'Pendência'}
+              </span>
+            )}
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer"
@@ -457,6 +495,20 @@ export default function ComercialBoatDrawer({
 
         {/* Formulário com Scroll Suave */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4 text-stone-800">
+          {/* Alerta de Modo Somente Consulta */}
+          {isReadOnly && (
+            <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5 shadow-2xs">
+              <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div className="space-y-0.5 leading-relaxed">
+                <p className="font-bold text-amber-950">Visualização em modo somente consulta</p>
+                <p className="text-[11px] text-amber-800">
+                  {isMarinaGerente
+                    ? 'Esta embarcação pertence à frota da Vale Náutica. O Gerente da Marina possui permissão exclusivamente para consulta cadastral, sem autorização para editar, vincular ou excluir.'
+                    : 'Você está visualizando esta embarcação em modo de leitura.'}
+                </p>
+              </div>
+            </div>
+          )}
           {/* CARD 1: DADOS PRINCIPAIS */}
           <section className="p-4 rounded-xl border border-stone-200/80 bg-white space-y-3">
             <div className="flex items-center gap-2 text-stone-900 pb-1 border-b border-stone-100">
@@ -472,10 +524,11 @@ export default function ComercialBoatDrawer({
                 <input
                   type="text"
                   required
+                  disabled={isReadOnly}
                   value={nome}
                   onChange={e => setNome(e.target.value)}
                   placeholder="Ex: EL MEXICANO 58, FOCKER 240..."
-                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 font-semibold focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:border-mx-ink"
+                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 font-semibold focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:border-mx-ink disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -487,8 +540,11 @@ export default function ComercialBoatDrawer({
                   <div className="flex gap-1.5">
                     <button
                       type="button"
+                      disabled={isReadOnly}
                       onClick={() => setTipo('lancha')}
-                      className={`flex-1 py-1.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                      className={`flex-1 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+                        isReadOnly ? 'cursor-not-allowed' : 'cursor-pointer'
+                      } ${
                         tipo === 'lancha'
                           ? 'bg-mx-ink text-white'
                           : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
@@ -498,8 +554,11 @@ export default function ComercialBoatDrawer({
                     </button>
                     <button
                       type="button"
+                      disabled={isReadOnly}
                       onClick={() => setTipo('jet')}
-                      className={`flex-1 py-1.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                      className={`flex-1 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+                        isReadOnly ? 'cursor-not-allowed' : 'cursor-pointer'
+                      } ${
                         tipo === 'jet'
                           ? 'bg-mx-ink text-white'
                           : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
@@ -516,10 +575,11 @@ export default function ComercialBoatDrawer({
                   </label>
                   <input
                     type="text"
+                    disabled={isReadOnly}
                     value={numero}
                     onChange={e => setNumero(e.target.value)}
                     placeholder="Ex: 58, 08..."
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:border-mx-ink"
+                    className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:border-mx-ink disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -531,10 +591,11 @@ export default function ComercialBoatDrawer({
                   </label>
                   <input
                     type="text"
+                    disabled={isReadOnly}
                     value={fabricante}
                     onChange={e => setFabricante(e.target.value)}
                     placeholder="Ex: Fibrafort"
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                    className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -544,10 +605,11 @@ export default function ComercialBoatDrawer({
                   </label>
                   <input
                     type="text"
+                    disabled={isReadOnly}
                     value={modelo}
                     onChange={e => setModelo(e.target.value)}
                     placeholder="Ex: 242 GTO"
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                    className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -555,9 +617,10 @@ export default function ComercialBoatDrawer({
                   <label className="text-[11px] font-semibold text-stone-600 block mb-1">Ano</label>
                   <input
                     type="number"
+                    disabled={isReadOnly}
                     value={ano}
                     onChange={e => setAno(Number(e.target.value))}
-                    className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                    className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -578,10 +641,11 @@ export default function ComercialBoatDrawer({
                 </label>
                 <input
                   type="text"
+                  disabled={isReadOnly}
                   value={tamanho}
                   onChange={e => setTamanho(e.target.value)}
                   placeholder="Ex: 24 pés"
-                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -591,10 +655,11 @@ export default function ComercialBoatDrawer({
                 </label>
                 <input
                   type="text"
+                  disabled={isReadOnly}
                   value={potencia}
                   onChange={e => setPotencia(e.target.value)}
                   placeholder="Ex: 250 HP"
-                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -606,10 +671,11 @@ export default function ComercialBoatDrawer({
                 </label>
                 <input
                   type="number"
+                  disabled={isReadOnly}
                   value={capacidadePassageiros}
                   onChange={e => setCapacidadePassageiros(Number(e.target.value))}
                   placeholder="8"
-                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -619,10 +685,11 @@ export default function ComercialBoatDrawer({
                 </label>
                 <input
                   type="text"
+                  disabled={isReadOnly}
                   value={vaga}
                   onChange={e => setVaga(e.target.value)}
                   placeholder="Ex: Vaga A-12"
-                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -633,10 +700,11 @@ export default function ComercialBoatDrawer({
                 <input
                   type="number"
                   step="0.1"
+                  disabled={isReadOnly}
                   value={horasMotor}
                   onChange={e => setHorasMotor(Number(e.target.value))}
                   placeholder="0.0"
-                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                  className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -659,8 +727,11 @@ export default function ComercialBoatDrawer({
                       <button
                         key={preset}
                         type="button"
+                        disabled={isReadOnly}
                         onClick={() => setTotalCotas(preset)}
-                        className={`flex-1 h-9 rounded-lg border text-xs font-bold tabular-nums transition-colors cursor-pointer ${
+                        className={`flex-1 h-9 rounded-lg border text-xs font-bold tabular-nums transition-colors ${
+                          isReadOnly ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'
+                        } ${
                           isSelected
                             ? 'bg-mx-ink text-white border-mx-ink shadow-2xs'
                             : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
@@ -675,10 +746,11 @@ export default function ComercialBoatDrawer({
                   type="number"
                   min={1}
                   max={32}
+                  disabled={isReadOnly}
                   value={totalCotas}
                   onChange={e => setTotalCotas(Math.max(1, Math.min(32, Number(e.target.value) || 1)))}
                   title="Quantidade personalizada de cotas"
-                  className="w-18 h-9 px-2.5 rounded-lg border border-stone-200 text-xs font-bold text-stone-900 text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
+                  className="w-18 h-9 px-2.5 rounded-lg border border-stone-200 text-xs font-bold text-stone-900 text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-mx-ink/20 disabled:bg-stone-50 disabled:text-stone-700 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -699,8 +771,11 @@ export default function ComercialBoatDrawer({
                     <button
                       key={st.id}
                       type="button"
+                      disabled={isReadOnly}
                       onClick={() => setStatusOperacional(st.id as any)}
-                      className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                      className={`p-2.5 rounded-lg border text-left transition-all ${
+                        isReadOnly ? 'cursor-not-allowed opacity-85' : 'cursor-pointer'
+                      } ${
                         isChecked
                           ? 'border-mx-ink bg-mx-ink-50 shadow-xs'
                           : 'border-stone-200 bg-white hover:border-stone-300'
@@ -731,18 +806,41 @@ export default function ComercialBoatDrawer({
                   { id: 'MEXICANO', name: 'El Mexicano' }
                 ].map(emp => {
                   const isChecked = empresas.includes(emp.id);
+                  const isBlockedByRole =
+                    (isMarinaGerente && emp.id === 'VALE') ||
+                    (isComercial && emp.id === 'MARINA');
+
                   return (
                     <button
                       key={emp.id}
                       type="button"
+                      disabled={isReadOnly || isBlockedByRole}
                       onClick={() => toggleEmpresa(emp.id)}
-                      className={`py-1.5 px-2 rounded-lg border text-center text-[11px] font-semibold transition-colors cursor-pointer ${
-                        isChecked
-                          ? 'border-mx-ink bg-mx-ink-100 text-mx-ink'
-                          : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
+                      title={
+                        isReadOnly
+                          ? 'Modo somente leitura'
+                          : isBlockedByRole
+                          ? isMarinaGerente
+                            ? 'Restrito à Vale Náutica'
+                            : 'Restrito à Marina'
+                          : undefined
+                      }
+                      className={`py-1.5 px-2 rounded-lg border text-center text-[11px] font-semibold transition-colors ${
+                        isReadOnly || isBlockedByRole
+                          ? isChecked
+                            ? 'border-stone-300 bg-stone-100 text-stone-500 cursor-not-allowed opacity-75'
+                            : 'border-stone-200 bg-stone-50 text-stone-400 cursor-not-allowed opacity-50'
+                          : isChecked
+                          ? 'border-mx-ink bg-mx-ink-100 text-mx-ink cursor-pointer'
+                          : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50 cursor-pointer'
                       }`}
                     >
-                      {emp.name}
+                      <span>{emp.name}</span>
+                      {isBlockedByRole && !isReadOnly && (
+                        <span className="block text-[9px] font-normal text-stone-400 mt-0.5">
+                          (Restrito)
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -761,7 +859,7 @@ export default function ComercialBoatDrawer({
                   {vinculadosList.length} vinculado{vinculadosList.length !== 1 ? 's' : ''}
                 </span>
               </div>
-              {vinculadosList.length > 0 && (
+              {vinculadosList.length > 0 && !isReadOnly && (
                 <button
                   type="button"
                   onClick={handleRemoveAllDonos}
@@ -781,7 +879,11 @@ export default function ComercialBoatDrawer({
                   Cotistas Já Vinculados ({vinculadosList.length})
                 </span>
                 <span className="text-[10px] text-stone-400">
-                  {vinculadosList.length === 0 ? 'Nenhum no momento' : 'Clique no ✕ para desvincular'}
+                  {isReadOnly
+                    ? 'Lista de consulta'
+                    : vinculadosList.length === 0
+                    ? 'Nenhum no momento'
+                    : 'Clique no ✕ para desvincular'}
                 </span>
               </div>
 
@@ -790,9 +892,11 @@ export default function ComercialBoatDrawer({
                   <p className="text-[11px] text-stone-400">
                     Nenhum cotista vinculado a esta embarcação ainda.
                   </p>
-                  <p className="text-[10px] text-stone-400 mt-0.5">
-                    Selecione clientes na lista abaixo para vinculá-los como cotistas.
-                  </p>
+                  {!isReadOnly && (
+                    <p className="text-[10px] text-stone-400 mt-0.5">
+                      Selecione clientes na lista abaixo para vinculá-los como cotistas.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="max-h-44 overflow-y-auto space-y-1.5 p-2 bg-stone-50/80 rounded-xl border border-stone-200/80">
@@ -821,140 +925,151 @@ export default function ComercialBoatDrawer({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => toggleDono(item.id)}
-                        className="w-6 h-6 rounded-md flex items-center justify-center text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
-                        title={`Desvincular ${item.nome}`}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      {!isReadOnly && (
+                        <button
+                          type="button"
+                          onClick={() => toggleDono(item.id)}
+                          className="w-6 h-6 rounded-md flex items-center justify-center text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+                          title={`Desvincular ${item.nome}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* SELETOR / BUSCADOR DE COTISTAS DA BASE */}
-            <div className="pt-2 border-t border-stone-100 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-stone-700">
-                  Pesquisar e Selecionar Cotistas
-                </span>
-                <span className="text-[10px] text-stone-400">
-                  {filteredClients.length} de {clients.length} cliente{clients.length !== 1 ? 's' : ''}
-                </span>
+            {/* SELETOR / BUSCADOR DE COTISTAS DA BASE OU AVISO READ-ONLY */}
+            {isReadOnly ? (
+              <div className="pt-2 border-t border-stone-100">
+                <div className="p-3 rounded-lg bg-stone-50 border border-stone-200/80 text-[11px] text-stone-500 flex items-center gap-2">
+                  <Lock className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  <span>Alteração e inclusão de cotistas restrita aos gestores autorizados.</span>
+                </div>
               </div>
+            ) : (
+              <div className="pt-2 border-t border-stone-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-stone-700">
+                    Pesquisar e Selecionar Cotistas
+                  </span>
+                  <span className="text-[10px] text-stone-400">
+                    {filteredClients.length} de {clients.length} cliente{clients.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
 
-              {/* Abas Rápidas */}
-              <div className="flex gap-1 p-0.5 bg-stone-100/80 rounded-lg text-[10px] font-medium text-stone-600">
-                <button
-                  type="button"
-                  onClick={() => setCotistaFilterTab('todos')}
-                  className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
-                    cotistaFilterTab === 'todos' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
-                  }`}
-                >
-                  Todos ({clients.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCotistaFilterTab('vinculados')}
-                  className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
-                    cotistaFilterTab === 'vinculados' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
-                  }`}
-                >
-                  Vinculados ({vinculadosList.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCotistaFilterTab('disponiveis')}
-                  className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
-                    cotistaFilterTab === 'disponiveis' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
-                  }`}
-                >
-                  Disponíveis ({Math.max(0, clients.length - vinculadosList.length)})
-                </button>
-              </div>
-
-              {/* Campo de Busca */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar cotista por nome, CPF ou telefone..."
-                  value={cotistaSearch}
-                  onChange={e => setCotistaSearch(e.target.value)}
-                  className="w-full h-8 pl-8 pr-7 rounded-lg border border-stone-200 text-xs bg-stone-50/70 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:bg-white transition-all"
-                />
-                {cotistaSearch && (
+                {/* Abas Rápidas */}
+                <div className="flex gap-1 p-0.5 bg-stone-100/80 rounded-lg text-[10px] font-medium text-stone-600">
                   <button
                     type="button"
-                    onClick={() => setCotistaSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs cursor-pointer"
-                    title="Limpar busca"
+                    onClick={() => setCotistaFilterTab('todos')}
+                    className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
+                      cotistaFilterTab === 'todos' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
+                    }`}
                   >
-                    ×
+                    Todos ({clients.length})
                   </button>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setCotistaFilterTab('vinculados')}
+                    className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
+                      cotistaFilterTab === 'vinculados' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
+                    }`}
+                  >
+                    Vinculados ({vinculadosList.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCotistaFilterTab('disponiveis')}
+                    className={`flex-1 py-1 rounded-md transition-colors cursor-pointer ${
+                      cotistaFilterTab === 'disponiveis' ? 'bg-white text-stone-900 font-semibold shadow-2xs' : 'hover:text-stone-900'
+                    }`}
+                  >
+                    Disponíveis ({Math.max(0, clients.length - vinculadosList.length)})
+                  </button>
+                </div>
 
-              {/* Lista Completa com Rolagem (SEM CORTE DE 15!) */}
-              <div className="border border-stone-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-stone-100 bg-stone-50/30 p-1">
-                {filteredClients.length === 0 ? (
-                  <div className="py-6 text-center text-stone-400 text-xs">
-                    <p className="font-medium text-stone-500">Nenhum cotista encontrado</p>
-                    <p className="text-[10px] text-stone-400 mt-0.5">
-                      {cotistaSearch
-                        ? `Nenhum resultado para "${cotistaSearch}"`
-                        : 'Não há clientes para a aba selecionada.'}
-                    </p>
-                  </div>
-                ) : (
-                  filteredClients.map(c => {
-                    const isSelected = selectedDonos.includes(c.id);
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => toggleDono(c.id)}
-                        className={`w-full px-2.5 py-1.5 rounded-md text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-mx-ink-100 text-mx-ink font-semibold'
-                            : 'hover:bg-white text-stone-700'
-                        }`}
-                      >
-                        <div className="min-w-0 pr-2">
-                          <span className="truncate block font-medium">{c.nome}</span>
-                          {(c.cpf || c.telefone) && (
-                            <span className="text-[10px] text-stone-400 truncate block">
-                              {c.cpf ? `CPF: ${c.cpf}` : ''}
-                              {c.cpf && c.telefone ? ' • ' : ''}
-                              {c.telefone ? `Tel: ${c.telefone}` : ''}
-                            </span>
-                          )}
-                        </div>
+                {/* Campo de Busca */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar cotista por nome, CPF ou telefone..."
+                    value={cotistaSearch}
+                    onChange={e => setCotistaSearch(e.target.value)}
+                    className="w-full h-8 pl-8 pr-7 rounded-lg border border-stone-200 text-xs bg-stone-50/70 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 focus:bg-white transition-all"
+                  />
+                  {cotistaSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCotistaSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs cursor-pointer"
+                      title="Limpar busca"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {isSelected && (
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-mx-ink bg-mx-ink-200/50 px-1 py-0.2 rounded">
-                              Vinculado
-                            </span>
-                          )}
-                          <div
-                            className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                              isSelected ? 'bg-mx-ink border-mx-ink text-white' : 'border-stone-300 bg-white'
-                            }`}
-                          >
-                            {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                {/* Lista Completa com Rolagem (SEM CORTE DE 15!) */}
+                <div className="border border-stone-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-stone-100 bg-stone-50/30 p-1">
+                  {filteredClients.length === 0 ? (
+                    <div className="py-6 text-center text-stone-400 text-xs">
+                      <p className="font-medium text-stone-500">Nenhum cotista encontrado</p>
+                      <p className="text-[10px] text-stone-400 mt-0.5">
+                        {cotistaSearch
+                          ? `Nenhum resultado para "${cotistaSearch}"`
+                          : 'Não há clientes para a aba selecionada.'}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredClients.map(c => {
+                      const isSelected = selectedDonos.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => toggleDono(c.id)}
+                          className={`w-full px-2.5 py-1.5 rounded-md text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-mx-ink-100 text-mx-ink font-semibold'
+                              : 'hover:bg-white text-stone-700'
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <span className="truncate block font-medium">{c.nome}</span>
+                            {(c.cpf || c.telefone) && (
+                              <span className="text-[10px] text-stone-400 truncate block">
+                                {c.cpf ? `CPF: ${c.cpf}` : ''}
+                                {c.cpf && c.telefone ? ' • ' : ''}
+                                {c.telefone ? `Tel: ${c.telefone}` : ''}
+                              </span>
+                            )}
                           </div>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isSelected && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-mx-ink bg-mx-ink-200/50 px-1 py-0.2 rounded">
+                                Vinculado
+                              </span>
+                            )}
+                            <div
+                              className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                                isSelected ? 'bg-mx-ink border-mx-ink text-white' : 'border-stone-300 bg-white'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </section>
 
           {/* CARD 4: ACESSÓRIOS & IMAGEM */}
@@ -971,7 +1086,7 @@ export default function ComercialBoatDrawer({
                   <ImageIcon className="w-3.5 h-3.5 text-stone-500" />
                   <span>Foto da Embarcação</span>
                 </label>
-                {imagemUrl && (
+                {imagemUrl && !isReadOnly && (
                   <button
                     type="button"
                     onClick={() => setShowUrlInput(!showUrlInput)}
@@ -983,13 +1098,15 @@ export default function ComercialBoatDrawer({
               </div>
 
               {/* Input de arquivo oculto */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png, image/jpeg, image/jpg, image/webp"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
+              {!isReadOnly && (
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+              )}
 
               {/* Mensagem de Erro de Upload */}
               {uploadError && (
@@ -1036,28 +1153,34 @@ export default function ComercialBoatDrawer({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                      title="Selecionar outra imagem"
-                    >
-                      <Edit2 className="w-3 h-3 text-stone-500" />
-                      <span>Trocar</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setImagemUrl('');
-                        setUploadError(null);
-                      }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                      title="Remover foto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  {!isReadOnly && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                        title="Selecionar outra imagem"
+                      >
+                        <Edit2 className="w-3 h-3 text-stone-500" />
+                        <span>Trocar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImagemUrl('');
+                          setUploadError(null);
+                        }}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                        title="Remover foto"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : isReadOnly ? (
+                <div className="p-4 rounded-xl border border-stone-200 bg-stone-50/60 text-center text-xs text-stone-400">
+                  Nenhuma foto cadastrada para esta embarcação.
                 </div>
               ) : (
                 <div
@@ -1086,7 +1209,7 @@ export default function ComercialBoatDrawer({
               )}
 
               {/* Opção de inserir ou editar link manual */}
-              {showUrlInput && (
+              {showUrlInput && !isReadOnly && (
                 <div className="pt-2">
                   <span className="text-[10px] font-medium text-stone-500 block mb-1">
                     Caminho / URL da Imagem:
@@ -1119,16 +1242,21 @@ export default function ComercialBoatDrawer({
                     <button
                       key={acc.key}
                       type="button"
+                      disabled={isReadOnly}
                       onClick={() =>
                         setAcessorios(prev => ({
                           ...prev,
                           [acc.key]: !isChecked
                         }))
                       }
-                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
-                        isChecked
-                          ? 'bg-mx-ink-100 border-mx-ink text-mx-ink font-semibold'
-                          : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors ${
+                        isReadOnly
+                          ? isChecked
+                            ? 'bg-stone-200 border-stone-300 text-stone-700 font-semibold cursor-default'
+                            : 'bg-stone-50 border-stone-200 text-stone-400 cursor-default opacity-60'
+                          : isChecked
+                          ? 'bg-mx-ink-100 border-mx-ink text-mx-ink font-semibold cursor-pointer'
+                          : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100 cursor-pointer'
                       }`}
                     >
                       {acc.label}
@@ -1142,24 +1270,61 @@ export default function ComercialBoatDrawer({
 
         {/* Rodapé fixo do Drawer */}
         <footer className="h-16 px-5 border-t border-stone-100 flex items-center justify-between bg-stone-50/70 rounded-b-2xl shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="h-8 px-3.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 text-[11px] font-semibold transition-colors cursor-pointer"
-          >
-            Cancelar
-          </button>
+          {isReadOnly ? (
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs text-stone-500 flex items-center gap-1.5 font-medium">
+                <Lock className="w-3.5 h-3.5 text-stone-400" />
+                Embarcação em modo somente consulta
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-8 px-4 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-[11px] font-semibold transition-colors cursor-pointer shadow-sm"
+              >
+                Fechar
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={isSaving}
+                  className="h-8 px-3.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
 
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="h-8 px-4 rounded-lg bg-mx-ink hover:bg-mx-ink-700 text-white text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-60"
-          >
-            <Save className="w-3.5 h-3.5" />
-            <span>{isSaving ? 'Salvando…' : isEditing ? 'Salvar alterações' : 'Salvar embarcação'}</span>
-          </button>
+                {isEditing && onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Deseja realmente excluir a embarcação "${nome}"? Esta ação removerá a embarcação da frota e cancelará vínculos.`)) {
+                        if (editingBoat) onDelete(editingBoat.id, editingBoat.nome);
+                        onClose();
+                      }
+                    }}
+                    disabled={isSaving}
+                    className="h-8 px-3 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Excluir</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="h-8 px-4 rounded-lg bg-mx-ink hover:bg-mx-ink-700 text-white text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-60"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isSaving ? 'Salvando…' : isEditing ? 'Salvar alterações' : 'Salvar embarcação'}</span>
+              </button>
+            </>
+          )}
         </footer>
       </aside>
     </div>

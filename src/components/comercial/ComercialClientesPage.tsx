@@ -30,7 +30,14 @@ import ComercialClientFilterDrawer, {
   DEFAULT_CLIENT_FILTERS
 } from './ComercialClientFilterDrawer';
 
-export default function ComercialClientesPage() {
+interface ComercialClientesPageProps {
+  userRole?: string;
+}
+
+export default function ComercialClientesPage({ userRole }: ComercialClientesPageProps = {}) {
+  const effectiveRole = (userRole || localStorage.getItem('admin_role') || 'comercial').toLowerCase().trim();
+  const isMarinaGerente = effectiveRole === 'marina_gerente' || effectiveRole === 'marina';
+
   const [clients, setClients] = useState<Cliente[]>([]);
   const [boats, setBoats] = useState<Embarcacao[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -273,9 +280,20 @@ export default function ComercialClientesPage() {
       {/* 1. Cabeçalho da Página */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-stone-900">Cadastro de Clientes</h1>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Gerencie cotistas, contratos e clientes da Vale Náutica, Marina e El Mexicano.
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold tracking-tight text-stone-900">
+              {isMarinaGerente ? 'Clientes e Cotistas da Marina' : 'Cadastro de Clientes'}
+            </h1>
+            {isMarinaGerente && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                Painel Marina Club
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-stone-500">
+            {isMarinaGerente
+              ? 'Gerencie cotistas, marinheiros autorizados e contratos vinculados à Marina.'
+              : 'Gerencie cotistas, contratos e clientes da Vale Náutica, Marina e El Mexicano.'}
           </p>
         </div>
 

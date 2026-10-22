@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getBoatCode, matchesBoatSearch } from '../utils/boatUtils';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet, Plus } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet, Plus, Users } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction, chamadoDB } from '../db';
@@ -10,6 +10,8 @@ import MarinaTanksView from './MarinaTanksView';
 import MarinaChamadosView from './MarinaChamadosView';
 import MarinaCaixaView from './MarinaCaixaView';
 import MarinaEmbarcacoesClientesView from './MarinaEmbarcacoesClientesView';
+import ComercialEmbarcacoesPage from './comercial/ComercialEmbarcacoesPage';
+import ComercialClientesPage from './comercial/ComercialClientesPage';
 import FinanceSchedulesPage from './FinanceSchedulesPage';
 import MarinaAgendamentosView from './MarinaAgendamentosView';
 import AdicionarFilaModal from './AdicionarFilaModal';
@@ -916,12 +918,21 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
             {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Cadastros & Reservas</p>}
             <nav className="space-y-1">
               <button
-                onClick={() => setActiveTab('embarcacoes-clientes')}
-                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${(activeTab === 'embarcacoes-clientes' || activeTab === 'embarcacoes' || activeTab === 'clientes') ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
-                title="Consulta de Embarcações e Cotistas"
+                onClick={() => setActiveTab('embarcacoes')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${(activeTab === 'embarcacoes' || activeTab === 'embarcacoes-clientes') ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Embarcações da Marina e Frota"
               >
                 <Ship className="w-4 h-4 shrink-0" />
-                {isSidebarOpen && <span>Embarcações & Clientes</span>}
+                {isSidebarOpen && <span>Embarcações</span>}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('clientes')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'clientes' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Clientes e Cotistas da Marina"
+              >
+                <Users className="w-4 h-4 shrink-0" />
+                {isSidebarOpen && <span>Clientes</span>}
               </button>
 
               <button 
@@ -1115,11 +1126,20 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                     <span>Chamados</span>
                   </button>
                   <button
-                    onClick={() => setActiveTab('embarcacoes-clientes')}
+                    onClick={() => setActiveTab('embarcacoes')}
                     className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                    title="Embarcações da Marina e Frota"
                   >
                     <Ship className="w-4 h-4" />
-                    <span>Embarcações & Clientes</span>
+                    <span>Embarcações</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('clientes')}
+                    className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                    title="Clientes e Cotistas da Marina"
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Clientes</span>
                   </button>
                   <button 
                     onClick={() => setActiveTab('operacao')}
@@ -2270,15 +2290,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           />
         )}
 
-        {(activeTab === 'embarcacoes-clientes' || activeTab === 'embarcacoes' || activeTab === 'clientes') && (
+        {(activeTab === 'embarcacoes-clientes' || activeTab === 'embarcacoes') && (
           <div className="max-w-7xl mx-auto">
-            <MarinaEmbarcacoesClientesView
-              boats={data?.boats}
-              clients={data?.clients}
-              onReload={fetchData}
-              userRole="marina_gerente"
-              operadorNome={operadorNome}
-            />
+            <ComercialEmbarcacoesPage userRole="marina_gerente" />
+          </div>
+        )}
+
+        {activeTab === 'clientes' && (
+          <div className="max-w-7xl mx-auto">
+            <ComercialClientesPage userRole="marina_gerente" />
           </div>
         )}
 

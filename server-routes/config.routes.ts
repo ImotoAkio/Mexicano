@@ -319,14 +319,21 @@ router.post("/config/test-asaas", requireAdminAuth, sensitiveLimiter, async (req
   try {
     let { apiKey, apiUrl } = req.body;
     if (!apiKey || apiKey === "__UNCHANGED__") {
-      apiKey = process.env.ASAAS_API_KEY || await getConfigValue("asaas_api_key");
+      apiKey = (await getConfigValue("asaas_api_key")) || process.env.ASAAS_API_KEY;
     }
     if (!apiUrl) {
-      apiUrl = process.env.ASAAS_API_URL || await getConfigValue("asaas_api_url") || "https://api-sandbox.asaas.com/v3";
+      apiUrl = (await getConfigValue("asaas_api_url")) || process.env.ASAAS_API_URL || "https://api.asaas.com/v3";
     }
 
     if (!apiKey) {
       return res.status(400).json({ success: false, message: "Nenhuma chave de API (access_token) fornecida ou salva no sistema." });
+    }
+
+    // Auto-detect environment if prefix matches
+    if (apiKey.startsWith("$aact_prod_")) {
+      apiUrl = "https://api.asaas.com/v3";
+    } else if (apiKey.startsWith("$aact_hmlg_")) {
+      apiUrl = "https://api-sandbox.asaas.com/v3";
     }
 
     const testUrl = `${apiUrl.replace(/\/+$/, '')}/finance/getCurrentBalance`;
@@ -362,17 +369,23 @@ router.post("/config/setup-asaas-webhook", requireAdminAuth, sensitiveLimiter, a
   try {
     let { apiKey, apiUrl, webhookUrl, authToken, email } = req.body;
     if (!apiKey || apiKey === "__UNCHANGED__") {
-      apiKey = process.env.ASAAS_API_KEY || await getConfigValue("asaas_api_key");
+      apiKey = (await getConfigValue("asaas_api_key")) || process.env.ASAAS_API_KEY;
     }
     if (!apiUrl) {
-      apiUrl = process.env.ASAAS_API_URL || await getConfigValue("asaas_api_url") || "https://api-sandbox.asaas.com/v3";
+      apiUrl = (await getConfigValue("asaas_api_url")) || process.env.ASAAS_API_URL || "https://api.asaas.com/v3";
     }
     if (!authToken) {
-      authToken = process.env.ASAAS_WEBHOOK_TOKEN || await getConfigValue("asaas_webhook_token");
+      authToken = (await getConfigValue("asaas_webhook_token")) || process.env.ASAAS_WEBHOOK_TOKEN;
     }
 
     if (!apiKey) {
       return res.status(400).json({ success: false, message: "A API Key do Asaas precisa estar preenchida ou salva." });
+    }
+
+    if (apiKey.startsWith("$aact_prod_")) {
+      apiUrl = "https://api.asaas.com/v3";
+    } else if (apiKey.startsWith("$aact_hmlg_")) {
+      apiUrl = "https://api-sandbox.asaas.com/v3";
     }
     if (!webhookUrl) {
       return res.status(400).json({ success: false, message: "A URL do Webhook é obrigatória." });

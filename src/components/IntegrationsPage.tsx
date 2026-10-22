@@ -688,7 +688,15 @@ export default function IntegrationsPage() {
                     type="password"
                     placeholder={hasAsaasApiKey ? "••••••••••••••••••••••••••••••••" : "Cole aqui seu access_token gerado no Asaas"}
                     value={asaasApiKey === '__UNCHANGED__' ? '' : asaasApiKey}
-                    onChange={(e) => setAsaasApiKey(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAsaasApiKey(val);
+                      if (val.startsWith('$aact_prod_')) {
+                        setAsaasApiUrl('https://api.asaas.com/v3');
+                      } else if (val.startsWith('$aact_hmlg_')) {
+                        setAsaasApiUrl('https://api-sandbox.asaas.com/v3');
+                      }
+                    }}
                     className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                   />
                 </div>

@@ -338,11 +338,12 @@ router.post("/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, asy
       asaasPaymentUrl: charge.asaasPaymentUrl,
       finalValue: charge.finalValue,
       reused: charge.reused,
-      qrCode
+      qrCode,
+      cliente: { id: client.id, nome: client.nome, cpf: client.cpf }
     });
   } catch (err: any) {
     console.error("Error generating Asaas charge:", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to generate Asaas charge" });
+    res.status(err.status || 400).json({ error: true, message: err.message || "Failed to generate Asaas charge" });
   }
 });
 
@@ -535,11 +536,12 @@ router.post("/transacoes/gerar-asaas-lote", requireAdminAuth, sensitiveLimiter, 
       finalValue: charge.totalFinalValue,
       reused: charge.reused,
       qrCode,
+      cliente: { id: client.id, nome: client.nome, cpf: client.cpf },
       transacoes: txs
     });
   } catch (err: any) {
     console.error("Error generating Asaas batch charge:", err);
-    res.status(500).json({ error: true, message: err.message || "Failed to generate Asaas batch charge" });
+    res.status(err.status || 400).json({ error: true, message: err.message || "Failed to generate Asaas batch charge" });
   }
 });
 
