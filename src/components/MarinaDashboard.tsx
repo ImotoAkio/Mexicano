@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getBoatCode, matchesBoatSearch } from '../utils/boatUtils';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet, Plus, Users } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet, Plus, Users, Compass, MapPin } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction, chamadoDB } from '../db';
@@ -18,6 +18,7 @@ import AdicionarFilaModal from './AdicionarFilaModal';
 import ControleFolgasPage from './ControleFolgasPage';
 import AvisosSaidaPage from './AvisosSaidaPage';
 import SettingsPage from './SettingsPage';
+import PlanoNavegacaoModal from './PlanoNavegacaoModal';
 import { getFuelInventory, consumeFuelForEmbarcacao } from '../utils/fuelInventory';
 import { getFuelPrice } from '../utils/constants';
 import refFrente from '../assets/images/checklist/frente.png';
@@ -122,6 +123,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [detailsReserva, setDetailsReserva] = useState<any>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [planoNavegacaoReserva, setPlanoNavegacaoReserva] = useState<any>(null);
   const [isAddFilaOpen, setIsAddFilaOpen] = useState(false);
   const [lightbox, setLightbox] = useState<{ urls: string[]; currentIndex: number; title: string } | null>(null);
 
@@ -1578,7 +1580,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                               <td className="py-2.5 font-mono text-slate-500">
                                 {r.previsaoSaida || '--:--'}
                               </td>
-                              <td className="py-2.5 text-right">
+                              <td className="py-2.5 text-right space-x-2">
+                                <button 
+                                  onClick={() => setPlanoNavegacaoReserva(r)}
+                                  className="text-[10px] font-bold text-[#B69D74] hover:text-[#917951] cursor-pointer inline-flex items-center gap-0.5"
+                                  title="Ver Plano de Navegação do Cliente"
+                                >
+                                  <Compass className="w-3 h-3" />
+                                  <span>Plano</span>
+                                </button>
                                 <button 
                                   onClick={() => setActiveTab('operacao')}
                                   className="text-[10px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
@@ -1803,6 +1813,16 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             </div>
                             <p className="text-xs text-slate-500 font-medium truncate">Cliente: {clientTitle}</p>
 
+                            {reserva.destino && (
+                              <p className="text-[11px] font-medium text-slate-700 flex items-center gap-1 truncate mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="truncate">{reserva.destino}</span>
+                                {reserva.pessoasABordo && (
+                                  <span className="text-slate-400 font-normal text-[10px]">({reserva.pessoasABordo} pess.)</span>
+                                )}
+                              </p>
+                            )}
+
                             {(reserva.combustivelInicial === 'tanque_cheio' || (reserva.litrosAbastecerPrevio && Number(reserva.litrosAbastecerPrevio) > 0)) && !reserva.abastecimentoLitros && (
                               <div className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
                                 <Droplets className="w-3 h-3 text-amber-600 shrink-0" />
@@ -1811,7 +1831,20 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             )}
 
                             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
-                              <span className="text-slate-400 font-medium">Vaga: {barco?.vaga || reserva.embarcacaoVaga || 'N/A'}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-slate-400 font-medium">Vaga: {barco?.vaga || reserva.embarcacaoVaga || 'N/A'}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPlanoNavegacaoReserva(reserva);
+                                  }}
+                                  title="Ver Plano de Navegação / Confirmação do Cliente"
+                                  className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors cursor-pointer"
+                                >
+                                  <Compass className="w-3.5 h-3.5 text-[#B69D74]" />
+                                </button>
+                              </div>
                               <button
                                 onClick={() => executeRegistrarDescida([], reserva)}
                                 className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer shadow-2xs"
@@ -1864,7 +1897,26 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                                 {reserva.horaDescida}
                               </span>
                             </div>
-                            <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-slate-500 font-medium truncate">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPlanoNavegacaoReserva(reserva);
+                                }}
+                                title="Ver Plano de Navegação / Confirmação do Cliente"
+                                className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors cursor-pointer"
+                              >
+                                <Compass className="w-3.5 h-3.5 text-[#B69D74]" />
+                              </button>
+                            </div>
+                            {reserva.destino && (
+                              <p className="text-[11px] font-medium text-slate-700 flex items-center gap-1 truncate mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="truncate">{reserva.destino}</span>
+                              </p>
+                            )}
                             <div className="flex items-center justify-between gap-1 text-[11px] pt-1 border-t border-slate-100">
                               <button
                                 onClick={() => executeMarcarSaida(reserva)}
@@ -1924,7 +1976,26 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                                 {reserva.horaSaida || '--:--'}
                               </span>
                             </div>
-                            <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-slate-500 font-medium truncate">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPlanoNavegacaoReserva(reserva);
+                                }}
+                                title="Ver Plano de Navegação / Confirmação do Cliente"
+                                className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors cursor-pointer"
+                              >
+                                <Compass className="w-3.5 h-3.5 text-[#B69D74]" />
+                              </button>
+                            </div>
+                            {reserva.destino && (
+                              <p className="text-[11px] font-medium text-slate-700 flex items-center gap-1 truncate mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="truncate">{reserva.destino}</span>
+                              </p>
+                            )}
                             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
                               <span className="text-sky-700 font-bold">Em Navegação</span>
                               <button
@@ -1980,7 +2051,26 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                                 {reserva.horaChegada || 'Chegou'}
                               </span>
                             </div>
-                            <p className="text-xs text-slate-500 font-medium">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-slate-500 font-medium truncate">Cliente: {cliente?.nome || reserva.clienteNome || 'Cliente'}</p>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPlanoNavegacaoReserva(reserva);
+                                }}
+                                title="Ver Plano de Navegação / Confirmação do Cliente"
+                                className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors cursor-pointer"
+                              >
+                                <Compass className="w-3.5 h-3.5 text-[#B69D74]" />
+                              </button>
+                            </div>
+                            {reserva.destino && (
+                              <p className="text-[11px] font-medium text-slate-700 flex items-center gap-1 truncate mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="truncate">{reserva.destino}</span>
+                              </p>
+                            )}
                             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
                               <span className="text-emerald-700 font-bold">{litros ? `${litros}L Abastecido` : 'Retornado'}</span>
                               <button
@@ -2105,6 +2195,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                                 <span className={`font-mono font-bold ${reserva.previsaoChegada ? 'text-slate-700' : 'text-slate-400'}`}>{reserva.previsaoChegada || '--:--'}</span>
                               </div>
                             </div>
+                            {reserva.destino && (
+                              <div className="flex items-center gap-1 text-[11px] font-bold text-rose-800 truncate mt-1">
+                                <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                                <span className="truncate">{reserva.destino}</span>
+                                {reserva.pessoasABordo && (
+                                  <span className="text-slate-400 font-normal text-[10px]">({reserva.pessoasABordo} pess.)</span>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           {/* Col 3: Estágio & Horários Reais */}
@@ -2227,6 +2326,18 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                               </span>
                             )}
 
+                            {/* Plano de Navegação Trigger */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPlanoNavegacaoReserva(reserva);
+                              }}
+                              title="Ver Plano de Navegação / Confirmação do Cliente"
+                              className="p-1.5 hover:bg-amber-50 text-slate-400 hover:text-amber-800 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Compass className="w-4 h-4 text-[#B69D74]" />
+                            </button>
+
                             {/* Details Modal Trigger Arrow */}
                             <button
                               onClick={(e) => {
@@ -2316,7 +2427,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
         {activeTab === 'aviso-saida' && (
           <div className="max-w-7xl mx-auto">
-            <AvisosSaidaPage />
+            <AvisosSaidaPage reservations={data?.reservations} boats={data?.boats} clients={data?.clients} />
           </div>
         )}
 
@@ -2803,6 +2914,89 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                 </div>
               </div>
 
+              {/* Plano de Navegação / Confirmação do Cliente */}
+              <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/50 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Compass className="w-4 h-4 text-[#B69D74]" />
+                    <span className="text-xs font-bold text-slate-900">
+                      Plano de Navegação
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                    <span className={`w-2 h-2 rounded-full ${(detailsReserva.status === 'confirmado' || detailsReserva.statusMarina === 'confirmada' || !!detailsReserva.destino) ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                    <span>{(detailsReserva.status === 'confirmado' || detailsReserva.statusMarina === 'confirmada' || !!detailsReserva.destino) ? 'Confirmado' : 'Aguardando'}</span>
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  <div>
+                    <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Destino Previsto</span>
+                    <span className="font-semibold text-slate-900 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{detailsReserva.destino || 'Não informado previamente'}</span>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Pessoas a Bordo</span>
+                      <span className="font-semibold text-slate-900 flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{detailsReserva.pessoasABordo || '2'} pessoas</span>
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Combustível</span>
+                      <span className="font-semibold text-slate-900 block truncate">
+                        {detailsReserva.combustivelInicial === 'tanque_cheio' ? 'Tanque Cheio' : detailsReserva.litrosAbastecerPrevio ? `${detailsReserva.litrosAbastecerPrevio}L` : 'Nível Atual'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Acessórios Solicitados */}
+                  {(() => {
+                    let ac: any = detailsReserva.acessoriosSolicitados;
+                    if (typeof ac === 'string') {
+                      try { ac = JSON.parse(ac); } catch {}
+                    }
+                    if (ac && (ac.tenda || ac.mesa || ac.churrasqueira || ac.bancos || ac.gelo)) {
+                      const items: string[] = [];
+                      if (ac.tenda) items.push('Tenda');
+                      if (ac.mesa) items.push('Mesa');
+                      if (ac.churrasqueira) items.push('Churrasqueira');
+                      if (ac.bancos > 0) items.push(`${ac.bancos} Cadeiras`);
+                      if (ac.gelo) items.push('Gelo');
+                      return (
+                        <div className="pt-1">
+                          <span className="text-[10px] font-medium text-slate-400 block mb-1">Acessórios Solicitados</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {items.map((it, i) => (
+                              <span key={i} className="px-2 py-0.5 bg-white border border-slate-200/80 text-slate-700 rounded text-xs font-medium">
+                                {it}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlanoNavegacaoReserva(detailsReserva);
+                  }}
+                  className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer mt-1"
+                >
+                  <Compass className="w-3.5 h-3.5 text-[#B69D74]" />
+                  <span>Ver Detalhes do Plano</span>
+                </button>
+              </div>
+
               <div>
                 <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Horários</h4>
                 <div className="space-y-2">
@@ -3032,6 +3226,17 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           showToast('Embarcação colocada na fila de descida com sucesso!', 'success');
         }}
       />
+
+      {/* Modal de Plano de Navegação do Cliente */}
+      {planoNavegacaoReserva && (
+        <PlanoNavegacaoModal
+          isOpen={!!planoNavegacaoReserva}
+          onClose={() => setPlanoNavegacaoReserva(null)}
+          reservation={planoNavegacaoReserva}
+          boat={getEmbarcacao(planoNavegacaoReserva.embarcacaoId)}
+          client={getCliente(planoNavegacaoReserva.clienteId)}
+        />
+      )}
 
     </div>
   );

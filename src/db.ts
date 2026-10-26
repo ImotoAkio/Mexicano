@@ -1,5 +1,5 @@
 import { Cliente, Embarcacao, Reserva, Manutencao, Chamado, TipoManutencao, Funcionario, Folga, Mecanico, EpiEntrega, CatalogoEpi, HistoricoEPIMensal, RegistroHoras, RegistroAcessorios, Fornecedor } from './types';
-import { normalizeCotaCode, getFirstAvailableCota, normalizeClientsCotasInPlace, DEFAULT_TOTAL_COTAS } from './utils/cotaUtils';
+import { normalizeCotaCode, getFirstAvailableCota, normalizeClientsCotasInPlace, DEFAULT_TOTAL_COTAS, parseExplicitCotaCode } from './utils/cotaUtils';
 
 // In-Memory Database Arrays (No LocalStorage)
 let memoryClients: Cliente[] = [];
@@ -352,6 +352,38 @@ export const boatDB = {
           modifiedClientIds.add(c.id);
         }
       });
+    }
+
+    // Reconciliar cotas do Mexicano em memória caso totalCotas tenha mudado
+    const mexClient = memoryClients.find(c => c.id === 'cli_112' || c.nome === 'MEXICANO LANCHAS LTDA');
+    if (mexClient && Array.isArray(mexClient.embarcacoes)) {
+      const realOccupied = new Set<string>();
+      memoryClients.forEach(c => {
+        if (c.id !== mexClient.id && c.status !== 'inativo') {
+          (c.embarcacoes || []).forEach(eb => {
+            if (eb && eb.embarcacaoId === id && eb.cota) {
+              const code = parseExplicitCotaCode(eb.cota);
+              if (code) realOccupied.add(code);
+            }
+          });
+          if (c.embarcacaoId === id && c.cota) {
+            const code = parseExplicitCotaCode(c.cota);
+            if (code) realOccupied.add(code);
+          }
+        }
+      });
+
+      const otherBoatEntries = mexClient.embarcacoes.filter(eb => eb.embarcacaoId !== id);
+      const newBoatEntries: Array<{ embarcacaoId: string; cota: string }> = [];
+
+      for (let i = 1; i <= updatedBoat.totalCotas; i++) {
+        const code = `C${i}`;
+        if (!realOccupied.has(code)) {
+          newBoatEntries.push({ embarcacaoId: id, cota: code });
+        }
+      }
+
+      mexClient.embarcacoes = [...otherBoatEntries, ...newBoatEntries];
     }
 
     saveToRemoteDB('boats', 'update', updatedBoat);

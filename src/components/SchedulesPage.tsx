@@ -3,6 +3,8 @@ import { reservationDB, boatDB, clientDB, syncWithRemote } from '../db';
 import { io } from 'socket.io-client';
 import { Reserva, Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
+import { isInternalMexicano, MEXICANO_INTERNAL_CLIENT_ID, MEXICANO_INTERNAL_DISPLAY_NAME } from '../utils/constants';
+import { getBoatEstoqueResumo } from '../utils/cotaUtils';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
 import {
   createGoogleCalendarEvent,
@@ -1186,22 +1188,54 @@ function DayAgendaSection({
 
                       {/* Cotista */}
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-[#EEF2FF] text-[#3758F9] font-bold text-xs flex items-center justify-center shrink-0">
-                            {initials}
-                          </div>
-                          <div>
-                            <span className="font-semibold text-[#1F2937] block">{ownerName}</span>
-                            {client?.telefone && (
-                              <span className="text-xs text-[#6B7280]">{client.telefone}</span>
-                            )}
-                          </div>
-                          {client?.statusFinanceiro === 'inadimplente' && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF2F2] text-[#DC2626] border border-[#EF4444]/30">
-                              Inadimplente
-                            </span>
-                          )}
-                        </div>
+                        {(() => {
+                          const isCommercial = isInternalMexicano(res.clienteId) || isInternalMexicano(client?.nome) || res.origem === 'comercial';
+                          if (isCommercial) {
+                            return (
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 font-bold text-xs flex items-center justify-center shrink-0 border border-amber-300">
+                                  ⚓
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold text-amber-950 block">El Mexicano</span>
+                                    <span className="px-2 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                      {res.finalidadeComercial === 'sea_trial'
+                                        ? 'Test Drive'
+                                        : res.finalidadeComercial === 'evento'
+                                        ? 'Evento'
+                                        : res.finalidadeComercial === 'midia'
+                                        ? 'Mídia / Foto'
+                                        : 'Comercial'}
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] text-amber-700/80 font-medium">
+                                    {res.cotaUtilizada ? `Fração ${res.cotaUtilizada} • Estoque` : 'Uso Comercial de Estoque'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-[#EEF2FF] text-[#3758F9] font-bold text-xs flex items-center justify-center shrink-0">
+                                {initials}
+                              </div>
+                              <div>
+                                <span className="font-semibold text-[#1F2937] block">{ownerName}</span>
+                                {client?.telefone && (
+                                  <span className="text-xs text-[#6B7280]">{client.telefone}</span>
+                                )}
+                              </div>
+                              {client?.statusFinanceiro === 'inadimplente' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF2F2] text-[#DC2626] border border-[#EF4444]/30">
+                                  Inadimplente
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Status Píer / Marina */}
@@ -1304,15 +1338,47 @@ function DayAgendaSection({
                   </div>
                 </div>
 
-                <div className="bg-[#F9FAFB] rounded-lg p-3 text-xs flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-[#EEF2FF] text-[#3758F9] font-bold text-[10px] flex items-center justify-center">
-                      {initials}
+                {(() => {
+                  const isCommercial = isInternalMexicano(res.clienteId) || isInternalMexicano(client?.nome) || res.origem === 'comercial';
+                  if (isCommercial) {
+                    return (
+                      <div className="bg-amber-50/70 border border-amber-200/60 rounded-lg p-3 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-amber-200 text-amber-900 font-bold text-[10px] flex items-center justify-center">
+                            ⚓
+                          </div>
+                          <div>
+                            <span className="font-semibold text-amber-950">El Mexicano (Comercial)</span>
+                            <span className="ml-1.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-200/80 text-amber-900">
+                              {res.finalidadeComercial === 'sea_trial'
+                                ? 'Test Drive'
+                                : res.finalidadeComercial === 'evento'
+                                ? 'Evento'
+                                : res.finalidadeComercial === 'midia'
+                                ? 'Mídia'
+                                : 'Comercial'}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[11px] font-medium text-amber-800">
+                          {res.cotaUtilizada ? `Cota ${res.cotaUtilizada}` : 'Estoque'}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="bg-[#F9FAFB] rounded-lg p-3 text-xs flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-[#EEF2FF] text-[#3758F9] font-bold text-[10px] flex items-center justify-center">
+                          {initials}
+                        </div>
+                        <span className="font-semibold text-[#1F2937]">{ownerName}</span>
+                      </div>
+                      {client?.telefone && <span className="text-[#6B7280]">{client.telefone}</span>}
                     </div>
-                    <span className="font-semibold text-[#1F2937]">{ownerName}</span>
-                  </div>
-                  {client?.telefone && <span className="text-[#6B7280]">{client.telefone}</span>}
-                </div>
+                  );
+                })()}
 
                 {res.observações && (
                   <p className="text-xs text-[#6B7280] italic bg-[#FFFBEB] p-2 rounded border border-[#F59E0B]/20">
@@ -1376,6 +1442,8 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
   const [distinctDates, setDistinctDates] = useState<string[]>([]);
   const [distinctInput, setDistinctInput] = useState(defaultDate);
   const [observacoes, setObservacoes] = useState('');
+  const [finalidadeComercial, setFinalidadeComercial] = useState<'sea_trial' | 'evento' | 'midia' | 'institucional'>('sea_trial');
+  const [cotaUtilizada, setCotaUtilizada] = useState<string>('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -1391,15 +1459,48 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
   } | null>(null);
 
   // Available cotistas based on chosen boat
+  const boatStockResumo = useMemo(() => {
+    if (!selectedBoatId) return null;
+    const boat = boats.find(b => b.id === selectedBoatId);
+    return getBoatEstoqueResumo(selectedBoatId, clientDB.getAll(), boat);
+  }, [selectedBoatId, boats]);
+
   const availableOwners = useMemo(() => {
     if (!selectedBoatId) return [];
     const boat = boats.find(b => b.id === selectedBoatId);
     if (!boat) return [];
-    return boat.donos
-      .map(id => clientDB.getById(id))
-      .filter((c): c is Cliente => c !== undefined && c !== null)
-      .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [selectedBoatId, boats]);
+
+    const ownersMap = new Map<string, Cliente>();
+
+    if (Array.isArray(boat.donos)) {
+      boat.donos.forEach(id => {
+        const c = clientDB.getById(id);
+        if (c) ownersMap.set(c.id, c);
+      });
+    }
+
+    // Se houver cotas disponíveis em estoque do grupo Mexicano, garante a presença da entidade interna
+    const hasStock = boatStockResumo ? boatStockResumo.cotasDisponiveis > 0 : true;
+    if (hasStock && !ownersMap.has(MEXICANO_INTERNAL_CLIENT_ID)) {
+      const mexClient = clientDB.getById(MEXICANO_INTERNAL_CLIENT_ID) || {
+        id: MEXICANO_INTERNAL_CLIENT_ID,
+        nome: MEXICANO_INTERNAL_DISPLAY_NAME,
+        status: 'ativo' as const,
+        dataCadastro: new Date().toISOString(),
+        embarcacaoId: selectedBoatId,
+        cota: boatStockResumo?.listaDisponiveis[0] || 'C1'
+      };
+      ownersMap.set(MEXICANO_INTERNAL_CLIENT_ID, mexClient as Cliente);
+    }
+
+    return Array.from(ownersMap.values()).sort((a, b) => {
+      const aIsMex = isInternalMexicano(a.id) || isInternalMexicano(a.nome);
+      const bIsMex = isInternalMexicano(b.id) || isInternalMexicano(b.nome);
+      if (aIsMex && !bIsMex) return -1;
+      if (!aIsMex && bIsMex) return 1;
+      return a.nome.localeCompare(b.nome);
+    });
+  }, [selectedBoatId, boats, boatStockResumo]);
 
   // Options for SearchableSelect
   const boatOptions: SelectOption[] = useMemo(() => {
@@ -1418,8 +1519,24 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
 
   const clientOptions: SelectOption[] = useMemo(() => {
     return availableOwners.map(c => {
+      const isMex = isInternalMexicano(c.id) || isInternalMexicano(c.nome);
       const isInactive = c.status === 'inativo';
       const isOverdue = c.statusFinanceiro === 'inadimplente';
+
+      if (isMex) {
+        const disponiveisCount = boatStockResumo?.cotasDisponiveis || 1;
+        return {
+          value: c.id,
+          label: `⚓ ${MEXICANO_INTERNAL_DISPLAY_NAME} (Uso Comercial / Test Drive)`,
+          sublabel: `Estoque Comercial • ${disponiveisCount} cota(s) disponível(is) para agendamento`,
+          badge: (
+            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 text-amber-800 border border-amber-300">
+              COMERCIAL
+            </span>
+          )
+        };
+      }
+
       return {
         value: c.id,
         label: c.nome,
@@ -1441,7 +1558,7 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
         )
       };
     });
-  }, [availableOwners]);
+  }, [availableOwners, boatStockResumo]);
 
   const handleAddDistinctDate = () => {
     if (!distinctInput) return;
@@ -1538,14 +1655,30 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
           console.warn('Google Calendar creation warning:', gErr);
         }
 
+        const isComercial = isInternalMexicano(selectedClientId) || isInternalMexicano(client.nome);
+        const finalObs = isComercial
+          ? `[COMERCIAL: ${
+              finalidadeComercial === 'sea_trial'
+                ? 'Test Drive de Venda'
+                : finalidadeComercial === 'evento'
+                ? 'Evento Comercial'
+                : finalidadeComercial === 'midia'
+                ? 'Captação de Mídia'
+                : 'Uso Institucional'
+            }${cotaUtilizada ? ` • Cota ${cotaUtilizada}` : ''}] ${observacoes}`.trim()
+          : observacoes;
+
         // Save in local DB
         reservationDB.create({
           embarcacaoId: selectedBoatId,
           clienteId: selectedClientId,
           data: d,
           periodo: 'dia_inteiro',
-          observações: observacoes,
+          observações: finalObs,
           status: 'agendado',
+          origem: isComercial ? 'comercial' : 'cota',
+          finalidadeComercial: isComercial ? finalidadeComercial : undefined,
+          cotaUtilizada: isComercial ? (cotaUtilizada || boatStockResumo?.listaDisponiveis[0] || 'C1') : undefined,
           googleEventId
         });
       }
@@ -1773,6 +1906,58 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
                 <div>
                   <span className="font-bold uppercase tracking-wider block text-[10px] text-slate-700">Cadastro Inativo</span>
                   <span className="leading-tight text-slate-600">Este cliente está com o cadastro inativo. Reative-o na tela de Clientes antes de prosseguir.</span>
+                </div>
+              </div>
+            )}
+
+            {/* PAINEL DE DIREITO DE USO COMERCIAL (EL MEXICANO) */}
+            {selectedClientId && (isInternalMexicano(selectedClientId) || isInternalMexicano(availableOwners.find(o => o.id === selectedClientId)?.nome)) && (
+              <div className="mt-2.5 p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/90 space-y-3 animate-in fade-in">
+                <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                  <Anchor className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Direito de Uso Comercial — Agendamento de Fração em Estoque</span>
+                </div>
+                <p className="text-[11px] text-amber-850 leading-relaxed text-stone-600">
+                  Como a <strong>El Mexicano</strong> detém a titularidade das cotas não vendidas, este agendamento reserva uma fração do estoque para demonstrações, respeitando a agenda dos cotistas reais e manutenções.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-amber-900 block mb-1">
+                      Finalidade do Uso *
+                    </label>
+                    <select
+                      value={finalidadeComercial}
+                      onChange={(e) => setFinalidadeComercial(e.target.value as any)}
+                      className="w-full bg-white border border-amber-300 rounded-lg px-3 py-2 text-xs font-semibold text-stone-800 focus:border-amber-500 outline-none"
+                    >
+                      <option value="sea_trial">Test Drive de Venda</option>
+                      <option value="evento">Evento Comercial / Demonstração</option>
+                      <option value="midia">Captação de Mídia / Marketing</option>
+                      <option value="institucional">Uso Institucional Mexicano</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-amber-900 block mb-1">
+                      Cota de Estoque Utilizada
+                    </label>
+                    <select
+                      value={cotaUtilizada}
+                      onChange={(e) => setCotaUtilizada(e.target.value)}
+                      className="w-full bg-white border border-amber-300 rounded-lg px-3 py-2 text-xs font-semibold text-stone-800 focus:border-amber-500 outline-none"
+                    >
+                      {boatStockResumo?.listaDisponiveis && boatStockResumo.listaDisponiveis.length > 0 ? (
+                        boatStockResumo.listaDisponiveis.map(cCode => (
+                          <option key={cCode} value={cCode}>
+                            {cCode} (Estoque El Mexicano)
+                          </option>
+                        ))
+                      ) : (
+                        <option value="C1">C1 (Estoque El Mexicano)</option>
+                      )}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}

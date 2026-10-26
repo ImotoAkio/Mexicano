@@ -43,29 +43,36 @@ import {
   ActiveDayCard,
   ConversionGaugeCard,
   AiAssistantCard,
+  SellerCommissionFloatingWidget,
 } from './ComercialWidgets';
 import ComercialClientesPage from './ComercialClientesPage';
+import ComercialAtivosPage from './ComercialAtivosPage';
 import ComercialEmbarcacoesPage from './ComercialEmbarcacoesPage';
 import ComercialContratosPage from './ComercialContratosPage';
 import ComercialVendasPage from './ComercialVendasPage';
+import ComercialVendaDrawer from './ComercialVendaDrawer';
 import ComercialComissoesPage from './ComercialComissoesPage';
+import ComercialCrmPage from './ComercialCrmPage';
+import ComercialPropostaDrawer from './ComercialPropostaDrawer';
+import ComercialCatalogoModal from './ComercialCatalogoModal';
+import ComercialSeaTrialModal from './ComercialSeaTrialModal';
 import ClientProfileModal from '../ClientProfileModal';
 import ComercialContratoViewerModal from './ComercialContratoViewerModal';
 import { clientDB, boatDB, onDbUpdate } from '../../db';
-import { Cliente, Embarcacao } from '../../types';
+import { Cliente, Embarcacao, VendaComercial, LeadComercial } from '../../types';
 
 interface ComercialDashboardProps {
   onLogout?: () => void;
   operadorNome?: string;
 }
 
-type SettingsTab = 'perfil' | 'metas' | 'notificacoes' | 'interface' | 'atalhos';
+type SettingsTab = 'perfil' | 'metas' | 'notificacoes' | 'interface' | 'atalhos' | 'regras';
 
 export default function ComercialDashboard({ onLogout, operadorNome }: ComercialDashboardProps) {
   const [settings, updateSettings] = useComercialSettings();
 
   const [activeNav, setActiveNav] = useState<string>(() => {
-    return localStorage.getItem('comercial_active_nav') || 'vendas';
+    return localStorage.getItem('comercial_active_nav') || 'dashboard';
   });
   const [widgetDrawerOpen, setWidgetDrawerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -81,6 +88,22 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
   // Modais rápidos acionados pela Busca Rápida (Ctrl + K)
   const [quickProfileClient, setQuickProfileClient] = useState<Cliente | null>(null);
   const [quickContractClient, setQuickContractClient] = useState<Cliente | null>(null);
+
+  // Modais do Fluxo Comercial (Propostas, Test Drive, Catálogo, Vendas)
+  const [propostaDrawerOpen, setPropostaDrawerOpen] = useState(false);
+  const [propostaLead, setPropostaLead] = useState<LeadComercial | null>(null);
+  const [propostaBoatId, setPropostaBoatId] = useState<string | null>(null);
+  const [propostaCota, setPropostaCota] = useState<string | null>(null);
+
+  const [vendaDrawerOpen, setVendaDrawerOpen] = useState(false);
+  const [vendaBoatId, setVendaBoatId] = useState<string | null>(null);
+  const [vendaClientId, setVendaClientId] = useState<string | null>(null);
+
+  const [seaTrialModalOpen, setSeaTrialModalOpen] = useState(false);
+  const [seaTrialLead, setSeaTrialLead] = useState<LeadComercial | null>(null);
+  const [seaTrialBoatId, setSeaTrialBoatId] = useState<string | null>(null);
+
+  const [catalogoModalOpen, setCatalogoModalOpen] = useState(false);
 
   // Central de Notificações
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -108,14 +131,51 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
   // Dados locais para Busca Rápida (Ctrl+K) e Notificações
   const [allClients, setAllClients] = useState<Cliente[]>(() => clientDB.getAll());
   const [allBoats, setAllBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
+  const [allVendas, setAllVendas] = useState<VendaComercial[]>([]);
+
+  // Filtro de período do Dashboard
+  type PeriodFilterType = '30d' | 'mes_atual' | 'mes_anterior' | 'trimestre' | 'ano';
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilterType>('30d');
+  const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false);
+
+  const periodOptions: Record<PeriodFilterType, { label: string; range: string }> = {
+    '30d': { label: 'Últimos 30 dias', range: '23 set 2026 – 22 out 2026' },
+    'mes_atual': { label: 'Este Mês (Outubro 2026)', range: '01 out 2026 – 31 out 2026' },
+    'mes_anterior': { label: 'Mês Anterior (Setembro 2026)', range: '01 set 2026 – 30 set 2026' },
+    'trimestre': { label: 'Último Trimestre', range: '01 ago 2026 – 31 out 2026' },
+    'ano': { label: 'Ano de 2026', range: '01 jan 2026 – 31 dez 2026' },
+  };
+
+  const currentPeriod = periodOptions[periodFilter];
+
+  const fetchDashboardVendas = async () => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch('/api/comercial/vendas', { credentials: 'include', headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.vendas)) {
+          setAllVendas(data.vendas);
+        }
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     const syncLocal = () => {
       setAllClients([...clientDB.getAll()]);
       setAllBoats([...boatDB.getAll()]);
+      fetchDashboardVendas();
     };
     syncLocal();
-    return onDbUpdate(syncLocal);
+    fetchDashboardVendas();
+    window.addEventListener('comercial-venda-updated', fetchDashboardVendas);
+    const unsub = onDbUpdate(syncLocal);
+    return () => {
+      unsub();
+      window.removeEventListener('comercial-venda-updated', fetchDashboardVendas);
+    };
   }, []);
 
   const openSettingsOnTab = (tab: SettingsTab = 'perfil') => {
@@ -307,6 +367,10 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
           e.preventDefault();
           handleNavSelect('clientes');
           showToast('Atalho Alt + C → Clientes');
+        } else if (key === 'a') {
+          e.preventDefault();
+          handleNavSelect('ativos');
+          showToast('Atalho Alt + A → Ativos & Cotas');
         } else if (key === 'e') {
           e.preventDefault();
           handleNavSelect('embarcacoes');
@@ -369,10 +433,11 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
 
     const navActions = [
       { id: 'nav-dashboard', label: 'Ir para Dashboard', shortcut: 'Alt + D', nav: 'dashboard' },
+      { id: 'nav-ativos', label: 'Ir para Ativos & Cotas (Estoque Mexicano)', shortcut: 'Alt + A', nav: 'ativos' },
+      { id: 'nav-embarcacoes', label: 'Ir para Frota de Embarcações (Gestão)', shortcut: 'Alt + E', nav: 'embarcacoes' },
       { id: 'nav-vendas', label: 'Ir para Lançamento de Vendas', shortcut: 'Alt + V', nav: 'vendas' },
       { id: 'nav-comissoes', label: 'Ir para Motor de Comissões & Bonificações', shortcut: 'Alt + M', nav: 'comissoes' },
       { id: 'nav-clientes', label: 'Ir para Cadastro de Clientes', shortcut: 'Alt + C', nav: 'clientes' },
-      { id: 'nav-embarcacoes', label: 'Ir para Frota de Embarcações', shortcut: 'Alt + E', nav: 'embarcacoes' },
       { id: 'nav-contratos', label: 'Ir para Contratos & Documentos', shortcut: 'Alt + T', nav: 'contratos' },
       { id: 'nav-config', label: 'Abrir Configurações do Sistema', shortcut: '', nav: 'config' },
     ].filter(a => !q || a.label.toLowerCase().includes(q));
@@ -398,6 +463,7 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
           onSelect={handleNavSelect}
           collapsed={sidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
+          operadorNome={operadorNome}
         />
       </div>
 
@@ -415,6 +481,7 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
               setMobileNavOpen(false);
             }}
             onClose={() => setMobileNavOpen(false)}
+            operadorNome={operadorNome}
           />
         </div>
       </div>
@@ -668,40 +735,146 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
         {/* Content */}
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-[1400px] mx-auto p-4 lg:p-6 space-y-4">
-            {activeNav === 'vendas' || activeNav === 'recebimentos' ? (
+            {activeNav === 'crm' ? (
+              <ComercialCrmPage
+                operadorNome={operadorNome}
+                onOpenProposta={(lead, boatId) => {
+                  setPropostaLead(lead || null);
+                  setPropostaBoatId(boatId || null);
+                  setPropostaDrawerOpen(true);
+                }}
+                onOpenTestDrive={(lead, boatId) => {
+                  setSeaTrialLead(lead || null);
+                  setSeaTrialBoatId(boatId || null);
+                  setSeaTrialModalOpen(true);
+                }}
+                onOpenSeaTrial={(lead, boatId) => {
+                  setSeaTrialLead(lead || null);
+                  setSeaTrialBoatId(boatId || null);
+                  setSeaTrialModalOpen(true);
+                }}
+              />
+            ) : activeNav === 'ativos' ? (
+              <ComercialAtivosPage
+                onOpenProposta={(lead, boatId, cota) => {
+                  setPropostaLead(lead || null);
+                  setPropostaBoatId(boatId || null);
+                  setPropostaCota(cota || null);
+                  setPropostaDrawerOpen(true);
+                }}
+                onOpenVenda={(boatId, cota, clienteId) => {
+                  setVendaBoatId(boatId || null);
+                  setVendaClientId(clienteId || null);
+                  setVendaDrawerOpen(true);
+                }}
+                onOpenTestDrive={(lead, boatId) => {
+                  setSeaTrialLead(lead || null);
+                  setSeaTrialBoatId(boatId || null);
+                  setSeaTrialModalOpen(true);
+                }}
+                onOpenSeaTrial={(lead, boatId) => {
+                  setSeaTrialLead(lead || null);
+                  setSeaTrialBoatId(boatId || null);
+                  setSeaTrialModalOpen(true);
+                }}
+                onOpenCatalogo={() => setActiveNav('catalogo')}
+                onNavigateToEmbarcacoes={() => setActiveNav('embarcacoes')}
+              />
+            ) : activeNav === 'vendas' || activeNav === 'recebimentos' ? (
               <ComercialVendasPage />
+            ) : activeNav === 'catalogo' ? (
+              <ComercialCatalogoModal
+                isOpen={true}
+                onClose={() => setActiveNav('dashboard')}
+                vendedorNome={operadorNome}
+              />
             ) : activeNav === 'comissoes' ? (
               <ComercialComissoesPage />
             ) : activeNav === 'clientes' ? (
               <ComercialClientesPage />
             ) : activeNav === 'embarcacoes' ? (
-              <ComercialEmbarcacoesPage />
+              <ComercialEmbarcacoesPage
+                onOpenProposta={(lead, boatId, cota) => {
+                  setPropostaLead(lead || null);
+                  setPropostaBoatId(boatId || null);
+                  setPropostaCota(cota || null);
+                  setPropostaDrawerOpen(true);
+                }}
+                onOpenVenda={(boatId, cota, clienteId) => {
+                  setVendaBoatId(boatId || null);
+                  setVendaClientId(clienteId || null);
+                  setVendaDrawerOpen(true);
+                }}
+                onOpenSeaTrial={(lead, boatId) => {
+                  setSeaTrialLead(lead || null);
+                  setSeaTrialBoatId(boatId || null);
+                  setSeaTrialModalOpen(true);
+                }}
+              />
             ) : activeNav === 'contratos' ? (
               <ComercialContratosPage />
             ) : activeNav === 'dashboard' ? (
               <>
-                {/* Page header */}
+                {/* Page header com Seletor Interativo de Período */}
                 <div className="flex flex-wrap items-center gap-3 justify-between">
-                  <h1 className="text-[22px] font-semibold tracking-tight text-stone-900">Dashboard</h1>
+                  <div>
+                    <h1 className="text-[22px] font-bold tracking-tight text-stone-900">
+                      Dashboard Comercial
+                    </h1>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      Visão geral de performance, metas financeiras e estoque de cotas em tempo real
+                    </p>
+                  </div>
+
                   <div className="flex flex-wrap items-center gap-2">
-                    <button className="h-9 px-3 rounded-lg bg-white border border-stone-200 flex items-center gap-2 text-[12px] font-medium text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer">
+                    <div className="h-9 px-3 rounded-xl bg-white border border-stone-200 flex items-center gap-2 text-[12px] font-medium text-stone-700 shadow-2xs">
                       <Calendar className="w-3.5 h-3.5 text-stone-500" />
-                      <span className="tabular-nums">15 set 2026 – 14 out 2026</span>
-                    </button>
-                    <button className="h-9 px-3 rounded-lg bg-white border border-stone-200 flex items-center gap-1.5 text-[12px] font-medium text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer">
-                      Últimos 30 dias
-                      <NavArrowDown className="w-3.5 h-3.5 text-stone-400" />
-                    </button>
+                      <span className="tabular-nums font-semibold">{currentPeriod.range}</span>
+                    </div>
+
+                    {/* Dropdown de Período */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
+                        className="h-9 px-3 rounded-xl bg-white border border-stone-200 flex items-center gap-1.5 text-[12px] font-semibold text-stone-800 hover:bg-stone-50 transition-colors cursor-pointer shadow-2xs"
+                      >
+                        {currentPeriod.label}
+                        <NavArrowDown className="w-3.5 h-3.5 text-stone-400" />
+                      </button>
+
+                      {periodDropdownOpen && (
+                        <div className="absolute right-0 mt-1.5 w-56 rounded-2xl bg-white border border-stone-200 shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100">
+                          {(Object.keys(periodOptions) as PeriodFilterType[]).map(key => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => {
+                                setPeriodFilter(key);
+                                setPeriodDropdownOpen(false);
+                              }}
+                              className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between hover:bg-stone-50 transition-colors cursor-pointer ${
+                                periodFilter === key ? 'font-bold text-[#2B1120] bg-stone-100/60' : 'text-stone-700'
+                              }`}
+                            >
+                              <span>{periodOptions[key].label}</span>
+                              {periodFilter === key && <span className="w-1.5 h-1.5 rounded-full bg-[#2B1120]" />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <button
                       onClick={() => setWidgetDrawerOpen(true)}
-                      className="h-9 px-3 rounded-lg bg-white border border-stone-200 flex items-center gap-1.5 text-[12px] font-medium text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer"
+                      className="h-9 px-3 rounded-xl bg-white border border-stone-200 flex items-center gap-1.5 text-[12px] font-medium text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer shadow-2xs"
                     >
                       <ViewGrid className="w-3.5 h-3.5 text-stone-500" />
                       Adicionar widget
                     </button>
                     <button
                       onClick={() => openSettingsOnTab('metas')}
-                      className="h-9 px-3.5 rounded-lg bg-mx-ink hover:bg-mx-ink-700 text-white flex items-center gap-1.5 text-[12px] font-semibold shadow-[0_4px_12px_-4px_rgba(43,17,32,0.6)] transition-colors cursor-pointer"
+                      className="h-9 px-3.5 rounded-xl bg-[#2B1120] hover:bg-[#3e1b30] text-white flex items-center gap-1.5 text-[12px] font-bold shadow-[0_4px_12px_-4px_rgba(43,17,32,0.6)] transition-colors cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
                       Metas & Exportar
@@ -709,12 +882,14 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
                   </div>
                 </div>
 
-                <KpiRow />
+                {/* 1. KPIs de Topo com Comparativo e Barra de Meta */}
+                <KpiRow periodLabel={currentPeriod.label} vendas={allVendas} />
 
+                {/* 2. Grid Central: Gráfico de Receita & VGV, Estoque de Cotas e Ranking de Embarcações */}
                 <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
                   <div className="space-y-4 min-w-0">
-                    <RevenueCard />
-                    <TopPlansCard />
+                    <RevenueCard vendas={allVendas} operadorNome={operadorNome} />
+                    <TopPlansCard vendas={allVendas} onSelectBoat={() => setActiveNav('embarcacoes')} />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4 content-start">
                     <ActiveDayCard />
@@ -724,6 +899,13 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
                     </div>
                   </div>
                 </div>
+
+                {/* 3. Widget Flutuante / Fixo de Comissão do Vendedor */}
+                <SellerCommissionFloatingWidget
+                  operadorNome={operadorNome}
+                  vendas={allVendas}
+                  onOpenComissoes={() => handleNavSelect('comissoes')}
+                />
               </>
             ) : (
               <div className="bg-white rounded-2xl border border-stone-200/80 p-12 text-center max-w-lg mx-auto mt-12 shadow-xs">
@@ -980,6 +1162,51 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
             handleNavSelect(target);
           }
         }}
+      />
+
+      {/* Drawer de Proposta Comercial */}
+      <ComercialPropostaDrawer
+        isOpen={propostaDrawerOpen}
+        onClose={() => {
+          setPropostaDrawerOpen(false);
+          setPropostaCota(null);
+        }}
+        initialLead={propostaLead}
+        initialBoatId={propostaBoatId}
+        initialCota={propostaCota}
+      />
+
+      {/* Drawer de Venda Direta de Cota */}
+      <ComercialVendaDrawer
+        open={vendaDrawerOpen}
+        onClose={() => {
+          setVendaDrawerOpen(false);
+          setVendaBoatId(null);
+          setVendaClientId(null);
+        }}
+        preselectedBoatId={vendaBoatId}
+        preselectedClientId={vendaClientId}
+        onSuccess={() => {
+          setVendaDrawerOpen(false);
+          fetchDashboardVendas();
+        }}
+      />
+
+      {/* Modal de Test Drive e Check-in */}
+      <ComercialSeaTrialModal
+        isOpen={seaTrialModalOpen}
+        onClose={() => setSeaTrialModalOpen(false)}
+        initialLead={seaTrialLead}
+        initialBoatId={seaTrialBoatId}
+        providedBoats={allBoats}
+        onSuccess={() => setSeaTrialModalOpen(false)}
+      />
+
+      {/* Modal de Catálogo Digital e Captação */}
+      <ComercialCatalogoModal
+        isOpen={catalogoModalOpen}
+        onClose={() => setCatalogoModalOpen(false)}
+        vendedorNome={operadorNome}
       />
     </div>
   );

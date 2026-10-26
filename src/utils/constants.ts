@@ -67,6 +67,35 @@ export const USER_ROLES = {
 
 export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
 
+// ─── Entidade Interna El Mexicano (Cotista Padrão / Estoque Comercial) ────────
+export const MEXICANO_INTERNAL_CLIENT_ID = 'cli_112';
+export const DEFAULT_MEXICANO_CLIENT_ID = MEXICANO_INTERNAL_CLIENT_ID;
+export const MEXICANO_INTERNAL_CLIENT_NAME = 'MEXICANO LANCHAS LTDA';
+export const MEXICANO_INTERNAL_DISPLAY_NAME = 'El Mexicano';
+
+/**
+ * Verifica se um determinado ID ou nome refere-se à entidade interna El Mexicano.
+ */
+export function isInternalMexicano(clienteIdOrNome?: string | null): boolean {
+  if (!clienteIdOrNome) return false;
+  const s = String(clienteIdOrNome).trim().toLowerCase();
+  return (
+    s === 'cli_112' ||
+    s === 'cli_mexicano_internal' ||
+    s === 'mexicano lanchas ltda' ||
+    s === 'mexicano lanchas' ||
+    s === 'el mexicano' ||
+    s === 'mexicano' ||
+    s.includes('mexicano lanchas')
+  );
+}
+
+export const isMexicanoClient = (clientOrId?: any): boolean => {
+  if (!clientOrId) return false;
+  if (typeof clientOrId === 'string') return isInternalMexicano(clientOrId);
+  return isInternalMexicano(clientOrId.id) || isInternalMexicano(clientOrId.nome);
+};
+
 // ─── Formatação de Nomes de Embarcações ─────────────────────────────────
 /**
  * Formata o nome da embarcação para exibição comercial e em documentos.

@@ -280,12 +280,15 @@ router.post("/fila/adicionar-imediato", requireAdminAuth, async (req, res) => {
       modeloAvulso,
       tipoAvulso = "lancha",
       previsaoSaida,
+      previsaoChegada,
       combustivelInicial,
       litrosAbastecerPrevio,
       marinheiroPiloto,
       destino,
       pessoasABordo,
-      observacoesDescida
+      acessoriosSolicitados,
+      observacoesDescida,
+      observacoes
     } = req.body;
 
     const todayStr = new Date().toISOString().split("T")[0];
@@ -319,7 +322,7 @@ router.post("/fila/adicionar-imediato", requireAdminAuth, async (req, res) => {
       data: todayStr,
       periodo: "dia_inteiro",
       previsaoSaida: previsaoSaida || new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-      previsaoChegada: null,
+      previsaoChegada: previsaoChegada || null,
       status: "confirmado",
       statusMarina: "agendado",
       origem,
@@ -332,8 +335,10 @@ router.post("/fila/adicionar-imediato", requireAdminAuth, async (req, res) => {
       litrosAbastecerPrevio: litrosAbastecerPrevio || null,
       marinheiroPiloto: marinheiroPiloto || null,
       destino: destino || null,
-      pessoasABordo: pessoasABordo || null,
-      observacoesDescida: observacoesDescida || null,
+      pessoasABordo: pessoasABordo ? Number(pessoasABordo) : null,
+      acessoriosSolicitados: acessoriosSolicitados || null,
+      observacoesDescida: observacoesDescida || observacoes || null,
+      observacoes: observacoes || observacoesDescida || null,
       createdAt: new Date().toISOString()
     };
 
@@ -348,7 +353,13 @@ router.post("/fila/adicionar-imediato", requireAdminAuth, async (req, res) => {
       embarcacaoNome: boat?.nome || newRes.modeloAvulso || "Embarcação Avulsa",
       embarcacaoVaga: boat?.vaga || null,
       embarcacaoTipo: boat?.tipo || newRes.tipoAvulso || "lancha",
-      clienteNome: client?.nome || newRes.nomeAvulso || "Visitante Avulso"
+      embarcacaoDocumento: boat?.inscricaoCapitania || boat?.documento || null,
+      clienteNome: client?.nome || newRes.nomeAvulso || "Visitante Avulso",
+      clienteTelefone: client?.telefone || newRes.telefoneAvulso || null,
+      clienteCpf: client?.cpf || null,
+      clienteEmail: client?.email || null,
+      embarcacao: boat || null,
+      cliente: client || null
     };
 
     req.app.locals.io?.emit("marina_update", { action: "new", reservation: enrichedRes });

@@ -670,10 +670,19 @@ export default function ComercialFolderDetailsModal({
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
                             type="button"
-                            onClick={() => onOpenViewer(activeClient, activeContractSubtype, 'anexo')}
-                            className="px-2.5 py-1 rounded-lg border border-stone-200 text-stone-700 hover:bg-stone-50 text-[11px] font-semibold transition-colors cursor-pointer"
+                            onClick={() => window.open(currentFileUrl, '_blank', 'noopener,noreferrer')}
+                            className="px-2.5 py-1 rounded-lg bg-stone-900 text-white hover:bg-stone-800 text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                            title="Abrir documento assinado em uma nova aba"
                           >
-                            Ver Anexo
+                            <ExternalLink className="w-3 h-3 text-white" />
+                            <span>Abrir em Nova Aba</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onOpenViewer(activeClient, activeContractSubtype, 'anexo')}
+                            className="px-2 py-1 rounded-lg border border-stone-200 text-stone-700 hover:bg-stone-50 text-[11px] font-medium transition-colors cursor-pointer"
+                          >
+                            Visualizador
                           </button>
                           <button
                             type="button"

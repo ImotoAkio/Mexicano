@@ -3,11 +3,13 @@ import {
   Calendar, List, Search, ChevronLeft, ChevronRight, Filter,
   CheckCircle2, XCircle, HelpCircle, Ship, User, CalendarDays,
   Eye, ChevronDown, X, Plus, Anchor, Clock, ArrowDownCircle,
-  Droplets, Edit2, Trash2, Sparkles, AlertCircle, RefreshCw
+  Droplets, Edit2, Trash2, Sparkles, AlertCircle, RefreshCw,
+  Compass, MapPin
 } from 'lucide-react';
 import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
 import MarinaAgendamentoModal from './MarinaAgendamentoModal';
+import PlanoNavegacaoModal from './PlanoNavegacaoModal';
 import { Embarcacao, Cliente, Reserva } from '../types';
 import { boatDB, clientDB, reservationDB } from '../db';
 
@@ -31,6 +33,7 @@ export default function MarinaAgendamentosView() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [initialDateForModal, setInitialDateForModal] = useState<string | undefined>(undefined);
+  const [selectedPlanoReserva, setSelectedPlanoReserva] = useState<any | null>(null);
 
   // Day Drawer in Calendar view
   const [selectedDayInfo, setSelectedDayInfo] = useState<{ dayStr: string; reservas: any[] } | null>(null);
@@ -538,6 +541,13 @@ export default function MarinaAgendamentosView() {
                           <span>Descida: <b>{res.previsaoSaida || '09:00'}</b></span>
                           {res.previsaoChegada && <span>• Retorno: <b>{res.previsaoChegada}</b></span>}
                         </div>
+                        {res.destino && (
+                          <div className="flex items-center gap-1 text-slate-700 font-medium truncate text-[11px]">
+                            <MapPin className="w-3 h-3 shrink-0 text-slate-400" />
+                            <span className="truncate">{res.destino}</span>
+                            {res.pessoasABordo && <span className="text-slate-400 font-normal">({res.pessoasABordo} pess.)</span>}
+                          </div>
+                        )}
                         {res.combustivelInicial && res.combustivelInicial !== 'descer_como_esta' && (
                           <div className="flex items-center gap-1.5 text-amber-700 font-semibold">
                             <Droplets className="w-3.5 h-3.5 shrink-0" />
@@ -549,24 +559,35 @@ export default function MarinaAgendamentosView() {
                       </div>
 
                       {/* Card actions */}
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5">
                         <button
-                          onClick={() => {
-                            setEditingItem(res);
-                            setIsModalOpen(true);
-                          }}
-                          className="p-1 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-50"
-                          title="Editar"
+                          onClick={() => setSelectedPlanoReserva(res)}
+                          className="px-2 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Ver Plano de Navegação / Confirmação do Cliente"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <Compass className="w-3.5 h-3.5 text-[#B69D74]" />
+                          <span>Plano</span>
                         </button>
-                        <button
-                          onClick={() => handleCancelAgendamento(res.id)}
-                          className="p-1 text-slate-500 hover:text-rose-600 rounded hover:bg-slate-50"
-                          title="Cancelar Agendamento"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setEditingItem(res);
+                              setIsModalOpen(true);
+                            }}
+                            className="p-1 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-50"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleCancelAgendamento(res.id)}
+                            className="p-1 text-slate-500 hover:text-rose-600 rounded hover:bg-slate-50"
+                            title="Cancelar Agendamento"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -708,6 +729,13 @@ export default function MarinaAgendamentosView() {
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
+                              onClick={() => setSelectedPlanoReserva(res)}
+                              className="p-1.5 text-slate-500 hover:text-amber-800 rounded-lg hover:bg-amber-50 transition-colors"
+                              title="Ver Plano de Navegação / Confirmação do Cliente"
+                            >
+                              <Compass className="w-3.5 h-3.5 text-[#B69D74]" />
+                            </button>
+                            <button
                               onClick={() => {
                                 setEditingItem(res);
                                 setIsModalOpen(true);
@@ -744,6 +772,17 @@ export default function MarinaAgendamentosView() {
         editingAgendamento={editingItem}
         initialDate={initialDateForModal}
       />
+
+      {/* Plano de Navegação Modal */}
+      {selectedPlanoReserva && (
+        <PlanoNavegacaoModal
+          isOpen={!!selectedPlanoReserva}
+          onClose={() => setSelectedPlanoReserva(null)}
+          reservation={selectedPlanoReserva}
+          boat={boatDB.getById(selectedPlanoReserva.embarcacaoId)}
+          client={clientDB.getById(selectedPlanoReserva.clienteId)}
+        />
+      )}
     </div>
   );
 }

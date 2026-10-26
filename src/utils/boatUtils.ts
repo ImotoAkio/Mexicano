@@ -107,3 +107,44 @@ export function matchesBoatSearch(
   return false;
 }
 
+/**
+ * Checks if a boat matches a client reference (which can be a boat ID, boat code like 'M16', or boat name).
+ */
+export function matchClientBoat(rawRef?: string | null, boat?: Embarcacao | null): boolean {
+  if (!rawRef || !boat) return false;
+  const ref = rawRef.trim().toLowerCase();
+  if (boat.id && boat.id.toLowerCase() === ref) return true;
+  if (boat.nome && boat.nome.toLowerCase() === ref) return true;
+  if (boat.numero && String(boat.numero).toLowerCase() === ref) return true;
+
+  const boatCode = getBoatCode(boat).toLowerCase();
+  const refCode = getBoatCode(rawRef).toLowerCase();
+  if (boatCode && refCode && boatCode !== 'n/a' && refCode !== 'n/a' && boatCode !== 'm--' && refCode !== 'm--') {
+    if (boatCode === refCode) return true;
+  }
+  return false;
+}
+
+/**
+ * Returns all boat IDs that belong to a client based on primary embarcacaoId and multiple embarcacoes.
+ */
+export function getClientAllBoatIds(client?: any, boats: Embarcacao[] = []): Set<string> {
+  const matched = new Set<string>();
+  if (!client) return matched;
+
+  const refs = [];
+  if (client.embarcacaoId) refs.push(String(client.embarcacaoId));
+  if (Array.isArray(client.embarcacoes)) {
+    client.embarcacoes.forEach((eb) => {
+      if (eb && eb.embarcacaoId) refs.push(String(eb.embarcacaoId));
+    });
+  }
+
+  boats.forEach(b => {
+    if (refs.some(ref => matchClientBoat(ref, b))) {
+      matched.add(b.id);
+    }
+  });
+
+  return matched;
+}

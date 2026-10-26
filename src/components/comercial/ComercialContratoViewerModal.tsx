@@ -23,7 +23,8 @@ import {
   RotateCcw,
   Check,
   Plus,
-  Sparkles
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import { Cliente, Embarcacao, StatusContrato, ContractSections } from '../../types';
 import {
@@ -1619,6 +1620,15 @@ export default function ComercialContratoViewerModal({
                     {anexoUrl ? (
                       <>
                         <button
+                          type="button"
+                          onClick={() => window.open(anexoUrl, '_blank', 'noopener,noreferrer')}
+                          className="h-8 px-3 rounded-lg bg-[#2B1120] hover:bg-[#3e1b30] text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                          title="Abrir arquivo em uma nova aba do navegador em tela cheia"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-white" />
+                          <span>Abrir em Nova Aba</span>
+                        </button>
+                        <button
                           onClick={() => fileInputRef.current?.click()}
                           disabled={isUploading}
                           className="h-8 px-3 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -1664,21 +1674,43 @@ export default function ComercialContratoViewerModal({
                       </div>
                     </div>
                   ) : anexoUrl ? (
-                    anexoUrl.startsWith('data:application/pdf') || anexoUrl.endsWith('.pdf') || anexoNome?.endsWith('.pdf') ? (
-                      <iframe
-                        src={anexoUrl}
-                        title="Documento PDF Anexo"
-                        className="w-full h-full rounded border-0 bg-white"
-                      />
-                    ) : (
-                      <div className="max-w-full max-h-full overflow-auto flex items-center justify-center">
-                        <img
-                          src={anexoUrl}
-                          alt="Contrato Digitalizado"
-                          className="max-w-full max-h-[70vh] object-contain rounded shadow-md"
-                        />
+                    <div className="w-full h-full flex flex-col">
+                      <div className="flex items-center justify-between px-3.5 py-2 bg-stone-100 rounded-t-lg border border-stone-200 text-xs text-stone-700 shrink-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-stone-500 shrink-0" />
+                          <span className="font-bold text-stone-800 truncate max-w-sm">{anexoNome || 'Documento Assinado'}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => window.open(anexoUrl, '_blank', 'noopener,noreferrer')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#2B1120] hover:bg-[#3e1b30] text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          title="Visualizar em tela cheia na resolução nativa do navegador"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Abrir em Nova Aba</span>
+                        </button>
                       </div>
-                    )
+
+                      <div className="flex-1 w-full overflow-hidden rounded-b-lg border border-t-0 border-stone-200 bg-white">
+                        {anexoUrl.startsWith('data:application/pdf') || anexoUrl.endsWith('.pdf') || anexoNome?.endsWith('.pdf') ? (
+                          <iframe
+                            src={anexoUrl}
+                            title="Documento PDF Anexo"
+                            className="w-full h-full border-0 bg-white"
+                          />
+                        ) : (
+                          <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
+                            <img
+                              src={anexoUrl}
+                              alt="Contrato Digitalizado"
+                              className="max-w-full max-h-[70vh] object-contain rounded shadow-md cursor-pointer hover:opacity-95 transition-opacity"
+                              onClick={() => window.open(anexoUrl, '_blank', 'noopener,noreferrer')}
+                              title="Clique para abrir em tamanho real em uma nova aba"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ) : (
                     <div className="text-center py-12 max-w-sm">
                       <div className="w-12 h-12 rounded-xl bg-stone-100 text-stone-400 flex items-center justify-center mx-auto mb-3">

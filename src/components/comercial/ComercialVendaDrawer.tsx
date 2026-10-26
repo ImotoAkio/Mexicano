@@ -25,6 +25,7 @@ import {
 import { Cliente, Embarcacao } from '../../types';
 import { clientDB, boatDB, syncWithRemote } from '../../db';
 import { getBoatCode } from '../../utils/boatUtils';
+import { isInternalMexicano } from '../../utils/constants';
 import {
   getBoatCotaOccupancyMap,
   getBoatCotasList,
@@ -1067,20 +1068,30 @@ export default function ComercialVendaDrawer({
                       {boatCotasList.map(cItem => {
                         const ocupante = cotasOcupadasMap.get(cItem);
                         const isSelected = normalizeCotaCode(cota, 1) === cItem;
-                        const isOccupied = !!ocupante;
+                        const isMex = ocupante ? isInternalMexicano(ocupante.clienteId) || isInternalMexicano(ocupante.clienteNome) : false;
+                        const isOccupiedByRealClient = !!ocupante && !isMex;
+                        const isEstoqueMexicano = isMex || !ocupante;
 
                         return (
                           <button
                             key={cItem}
                             type="button"
-                            disabled={isOccupied}
+                            disabled={isOccupiedByRealClient}
                             onClick={() => setCota(cItem)}
-                            title={ocupante ? `Ocupada por: ${ocupante.clienteNome}` : `Cota ${cItem} disponível`}
+                            title={
+                              isOccupiedByRealClient
+                                ? `Ocupada por: ${ocupante.clienteNome}`
+                                : isMex
+                                ? `Cota ${cItem} disponível (Estoque El Mexicano)`
+                                : `Cota ${cItem} livre`
+                            }
                             className={`py-2 px-2 rounded-xl border text-xs font-bold flex flex-col items-center justify-center transition-all tabular-nums ${
                               isSelected
                                 ? 'bg-mx-ink text-white border-mx-ink shadow-xs cursor-pointer'
-                                : isOccupied
+                                : isOccupiedByRealClient
                                 ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed opacity-75'
+                                : isMex
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100/70 hover:border-emerald-300 cursor-pointer'
                                 : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50 hover:border-stone-300 cursor-pointer'
                             }`}
                           >
@@ -1089,12 +1100,14 @@ export default function ComercialVendaDrawer({
                               className={`text-[9px] font-medium truncate max-w-full ${
                                 isSelected
                                   ? 'text-white/80'
-                                  : isOccupied
+                                  : isOccupiedByRealClient
                                   ? 'text-stone-400'
+                                  : isMex
+                                  ? 'text-emerald-700 font-semibold'
                                   : 'text-emerald-700'
                               }`}
                             >
-                              {isOccupied ? 'Ocupada' : 'Livre'}
+                              {isOccupiedByRealClient ? 'Vendida' : isMex ? 'Estoque' : 'Livre'}
                             </span>
                           </button>
                         );
@@ -1102,9 +1115,23 @@ export default function ComercialVendaDrawer({
                     </div>
 
                     {cotasOcupadasMap.get(normalizeCotaCode(cota, 1)) && (
-                      <p className="text-[11px] text-amber-800 font-medium pt-0.5">
-                        Atenção: A cota {normalizeCotaCode(cota, 1)} está ocupada por <strong>{cotasOcupadasMap.get(normalizeCotaCode(cota, 1))?.clienteNome}</strong>.
-                      </p>
+                      (() => {
+                        const o = cotasOcupadasMap.get(normalizeCotaCode(cota, 1));
+                        const isMexOccupant = isInternalMexicano(o?.clienteId) || isInternalMexicano(o?.clienteNome);
+                        if (isMexOccupant) {
+                          return (
+                            <p className="text-[11px] text-emerald-800 font-medium pt-0.5 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Cota <strong>{normalizeCotaCode(cota, 1)}</strong> disponível no estoque próprio da <strong>El Mexicano</strong> (pronta para venda).</span>
+                            </p>
+                          );
+                        }
+                        return (
+                          <p className="text-[11px] text-amber-800 font-medium pt-0.5">
+                            Atenção: A cota {normalizeCotaCode(cota, 1)} está ocupada por <strong>{o?.clienteNome}</strong>.
+                          </p>
+                        );
+                      })()
                     )}
                   </div>
                 </div>
@@ -1687,6 +1714,7 @@ export default function ComercialVendaDrawer({
         isOpen={isNewClientModalOpen}
         editingClient={null}
         boats={boats}
+        clients={clients}
         onClose={() => setIsNewClientModalOpen(false)}
         onSave={savedClient => {
           const updatedClients = clientDB.getAll();

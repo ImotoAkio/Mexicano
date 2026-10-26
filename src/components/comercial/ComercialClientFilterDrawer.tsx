@@ -15,6 +15,7 @@ import {
   Square
 } from 'lucide-react';
 import { Embarcacao, Cliente } from '../../types';
+import { getClientAllBoatIds } from '../../utils/boatUtils';
 
 export interface ClientFilters {
   boatIds: string[];
@@ -391,11 +392,10 @@ export default function ComercialClientFilterDrawer({
               <Building2 className="w-3.5 h-3.5 text-stone-400" />
               <span>Empresa / Unidade</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
-                { id: 'VALE', label: 'Vale Náutica' },
-                { id: 'MARINA', label: 'Marina' },
-                { id: 'MEXICANO', label: 'Mexicano' }
+                { id: 'VALE', label: 'Vale Administradora' },
+                { id: 'MARINA', label: 'Marina' }
               ].map(item => {
                 const isChecked = filters.empresas.includes(item.id);
                 return (

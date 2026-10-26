@@ -36,6 +36,7 @@ interface ComercialClientDrawerProps {
 interface CotaItem {
   embarcacaoId: string;
   cota: string;
+  plano?: 'normal' | 'completo';
   acessorios?: {
     tenda?: boolean;
     mesa?: boolean;
@@ -129,12 +130,14 @@ export default function ComercialClientDrawer({
         setCotasList(editingClient.embarcacoes.map(eb => ({
           embarcacaoId: eb.embarcacaoId || '',
           cota: eb.cota || 'Cota',
+          plano: eb.plano || editingClient.plano || 'normal',
           acessorios: eb.acessorios ? { ...eb.acessorios } : undefined
         })));
       } else if (editingClient.embarcacaoId) {
         setCotasList([{
           embarcacaoId: editingClient.embarcacaoId,
           cota: editingClient.cota || 'Cota',
+          plano: editingClient.plano || 'normal',
           acessorios: editingClient.acessorios ? { ...editingClient.acessorios } : undefined
         }]);
       } else {
@@ -273,6 +276,7 @@ export default function ComercialClientDrawer({
       {
         embarcacaoId: firstBoatId,
         cota: 'Cota 1/4',
+        plano: 'normal',
         acessorios: {
           tenda: false,
           mesa: false,
@@ -307,10 +311,11 @@ export default function ComercialClientDrawer({
     try {
       const primaryBoat = cotasList.length > 0 ? cotasList[0] : null;
 
+      const anyBoatCompleto = cotasList.some(c => c.plano === 'completo');
       const payload: Partial<Cliente> = {
         nome: nome.trim(),
         status,
-        plano,
+        plano: anyBoatCompleto ? 'completo' : 'normal',
         statusFinanceiro,
         statusContrato,
         contratoDataAssinatura: statusContrato === 'assinado' ? (contratoDataAssinatura || new Date().toISOString().split('T')[0]) : undefined,
@@ -321,6 +326,7 @@ export default function ComercialClientDrawer({
         embarcacoes: cotasList.map(c => ({
           embarcacaoId: c.embarcacaoId,
           cota: c.cota,
+          plano: c.plano || 'normal',
           acessorios: c.acessorios
         })),
         cpf: cpf.trim(),
@@ -542,44 +548,26 @@ export default function ComercialClientDrawer({
               <span className="text-[10px] text-stone-400">Regras e coberturas</span>
             </div>
 
-            {/* Plano */}
-            <div>
-              <label className="text-[11px] font-semibold text-stone-600 block mb-1.5">
-                Plano Contratado
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPlano('completo')}
-                  className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
-                    plano === 'completo'
-                      ? 'border-amber-400 bg-amber-50/60 shadow-xs'
-                      : 'border-stone-200 bg-white hover:bg-stone-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-amber-900">Plano Completo</span>
-                    {plano === 'completo' && <Check className="w-3.5 h-3.5 text-amber-700 stroke-[3]" />}
-                  </div>
-                  <span className="text-[10px] text-amber-700/80 block mt-0.5">Com coberturas extras</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPlano('normal')}
-                  className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
-                    plano === 'normal'
-                      ? 'border-mx-ink bg-mx-ink-50/60 shadow-xs'
-                      : 'border-stone-200 bg-white hover:bg-stone-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-mx-ink">Plano Normal</span>
-                    {plano === 'normal' && <Check className="w-3.5 h-3.5 text-mx-ink stroke-[3]" />}
-                  </div>
-                  <span className="text-[10px] text-stone-500 block mt-0.5">Padrão da marina</span>
-                </button>
+            {/* Resumo do Plano */}
+            <div className="p-3 rounded-lg border border-stone-200/80 bg-stone-50/60">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-stone-700 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-stone-400" />
+                  Plano de Segunda e Terça
+                </span>
+                {cotasList.some(c => c.plano === 'completo') ? (
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                    Plano Completo Ativo
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-stone-500 bg-stone-200 px-2 py-0.5 rounded-full">
+                    Normal
+                  </span>
+                )}
               </div>
+              <p className="text-[10px] text-stone-500 mt-1">
+                Contratado individualmente por embarcação na seção <strong>Embarcações & Cotas</strong> abaixo.
+              </p>
             </div>
 
             {/* Status Cadastral & Status Financeiro */}
@@ -693,11 +681,10 @@ export default function ComercialClientDrawer({
               <label className="text-[11px] font-semibold text-stone-600 block mb-1.5">
                 Empresas Vinculadas
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id: 'VALE', name: 'Vale Náutica' },
-                  { id: 'MARINA', name: 'Marina' },
-                  { id: 'MEXICANO', name: 'El Mexicano' }
+                  { id: 'VALE', name: 'Vale Administradora' },
+                  { id: 'MARINA', name: 'Marina' }
                 ].map(emp => {
                   const isChecked = empresas.includes(emp.id);
                   return (
@@ -848,6 +835,36 @@ export default function ComercialClientDrawer({
                           </button>
                         );
                       })}
+                    </div>
+
+                    {/* Plano desta Cota */}
+                    <div className="pt-2 border-t border-stone-100 flex items-center justify-between">
+                      <span className="text-[10px] font-semibold text-stone-600">Plano Deste Veículo:</span>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateCota(idx, { plano: 'normal' })}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer ${
+                            (cotaItem.plano || 'normal') === 'normal'
+                              ? 'bg-stone-900 text-white border-stone-900'
+                              : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+                          }`}
+                        >
+                          Normal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateCota(idx, { plano: 'completo' })}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                            cotaItem.plano === 'completo'
+                              ? 'bg-amber-600 text-white border-amber-600'
+                              : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+                          }`}
+                        >
+                          <Sparkles className="w-2.5 h-2.5" />
+                          Completo (Seg/Ter)
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

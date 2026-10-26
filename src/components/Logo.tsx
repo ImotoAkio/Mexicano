@@ -21,8 +21,8 @@ export default function Logo({ className = "h-9 w-auto max-h-9 max-w-[140px] tex
       setCustomLogo(localStorage.getItem('custom_sidebar_logo'));
     };
 
-    // Load logo from backend if not in localStorage
-    if (!customLogo) {
+    // Load logo from backend only when custom logo is enabled and not yet in localStorage
+    if ((useCustomLogo || editable) && !customLogo) {
       (async () => {
         try {
           const res = await fetch('/api/config/public?chaves=custom_sidebar_logo');

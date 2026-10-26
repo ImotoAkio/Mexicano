@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock, MessageCircle } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock, MessageCircle, Sparkles } from 'lucide-react';
 import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
 // @ts-ignore
@@ -366,7 +366,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', loadPagamentosFlag);
     };
-  }, [activeTab]);
+  }, []);
 
   const buildFinanceiroWhatsAppUrl = (descricao: string, valor?: number) => {
     const valorFmt = valor !== undefined
@@ -531,13 +531,55 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{title: string, msg: string, type: 'error'|'success'|'warning'} | null>(null);
 
-  const transacoesList = (client as any)?.transacoes || transacoes || [];
+  const rawTransacoesList = (client as any)?.transacoes || transacoes || [];
+  const transacoesList = rawTransacoesList.filter((t: any) => !t.tipo || t.tipo === 'receita');
   const _now = new Date();
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
   
   const totalAberto = transacoesList
     .filter((t: any) => t.status !== 'pago' && t.status !== 'cancelado' && (t.status === 'vencido' || (t.dataVencimento && t.dataVencimento < todayStr)))
     .reduce((acc: number, t: any) => acc + getClientTxUpdatedValue(t).final, 0);
+
+  const isInadimplente = totalAberto > 0 || client?.statusFinanceiro === 'inadimplente';
+
+  const formatClientTxDescription = (t: any): string => {
+    if (!t) return '';
+    let desc = String(t.descricao || t.categoria || '').trim();
+    if (desc.toLowerCase().includes('ref:')) {
+      desc = desc
+        .replace(/^\s*Ref:\s*/i, '')
+        .replace(/\|?\s*Ref:\s*/i, ' - ')
+        .replace(/\((\d+)\/(\d+)\)/, ' (Parcela $1/$2)');
+
+      const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+      desc = desc.replace(/(\d{2})\/(\d{4})/g, (match, m, y) => {
+        const monthName = months[parseInt(m, 10) - 1];
+        return monthName ? `${monthName}/${y}` : match;
+      });
+    }
+    desc = desc.replace(/^\s*-\s*/, '').trim();
+    if (t.categoria && !desc.toLowerCase().includes(String(t.categoria).toLowerCase()) && /^(Janeiro|Fevereiro|Março|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)\/\d{4}/i.test(desc)) {
+      desc = `${t.categoria} - ${desc}`;
+    }
+    return desc || t.categoria || 'Cobrança';
+  };
+
+  const formatClientTxStatus = (t: any, isOverdue: boolean): { label: string; className: string } => {
+    const st = String(t?.status || '').toLowerCase();
+    if (st === 'pago') {
+      return { label: 'Pago', className: 'bg-emerald-500/10 text-emerald-400' };
+    }
+    if (st === 'cancelado') {
+      return { label: 'Cancelado', className: 'bg-white/10 text-white/50' };
+    }
+    if (st === 'vencido' || isOverdue) {
+      return { label: 'Vencido', className: 'bg-rose-500/10 text-rose-400' };
+    }
+    if (st === 'lancado' || st === 'a_vencer' || st === 'pendente') {
+      return { label: 'A Vencer', className: 'bg-amber-500/10 text-amber-400' };
+    }
+    return { label: st.replace('_', ' ') || 'A Vencer', className: 'bg-amber-500/10 text-amber-400' };
+  };
 
 
 
@@ -619,6 +661,16 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [isDown, setIsDown] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [activeBoatSlide, setActiveBoatSlide] = useState(0);
+
+  const handleSliderScroll = () => {
+    if (!sliderRef.current) return;
+    const width = sliderRef.current.clientWidth;
+    if (width > 0) {
+      const idx = Math.round(sliderRef.current.scrollLeft / width);
+      if (idx !== activeBoatSlide) setActiveBoatSlide(idx);
+    }
+  };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!sliderRef.current) return;
@@ -935,6 +987,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             {/* Scrollable Container */}
             <div
               ref={sliderRef}
+              onScroll={handleSliderScroll}
               onMouseDown={handleMouseDown}
               onMouseLeave={handleMouseLeave}
               onMouseUp={handleMouseUp}
@@ -975,6 +1028,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                       <img
                         src={imgSource}
                         alt={boat.nome}
+                        onError={(e) => {
+                          if (e.currentTarget.src !== fallbackImg) {
+                            e.currentTarget.src = fallbackImg;
+                          }
+                        }}
                         className="w-full h-auto drop-shadow-[0_20px_50px_rgba(0,0,0,0.8)] [animation:luxury-float_6s_ease-in-out_infinite]"
                         style={{ WebkitUserDrag: 'none' } as React.CSSProperties}
                       />
@@ -988,7 +1046,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                           <h2 className="text-lg font-medium text-white tracking-wide mt-1">{getBoatCode(boat)}</h2>
                         </div>
                         <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center border border-white/5">
-                          <Ship className="w-5 h-5 text-[#B69D74]" />
+                          {isJet ? <JetSkiIcon className="w-5 h-5 text-[#B69D74]" /> : <Ship className="w-5 h-5 text-[#B69D74]" />}
                         </div>
                       </div>
 
@@ -1046,9 +1104,22 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
             {/* Pagination Dots */}
             {boats.length > 1 && (
-              <div className="absolute bottom-0 left-0 w-full flex justify-center gap-2 pointer-events-none pb-2">
-                {boats.map((_, i) => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full bg-white/20"></div>
+              <div className="absolute bottom-0 left-0 w-full flex justify-center gap-2 pb-2 z-20">
+                {boats.map((b, i) => (
+                  <button
+                    key={b.id || i}
+                    type="button"
+                    aria-label={`Ver embarcação ${i + 1}`}
+                    onClick={() => {
+                      if (sliderRef.current) {
+                        sliderRef.current.scrollTo({ left: i * sliderRef.current.clientWidth, behavior: 'smooth' });
+                        setActiveBoatSlide(i);
+                      }
+                    }}
+                    className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
+                      activeBoatSlide === i ? 'w-5 bg-[#B69D74]' : 'w-1.5 bg-white/20 hover:bg-white/40'
+                    }`}
+                  />
                 ))}
               </div>
             )}
@@ -1083,8 +1154,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 <p className="text-sm font-medium text-white">Dia Inteiro</p>
                 <p className="text-xs text-white/40 mt-0.5">{getBoatCode(b)}</p>
               </div>
-              <span className="text-[9px] px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400 uppercase font-bold tracking-wider">
-                Confirmada
+              <span className={`text-[9px] px-2.5 py-1 rounded-md uppercase font-bold tracking-wider ${
+                nextRes.status === 'confirmado'
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {nextRes.status === 'confirmado' ? 'Confirmada' : 'Agendado'}
               </span>
             </div>
           );
@@ -1166,6 +1241,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       return;
     }
 
+    if (totalAberto > 0) {
+      showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para realizar agendamentos ou contestações.', 'warning');
+      return;
+    }
+
     if (contestableRes) {
       setContestationTarget(contestableRes);
       setIsContestationModalOpen(true);
@@ -1173,17 +1253,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     }
 
     if (isClosed) {
-      showToast('Aviso', 'A marina não funciona às segundas e terças (exceto plano completo).', 'warning');
+      showToast('Aviso', 'A marina não funciona às segundas e terças para esta embarcação (exceto plano completo).', 'warning');
       return;
     }
 
     if (isOccupied) {
       showToast('Aviso', 'Esta data já encontra-se ocupada por outro sócio.', 'warning');
-      return;
-    }
-
-    if (totalAberto > 0) {
-      showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para realizar agendamentos.', 'warning');
       return;
     }
 
@@ -1231,8 +1306,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 {activeBoat ? (
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-white tracking-wide">{getBoatCode(activeBoat)}</span>
-                    <span className="text-white/30">-</span>
-                    <span className="text-white/80">{activeBoat.numero ? `M${activeBoat.numero}` : (activeBoat.tipo === 'jet' || (activeBoat.nome || '').toLowerCase().includes('jet') ? 'Jetski' : 'Lancha')}</span>
+                    <span className="text-white/30">·</span>
+                    <span className="text-white/80">{activeBoat.modelo || (activeBoat.tipo === 'jet' || (activeBoat.nome || '').toLowerCase().includes('jet') ? 'Jetski' : 'Lancha')}</span>
                   </div>
                 ) : (
                   <span className="text-white/50">Selecione uma embarcação...</span>
@@ -1313,7 +1388,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                                     </span>
                                   </div>
                                   <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5 block">
-                                    {b.numero ? `M${b.numero}` : (isJet ? 'Jetski' : 'Lancha')}
+                                    {b.modelo || (isJet ? 'Jetski' : 'Lancha')}
                                   </span>
                                 </div>
                               </div>
@@ -1353,24 +1428,43 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         )}
 
         {/* Active Boat Header Info Card */}
-        {activeBoat && (
-          <div className="mb-4 bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center text-[#B69D74]">
-                {activeBoat.tipo === 'jet' ? <JetSkiIcon className="w-6 h-6" /> : <Ship className="w-5 h-5" />}
+        {activeBoat && (() => {
+          const activeBoatEntry = Array.isArray(client.embarcacoes)
+            ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === activeBoat.id)
+            : (client.embarcacaoId === activeBoat.id ? client : null);
+          const isPlanoCompleto = activeBoatEntry?.plano === 'completo' || (!activeBoatEntry?.plano && client.plano === 'completo');
+
+          return (
+            <div className="mb-4 bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center text-[#B69D74] shrink-0">
+                  {activeBoat.tipo === 'jet' ? <JetSkiIcon className="w-6 h-6" /> : <Ship className="w-5 h-5" />}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white tracking-wide">{getBoatCode(activeBoat)}</h3>
+                  <p className="text-[10px] text-white/40 uppercase tracking-wider">
+                    Exibindo disponibilidade desta embarcação
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-semibold text-white tracking-wide">{getBoatCode(activeBoat)}</h3>
-                <p className="text-[10px] text-white/40 uppercase tracking-wider">
-                  Exibindo disponibilidade desta embarcação
-                </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium uppercase tracking-wider shrink-0">
+                  {activeBoat.tipo === 'jet' ? 'Jetski' : 'Lancha'}
+                </span>
+                {isPlanoCompleto ? (
+                  <span className="text-[10px] px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold uppercase tracking-wider flex items-center gap-1 shadow-xs">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    Plano Completo (Seg e Ter Liberados)
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-white/50 font-medium uppercase tracking-wider">
+                    Plano Normal (Qua a Dom)
+                  </span>
+                )}
               </div>
             </div>
-            <span className="text-[10px] px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium uppercase tracking-wider shrink-0">
-              {activeBoat.tipo === 'jet' ? 'Jetski' : 'Lancha'}
-            </span>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Grade do Calendário */}
         <div className="bg-[#111] border border-white/5 rounded-[2rem] p-6 shadow-2xl mb-8">
@@ -1406,9 +1500,13 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 String(dateObj.getDate()).padStart(2, '0')
               ].join('-');
 
-              // Verificar se a marina está fechada (Segunda = 1, Terça = 2)
+              // Verificar se a marina está fechada para esta embarcação específica (Segunda = 1, Terça = 2)
               const dayOfWeek = dateObj.getDay();
-              const isClosed = (dayOfWeek === 1 || dayOfWeek === 2) && client.plano !== 'completo';
+              const activeBoatEntry = Array.isArray(client.embarcacoes)
+                ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === activeBoatId)
+                : (client.embarcacaoId === activeBoatId ? client : null);
+              const isPlanoCompletoForActiveBoat = activeBoatEntry?.plano === 'completo' || (!activeBoatEntry?.plano && client.plano === 'completo');
+              const isClosed = (dayOfWeek === 1 || dayOfWeek === 2) && !isPlanoCompletoForActiveBoat;
 
               // Verificar se o CLIENTE tem reserva nessa embarcação ou se está ocupada
               const hasMyReservation = myBoatReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
@@ -1557,11 +1655,13 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     <span className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
                       res.status === 'cancelado' 
                         ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                        : res.status === 'confirmado'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        : !isFuture
+                          ? 'bg-white/5 text-white/60 border border-white/10'
+                          : res.status === 'confirmado'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                     }`}>
-                      {res.status === 'cancelado' ? 'Cancelado' : (res.status === 'confirmado' ? 'Confirmado' : 'Agendado')}
+                      {res.status === 'cancelado' ? 'Cancelado' : (!isFuture ? 'Concluída' : (res.status === 'confirmado' ? 'Confirmado' : 'Agendado'))}
                     </span>
                     {res.status === 'confirmado' && (
                       <button 
@@ -1648,11 +1748,11 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               </div>
               
               <div className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border backdrop-blur-sm ${
-                client.statusFinanceiro === 'inadimplente'
+                isInadimplente
                   ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                   : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
               }`}>
-                {client.statusFinanceiro === 'inadimplente' ? 'Em Aberto' : 'Em Dia'}
+                {isInadimplente ? 'Em Aberto' : 'Em Dia'}
               </div>
             </div>
 
@@ -1667,8 +1767,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </div>
             
             <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-white/30 font-medium">
-              <span>Status: {client.statusFinanceiro === 'inadimplente' ? 'Requer Atenção' : 'Regular'}</span>
-              <span className="text-[#B69D74]">Premium Member</span>
+              <span>Status: {isInadimplente ? 'Requer Atenção' : 'Regular'}</span>
+              <span className="text-[#B69D74]">{client.plano === 'completo' ? 'Plano Completo' : 'Cotista Titular'}</span>
             </div>
           </div>
         </div>
@@ -1708,7 +1808,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             className="space-y-4"
           >
           {(() => {
-            const filteredTransacoes = transacoes.filter(t => {
+            const filteredTransacoes = transacoesList.filter((t: any) => {
               if (financeTab === 'fatura') {
                 return t.status !== 'pago' && t.status !== 'cancelado';
               }
@@ -1755,6 +1855,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
             const renderTransaction = (t: any) => {
               const calc = getClientTxUpdatedValue(t);
+              const desc = formatClientTxDescription(t);
+              const stInfo = formatClientTxStatus(t, calc.isOverdue);
               return (
               <div 
                 key={t.id} 
@@ -1767,26 +1869,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start mb-0.5">
-                      {(() => {
-                        let desc = t.descricao || t.categoria || '';
-                        
-                        // Transform "Ref: 09/2026 (1/4)" or "Mensalidade | Ref: 09/2026 (1/4)" into something friendly
-                        if (desc.toLowerCase().includes('ref:')) {
-                           desc = desc
-                             .replace(/\|?\s*Ref:\s*/i, ' - ')
-                             .replace(/\((\d+)\/(\d+)\)/, ' (Parcela $1/$2)');
-
-                           const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-                           desc = desc.replace(/(\d{2})\/(\d{4})/g, (match, m, y) => {
-                             const monthName = months[parseInt(m) - 1];
-                             return monthName ? `${monthName}/${y}` : match;
-                           });
-                        }
-                        
-                        return (
-                          <span className="text-sm font-medium text-white truncate pr-2" title={desc}>{desc}</span>
-                        );
-                      })()}
+                      <span className="text-sm font-medium text-white truncate pr-2" title={desc}>{desc}</span>
                       <div className="flex flex-col items-end">
                         <span className="text-sm font-semibold whitespace-nowrap text-white">
                           {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calc.final)}
@@ -1802,13 +1885,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                       <span className="text-[11px] text-white/40">
                         Vencimento: <span className="text-white/60 font-medium">{t.dataVencimento ? t.dataVencimento.split('-').reverse().join('/') : ''}</span>
                       </span>
-                      <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                        t.status === 'pago' ? 'bg-emerald-500/10 text-emerald-400' :
-                        (t.status === 'vencido' || calc.isOverdue) ? 'bg-rose-500/10 text-rose-400' :
-                        t.status === 'cancelado' ? 'bg-white/10 text-white/50' :
-                        'bg-yellow-500/10 text-yellow-400'
-                      }`}>
-                        {(t.status === 'a_vencer' && calc.isOverdue) ? 'vencido' : t.status.replace('_', ' ')}
+                      <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${stInfo.className}`}>
+                        {stInfo.label}
                       </span>
                     </div>
                   </div>
@@ -1913,11 +1991,29 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, chamadoObj?: any) => {
+    if (status === 'os_gerada' && chamadoObj) {
+      const linkedOS = (manutencoes || []).find((m: any) =>
+        (m.chamadoId && String(m.chamadoId) === String(chamadoObj.id)) ||
+        (chamadoObj.codigoOS && m.codigoOS === chamadoObj.codigoOS) ||
+        (m.embarcacaoId === chamadoObj.embarcacaoId && m.tituloChamado && m.tituloChamado === chamadoObj.titulo)
+      );
+      if (linkedOS) {
+        if (linkedOS.status === 'aguardando_orcamento') {
+          return <span className="bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-full text-xs font-medium border border-amber-500/30">Aguard. Orç. (O.S.)</span>;
+        }
+        if (linkedOS.status === 'aguardando_aprovacao') {
+          return <span className="bg-indigo-500/20 text-indigo-400 px-2.5 py-1 rounded-full text-xs font-medium border border-indigo-500/30">Aguard. Aprov. (O.S.)</span>;
+        }
+        if (linkedOS.status === 'concluido') {
+          return <span className="bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-medium border border-emerald-500/30">Concluído</span>;
+        }
+      }
+    }
     switch (status) {
       case 'pendente': return <span className="bg-slate-500/20 text-slate-400 px-2.5 py-1 rounded-full text-xs font-medium border border-slate-500/30">Pendente</span>;
       case 'em_analise': return <span className="bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-full text-xs font-medium border border-amber-500/30">Em Análise</span>;
-      case 'os_gerada': return <span className="bg-sky-500/20 text-sky-400 px-2.5 py-1 rounded-full text-xs font-medium border border-sky-500/30">Em Execução</span>;
+      case 'os_gerada': return <span className="bg-sky-500/20 text-sky-400 px-2.5 py-1 rounded-full text-xs font-medium border border-sky-500/30">O.S. Gerada</span>;
       case 'concluido': return <span className="bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-medium border border-emerald-500/30">Concluído</span>;
       case 'rejeitado': return <span className="bg-rose-500/20 text-rose-400 px-2.5 py-1 rounded-full text-xs font-medium border border-rose-500/30">Rejeitado</span>;
       case 'descartado': return <span className="bg-zinc-500/20 text-zinc-400 px-2.5 py-1 rounded-full text-xs font-medium border border-zinc-500/30">Descartado</span>;
@@ -1945,9 +2041,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
        (c.codigoChamado || '').toLowerCase().includes(maintenanceSearch.toLowerCase()))
     );
 
+    const qLower = maintenanceSearch.toLowerCase();
     const filteredServicos = (manutencoes || []).filter(m =>
-      m.titulo?.toLowerCase().includes(maintenanceSearch.toLowerCase()) ||
-      (m.codigoOS || '').toLowerCase().includes(maintenanceSearch.toLowerCase())
+      (m.titulo || '').toLowerCase().includes(qLower) ||
+      (m.tituloChamado || '').toLowerCase().includes(qLower) ||
+      (m.descricaoServico || '').toLowerCase().includes(qLower) ||
+      (m.codigoOS || '').toLowerCase().includes(qLower)
     );
 
     const getServicoStatus = (status) => {
@@ -2029,15 +2128,31 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 filteredChamados.map(chamado => {
                   const boat = boats.find(b => b.id === chamado.embarcacaoId);
                   return (
-                    <div key={chamado.id} className="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-5 hover:border-white/[0.1] transition-all active:scale-[0.98] cursor-pointer">
+                    <div
+                      key={chamado.id}
+                      onClick={() => {
+                        if (chamado.status === 'os_gerada') {
+                          setMaintenanceSubTab('servicos');
+                        }
+                      }}
+                      className={`bg-white/[0.02] border border-white/[0.05] rounded-2xl p-5 hover:border-white/[0.1] transition-all ${chamado.status === 'os_gerada' ? 'active:scale-[0.98] cursor-pointer' : ''}`}
+                    >
                       <div className="flex flex-col sm:flex-row gap-4 sm:items-start justify-between">
-                        <div className="space-y-1">
+                        <div className="space-y-1.5 flex-1">
                           <div className="flex items-center gap-3 mb-2">
                             <span className="text-xs font-mono text-white/40">{chamado.codigoChamado || 'Local'}</span>
-                            {getStatusBadge(chamado.status)}
+                            {getStatusBadge(chamado.status, chamado)}
                           </div>
                           <h4 className="text-white font-medium">{chamado.titulo}</h4>
-                          <div className="flex items-center gap-4 text-xs text-white/40">
+                          {chamado.descricaoAvaria && (
+                            <p className="text-xs text-white/50 leading-relaxed line-clamp-2">{chamado.descricaoAvaria}</p>
+                          )}
+                          {(chamado as any).observacoesAnalise && (
+                            <p className="text-[11px] text-[#B69D74]/90 bg-[#B69D74]/10 border border-[#B69D74]/20 rounded-lg px-2.5 py-1.5 mt-1">
+                              <strong>Parecer Técnico:</strong> {(chamado as any).observacoesAnalise}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-4 text-xs text-white/40 pt-1">
                             <p className="flex items-center gap-1.5">
                               <Clock className="w-3.5 h-3.5" />
                               {new Date(chamado.createdAt).toLocaleDateString('pt-BR')}
@@ -2048,10 +2163,10 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                             </p>
                           </div>
                         </div>
-                        <div className="text-left sm:text-right mt-2 sm:mt-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-t-0">
+                        <div className="text-left sm:text-right mt-2 sm:mt-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-t-0 shrink-0">
                           <p className="text-[10px] uppercase tracking-wider text-white/40 mb-0.5">Embarcação</p>
                           <p className="text-sm font-medium text-white/80">
-                            {boat ? boat.nome : 'Excluída'}
+                            {boat ? getBoatCode(boat) : 'Excluída'}
                           </p>
                         </div>
                       </div>
@@ -2167,13 +2282,21 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                         <div className="flex items-center gap-3">
                           <span className="flex items-center gap-1.5">
                             <Anchor className="w-3.5 h-3.5 text-white/30" />
-                            {boat ? boat.nome : 'Embarcação'}
+                            {boat ? getBoatCode(boat) : 'Embarcação'}
                           </span>
                         </div>
-                        <span className="flex items-center gap-1.5">
-                           <Clock className="w-3.5 h-3.5 text-white/30" />
-                          {s.dataEntradaOficina ? new Date(s.dataEntradaOficina).toLocaleDateString('pt-BR') : (s.dataChamado ? new Date(s.dataChamado).toLocaleDateString('pt-BR') : '')}
-                        </span>
+                        {(() => {
+                          const rawDate = s.dataEntradaOficina || s.dataChamado || s.dataSaida || s.createdAt;
+                          if (!rawDate) return null;
+                          const parsed = new Date(rawDate);
+                          if (isNaN(parsed.getTime())) return null;
+                          return (
+                            <span className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-white/30" />
+                              {parsed.toLocaleDateString('pt-BR')}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
@@ -2399,6 +2522,31 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 <button
                   onClick={() => {
                     setIsActionMenuOpen(false);
+                    if (totalAberto > 0) {
+                      showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para realizar agendamentos.', 'warning');
+                      return;
+                    }
+                    const targetBoatId = selectedCalendarBoatId || (boats[0] && boats[0].id);
+                    const boatEntry = Array.isArray(client.embarcacoes)
+                      ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === targetBoatId)
+                      : (client.embarcacaoId === targetBoatId ? client : null);
+                    const isPlanoComp = boatEntry?.plano === 'completo' || (!boatEntry?.plano && client.plano === 'completo');
+                    const d = new Date();
+                    for (let i = 0; i < 60; i++) {
+                      const candidate = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
+                      const dow = candidate.getDay();
+                      const candIso = [
+                        candidate.getFullYear(),
+                        String(candidate.getMonth() + 1).padStart(2, '0'),
+                        String(candidate.getDate()).padStart(2, '0')
+                      ].join('-');
+                      const closed = (dow === 1 || dow === 2) && !isPlanoComp;
+                      const occupied = mergedReservations.some((r: any) => r.embarcacaoId === targetBoatId && r.data === candIso && r.status !== 'cancelado');
+                      if (!closed && !occupied) {
+                        setSelectedDate(candIso);
+                        break;
+                      }
+                    }
                     setIsReservationModalOpen(true);
                   }}
                   className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-[#B69D74]/15 border border-white/[0.05] hover:border-[#B69D74]/30 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-1"
@@ -2756,7 +2904,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               {privacyTab === 'general' && (
                 <div className="space-y-4 animate-in fade-in duration-200">
                   <p className="text-white/80">
-                    O <strong className="font-medium text-white/95">Grupo Vila Náutica</strong> composto por Vila Náutica, Vila Náutica, Vale Administradora e Passeios do Vale, preza pelo mais alto rigor no tratamento dos seus dados.
+                    O <strong className="font-medium text-white/95">Grupo Vila Náutica</strong>, composto por Vila Náutica, Vale Administradora e Passeios do Vale, preza pelo mais alto rigor no tratamento dos seus dados.
                   </p>
                   <p>
                     Esta aplicação foi desenvolvida sob rígidos padrões de segurança cibernética pela <strong className="text-white/85">Echo Desenvolvimento de Software</strong>, assegurando que toda informação trafegada e armazenada esteja devidamente protegida contra acessos não autorizados.
@@ -2784,7 +2932,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     </div>
                     <div className="p-3 bg-white/[0.02] border border-white/[0.04] rounded-xl">
                       <span className="block font-medium text-white/85 mb-1">Histórico de Reservas</span>
-                      <p className="text-white/40">Registro de das e períodos solicitados para navegação das embarcações.</p>
+                      <p className="text-white/40">Registro de datas e períodos solicitados para navegação das embarcações.</p>
                     </div>
                     <div className="p-3 bg-white/[0.02] border border-white/[0.04] rounded-xl">
                       <span className="block font-medium text-white/85 mb-1">Registros de Acesso</span>
@@ -3100,7 +3248,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             setLastAddedResId(newRes.id);
           }
           setIsReservationModalOpen(false);
-          handleTabChange('home');
+          handleTabChange('calendar');
           if (onRefresh) {
             onRefresh();
           } else {
@@ -3172,8 +3320,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         </div>
       )}
 
-      {/* Modal de Detalhes da Transa\u00E7\u00E3o */}
-      {selectedTransactionDetails && (
+      {/* Modal de Detalhes da Transação */}
+      {selectedTransactionDetails && (() => {
+        const detailCalc = getClientTxUpdatedValue(selectedTransactionDetails);
+        const detailStatus = formatClientTxStatus(selectedTransactionDetails, detailCalc.isOverdue);
+        const detailDesc = formatClientTxDescription(selectedTransactionDetails);
+        return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[105] animate-in fade-in duration-300">
           <div className="bg-[#1A1A1A]/95 border border-white/10 rounded-3xl w-full max-w-sm p-6 relative shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-300">
             <button 
@@ -3183,33 +3335,26 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               <X className="w-5 h-5" />
             </button>
             <div className="text-center mb-6">
-              <span className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Detalhes da Cobran\u00E7a</span>
+              <span className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Detalhes da Cobrança</span>
               <h3 className="text-lg font-light text-white tracking-wide mt-1">
-                {selectedTransactionDetails.descricao || selectedTransactionDetails.categoria}
+                {detailDesc}
               </h3>
             </div>
 
             <div className="space-y-4 mb-6">
-              {(() => {
-                const detailCalc = getClientTxUpdatedValue(selectedTransactionDetails);
-                return (
-                  <>
-                    <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
-                      <span className="text-xs text-white/40 uppercase tracking-widest">Valor Atualizado</span>
-                      <div className="text-right">
-                        <span className="text-sm font-semibold text-white block">
-                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.final)}
-                        </span>
-                        {detailCalc.isOverdue && detailCalc.fees > 0 && (
-                          <span className="text-[10px] text-rose-400">
-                            Original: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.original)} (+{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.fees)} multa/juros)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
+              <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                <span className="text-xs text-white/40 uppercase tracking-widest">Valor Atualizado</span>
+                <div className="text-right">
+                  <span className="text-sm font-semibold text-white block">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.final)}
+                  </span>
+                  {detailCalc.isOverdue && detailCalc.fees > 0 && (
+                    <span className="text-[10px] text-rose-400">
+                      Original: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.original)} (+{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(detailCalc.fees)} multa/juros)
+                    </span>
+                  )}
+                </div>
+              </div>
               
               <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
                 <span className="text-xs text-white/40 uppercase tracking-widest">Vencimento</span>
@@ -3220,13 +3365,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
               <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-xl border border-white/5">
                 <span className="text-xs text-white/40 uppercase tracking-widest">Status</span>
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full ${
-                  selectedTransactionDetails.status === 'pago' ? 'bg-emerald-500/10 text-emerald-400' :
-                  selectedTransactionDetails.status === 'vencido' ? 'bg-rose-500/10 text-rose-400' :
-                  selectedTransactionDetails.status === 'cancelado' ? 'bg-white/10 text-white/50' :
-                  'bg-yellow-500/10 text-yellow-400'
-                }`}>
-                  {selectedTransactionDetails.status.replace('_', ' ')}
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full ${detailStatus.className}`}>
+                  {detailStatus.label}
                 </span>
               </div>
             </div>
@@ -3247,8 +3387,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 <a
                   id="btn-pagar-transacao-whatsapp"
                   href={buildFinanceiroWhatsAppUrl(
-                    `${selectedTransactionDetails.descricao || selectedTransactionDetails.categoria || 'lançamento'}${selectedTransactionDetails.dataVencimento ? ` - venc. ${selectedTransactionDetails.dataVencimento.split('-').reverse().join('/')}` : ''}`,
-                    getClientTxUpdatedValue(selectedTransactionDetails).final
+                    `${detailDesc}${selectedTransactionDetails.dataVencimento ? ` - venc. ${selectedTransactionDetails.dataVencimento.split('-').reverse().join('/')}` : ''}`,
+                    detailCalc.final
                   )}
                   target="_blank"
                   rel="noreferrer"
@@ -3292,7 +3432,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Modal de Pagamento Pix */}
       {selectedTransactionForPix && (

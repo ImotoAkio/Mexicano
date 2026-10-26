@@ -29,6 +29,62 @@ function calcTipoReserva(
 }
 
 
+/** Helper: check if a client has overdue unpaid revenue transactions */
+function hasClientOverdueDebt(client: any, transacoes: any[]): boolean {
+  if (client?.statusFinanceiro === 'inadimplente') return true;
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return (transacoes || []).some((t: any) =>
+    t.clienteId === client?.id &&
+    t.tipo === 'receita' &&
+    t.status !== 'pago' &&
+    t.status !== 'cancelado' &&
+    (t.status === 'vencido' || (t.dataVencimento && t.dataVencimento < todayStr))
+  );
+}
+
+/** Helper: sanitize client data and shared boat records before sending to client browser */
+export function sanitizeClientPayload(client: any, reservations: any[], transacoes: any[], manutencoes: any[]) {
+  const safeClient = { ...client };
+  delete safeClient.password_hash;
+
+  const safeReservations = (reservations || []).map((r: any) => {
+    if (r.clienteId === client.id) return r;
+    return {
+      id: r.id,
+      embarcacaoId: r.embarcacaoId,
+      data: r.data,
+      periodo: r.periodo,
+      status: r.status,
+      statusMarina: r.statusMarina,
+      tipoReserva: r.tipoReserva,
+      clienteId: 'outro_cotista'
+    };
+  });
+
+  const safeTransacoes = (transacoes || []).filter((t: any) =>
+    t.clienteId === client.id && t.tipo === 'receita'
+  );
+
+  if (hasClientOverdueDebt(client, safeTransacoes)) {
+    safeClient.statusFinanceiro = 'inadimplente';
+  } else if (safeClient.statusFinanceiro === 'pendente') {
+    safeClient.statusFinanceiro = 'em_dia';
+  }
+
+  const safeManutencoes = (manutencoes || []).map((m: any) => {
+    const safeM = { ...m };
+    delete safeM.custoReal;
+    delete safeM.margemLucro;
+    delete safeM.custo;
+    delete safeM.fornecedorId;
+    delete safeM.oficinaNome;
+    return safeM;
+  });
+
+  return { safeClient, safeReservations, safeTransacoes, safeManutencoes };
+}
+
 const clientRoutes = Router();
 
 // Route: Get client data using JWT (secure data fetch)
@@ -48,12 +104,32 @@ clientRoutes.get("/me", requireClientAuth, async (req, res) => {
       : [client.embarcacaoId];
 
     const boats = dbData.boats.filter((b: any) => clientBoatsList.includes(b.id));
-    const reservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
-    const transacoes = dbData.transacoes.filter((t: any) => t.clienteId === client.id);
+    const rawReservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
+    const rawTransacoes = dbData.transacoes.filter((t: any) => t.clienteId === client.id && t.tipo === 'receita');
     const chamados = dbData.chamados ? dbData.chamados.filter((c: any) => c.clienteId === client.id || clientBoatsList.includes(c.embarcacaoId)) : [];
-    const manutencoes = dbData.manutencoes ? dbData.manutencoes.filter((m: any) => clientBoatsList.includes(m.embarcacaoId)) : [];
+    const rawManutencoes = dbData.manutencoes ? dbData.manutencoes.filter((m: any) => clientBoatsList.includes(m.embarcacaoId)) : [];
+
+    const { safeClient, safeReservations, safeTransacoes, safeManutencoes } = sanitizeClientPayload(
+      client,
+      rawReservations,
+      rawTransacoes,
+      rawManutencoes
+    );
+
+    // Sync statusFinanceiro with actual overdue receita transactions
+    if (hasClientOverdueDebt(client, rawTransacoes)) {
+      safeClient.statusFinanceiro = 'inadimplente';
+    }
+
     writeAuditLog(client.nome, "client", "FETCH_DATA", req.ip, `ID: ${client.id}`);
-    res.json({ client, boats, reservations, transacoes, chamados, manutencoes });
+    res.json({
+      client: safeClient,
+      boats,
+      reservations: safeReservations,
+      transacoes: safeTransacoes,
+      chamados,
+      manutencoes: safeManutencoes
+    });
   } catch (err: any) {
     console.error("Client data fetch error:", err);
     res.status(500).json({ error: true, message: "Erro ao carregar dados do cliente." });
@@ -71,6 +147,10 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
 
     if (!client) {
       return res.status(404).json({ error: true, message: "Cliente não encontrado." });
+    }
+
+    if (hasClientOverdueDebt(client, dbData.transacoes)) {
+      return res.status(403).json({ error: true, message: "Você possui valores em aberto. Regularize sua situação financeira para realizar agendamentos." });
     }
 
     const clientBoatsList = client.embarcacoes && client.embarcacoes.length > 0
@@ -106,8 +186,13 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
     let tipoReserva: 'garantida' | 'extra' = 'garantida';
 
     if (!isMarinaOnlyBoat) {
-      if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && client.plano !== 'completo') {
-        return res.status(400).json({ error: true, message: "A Marina é fechada às segundas e terças-feiras para o seu plano atual." });
+      const clientBoatEntry = Array.isArray(client.embarcacoes)
+        ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === embarcacaoId)
+        : (client.embarcacaoId === embarcacaoId ? client : null);
+      const boatPlano = clientBoatEntry?.plano || (client.plano === 'completo' ? 'completo' : 'normal');
+
+      if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && boatPlano !== 'completo') {
+        return res.status(400).json({ error: true, message: "A Marina é fechada às segundas e terças-feiras para o plano contratado desta embarcação." });
       }
 
       // Weekend reservation logic: guaranteed vs extra
@@ -245,32 +330,43 @@ clientRoutes.post("/checkin", requireClientAuth, async (req, res) => {
       return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
     }
 
-    const [resRows] = await currentPool.query("SELECT embarcacaoId FROM Reservas WHERE id = ?", [id]);
+    const [resRows] = await currentPool.query("SELECT embarcacaoId, clienteId FROM Reservas WHERE id = ? AND clienteId = ?", [id, userId]);
     const reserva = (resRows as any[])[0];
     if (!reserva) {
-      return res.status(404).json({ error: true, message: "Reserva não encontrada." });
+      return res.status(404).json({ error: true, message: "Reserva não encontrada ou acesso não autorizado." });
     }
 
-    const [boatRows] = await currentPool.query("SELECT emManutencao FROM Embarcacoes WHERE id = ?", [reserva.embarcacaoId]);
+    const dbData = await pullDatabase();
+    const clientCheckin = dbData.clients.find((c: any) => c.id === userId);
+    if (clientCheckin && hasClientOverdueDebt(clientCheckin, dbData.transacoes)) {
+      return res.status(403).json({ error: true, message: "Você possui valores em aberto. Regularize sua situação para confirmar a saída." });
+    }
+
+    const [boatRows] = await currentPool.query("SELECT emManutencao, tipo, capacidadePassageiros, nome FROM Embarcacoes WHERE id = ?", [reserva.embarcacaoId]);
     const boat = (boatRows as any[])[0];
     if (boat && (boat.emManutencao === 1 || boat.emManutencao === true || boat.emManutencao === 'true')) {
       return res.status(400).json({ error: true, message: "Esta embarcação está em manutenção. Não é possível confirmar a reserva no momento." });
+    }
+
+    const isJetBoat = boat && (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet'));
+    const maxPax = boat?.capacidadePassageiros ? Number(boat.capacidadePassageiros) : (isJetBoat ? 3 : 12);
+    const numPax = Number(pessoasABordo);
+    if (!Number.isFinite(numPax) || numPax < 1 || numPax > maxPax) {
+      return res.status(400).json({ error: true, message: `A quantidade de pessoas a bordo deve ser entre 1 e ${maxPax} para esta embarcação.` });
     }
 
     const acessoriosJson = acessoriosSolicitados ? JSON.stringify(acessoriosSolicitados) : null;
 
     // Update reservation. Removed setting horaSaida and horaChegada during check-in so operational status isn't corrupted.
     await currentPool.query(
-      "UPDATE Reservas SET previsaoSaida = ?, previsaoChegada = ?, pessoasABordo = ?, destino = ?, acessoriosSolicitados = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ?",
-      [previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosJson, id]
+      "UPDATE Reservas SET previsaoSaida = ?, previsaoChegada = ?, pessoasABordo = ?, destino = ?, acessoriosSolicitados = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ? AND clienteId = ?",
+      [previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosJson, id, userId]
     );
 
-    const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ?", [id]);
+    const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ? AND clienteId = ?", [id, userId]);
     const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosSolicitados: acessoriosJson, statusMarina: 'agendado', status: 'confirmado' };
 
-    const dbData = await pullDatabase();
     const fetchedBoatCheckin = dbData.boats.find((b: any) => b.id === updatedRes.embarcacaoId);
-    const clientCheckin = dbData.clients.find((c: any) => c.id === userId);
 
     // Anexa dados legíveis para a notificação de quem recebe o evento
     const enrichedRes = {
@@ -367,7 +463,6 @@ clientRoutes.get("/weekend-info", requireClientAuth, async (req, res) => {
       contestable.push({
         id: r.id,
         data: r.data,
-        clienteId: r.clienteId,
         dayOfWeek: dow
       });
     }
@@ -393,6 +488,10 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
     const client = dbData.clients.find((c: any) => c.id === userId);
     if (!client) return res.status(404).json({ error: true, message: "Cliente não encontrado." });
 
+    if (hasClientOverdueDebt(client, dbData.transacoes)) {
+      return res.status(403).json({ error: true, message: "Você possui valores em aberto. Regularize sua situação financeira para contestar reservas." });
+    }
+
     // Verify the client owns this boat
     const clientBoatsList = client.embarcacoes && client.embarcacoes.length > 0
       ? client.embarcacoes.map((eb: any) => eb.embarcacaoId)
@@ -404,6 +503,14 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
     const boat = dbData.boats.find((b: any) => b.id === embarcacaoId);
     if (boat && boat.emManutencao) {
       return res.status(400).json({ error: true, message: "Esta embarcação está em manutenção. Não é possível contestar reservas no momento." });
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const activeReservations = dbData.reservations.filter((r: any) =>
+      r.clienteId === userId && r.embarcacaoId === embarcacaoId && r.status !== 'cancelado' && r.data >= todayStr
+    );
+    if (activeReservations.length >= 2) {
+      return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas para esta embarcação." });
     }
 
     // Find the target reservation
@@ -452,6 +559,14 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
       return res.status(400).json({ error: true, message: "Essa data já possui outra reserva ativa para esta embarcação." });
     }
 
+    let nextPos = 1;
+    const [maxRows] = await currentPool.query(
+      "SELECT MAX(posicaoFila) as maxPos FROM Reservas WHERE data = ? AND status != 'cancelado'",
+      [targetRes.data]
+    );
+    nextPos = ((maxRows as any[])[0]?.maxPos || 0) + 1;
+    const isMarinaOnlyBoat = boat?.empresas && boat.empresas.includes('MARINA') && !boat.empresas.includes('VALE');
+
     // 3. Create the new guaranteed reservation for the contesting client
     const newRes = {
       id: `res_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
@@ -463,6 +578,8 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
       status: 'agendado',
       statusMarina: 'agendado',
       tipoReserva: 'garantida' as const,
+      origem: isMarinaOnlyBoat ? 'marina' : 'cota',
+      posicaoFila: nextPos,
       createdAt: new Date().toISOString()
     };
 

@@ -205,10 +205,9 @@ router.post("/contrato", requireAdminAuth, (req, res, next) => {
       ? 'aquisicao'
       : ['adm', 'gestao', 'administracao'].includes(tipoRaw)
       ? 'gestao'
-      : null;
-    if (!folder) {
-      return res.status(400).json({ error: true, message: "Tipo de contrato inválido. Use 'aquisicao' ou 'adm'." });
-    }
+      : ['aditivo', 'aditivo_nautico', 'adit'].includes(tipoRaw)
+      ? 'aditivo'
+      : 'aquisicao';
 
     const kind = detectContratoKind(file.buffer);
     if (!kind) {
@@ -280,6 +279,21 @@ router.post("/contrato", requireAdminAuth, (req, res, next) => {
           `, [
             finalUrl, originalName, outBuf.length, key, storageType, todayStr,
             finalUrl, originalName, outBuf.length, todayStr,
+            rawId
+          ]);
+        } else if (folder === 'aditivo') {
+          await pool.query(`
+            UPDATE Clientes SET
+              contratoAditivoStatus = 'assinado',
+              contratoAditivoArquivoUrl = ?,
+              contratoAditivoArquivoNome = ?,
+              contratoAditivoArquivoTamanho = ?,
+              contratoAditivoArquivoKey = ?,
+              contratoAditivoArquivoStorage = ?,
+              contratoAditivoDataAssinatura = ?
+            WHERE id = ?
+          `, [
+            finalUrl, originalName, outBuf.length, key, storageType, todayStr,
             rawId
           ]);
         } else {

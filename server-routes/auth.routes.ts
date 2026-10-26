@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { getAdminByUsername, getClientByCpf, getClientAuth, upsertClientAuth, pullDatabase, updateAdmin } from "../server-db";
 import { authLimiter } from "./middlewares";
+import { sanitizeClientPayload } from "./client.routes";
 
 // Mock writeAuditLog since we are refactoring incrementally. 
 // We will export/import it properly from server.ts later.
@@ -64,20 +65,20 @@ authRoutes.post("/admin", authLimiter, async (req, res) => {
   }
 });
 
-// Route: Check client registration (CPF/Identifier)
+// Route: Check client registration (CPF)
 authRoutes.post("/client/check", authLimiter, async (req, res) => {
   const { identifier } = req.body;
-  if (!identifier) {
-    return res.status(400).json({ error: true, message: "Identificador (CPF) é obrigatório." });
+  const cleanId = String(identifier || '').replace(/\D/g, '');
+  if (!cleanId || cleanId.length !== 11) {
+    return res.status(400).json({ error: true, message: "Informe um CPF válido com 11 dígitos." });
   }
 
   try {
-    const cleanId = identifier.replace(/\D/g, '');
     const client = await getClientByCpf(cleanId);
     
     if (!client) {
-      writeAuditLog(identifier, "client", "LOGIN_CHECK_FAILED", req.ip, "Usuário não cadastrado");
-      return res.status(401).json({ error: true, message: "Cadastro não encontrado. Este é um sistema fechado apenas para clientes do Grupo Marina Club." });
+      writeAuditLog(cleanId, "client", "LOGIN_CHECK_FAILED", req.ip, "CPF não cadastrado");
+      return res.status(401).json({ error: true, message: "Cadastro não encontrado. Este é um sistema fechado apenas para clientes do Grupo Vila Náutica." });
     }
 
     if (client.status === 'inativo') {
@@ -153,7 +154,9 @@ authRoutes.post("/client", authLimiter, async (req, res) => {
       : [client.embarcacaoId];
 
     const boats = allBoats.filter((b: any) => clientBoatsList.includes(b.id));
-    const reservations = allReservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
+    const rawReservations = allReservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
+    const rawTransacoes = (dbData.transacoes || []).filter((t: any) => t.clienteId === client.id && t.tipo === 'receita');
+    const { safeClient, safeReservations } = sanitizeClientPayload(client, rawReservations, rawTransacoes, []);
 
     const token = jwt.sign(
       { id: client.id, nome: client.nome, role: "client" },
@@ -165,9 +168,9 @@ authRoutes.post("/client", authLimiter, async (req, res) => {
     res.json({
       success: true,
       token,
-      client,
+      client: safeClient,
       boats,
-      reservations
+      reservations: safeReservations
     });
   } catch (err: any) {
     console.error("Client login error:", err);

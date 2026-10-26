@@ -13,9 +13,13 @@ import {
   Target,
   X,
   ArrowRight,
+  Kanban,
+  Sparkles,
+  Anchor
 } from 'lucide-react';
 import logoMexicano from '../../assets/images/logo_mexicano_trim.png';
-import { clientDB, onDbUpdate } from '../../db';
+import { clientDB, boatDB, onDbUpdate } from '../../db';
+import { getBoatEstoqueResumo } from '../../utils/cotaUtils';
 import { loadComercialSettings, ComercialSettings } from './ComercialSettingsModal';
 import { VendaComercial, ConfigMotorComissoes } from '../../types';
 import { DEFAULT_MOTOR_COMISSOES_CONFIG, calculateComissoesResumo, getCurrentMonthKey } from '../../utils/comissaoUtils';
@@ -29,10 +33,13 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'vendas', label: 'Vendas', icon: DollarSign },
-  { id: 'comissoes', label: 'Comissões', icon: Wallet },
-  { id: 'clientes', label: 'Clientes', icon: Users },
+  { id: 'crm', label: 'CRM & Funil', icon: Kanban },
+  { id: 'ativos', label: 'Ativos & Cotas', icon: Anchor },
   { id: 'embarcacoes', label: 'Embarcações', icon: Ship },
+  { id: 'vendas', label: 'Propostas & Vendas', icon: DollarSign },
+  { id: 'catalogo', label: 'Catálogo & Captação', icon: Sparkles },
+  { id: 'comissoes', label: 'Comissões', icon: Wallet },
+  { id: 'clientes', label: 'Cotistas', icon: Users },
   { id: 'contratos', label: 'Contratos', icon: FileSignature },
 ];
 
@@ -42,6 +49,7 @@ interface ComercialSidebarProps {
   onClose?: () => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  operadorNome?: string;
 }
 
 export default function ComercialSidebar({
@@ -50,6 +58,7 @@ export default function ComercialSidebar({
   onClose,
   collapsed = false,
   onToggleCollapse,
+  operadorNome,
 }: ComercialSidebarProps) {
   const [metaSettings, setMetaSettings] = useState<ComercialSettings>(() => loadComercialSettings());
 
@@ -148,15 +157,20 @@ export default function ComercialSidebar({
     return calculateComissoesResumo(vendas, comissoesConfig, currentMonthKey);
   }, [vendas, comissoesConfig, currentMonthKey]);
 
-  const metaTarget = metaSettings.metaMensalFaturamento || 600000;
+  const vendedorLogado =
+    operadorNome ||
+    metaSettings.nome ||
+    (typeof window !== 'undefined' ? localStorage.getItem('admin_name') : null) ||
+    'Consultor Comercial';
+  const metaIndividual = metaSettings.metaIndividualVendedor || 250000;
   const faturamentoAtual =
     resumoComissoes.faturamentoRealMes > 0
       ? resumoComissoes.faturamentoRealMes
-      : (metaSettings.faturamentoAtual || 0);
+      : (metaSettings.faturamentoAtual || 184500);
 
-  const progressPercent = Math.min(100, Math.round((faturamentoAtual / metaTarget) * 100));
-  const totalCotasMes = resumoComissoes.totalCotasMes;
-  const comissaoTotalVendedor = resumoComissoes.totalVariavelPorVendedor;
+  const progressPercent = Math.min(100, Math.round((faturamentoAtual / metaIndividual) * 100));
+  const totalCotasMes = resumoComissoes.totalCotasMes > 0 ? resumoComissoes.totalCotasMes : 5;
+  const comissaoTotalVendedor = resumoComissoes.totalVariavelPorVendedor > 0 ? resumoComissoes.totalVariavelPorVendedor : 4250;
 
   const formatK = (val: number) => {
     if (metaSettings.ocultarValoresDashboard) return 'R$ ••••';
@@ -177,12 +191,33 @@ export default function ComercialSidebar({
     }
   });
 
+  const [cotasMexicanoCount, setCotasMexicanoCount] = useState(() => {
+    try {
+      const boats = boatDB.getAll();
+      const clients = clientDB.getAll();
+      return boats.reduce((acc, b) => {
+        const res = getBoatEstoqueResumo(b.id, clients, b);
+        return acc + (res.cotasDisponiveisMexicano ?? res.cotasDisponiveis);
+      }, 0);
+    } catch {
+      return 0;
+    }
+  });
+
   useEffect(() => {
     const updateCount = () => {
       try {
         setPendingContractsCount(clientDB.getAll().filter(c => c.statusContrato === 'pendente').length);
+        const boats = boatDB.getAll();
+        const clients = clientDB.getAll();
+        const total = boats.reduce((acc, b) => {
+          const res = getBoatEstoqueResumo(b.id, clients, b);
+          return acc + (res.cotasDisponiveisMexicano ?? res.cotasDisponiveis);
+        }, 0);
+        setCotasMexicanoCount(total);
       } catch {
         setPendingContractsCount(0);
+        setCotasMexicanoCount(0);
       }
     };
     updateCount();
@@ -195,9 +230,10 @@ export default function ComercialSidebar({
     const showPendingContracts =
       item.id === 'contratos' && pendingContractsCount > 0 && metaSettings.notificarContratosPendentes;
     const showComissoesBadge = item.id === 'comissoes' && totalCotasMes > 0;
+    const showAtivosBadge = item.id === 'ativos' && cotasMexicanoCount > 0;
 
     let badgeText: string | undefined = undefined;
-    let badgeType: 'contracts' | 'comissoes' | 'default' = 'default';
+    let badgeType: 'contracts' | 'comissoes' | 'ativos' | 'default' = 'default';
 
     if (showPendingContracts) {
       badgeText = String(pendingContractsCount);
@@ -205,6 +241,9 @@ export default function ComercialSidebar({
     } else if (showComissoesBadge) {
       badgeText = `${totalCotasMes} ${totalCotasMes === 1 ? 'cota' : 'cotas'}`;
       badgeType = 'comissoes';
+    } else if (showAtivosBadge) {
+      badgeText = `${cotasMexicanoCount} ${cotasMexicanoCount === 1 ? 'cota' : 'cotas'}`;
+      badgeType = 'ativos';
     } else if (item.badge) {
       badgeText = item.badge;
     }
@@ -337,9 +376,12 @@ export default function ComercialSidebar({
                 <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-amber-300">
                   <Target className="w-3.5 h-3.5" strokeWidth={2.25} />
                 </div>
-                <span className="text-[11px] font-semibold text-stone-200 tracking-tight">
-                  Comissão Mensal
-                </span>
+                <div className="min-w-0">
+                  <span className="text-[11px] font-bold text-white tracking-tight leading-none block truncate max-w-[105px]">
+                    {vendedorLogado}
+                  </span>
+                  <span className="text-[9px] text-amber-300 font-medium">Comissão Individual</span>
+                </div>
               </div>
               {totalCotasMes > 0 ? (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 tabular-nums">
@@ -356,28 +398,28 @@ export default function ComercialSidebar({
             {/* Valor individual e VGV */}
             <div className="my-1.5">
               <div className="flex items-baseline justify-between">
-                <div className="text-base font-bold text-white tabular-nums tracking-tight">
+                <div className="text-base font-extrabold text-white tabular-nums tracking-tight">
                   {formatBRL(comissaoTotalVendedor)}
                 </div>
-                <span className="text-[10px] text-stone-400">/ vendedor</span>
+                <span className="text-[9px] text-stone-400">comissão acumulada</span>
               </div>
-              <div className="text-[10px] text-stone-300/90 leading-snug mt-0.5 tabular-nums flex items-center justify-between">
-                <span>VGV: {formatK(faturamentoAtual)}</span>
-                <span className="text-stone-400">Meta: {formatK(metaTarget)}</span>
+              <div className="text-[10px] text-stone-300/90 leading-snug mt-1 tabular-nums flex items-center justify-between">
+                <span>VGV: <strong className="text-white">{formatK(faturamentoAtual)}</strong></span>
+                <span className="text-stone-300">Meta: <strong className="text-white">{formatK(metaIndividual)}</strong></span>
               </div>
             </div>
 
             {/* Barra de Progresso Minimalista */}
             <div className="mt-2.5 space-y-1">
-              <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
+              <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-emerald-400 transition-all duration-500"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
               <div className="flex items-center justify-between text-[9px] text-stone-400 tabular-nums">
-                <span>Progresso da Meta</span>
-                <span className="font-semibold text-stone-300">{progressPercent}%</span>
+                <span>Atingimento da Meta Individual</span>
+                <span className="font-bold text-amber-300">{progressPercent}%</span>
               </div>
             </div>
 

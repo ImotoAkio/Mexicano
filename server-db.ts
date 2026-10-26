@@ -264,6 +264,13 @@ export async function initializeDatabase() {
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmDataAssinatura VARCHAR(50);`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmArquivoKey VARCHAR(255);`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAdmArquivoStorage VARCHAR(20);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAditivoStatus VARCHAR(50) DEFAULT 'sem_contrato';`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAditivoArquivoUrl LONGTEXT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAditivoArquivoNome VARCHAR(255);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAditivoArquivoTamanho INT;`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAditivoDataAssinatura VARCHAR(50);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAditivoArquivoKey VARCHAR(255);`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoAditivoArquivoStorage VARCHAR(20);`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratoValores LONGTEXT;`); } catch (e) {}
     try { await connection.query(`ALTER TABLE Clientes ADD COLUMN contratos LONGTEXT;`); } catch (e) {}
 
@@ -339,13 +346,19 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN capacidadePassageiros INT;`);
     } catch (e) {}
     try {
-      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN totalCotas INT DEFAULT 8;`);
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN totalCotas INT DEFAULT 4;`);
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN vaga VARCHAR(50);`);
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN tamanho VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN valorCota DECIMAL(12,2) DEFAULT 0;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN taxaAdmMensal DECIMAL(10,2) DEFAULT 0;`);
     } catch (e) {}
 
     // 3. Reservas Table
@@ -939,6 +952,154 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // Auto-migration for Leads columns
+    const leadColumnsMigration = [
+      "ALTER TABLE Leads ADD COLUMN cidade VARCHAR(100);",
+      "ALTER TABLE Leads ADD COLUMN cpf VARCHAR(50);",
+      "ALTER TABLE Leads ADD COLUMN etapaFunil VARCHAR(50) DEFAULT 'novo';",
+      "ALTER TABLE Leads ADD COLUMN perfilNautico TEXT;",
+      "ALTER TABLE Leads ADD COLUMN embarcacoesInteresse TEXT;",
+      "ALTER TABLE Leads ADD COLUMN tipoInteresse VARCHAR(50);",
+      "ALTER TABLE Leads ADD COLUMN vendedorId VARCHAR(50);",
+      "ALTER TABLE Leads ADD COLUMN vendedorNome VARCHAR(150);",
+      "ALTER TABLE Leads ADD COLUMN origem VARCHAR(50) DEFAULT 'instagram';",
+      "ALTER TABLE Leads ADD COLUMN indicadoPorClienteId VARCHAR(50);",
+      "ALTER TABLE Leads ADD COLUMN indicadoPorClienteNome VARCHAR(150);",
+      "ALTER TABLE Leads ADD COLUMN temperatura VARCHAR(20) DEFAULT 'morno';",
+      "ALTER TABLE Leads ADD COLUMN valorEstimado DECIMAL(12,2) DEFAULT 0;",
+      "ALTER TABLE Leads ADD COLUMN proximoContatoEm VARCHAR(50);",
+      "ALTER TABLE Leads ADD COLUMN dataVisitaAgendada VARCHAR(50);",
+      "ALTER TABLE Leads ADD COLUMN possuiPermuta TINYINT(1) DEFAULT 0;",
+      "ALTER TABLE Leads ADD COLUMN resumoPermuta TEXT;",
+      "ALTER TABLE Leads ADD COLUMN motivoPerda VARCHAR(255);",
+      "ALTER TABLE Leads ADD COLUMN timeline TEXT;",
+      "ALTER TABLE Leads ADD COLUMN filaEsperaEmbarcacaoId VARCHAR(50);",
+      "ALTER TABLE Leads ADD COLUMN utmSource VARCHAR(100);",
+      "ALTER TABLE Leads ADD COLUMN utmMedium VARCHAR(100);",
+      "ALTER TABLE Leads ADD COLUMN utmCampaign VARCHAR(100);"
+    ];
+    for (const migQuery of leadColumnsMigration) {
+      try {
+        await connection.query(migQuery);
+      } catch (e) {
+        // Ignora caso coluna já exista
+      }
+    }
+
+    // Tabelas Comerciais Adicionais (CRM, Propostas, Cotas Reservadas, Permutas, CheckinVisitas)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS PropostasComerciais (
+        id VARCHAR(50) PRIMARY KEY,
+        codigoProposta VARCHAR(50) NOT NULL,
+        leadId VARCHAR(50),
+        leadNome VARCHAR(255),
+        leadTelefone VARCHAR(50),
+        leadEmail VARCHAR(100),
+        leadCpf VARCHAR(50),
+        vendedorId VARCHAR(50),
+        vendedorNome VARCHAR(150),
+        embarcacaoId VARCHAR(50) NOT NULL,
+        cota VARCHAR(50) NOT NULL,
+        tipoCota VARCHAR(50) DEFAULT 'estoque_mexicano',
+        repasseClienteId VARCHAR(50),
+        valorTotal DECIMAL(12,2) DEFAULT 0,
+        valorEntrada DECIMAL(12,2) DEFAULT 0,
+        dataVencimentoEntrada VARCHAR(50),
+        formaPagamentoEntrada VARCHAR(50),
+        numParcelas INT DEFAULT 0,
+        valorParcela DECIMAL(12,2) DEFAULT 0,
+        diaVencimento INT DEFAULT 10,
+        dataPrimeiraParcela VARCHAR(50),
+        formaPagamentoParcelas VARCHAR(50),
+        baloesIntermediarios TEXT,
+        permutaInfo TEXT,
+        taxaAdmEstimada DECIMAL(10,2) DEFAULT 0,
+        comparativoCustoInfo TEXT,
+        status VARCHAR(50) DEFAULT 'enviada',
+        validadeAte VARCHAR(50),
+        tokenPublico VARCHAR(100) UNIQUE,
+        visualizadaEm VARCHAR(50),
+        aceitaEm VARCHAR(50),
+        observacoes TEXT,
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS CotasReservadas (
+        id VARCHAR(50) PRIMARY KEY,
+        embarcacaoId VARCHAR(50) NOT NULL,
+        cota VARCHAR(50) NOT NULL,
+        propostaId VARCHAR(50),
+        leadId VARCHAR(50),
+        leadNome VARCHAR(255),
+        vendedorId VARCHAR(50),
+        vendedorNome VARCHAR(150),
+        motivoReserva VARCHAR(255),
+        expiraEm VARCHAR(50) NOT NULL,
+        status VARCHAR(50) DEFAULT 'ativa',
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS Permutas (
+        id VARCHAR(50) PRIMARY KEY,
+        propostaId VARCHAR(50),
+        leadId VARCHAR(50),
+        leadNome VARCHAR(255),
+        tipoBem VARCHAR(50) DEFAULT 'lancha',
+        marcaModelo VARCHAR(255) NOT NULL,
+        ano INT,
+        valorPropostoCliente DECIMAL(12,2) DEFAULT 0,
+        valorAprovadoDiretoria DECIMAL(12,2),
+        statusAvaliacao VARCHAR(50) DEFAULT 'aguardando_avaliacao',
+        motivoAvaliacao TEXT,
+        avaliadoPor VARCHAR(150),
+        avaliadoEm VARCHAR(50),
+        fotos TEXT,
+        documentos TEXT,
+        observacoes TEXT,
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS CheckinVisitas (
+        id VARCHAR(50) PRIMARY KEY,
+        reservaId VARCHAR(50),
+        leadId VARCHAR(50),
+        embarcacaoId VARCHAR(50) NOT NULL,
+        vendedorId VARCHAR(50),
+        dataVisita VARCHAR(50) NOT NULL,
+        compareceu TINYINT(1) DEFAULT 1,
+        avaliacaoLead INT DEFAULT 5,
+        feedbackLead TEXT,
+        proximosPassos TEXT,
+        temperaturaLead VARCHAR(50) DEFAULT 'quente',
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS HistoricoCotas (
+        id VARCHAR(50) PRIMARY KEY,
+        embarcacaoId VARCHAR(50) NOT NULL,
+        cota VARCHAR(50) NOT NULL,
+        tipoOperacao VARCHAR(50) NOT NULL,
+        clienteOrigemId VARCHAR(50),
+        clienteOrigemNome VARCHAR(255),
+        clienteDestinoId VARCHAR(50),
+        clienteDestinoNome VARCHAR(255),
+        valor DECIMAL(12,2) DEFAULT 0,
+        dataOperacao VARCHAR(50) NOT NULL,
+        observacoes TEXT,
+        criadoPor VARCHAR(150),
+        createdAt VARCHAR(50) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     // Seed default admin user if none exists
     const [existingAdmins] = await connection.query("SELECT COUNT(*) as cnt FROM AdminUsers");
     const adminCount = (existingAdmins as any[])[0]?.cnt || 0;
@@ -1148,6 +1309,14 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
     console.log("✅ Chamados table ready.");
+
+    try {
+      await ensureInternalMexicanoClient(connection);
+      await reconcileBoatCotasWithMexicano(connection);
+      console.log("✅ Mexicano internal quotas and inventory reconciled for all boats.");
+    } catch(mexErr) {
+      console.warn("Failed to reconcile Mexicano boat quotas:", mexErr);
+    }
 
     // ── 27. CaixaMarinaTransacoes Table ──
     await connection.query(`
@@ -1621,15 +1790,17 @@ export async function pullDatabase(forceFresh = false) {
       c.embarcacoes.forEach((eb: any) => {
         if (!eb?.embarcacaoId) {
           eb.cota = parseExplicitCota(eb?.cota) || 'C1';
+          eb.plano = eb.plano || (c.plano === 'completo' ? 'completo' : 'normal');
           return;
         }
         eb.cota = parseExplicitCota(eb.cota) || allocateNextFreeSlot(eb.embarcacaoId);
+        eb.plano = eb.plano || (c.plano === 'completo' ? 'completo' : 'normal');
       });
       c.embarcacaoId = c.embarcacoes[0].embarcacaoId;
       c.cota = c.embarcacoes[0].cota;
     } else if (c.embarcacaoId) {
       c.cota = parseExplicitCota(c.cota) || allocateNextFreeSlot(c.embarcacaoId);
-      c.embarcacoes = [{ embarcacaoId: c.embarcacaoId, cota: c.cota }];
+      c.embarcacoes = [{ embarcacaoId: c.embarcacaoId, cota: c.cota, plano: c.plano === 'completo' ? 'completo' : 'normal' }];
     } else if (c.cota) {
       c.cota = parseExplicitCota(c.cota) || 'C1';
     }
@@ -1659,7 +1830,9 @@ export async function pullDatabase(forceFresh = false) {
       temSom: b.temSom === 1 || b.temSom === true,
       acessorios: b.acessorios ? JSON.parse(b.acessorios) : undefined,
       capacidadePassageiros: b.capacidadePassageiros !== null && b.capacidadePassageiros !== undefined ? Number(b.capacidadePassageiros) : undefined,
-      totalCotas: b.totalCotas !== null && b.totalCotas !== undefined && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : 8,
+      totalCotas: b.totalCotas !== null && b.totalCotas !== undefined && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4),
+      valorCota: b.valorCota !== null && b.valorCota !== undefined ? Number(b.valorCota) : 0,
+      taxaAdmMensal: b.taxaAdmMensal !== null && b.taxaAdmMensal !== undefined ? Number(b.taxaAdmMensal) : 0,
       horasMotor: b.horasMotor ? Number(b.horasMotor) : 0,
       ultimaAtualizacaoHoras: b.ultimaAtualizacaoHoras || undefined,
       horasUltimaManutencao: b.horasUltimaManutencao ? Number(b.horasUltimaManutencao) : 0,
@@ -1847,6 +2020,10 @@ export async function upsertClient(client: any) {
       contratos = VALUES(contratos)
   `;
 
+  const effectivePlano = (Array.isArray(client.embarcacoes) && client.embarcacoes.some((eb: any) => eb?.plano === 'completo'))
+    ? 'completo'
+    : (client.plano || 'normal');
+
   await currentPool.query(query, [
     client.id,
     client.nome || '',
@@ -1867,7 +2044,7 @@ export async function upsertClient(client: any) {
     embarcacoesJson,
     client.statusFinanceiro || 'em_dia',
     client.observacoesFinanceiras || null,
-    client.plano || 'normal',
+    effectivePlano,
     client.asaasCustomerId || null,
     client.cnh_cha || null,
     client.profissao || null,
@@ -1953,6 +2130,160 @@ export async function upsertRegistroAtividade(data: any) {
 }
 
 // Upsert a single boat record
+
+// ============================================================================
+// LÓGICA DE TITULARIDADE & ESTOQUE COMERCIAL (ENTIDADE INTERNA EL MEXICANO)
+// ============================================================================
+export const MEXICANO_INTERNAL_CLIENT_ID = 'cli_112';
+export const MEXICANO_INTERNAL_CLIENT_NAME = 'MEXICANO LANCHAS LTDA';
+
+export function isInternalMexicanoEntity(idOrName?: string | null): boolean {
+  if (!idOrName) return false;
+  const s = String(idOrName).trim().toLowerCase();
+  return (
+    s === 'cli_112' ||
+    s === 'cli_mexicano_internal' ||
+    s === 'mexicano lanchas ltda' ||
+    s === 'mexicano lanchas' ||
+    s === 'el mexicano' ||
+    s === 'mexicano' ||
+    s.includes('mexicano lanchas')
+  );
+}
+
+export async function ensureInternalMexicanoClient(connectionOrPool: any) {
+  const [rows] = await connectionOrPool.query(
+    "SELECT id, nome, embarcacoes FROM Clientes WHERE id = ?",
+    [MEXICANO_INTERNAL_CLIENT_ID]
+  );
+  if ((rows as any[]).length === 0) {
+    const now = new Date().toISOString();
+    await connectionOrPool.query(
+      `INSERT INTO Clientes (id, nome, telefone, dataCadastro, status, embarcacoes)
+       VALUES (?, ?, ?, ?, 'ativo', '[]')`,
+      [MEXICANO_INTERNAL_CLIENT_ID, MEXICANO_INTERNAL_CLIENT_NAME, '558796552883', now]
+    );
+    await connectionOrPool.query(
+      "INSERT IGNORE INTO ClienteEmpresas (clienteId, empresa) VALUES (?, 'VALE'), (?, 'MEXICANO')",
+      [MEXICANO_INTERNAL_CLIENT_ID, MEXICANO_INTERNAL_CLIENT_ID]
+    );
+  }
+}
+
+export async function reconcileBoatCotasWithMexicano(connectionOrPool: any, specificBoatId?: string) {
+  try {
+    await ensureInternalMexicanoClient(connectionOrPool);
+
+    const boatQuery = specificBoatId
+      ? "SELECT id, totalCotas, donos FROM Embarcacoes WHERE id = ?"
+      : "SELECT id, totalCotas, donos FROM Embarcacoes";
+    const [boatRows] = await connectionOrPool.query(boatQuery, specificBoatId ? [specificBoatId] : []);
+
+    const [clientRows] = await connectionOrPool.query(
+      "SELECT id, nome, embarcacaoId, cota, embarcacoes FROM Clientes WHERE (status IS NULL OR status != 'inativo') AND id != ?",
+      [MEXICANO_INTERNAL_CLIENT_ID]
+    );
+
+    const [mexRows] = await connectionOrPool.query(
+      "SELECT id, embarcacoes FROM Clientes WHERE id = ?",
+      [MEXICANO_INTERNAL_CLIENT_ID]
+    );
+    let mexEmbarcacoes: Array<{ embarcacaoId: string; cota: string; [key: string]: any }> = [];
+    if (mexRows && (mexRows as any[])[0]?.embarcacoes) {
+      try {
+        const raw = (mexRows as any[])[0].embarcacoes;
+        mexEmbarcacoes = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!Array.isArray(mexEmbarcacoes)) mexEmbarcacoes = [];
+      } catch {
+        mexEmbarcacoes = [];
+      }
+    }
+
+    for (const b of boatRows as any[]) {
+      const bId = b.id;
+      const totalCotas = Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4);
+
+      const occupiedByRealClients = new Set<string>();
+
+      for (const cli of clientRows as any[]) {
+        let cliEbs: any[] = [];
+        if (cli.embarcacoes) {
+          try {
+            cliEbs = typeof cli.embarcacoes === 'string' ? JSON.parse(cli.embarcacoes) : cli.embarcacoes;
+            if (!Array.isArray(cliEbs)) cliEbs = [];
+          } catch {
+            cliEbs = [];
+          }
+        }
+        if (cliEbs.length > 0) {
+          cliEbs.forEach(eb => {
+            if (eb && eb.embarcacaoId === bId && eb.cota) {
+              const m = String(eb.cota).trim().toUpperCase().match(/(?:COTA|C)?[\s\-_]*0*(\d+)/i);
+              if (m) occupiedByRealClients.add(`C${parseInt(m[1], 10)}`);
+            }
+          });
+        } else if (cli.embarcacaoId === bId && cli.cota) {
+          const m = String(cli.cota).trim().toUpperCase().match(/(?:COTA|C)?[\s\-_]*0*(\d+)/i);
+          if (m) occupiedByRealClients.add(`C${parseInt(m[1], 10)}`);
+        }
+      }
+
+      const stockCotas: string[] = [];
+      for (let i = 1; i <= totalCotas; i++) {
+        const code = `C${i}`;
+        if (!occupiedByRealClients.has(code)) {
+          stockCotas.push(code);
+        }
+      }
+
+      mexEmbarcacoes = mexEmbarcacoes.filter(eb => eb.embarcacaoId !== bId);
+      stockCotas.forEach(cCode => {
+        mexEmbarcacoes.push({
+          embarcacaoId: bId,
+          cota: cCode
+        });
+      });
+
+      let currentDonos: string[] = [];
+      if (b.donos) {
+        try {
+          currentDonos = typeof b.donos === 'string' ? JSON.parse(b.donos) : b.donos;
+          if (!Array.isArray(currentDonos)) currentDonos = [];
+        } catch {
+          currentDonos = [];
+        }
+      }
+
+      const hasStock = stockCotas.length > 0;
+      let donosChanged = false;
+
+      if (hasStock && !currentDonos.includes(MEXICANO_INTERNAL_CLIENT_ID)) {
+        currentDonos.push(MEXICANO_INTERNAL_CLIENT_ID);
+        donosChanged = true;
+      } else if (!hasStock && currentDonos.includes(MEXICANO_INTERNAL_CLIENT_ID)) {
+        currentDonos = currentDonos.filter(id => id !== MEXICANO_INTERNAL_CLIENT_ID);
+        donosChanged = true;
+      }
+
+      if (donosChanged) {
+        await connectionOrPool.query(
+          "UPDATE Embarcacoes SET donos = ? WHERE id = ?",
+          [JSON.stringify(currentDonos), bId]
+        );
+      }
+    }
+
+    await connectionOrPool.query(
+      "UPDATE Clientes SET embarcacoes = ? WHERE id = ?",
+      [JSON.stringify(mexEmbarcacoes), MEXICANO_INTERNAL_CLIENT_ID]
+    );
+
+    invalidateDbCache();
+  } catch (err) {
+    console.warn("[reconcileBoatCotasWithMexicano] Warning:", err);
+  }
+}
+
 export async function upsertBoat(boat: any) {
   invalidateDbCache();
   const currentPool = getDbPool();
@@ -1975,8 +2306,8 @@ export async function upsertBoat(boat: any) {
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho, valorCota, taxaAdmMensal
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -2004,8 +2335,13 @@ export async function upsertBoat(boat: any) {
       capacidadePassageiros = VALUES(capacidadePassageiros),
       totalCotas = VALUES(totalCotas),
       vaga = VALUES(vaga),
-      tamanho = VALUES(tamanho)
+      tamanho = VALUES(tamanho),
+      valorCota = VALUES(valorCota),
+      taxaAdmMensal = VALUES(taxaAdmMensal)
   `;
+
+  const valorCotaNum = boat.valorCota !== undefined && !isNaN(Number(boat.valorCota)) ? Number(boat.valorCota) : 0;
+  const taxaAdmMensalNum = boat.taxaAdmMensal !== undefined && !isNaN(Number(boat.taxaAdmMensal)) ? Number(boat.taxaAdmMensal) : 0;
 
   await currentPool.query(query, [
     boat.id,
@@ -2033,9 +2369,11 @@ export async function upsertBoat(boat: any) {
     boat.horasUltimaManutencao !== undefined ? Number(boat.horasUltimaManutencao) : 0,
     historicoHorasJson,
     boat.capacidadePassageiros !== undefined && boat.capacidadePassageiros !== null ? Number(boat.capacidadePassageiros) : null,
-    boat.totalCotas !== undefined && boat.totalCotas !== null && Number(boat.totalCotas) > 0 ? Number(boat.totalCotas) : 8,
+    boat.totalCotas !== undefined && boat.totalCotas !== null && Number(boat.totalCotas) > 0 ? Number(boat.totalCotas) : (boat.nome === 'M55' || boat.id === 'boat_M55' ? 8 : 4),
     boat.vaga || null,
-    boat.tamanho !== undefined && boat.tamanho !== null && boat.tamanho !== '' ? String(boat.tamanho) : null
+    boat.tamanho !== undefined && boat.tamanho !== null && boat.tamanho !== '' ? String(boat.tamanho) : null,
+    valorCotaNum,
+    taxaAdmMensalNum
   ]);
 
   if (boat.empresas && Array.isArray(boat.empresas)) {
@@ -2045,6 +2383,15 @@ export async function upsertBoat(boat: any) {
       await currentPool.query("INSERT INTO EmbarcacaoEmpresas (embarcacaoId, empresa) VALUES ?", [values]);
     }
   }
+
+  // Reconciliar cotas societárias com a entidade interna El Mexicano para refletir totalCotas
+  try {
+    await reconcileBoatCotasWithMexicano(currentPool, boat.id);
+  } catch (errReconcile) {
+    console.warn(`[upsertBoat] Falha ao reconciliar cotas com Mexicano para ${boat.id}:`, errReconcile);
+  }
+
+  invalidateDbCache();
 }
 
 // Delete a single boat record
@@ -2395,6 +2742,9 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
         ]);
       }
     }
+
+    // Sincronizar cotas em estoque do El Mexicano para todas as embarcações
+    await reconcileBoatCotasWithMexicano(connection);
 
     await connection.commit();
     return true;
@@ -3373,6 +3723,7 @@ export async function saveFuelHistoryInDb(history: any[]): Promise<void> {
         h.diferencaLitros || null
       ]);
     }
+
     await connection.commit();
   } catch (err) {
     await connection.rollback();
@@ -4030,6 +4381,7 @@ export async function consumeFuelAtomicDb(litros: number, barcoNome: string, ope
        computedDetalhes
     ]);
 
+
     await connection.commit();
     return true;
   } catch(e: any) {
@@ -4083,6 +4435,7 @@ export async function restoreFuelAtomicDb(litros: number, motivo: string, operad
        dataHoraStr,
        `Estorno de combustivel: ${motivo} (${litros}L devolvidos ao tanque principal)`
     ]);
+
 
     await connection.commit();
     return true;
@@ -5187,6 +5540,9 @@ export async function createVendaCompleta(payload: any): Promise<any> {
       );
     }
 
+    // Sincronizar cotas em estoque do El Mexicano (subtraindo a cota adquirida)
+    await reconcileBoatCotasWithMexicano(connection, embarcacaoId);
+
     await connection.commit();
 
     // Atualizar statusFinanceiro do cliente após commit
@@ -5513,4 +5869,1412 @@ export async function updateVendaProcessoComissao(vendaId: string, payload: any)
   const todas = await getAllVendas();
   return todas.find(v => v.id === vendaId) || null;
 }
+
+// =========================================================================
+// MÓDULO COMERCIAL: CRM LEADS, PROPOSTAS, RESERVAS, PERMUTAS & CHECKIN
+// =========================================================================
+
+export async function getAllLeadsComercial(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  try {
+    const [rows]: any = await currentPool.query(`
+      SELECT l.*,
+             c.nome AS clienteIndicadorNome,
+             (SELECT COUNT(*) FROM PropostasComerciais p WHERE p.leadId = l.id AND p.status != 'cancelada') AS propostasCount,
+             (SELECT COUNT(*) FROM CotasReservadas cr WHERE cr.leadId = l.id AND cr.status = 'ativa' AND cr.expiraEm > NOW()) AS cotasReservadasCount,
+             (SELECT COUNT(*) FROM Permutas pm WHERE pm.leadId = l.id) AS permutasCount,
+             (SELECT cr2.cota FROM CotasReservadas cr2 WHERE cr2.leadId = l.id AND cr2.status = 'ativa' AND cr2.expiraEm > NOW() ORDER BY cr2.createdAt DESC LIMIT 1) AS cotaReservadaCodigo
+      FROM Leads l
+      LEFT JOIN Clientes c ON c.id = l.indicadoPorClienteId
+      ORDER BY l.updatedAt DESC, l.createdAt DESC
+    `);
+    return rows.map((r: any) => {
+      let perfilNautico = null;
+      let embarcacoesInteresse = [];
+      let timeline = [];
+      try { if (r.perfilNautico) perfilNautico = JSON.parse(r.perfilNautico); } catch {}
+      try {
+        if (r.embarcacoesInteresse) {
+          if (typeof r.embarcacoesInteresse === 'string') {
+            if (r.embarcacoesInteresse.startsWith('[') || r.embarcacoesInteresse.startsWith('{')) {
+              embarcacoesInteresse = JSON.parse(r.embarcacoesInteresse);
+            } else {
+              embarcacoesInteresse = r.embarcacoesInteresse.split(',').map((s: string) => s.trim()).filter(Boolean);
+            }
+          } else if (Array.isArray(r.embarcacoesInteresse)) {
+            embarcacoesInteresse = r.embarcacoesInteresse;
+          }
+        }
+      } catch {
+        embarcacoesInteresse = typeof r.embarcacoesInteresse === 'string' && r.embarcacoesInteresse ? [r.embarcacoesInteresse] : [];
+      }
+      try { if (r.timeline) timeline = JSON.parse(r.timeline); } catch {}
+
+      return {
+        ...r,
+        origem: r.origem || 'instagram',
+        temperatura: r.temperatura || 'morno',
+        valorEstimado: Number(r.valorEstimado) || 0,
+        possuiPermuta: Boolean(r.possuiPermuta || (r.permutasCount && r.permutasCount > 0)),
+        resumoPermuta: r.resumoPermuta || null,
+        proximoContatoEm: r.proximoContatoEm || null,
+        dataVisitaAgendada: r.dataVisitaAgendada || null,
+        indicadoPorClienteNome: r.indicadoPorClienteNome || r.clienteIndicadorNome || null,
+        propostasCount: Number(r.propostasCount) || 0,
+        cotasReservadasCount: Number(r.cotasReservadasCount) || 0,
+        permutasCount: Number(r.permutasCount) || 0,
+        cotaReservadaCodigo: r.cotaReservadaCodigo || null,
+        perfilNautico,
+        embarcacoesInteresse,
+        timeline
+      };
+    });
+  } catch (err) {
+    console.error("[getAllLeadsComercial Error]:", err);
+    return [];
+  }
+}
+
+export async function upsertLeadComercial(lead: any): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const id = lead.id || `lead_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const nowIso = new Date().toISOString();
+  const createdAt = lead.createdAt || nowIso;
+  const updatedAt = nowIso;
+
+  const perfilNauticoStr = lead.perfilNautico
+    ? (typeof lead.perfilNautico === 'string' ? lead.perfilNautico : JSON.stringify(lead.perfilNautico))
+    : null;
+
+  const embarcacoesInteresseStr = lead.embarcacoesInteresse
+    ? (typeof lead.embarcacoesInteresse === 'string' ? lead.embarcacoesInteresse : JSON.stringify(lead.embarcacoesInteresse))
+    : null;
+
+  let timelineArr = Array.isArray(lead.timeline) ? lead.timeline : [];
+  if (timelineArr.length === 0 && !lead.id) {
+    timelineArr.push({
+      id: `tl_${Date.now()}`,
+      data: nowIso,
+      tipo: 'mudanca_etapa',
+      titulo: 'Lead Criado',
+      descricao: `Lead registrado na etapa: ${lead.etapaFunil || 'novo'}`,
+      autorNome: lead.vendedorNome || 'Sistema Comercial'
+    });
+  }
+  const timelineStr = JSON.stringify(timelineArr);
+
+  await currentPool.query(`
+    INSERT INTO Leads (
+      id, nome, telefone, email, cpf, cidade, detalhes, etapaFunil, perfilNautico,
+      embarcacoesInteresse, tipoInteresse, vendedorId, vendedorNome, indicadoPorClienteId, indicadoPorClienteNome,
+      origem, temperatura, valorEstimado, proximoContatoEm, dataVisitaAgendada, possuiPermuta, resumoPermuta,
+      filaEsperaEmbarcacaoId, timeline, motivoPerda, utmSource, utmMedium, utmCampaign,
+      createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      nome = VALUES(nome),
+      telefone = VALUES(telefone),
+      email = VALUES(email),
+      cpf = VALUES(cpf),
+      cidade = VALUES(cidade),
+      detalhes = VALUES(detalhes),
+      etapaFunil = VALUES(etapaFunil),
+      perfilNautico = VALUES(perfilNautico),
+      embarcacoesInteresse = VALUES(embarcacoesInteresse),
+      tipoInteresse = VALUES(tipoInteresse),
+      vendedorId = VALUES(vendedorId),
+      vendedorNome = VALUES(vendedorNome),
+      indicadoPorClienteId = VALUES(indicadoPorClienteId),
+      indicadoPorClienteNome = VALUES(indicadoPorClienteNome),
+      origem = VALUES(origem),
+      temperatura = VALUES(temperatura),
+      valorEstimado = VALUES(valorEstimado),
+      proximoContatoEm = VALUES(proximoContatoEm),
+      dataVisitaAgendada = VALUES(dataVisitaAgendada),
+      possuiPermuta = VALUES(possuiPermuta),
+      resumoPermuta = VALUES(resumoPermuta),
+      filaEsperaEmbarcacaoId = VALUES(filaEsperaEmbarcacaoId),
+      timeline = VALUES(timeline),
+      motivoPerda = VALUES(motivoPerda),
+      utmSource = VALUES(utmSource),
+      utmMedium = VALUES(utmMedium),
+      utmCampaign = VALUES(utmCampaign),
+      updatedAt = VALUES(updatedAt)
+  `, [
+    id,
+    lead.nome || 'Lead sem nome',
+    lead.telefone || null,
+    lead.email || null,
+    lead.cpf || null,
+    lead.cidade || null,
+    lead.detalhes || null,
+    lead.etapaFunil || 'novo',
+    perfilNauticoStr,
+    embarcacoesInteresseStr,
+    lead.tipoInteresse || null,
+    lead.vendedorId || null,
+    lead.vendedorNome || null,
+    lead.indicadoPorClienteId || null,
+    lead.indicadoPorClienteNome || null,
+    lead.origem || 'instagram',
+    lead.temperatura || 'morno',
+    Number(lead.valorEstimado) || 0,
+    lead.proximoContatoEm || null,
+    lead.dataVisitaAgendada || null,
+    lead.possuiPermuta ? 1 : 0,
+    lead.resumoPermuta || null,
+    lead.filaEsperaEmbarcacaoId || null,
+    timelineStr,
+    lead.motivoPerda || null,
+    lead.utmSource || null,
+    lead.utmMedium || null,
+    lead.utmCampaign || null,
+    createdAt,
+    updatedAt
+  ]);
+
+  invalidateDbCache();
+  const all = await getAllLeadsComercial();
+  return all.find(l => l.id === id);
+}
+
+export async function addLeadTimelineEvent(leadId: string, event: {
+  tipo: string;
+  titulo: string;
+  descricao?: string;
+  autorNome?: string;
+  proximoContatoEm?: string | null;
+}): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const [rows]: any = await currentPool.query("SELECT timeline, proximoContatoEm FROM Leads WHERE id = ?", [leadId]);
+  if (!rows || rows.length === 0) throw new Error("Lead não encontrado");
+
+  let timeline: any[] = [];
+  try {
+    if (rows[0].timeline) timeline = JSON.parse(rows[0].timeline);
+  } catch {}
+
+  const newEntry = {
+    id: `tl_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+    data: new Date().toISOString(),
+    tipo: event.tipo || 'nota',
+    titulo: event.titulo || 'Nova interação',
+    descricao: event.descricao || '',
+    autorNome: event.autorNome || 'Equipe Comercial'
+  };
+
+  timeline.unshift(newEntry);
+  const nowIso = new Date().toISOString();
+
+  if (event.proximoContatoEm !== undefined) {
+    await currentPool.query("UPDATE Leads SET timeline = ?, proximoContatoEm = ?, updatedAt = ? WHERE id = ?", [
+      JSON.stringify(timeline),
+      event.proximoContatoEm || null,
+      nowIso,
+      leadId
+    ]);
+  } else {
+    await currentPool.query("UPDATE Leads SET timeline = ?, updatedAt = ? WHERE id = ?", [
+      JSON.stringify(timeline),
+      nowIso,
+      leadId
+    ]);
+  }
+
+  invalidateDbCache();
+  return newEntry;
+}
+
+export async function updateLeadEtapa(
+  leadId: string,
+  etapaFunil: string,
+  motivoPerda?: string,
+  autorNome?: string,
+  dataVisitaAgendada?: string | null,
+  proximoContatoEm?: string | null
+): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  await addLeadTimelineEvent(leadId, {
+    tipo: 'mudanca_etapa',
+    titulo: `Avanço de Etapa: ${etapaFunil.toUpperCase()}`,
+    descricao: motivoPerda ? `Motivo informado: ${motivoPerda}` : `Lead movimentado no funil comercial`,
+    autorNome: autorNome || 'Comercial'
+  });
+
+  const nowIso = new Date().toISOString();
+
+  let updateQuery = "UPDATE Leads SET etapaFunil = ?, motivoPerda = ?, updatedAt = ?";
+  const updateParams: any[] = [etapaFunil, motivoPerda || null, nowIso];
+
+  if (dataVisitaAgendada !== undefined) {
+    updateQuery += ", dataVisitaAgendada = ?";
+    updateParams.push(dataVisitaAgendada);
+  }
+
+  if (proximoContatoEm !== undefined) {
+    updateQuery += ", proximoContatoEm = ?";
+    updateParams.push(proximoContatoEm);
+  }
+
+  updateQuery += " WHERE id = ?";
+  updateParams.push(leadId);
+
+  await currentPool.query(updateQuery, updateParams);
+
+  invalidateDbCache();
+  const all = await getAllLeadsComercial();
+  return all.find(l => l.id === leadId);
+}
+
+export async function verificarDisponibilidadeVisita(embarcacaoId: string, data: string): Promise<{
+  disponivelNaMarina: boolean;
+  conflitos: Array<{ tipo: 'reserva' | 'manutencao'; titulo: string; detalhe: string; status?: string }>;
+}> {
+  const currentPool = getDbPool();
+  if (!currentPool) return { disponivelNaMarina: true, conflitos: [] };
+
+  try {
+    const conflitos: Array<{ tipo: 'reserva' | 'manutencao'; titulo: string; detalhe: string; status?: string }> = [];
+
+    // 1. Reservas de cotistas na data
+    const [reservas]: any = await currentPool.query(`
+      SELECT r.id, r.periodo, r.horaSaida, r.horaChegada, r.observacoes, c.nome as cotistaNome
+      FROM Reservas r
+      LEFT JOIN Clientes c ON c.id = r.clienteId
+      WHERE r.embarcacaoId = ? AND r.data = ? AND r.status NOT IN ('cancelado', 'cancelada')
+    `, [embarcacaoId, data]);
+
+    if (Array.isArray(reservas)) {
+      for (const res of reservas) {
+        const periodoStr = res.periodo === 'manha' ? 'Manhã (09h - 13h)' : res.periodo === 'tarde' ? 'Tarde (13h - 18h)' : res.periodo === 'dia_inteiro' ? 'Dia Inteiro' : (res.periodo || 'Horário agendado');
+        conflitos.push({
+          tipo: 'reserva',
+          titulo: `Saída de Cotista Agendada (${periodoStr})`,
+          detalhe: `Cotista: ${res.cotistaNome || 'Cotista'} | Horário: ${res.horaSaida || ''} - ${res.horaChegada || ''} ${res.observacoes ? `(${res.observacoes})` : ''}`,
+          status: 'agendado'
+        });
+      }
+    }
+
+    // 2. Manutenções ativas na embarcação
+    const [manutencoes]: any = await currentPool.query(`
+      SELECT m.id, m.status, m.descricaoServico, m.mecanico, m.codigoOS, m.dataSaida
+      FROM Manutencoes m
+      WHERE m.embarcacaoId = ? AND m.status NOT IN ('concluido', 'concluida', 'cancelado', 'cancelada')
+    `, [embarcacaoId]);
+
+    if (Array.isArray(manutencoes)) {
+      for (const man of manutencoes) {
+        conflitos.push({
+          tipo: 'manutencao',
+          titulo: `Ordem de Serviço Aberta (${man.codigoOS || 'OS'})`,
+          detalhe: `${man.descricaoServico || 'Em manutenção preventiva/corretiva'} (Mecânico: ${man.mecanico || 'Não informado'})`,
+          status: man.status
+        });
+      }
+    }
+
+    return {
+      disponivelNaMarina: conflitos.length === 0,
+      conflitos
+    };
+  } catch (err) {
+    console.error("[verificarDisponibilidadeVisita Error]:", err);
+    return { disponivelNaMarina: true, conflitos: [] };
+  }
+}
+
+// -------------------------------------------------------------------------
+// PROPOSTAS COMERCIAIS
+// -------------------------------------------------------------------------
+
+export async function getAllPropostasComerciais(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  try {
+    const [rows]: any = await currentPool.query(`
+      SELECT p.*, b.nome AS barcoNome, b.modelo AS barcoModelo
+      FROM PropostasComerciais p
+      LEFT JOIN Embarcacoes b ON b.id = p.embarcacaoId
+      ORDER BY p.createdAt DESC
+    `);
+    return rows.map((r: any) => {
+      let baloesIntermediarios = [];
+      let permutaInfo = null;
+      let comparativoCustoInfo = null;
+      try { if (r.baloesIntermediarios) baloesIntermediarios = JSON.parse(r.baloesIntermediarios); } catch {}
+      try { if (r.permutaInfo) permutaInfo = JSON.parse(r.permutaInfo); } catch {}
+      try { if (r.comparativoCustoInfo) comparativoCustoInfo = JSON.parse(r.comparativoCustoInfo); } catch {}
+      return {
+        ...r,
+        embarcacaoNome: r.barcoNome || r.embarcacaoId,
+        valorTotal: Number(r.valorTotal) || 0,
+        valorEntrada: Number(r.valorEntrada) || 0,
+        valorParcela: Number(r.valorParcela) || 0,
+        numParcelas: Number(r.numParcelas) || 0,
+        taxaAdmEstimada: Number(r.taxaAdmEstimada) || 0,
+        baloesIntermediarios,
+        permutaInfo,
+        comparativoCustoInfo
+      };
+    });
+  } catch (err) {
+    console.error("[getAllPropostasComerciais Error]:", err);
+    return [];
+  }
+}
+
+export async function getPropostaByIdOrToken(identifier: string): Promise<any | null> {
+  const currentPool = getDbPool();
+  if (!currentPool) return null;
+  try {
+    const [rows]: any = await currentPool.query(`
+      SELECT p.*, b.nome AS barcoNome, b.modelo AS barcoModelo, b.imagemUrl AS barcoImagemUrl
+      FROM PropostasComerciais p
+      LEFT JOIN Embarcacoes b ON b.id = p.embarcacaoId
+      WHERE p.id = ? OR p.tokenPublico = ?
+      LIMIT 1
+    `, [identifier, identifier]);
+
+    if (!rows || rows.length === 0) return null;
+    const r = rows[0];
+
+    // Se é acesso público e ainda não foi marcado como visualizado
+    if (identifier === r.tokenPublico && !r.visualizadaEm) {
+      const nowIso = new Date().toISOString();
+      await currentPool.query("UPDATE PropostasComerciais SET visualizadaEm = ?, status = CASE WHEN status = 'enviada' THEN 'visualizada' ELSE status END WHERE id = ?", [nowIso, r.id]);
+      r.visualizadaEm = nowIso;
+      if (r.status === 'enviada') r.status = 'visualizada';
+    }
+
+    let baloesIntermediarios = [];
+    let permutaInfo = null;
+    let comparativoCustoInfo = null;
+    try { if (r.baloesIntermediarios) baloesIntermediarios = JSON.parse(r.baloesIntermediarios); } catch {}
+    try { if (r.permutaInfo) permutaInfo = JSON.parse(r.permutaInfo); } catch {}
+    try { if (r.comparativoCustoInfo) comparativoCustoInfo = JSON.parse(r.comparativoCustoInfo); } catch {}
+
+    return {
+      ...r,
+      embarcacaoNome: r.barcoNome || r.embarcacaoId,
+      valorTotal: Number(r.valorTotal) || 0,
+      valorEntrada: Number(r.valorEntrada) || 0,
+      valorParcela: Number(r.valorParcela) || 0,
+      numParcelas: Number(r.numParcelas) || 0,
+      taxaAdmEstimada: Number(r.taxaAdmEstimada) || 0,
+      baloesIntermediarios,
+      permutaInfo,
+      comparativoCustoInfo
+    };
+  } catch (err) {
+    console.error("[getPropostaByIdOrToken Error]:", err);
+    return null;
+  }
+}
+
+export async function upsertPropostaComercial(data: any): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const id = data.id || `prop_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const ano = new Date().getFullYear();
+  const codigoProposta = data.codigoProposta || `PROP-${ano}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const nowIso = new Date().toISOString();
+  const createdAt = data.createdAt || nowIso;
+  const updatedAt = nowIso;
+
+  const validadeDate = new Date();
+  validadeDate.setDate(validadeDate.getDate() + 7);
+  const validadeAte = data.validadeAte || validadeDate.toISOString().split('T')[0];
+
+  const tokenPublico = data.tokenPublico || Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+
+  const baloesStr = data.baloesIntermediarios ? JSON.stringify(data.baloesIntermediarios) : null;
+  const permutaStr = data.permutaInfo ? JSON.stringify(data.permutaInfo) : null;
+  const comparativoStr = data.comparativoCustoInfo ? JSON.stringify(data.comparativoCustoInfo) : null;
+
+  await currentPool.query(`
+    INSERT INTO PropostasComerciais (
+      id, codigoProposta, leadId, leadNome, leadTelefone, leadEmail, leadCpf,
+      vendedorId, vendedorNome, embarcacaoId, cota, tipoCota, repasseClienteId,
+      valorTotal, valorEntrada, dataVencimentoEntrada, formaPagamentoEntrada,
+      numParcelas, valorParcela, diaVencimento, dataPrimeiraParcela, formaPagamentoParcelas,
+      baloesIntermediarios, permutaInfo, taxaAdmEstimada, comparativoCustoInfo,
+      status, validadeAte, tokenPublico, visualizadaEm, aceitaEm, observacoes,
+      createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      leadNome = VALUES(leadNome),
+      leadTelefone = VALUES(leadTelefone),
+      leadEmail = VALUES(leadEmail),
+      leadCpf = VALUES(leadCpf),
+      vendedorId = VALUES(vendedorId),
+      vendedorNome = VALUES(vendedorNome),
+      embarcacaoId = VALUES(embarcacaoId),
+      cota = VALUES(cota),
+      tipoCota = VALUES(tipoCota),
+      repasseClienteId = VALUES(repasseClienteId),
+      valorTotal = VALUES(valorTotal),
+      valorEntrada = VALUES(valorEntrada),
+      dataVencimentoEntrada = VALUES(dataVencimentoEntrada),
+      formaPagamentoEntrada = VALUES(formaPagamentoEntrada),
+      numParcelas = VALUES(numParcelas),
+      valorParcela = VALUES(valorParcela),
+      diaVencimento = VALUES(diaVencimento),
+      dataPrimeiraParcela = VALUES(dataPrimeiraParcela),
+      formaPagamentoParcelas = VALUES(formaPagamentoParcelas),
+      baloesIntermediarios = VALUES(baloesIntermediarios),
+      permutaInfo = VALUES(permutaInfo),
+      taxaAdmEstimada = VALUES(taxaAdmEstimada),
+      comparativoCustoInfo = VALUES(comparativoCustoInfo),
+      status = VALUES(status),
+      validadeAte = VALUES(validadeAte),
+      observacoes = VALUES(observacoes),
+      updatedAt = VALUES(updatedAt)
+  `, [
+    id,
+    codigoProposta,
+    data.leadId || null,
+    data.leadNome || 'Lead Comercial',
+    data.leadTelefone || null,
+    data.leadEmail || null,
+    data.leadCpf || null,
+    data.vendedorId || null,
+    data.vendedorNome || null,
+    data.embarcacaoId,
+    data.cota,
+    data.tipoCota || 'estoque_mexicano',
+    data.repasseClienteId || null,
+    data.valorTotal || 0,
+    data.valorEntrada || 0,
+    data.dataVencimentoEntrada || null,
+    data.formaPagamentoEntrada || 'pix',
+    data.numParcelas || 0,
+    data.valorParcela || 0,
+    data.diaVencimento || 10,
+    data.dataPrimeiraParcela || null,
+    data.formaPagamentoParcelas || 'boleto',
+    baloesStr,
+    permutaStr,
+    data.taxaAdmEstimada || 0,
+    comparativoStr,
+    data.status || 'enviada',
+    validadeAte,
+    tokenPublico,
+    data.visualizadaEm || null,
+    data.aceitaEm || null,
+    data.observacoes || null,
+    createdAt,
+    updatedAt
+  ]);
+
+  // Se solicitado bloqueio temporário (48h) da cota
+  if (data.reservarCota48h) {
+    try {
+      await createCotaReserva({
+        embarcacaoId: data.embarcacaoId,
+        cota: data.cota,
+        propostaId: id,
+        leadId: data.leadId,
+        leadNome: data.leadNome,
+        vendedorId: data.vendedorId,
+        vendedorNome: data.vendedorNome,
+        motivoReserva: `Proposta gerada ${codigoProposta}`
+      });
+    } catch (e) {
+      console.warn("[upsertPropostaComercial] Reserva automatica falhou:", e);
+    }
+  }
+
+  // Se tem lead vinculado, adiciona entrada na timeline e avança etapa
+  if (data.leadId) {
+    try {
+      await addLeadTimelineEvent(data.leadId, {
+        tipo: 'proposta',
+        titulo: `Proposta Gerada: ${codigoProposta}`,
+        descricao: `Valor Total: R$ ${Number(data.valorTotal || 0).toLocaleString('pt-BR')} (${data.cota})`,
+        autorNome: data.vendedorNome || 'Comercial'
+      });
+      await updateLeadEtapa(data.leadId, 'proposta_enviada', undefined, data.vendedorNome);
+    } catch {}
+  }
+
+  return getPropostaByIdOrToken(id);
+}
+
+export async function aceitarPropostaPublica(tokenPublico: string): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const proposta = await getPropostaByIdOrToken(tokenPublico);
+  if (!proposta) throw new Error("Proposta não encontrada");
+
+  const nowIso = new Date().toISOString();
+  await currentPool.query(`
+    UPDATE PropostasComerciais
+    SET status = 'aceita', aceitaEm = ?, updatedAt = ?
+    WHERE tokenPublico = ?
+  `, [nowIso, nowIso, tokenPublico]);
+
+  if (proposta.leadId) {
+    await addLeadTimelineEvent(proposta.leadId, {
+      tipo: 'mudanca_etapa',
+      titulo: 'Proposta Aceita pelo Cliente!',
+      descricao: `O cliente aceitou a proposta ${proposta.codigoProposta} online. Encaminhado para Análise Jurídica / Contrato.`,
+      autorNome: 'Cliente (Online)'
+    });
+    await updateLeadEtapa(proposta.leadId, 'analise_juridica', undefined, 'Sistema Comercial');
+  }
+
+  return getPropostaByIdOrToken(tokenPublico);
+}
+
+// -------------------------------------------------------------------------
+// COTAS RESERVADAS (BLOQUEIO TEMPORÁRIO 48H) & GESTÃO DE FRAÇÕES NÁUTICAS
+// -------------------------------------------------------------------------
+
+export async function getActiveCotasReservadas(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  try {
+    const nowIso = new Date().toISOString();
+    // Expirar silenciosamente reservas antigas
+    try {
+      await currentPool.query(`
+        UPDATE CotasReservadas
+        SET status = 'expirada'
+        WHERE status = 'ativa' AND expiraEm <= ?
+      `, [nowIso]);
+    } catch (e) {}
+
+    const [rows]: any = await currentPool.query(`
+      SELECT r.*, b.nome AS barcoNome, b.numero AS barcoNumero, b.modelo AS barcoModelo
+      FROM CotasReservadas r
+      LEFT JOIN Embarcacoes b ON b.id = r.embarcacaoId
+      WHERE r.status = 'ativa' AND r.expiraEm > ?
+      ORDER BY r.createdAt DESC
+    `, [nowIso]);
+
+    return rows.map((r: any) => {
+      const expDate = new Date(r.expiraEm);
+      const diffMs = Math.max(0, expDate.getTime() - Date.now());
+      const hoursRemaining = Math.floor(diffMs / (1000 * 60 * 60));
+      const minutesRemaining = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+      return {
+        ...r,
+        embarcacaoNome: r.barcoNome || r.embarcacaoId,
+        horasRestantes: hoursRemaining,
+        minutosRestantes: minutesRemaining,
+        tempoRestanteFormatado: `${hoursRemaining}h ${minutesRemaining}m`
+      };
+    });
+  } catch (err) {
+    console.error("[getActiveCotasReservadas Error]:", err);
+    return [];
+  }
+}
+
+export async function createCotaReserva(data: {
+  embarcacaoId: string;
+  cota: string;
+  propostaId?: string;
+  leadId?: string;
+  leadNome?: string;
+  vendedorId?: string;
+  vendedorNome?: string;
+  motivoReserva?: string;
+  horasExpiracao?: number;
+}): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const normalizedCota = String(data.cota).trim().toUpperCase();
+  const nowIso = new Date().toISOString();
+
+  // 1. Checar se já há reserva ativa não expirada para a mesma cota
+  const [existingReservas]: any = await currentPool.query(`
+    SELECT * FROM CotasReservadas
+    WHERE embarcacaoId = ? AND UPPER(cota) = ? AND status = 'ativa' AND expiraEm > ?
+    LIMIT 1
+  `, [data.embarcacaoId, normalizedCota, nowIso]);
+
+  if (existingReservas && existingReservas.length > 0) {
+    const res = existingReservas[0];
+    const expDate = new Date(res.expiraEm).toLocaleString('pt-BR');
+    throw new Error(
+      `A cota ${normalizedCota} já está bloqueada até ${expDate} pelo vendedor ${res.vendedorNome || 'Comercial'} para o lead ${res.leadNome || 'Lead'}.`
+    );
+  }
+
+  // 2. Checar se a cota já está vendida para um cotista real que NÃO esteja em repasse
+  const [clientesRows]: any = await currentPool.query(`
+    SELECT id, nome, embarcacaoId, cota, embarcacoes FROM Clientes
+    WHERE (status IS NULL OR status != 'inativo') AND id != ?
+  `, [MEXICANO_INTERNAL_CLIENT_ID]);
+
+  for (const cli of clientesRows) {
+    let ebs: any[] = [];
+    if (cli.embarcacoes) {
+      try {
+        ebs = typeof cli.embarcacoes === 'string' ? JSON.parse(cli.embarcacoes) : cli.embarcacoes;
+      } catch (e) {
+        ebs = [];
+      }
+    }
+
+    if (Array.isArray(ebs) && ebs.length > 0) {
+      const matched = ebs.find((eb: any) => {
+        if (!eb || eb.embarcacaoId !== data.embarcacaoId) return false;
+        const code = String(eb.cota || '').trim().toUpperCase();
+        return code === normalizedCota;
+      });
+
+      if (matched) {
+        if (!matched.emRepasse) {
+          throw new Error(
+            `A cota ${normalizedCota} pertence ao cotista titular ${cli.nome} e não está autorizada para repasse/venda.`
+          );
+        }
+      }
+    } else if (cli.embarcacaoId === data.embarcacaoId) {
+      const code = String(cli.cota || '').trim().toUpperCase();
+      if (code === normalizedCota && !cli.emRepasse) {
+        throw new Error(
+          `A cota ${normalizedCota} pertence ao cotista titular ${cli.nome} e não está autorizada para repasse/venda.`
+        );
+      }
+    }
+  }
+
+  const id = `res_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const hours = data.horasExpiracao && data.horasExpiracao > 0 ? data.horasExpiracao : 48;
+  const expiraDate = new Date(Date.now() + hours * 3600 * 1000);
+  const expiraEm = expiraDate.toISOString();
+  const createdAt = new Date().toISOString();
+
+  await currentPool.query(`
+    INSERT INTO CotasReservadas (
+      id, embarcacaoId, cota, propostaId, leadId, leadNome,
+      vendedorId, vendedorNome, motivoReserva, expiraEm, status, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ativa', ?)
+  `, [
+    id,
+    data.embarcacaoId,
+    normalizedCota,
+    data.propostaId || null,
+    data.leadId || null,
+    data.leadNome || null,
+    data.vendedorId || null,
+    data.vendedorNome || null,
+    data.motivoReserva || 'Bloqueio Comercial 48h',
+    expiraEm,
+    createdAt
+  ]);
+
+  // Registrar no Histórico de Cotas
+  try {
+    const histId = `hist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    await currentPool.query(`
+      INSERT INTO HistoricoCotas (
+        id, embarcacaoId, cota, tipoOperacao, clienteDestinoId, clienteDestinoNome,
+        valor, dataOperacao, observacoes, criadoPor, createdAt
+      ) VALUES (?, ?, ?, 'reserva_48h', ?, ?, 0, ?, ?, ?, ?)
+    `, [
+      histId,
+      data.embarcacaoId,
+      normalizedCota,
+      data.leadId || null,
+      data.leadNome || 'Lead Comercial',
+      createdAt.split('T')[0],
+      data.motivoReserva || `Bloqueio Comercial de 48h vinculado ao Lead ${data.leadNome || ''}`,
+      data.vendedorNome || 'Comercial',
+      createdAt
+    ]);
+  } catch (e) {}
+
+  invalidateDbCache();
+  return { id, expiraEm, cota: normalizedCota, ...data };
+}
+
+export async function cancelCotaReserva(id: string, operadorNome = 'Comercial'): Promise<boolean> {
+  const currentPool = getDbPool();
+  if (!currentPool) return false;
+
+  const [resRows]: any = await currentPool.query("SELECT * FROM CotasReservadas WHERE id = ?", [id]);
+  const res = resRows && resRows[0];
+
+  await currentPool.query("UPDATE CotasReservadas SET status = 'cancelada' WHERE id = ?", [id]);
+
+  if (res) {
+    try {
+      const histId = `hist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const nowIso = new Date().toISOString();
+      await currentPool.query(`
+        INSERT INTO HistoricoCotas (
+          id, embarcacaoId, cota, tipoOperacao, clienteDestinoId, clienteDestinoNome,
+          valor, dataOperacao, observacoes, criadoPor, createdAt
+        ) VALUES (?, ?, ?, 'liberacao', ?, ?, 0, ?, ?, ?, ?)
+      `, [
+        histId,
+        res.embarcacaoId,
+        res.cota,
+        res.leadId || null,
+        res.leadNome || 'Lead',
+        nowIso.split('T')[0],
+        `Bloqueio cancelado manualmente pelo operador ${operadorNome}. Cota devolvida ao estoque.`,
+        operadorNome,
+        nowIso
+      ]);
+    } catch (e) {}
+  }
+
+  invalidateDbCache();
+  return true;
+}
+
+export async function marcarCotaRepasse(data: {
+  clienteId: string;
+  embarcacaoId: string;
+  cota: string;
+  emRepasse: boolean;
+  valorRepasse?: number;
+  operadorNome?: string;
+}): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const normalizedCota = String(data.cota).trim().toUpperCase();
+  const [cliRows]: any = await currentPool.query("SELECT * FROM Clientes WHERE id = ?", [data.clienteId]);
+  const cliente = cliRows && cliRows[0];
+  if (!cliente) throw new Error("Cliente cotista não encontrado");
+
+  let ebs: any[] = [];
+  if (cliente.embarcacoes) {
+    try {
+      ebs = typeof cliente.embarcacoes === 'string' ? JSON.parse(cliente.embarcacoes) : cliente.embarcacoes;
+    } catch (e) {
+      ebs = [];
+    }
+  }
+
+  let updated = false;
+  if (Array.isArray(ebs) && ebs.length > 0) {
+    ebs = ebs.map((eb: any) => {
+      if (eb && eb.embarcacaoId === data.embarcacaoId && String(eb.cota || '').trim().toUpperCase() === normalizedCota) {
+        updated = true;
+        return {
+          ...eb,
+          emRepasse: data.emRepasse,
+          valorRepasse: data.emRepasse ? (Number(data.valorRepasse) || 0) : undefined
+        };
+      }
+      return eb;
+    });
+  }
+
+  if (!updated && cliente.embarcacaoId === data.embarcacaoId) {
+    ebs = [{
+      embarcacaoId: data.embarcacaoId,
+      cota: normalizedCota,
+      plano: cliente.plano || 'normal',
+      emRepasse: data.emRepasse,
+      valorRepasse: data.emRepasse ? (Number(data.valorRepasse) || 0) : undefined
+    }];
+  }
+
+  await currentPool.query(
+    "UPDATE Clientes SET embarcacoes = ? WHERE id = ?",
+    [JSON.stringify(ebs), data.clienteId]
+  );
+
+  // Registrar histórico
+  try {
+    const histId = `hist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const nowIso = new Date().toISOString();
+    await currentPool.query(`
+      INSERT INTO HistoricoCotas (
+        id, embarcacaoId, cota, tipoOperacao, clienteOrigemId, clienteOrigemNome,
+        valor, dataOperacao, observacoes, criadoPor, createdAt
+      ) VALUES (?, ?, ?, 'repasse', ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      histId,
+      data.embarcacaoId,
+      normalizedCota,
+      data.clienteId,
+      cliente.nome,
+      data.valorRepasse || 0,
+      nowIso.split('T')[0],
+      data.emRepasse
+        ? `Cota colocada em repasse comercial pelo valor de R$ ${Number(data.valorRepasse || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+        : `Cota retirada do repasse comercial`,
+      data.operadorNome || 'Comercial',
+      nowIso
+    ]);
+  } catch (e) {}
+
+  invalidateDbCache();
+  return { success: true, clienteId: data.clienteId, embarcacaoId: data.embarcacaoId, cota: normalizedCota, emRepasse: data.emRepasse };
+}
+
+export async function transferirOuRecomprarCota(data: {
+  embarcacaoId: string;
+  cota: string;
+  clienteOrigemId: string;
+  clienteDestinoId?: string;
+  valor?: number;
+  dataOperacao?: string;
+  observacoes?: string;
+  operadorNome?: string;
+}): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const normalizedCota = String(data.cota).trim().toUpperCase();
+  const isRecompra = !data.clienteDestinoId || isInternalMexicanoEntity(data.clienteDestinoId);
+  const targetClientId = isRecompra ? MEXICANO_INTERNAL_CLIENT_ID : data.clienteDestinoId!;
+
+  // 1. Buscar cliente de origem
+  const [origemRows]: any = await currentPool.query("SELECT * FROM Clientes WHERE id = ?", [data.clienteOrigemId]);
+  const clienteOrigem = origemRows && origemRows[0];
+  if (!clienteOrigem) throw new Error("Cliente vendedor/origem não encontrado");
+
+  // 2. Buscar cliente de destino
+  let clienteDestinoNome = MEXICANO_INTERNAL_CLIENT_NAME;
+  if (!isRecompra) {
+    const [destRows]: any = await currentPool.query("SELECT * FROM Clientes WHERE id = ?", [targetClientId]);
+    const clienteDestino = destRows && destRows[0];
+    if (!clienteDestino) throw new Error("Cliente comprador/destino não encontrado");
+    clienteDestinoNome = clienteDestino.nome;
+
+    // Adicionar cota no destino
+    let destEbs: any[] = [];
+    if (clienteDestino.embarcacoes) {
+      try {
+        destEbs = typeof clienteDestino.embarcacoes === 'string' ? JSON.parse(clienteDestino.embarcacoes) : clienteDestino.embarcacoes;
+      } catch (e) {
+        destEbs = [];
+      }
+    }
+    destEbs.push({
+      embarcacaoId: data.embarcacaoId,
+      cota: normalizedCota,
+      plano: 'normal',
+      dataAquisicao: data.dataOperacao || new Date().toISOString().split('T')[0]
+    });
+    await currentPool.query(
+      "UPDATE Clientes SET embarcacoes = ? WHERE id = ?",
+      [JSON.stringify(destEbs), targetClientId]
+    );
+  }
+
+  // 3. Remover cota do cliente de origem
+  let origemEbs: any[] = [];
+  if (clienteOrigem.embarcacoes) {
+    try {
+      origemEbs = typeof clienteOrigem.embarcacoes === 'string' ? JSON.parse(clienteOrigem.embarcacoes) : clienteOrigem.embarcacoes;
+    } catch (e) {
+      origemEbs = [];
+    }
+  }
+  origemEbs = origemEbs.filter((eb: any) => {
+    if (!eb || eb.embarcacaoId !== data.embarcacaoId) return true;
+    return String(eb.cota || '').trim().toUpperCase() !== normalizedCota;
+  });
+  await currentPool.query(
+    "UPDATE Clientes SET embarcacoes = ? WHERE id = ?",
+    [JSON.stringify(origemEbs), data.clienteOrigemId]
+  );
+
+  // 4. Reconciliar cotas com a entidade interna El Mexicano
+  await reconcileBoatCotasWithMexicano(currentPool, data.embarcacaoId);
+
+  // 5. Gravar no Histórico
+  const histId = `hist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const nowIso = new Date().toISOString();
+  await currentPool.query(`
+    INSERT INTO HistoricoCotas (
+      id, embarcacaoId, cota, tipoOperacao, clienteOrigemId, clienteOrigemNome,
+      clienteDestinoId, clienteDestinoNome, valor, dataOperacao, observacoes, criadoPor, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    histId,
+    data.embarcacaoId,
+    normalizedCota,
+    isRecompra ? 'recompra' : 'transferencia',
+    clienteOrigem.id,
+    clienteOrigem.nome,
+    targetClientId,
+    clienteDestinoNome,
+    Number(data.valor) || 0,
+    data.dataOperacao || nowIso.split('T')[0],
+    data.observacoes || (isRecompra
+      ? `Recompra da cota ${normalizedCota} pelo estoque da El Mexicano`
+      : `Transferência de titularidade da cota ${normalizedCota} para ${clienteDestinoNome}`),
+    data.operadorNome || 'Comercial',
+    nowIso
+  ]);
+
+  invalidateDbCache();
+  return {
+    success: true,
+    isRecompra,
+    cota: normalizedCota,
+    embarcacaoId: data.embarcacaoId,
+    origem: clienteOrigem.nome,
+    destino: clienteDestinoNome
+  };
+}
+
+export async function getCotasHistorico(embarcacaoId?: string): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  try {
+    const query = embarcacaoId
+      ? `SELECT h.*, b.nome AS barcoNome
+         FROM HistoricoCotas h
+         LEFT JOIN Embarcacoes b ON b.id = h.embarcacaoId
+         WHERE h.embarcacaoId = ?
+         ORDER BY h.createdAt DESC LIMIT 100`
+      : `SELECT h.*, b.nome AS barcoNome
+         FROM HistoricoCotas h
+         LEFT JOIN Embarcacoes b ON b.id = h.embarcacaoId
+         ORDER BY h.createdAt DESC LIMIT 200`;
+
+    const [rows]: any = await currentPool.query(query, embarcacaoId ? [embarcacaoId] : []);
+    return rows.map((r: any) => ({
+      ...r,
+      embarcacaoNome: r.barcoNome || r.embarcacaoId,
+      valorNegociado: Number(r.valor) || 0
+    }));
+  } catch (err) {
+    console.error("[getCotasHistorico Error]:", err);
+    return [];
+  }
+}
+
+export async function getFrotaConsolidadaComCotas(): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const nowIso = new Date().toISOString();
+
+  // Limpar silenciosamente reservas expiradas
+  try {
+    await currentPool.query(`
+      UPDATE CotasReservadas
+      SET status = 'expirada'
+      WHERE status = 'ativa' AND expiraEm <= ?
+    `, [nowIso]);
+  } catch (e) {}
+
+  const [boats]: any = await currentPool.query("SELECT * FROM Embarcacoes");
+  const [empRows]: any = await currentPool.query("SELECT * FROM EmbarcacaoEmpresas");
+  const [clients]: any = await currentPool.query(`
+    SELECT id, nome, telefone, cpf, embarcacaoId, cota, embarcacoes, status
+    FROM Clientes WHERE status IS NULL OR status != 'inativo'
+  `);
+  const [cotasReservadas]: any = await currentPool.query(`
+    SELECT * FROM CotasReservadas WHERE status = 'ativa' AND expiraEm > ?
+  `, [nowIso]);
+  const [reservasHoje]: any = await currentPool.query(`
+    SELECT * FROM Reservas WHERE data = ? AND status != 'cancelado'
+  `, [todayStr]);
+  const [manutencoesAbertas]: any = await currentPool.query(`
+    SELECT * FROM Manutencoes WHERE status NOT IN ('concluido', 'cancelado')
+  `);
+
+  const empMap = new Map<string, string[]>();
+  empRows.forEach((r: any) => {
+    if (!empMap.has(r.embarcacaoId)) empMap.set(r.embarcacaoId, []);
+    empMap.get(r.embarcacaoId)!.push(r.empresa);
+  });
+
+  let totalEmbarcacoes = 0;
+  let totalCotasFrota = 0;
+  let cotasDisponiveisEstoqueTotal = 0;
+  let cotasEmRepasseTotal = 0;
+  let cotasReservadas48hTotal = 0;
+  let cotasVendidasTotal = 0;
+  let vgvEstoqueDisponivelTotal = 0;
+
+  const frota = boats.map((b: any) => {
+    const empresas = empMap.get(b.id) || ['VALE'];
+    const totalCotas = Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4);
+    const valorCota = Number(b.valorCota) || 0;
+    const taxaAdmMensal = Number(b.taxaAdmMensal) || 0;
+
+    // Status Operacional na Marina
+    const isManutencao = b.emManutencao === 1 || manutencoesAbertas.some((m: any) => m.embarcacaoId === b.id);
+    const isNavegandoHoje = reservasHoje.some((r: any) => r.embarcacaoId === b.id);
+    const statusMarina = isManutencao ? 'em_manutencao' : (isNavegandoHoje ? 'navegando_hoje' : 'na_marina');
+
+    // Mapear ocupação de clientes reais (não-mexicano)
+    const cotistasReaisMap = new Map<string, { clienteId: string; clienteNome: string; emRepasse: boolean; valorRepasse?: number }>();
+
+    clients.forEach((c: any) => {
+      if (isInternalMexicanoEntity(c.id) || isInternalMexicanoEntity(c.nome)) return;
+
+      let ebs: any[] = [];
+      if (c.embarcacoes) {
+        try {
+          ebs = typeof c.embarcacoes === 'string' ? JSON.parse(c.embarcacoes) : c.embarcacoes;
+        } catch (e) {
+          ebs = [];
+        }
+      }
+
+      if (Array.isArray(ebs) && ebs.length > 0) {
+        ebs.forEach((eb: any) => {
+          if (eb && eb.embarcacaoId === b.id && eb.cota) {
+            const m = String(eb.cota).trim().toUpperCase().match(/(?:COTA|C)?[\s\-_]*0*(\d+)/i);
+            const code = m ? `C${parseInt(m[1], 10)}` : String(eb.cota).trim().toUpperCase();
+            cotistasReaisMap.set(code, {
+              clienteId: c.id,
+              clienteNome: c.nome,
+              emRepasse: Boolean(eb.emRepasse),
+              valorRepasse: eb.valorRepasse ? Number(eb.valorRepasse) : undefined
+            });
+          }
+        });
+      } else if (c.embarcacaoId === b.id && c.cota) {
+        const m = String(c.cota).trim().toUpperCase().match(/(?:COTA|C)?[\s\-_]*0*(\d+)/i);
+        const code = m ? `C${parseInt(m[1], 10)}` : String(c.cota).trim().toUpperCase();
+        cotistasReaisMap.set(code, {
+          clienteId: c.id,
+          clienteNome: c.nome,
+          emRepasse: Boolean(c.emRepasse),
+          valorRepasse: c.valorRepasse ? Number(c.valorRepasse) : undefined
+        });
+      }
+    });
+
+    // Mapear reservas 48h ativas
+    const reservasMap = new Map<string, any>();
+    cotasReservadas
+      .filter((r: any) => r.embarcacaoId === b.id)
+      .forEach((r: any) => {
+        const code = String(r.cota).trim().toUpperCase();
+        reservasMap.set(code, r);
+      });
+
+    // Construir slots C1 até totalCotas
+    const slots = [];
+    let barcoDisponiveis = 0;
+    let barcoRepasse = 0;
+    let barcoReservadas = 0;
+    let barcoVendidas = 0;
+
+    for (let i = 1; i <= totalCotas; i++) {
+      const code = `C${i}`;
+      const reserva = reservasMap.get(code);
+      const cotista = cotistasReaisMap.get(code);
+
+      if (reserva) {
+        barcoReservadas++;
+        const expDate = new Date(reserva.expiraEm);
+        const diffMs = Math.max(0, expDate.getTime() - Date.now());
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        slots.push({
+          cota: code,
+          status: 'reservada',
+          titularNome: `Bloqueado p/ ${reserva.leadNome || 'Lead'}`,
+          titularId: reserva.leadId || 'lead_reservado',
+          reservaInfo: {
+            id: reserva.id,
+            leadId: reserva.leadId,
+            leadNome: reserva.leadNome,
+            vendedorId: reserva.vendedorId,
+            vendedorNome: reserva.vendedorNome,
+            motivoReserva: reserva.motivoReserva,
+            expiraEm: reserva.expiraEm,
+            countdownHours: hours,
+            countdownMinutes: minutes,
+            tempoRestante: `${hours}h ${minutes}m`
+          }
+        });
+      } else if (cotista) {
+        if (cotista.emRepasse) {
+          barcoRepasse++;
+          slots.push({
+            cota: code,
+            status: 'em_repasse',
+            titularNome: `${cotista.clienteNome} (Repasse)`,
+            titularId: cotista.clienteId,
+            repasseInfo: {
+              clienteId: cotista.clienteId,
+              clienteNome: cotista.clienteNome,
+              valorRepasse: cotista.valorRepasse || valorCota
+            }
+          });
+        } else {
+          barcoVendidas++;
+          slots.push({
+            cota: code,
+            status: 'vendida',
+            titularNome: cotista.clienteNome,
+            titularId: cotista.clienteId
+          });
+        }
+      } else {
+        // Cota em Estoque El Mexicano
+        barcoDisponiveis++;
+        slots.push({
+          cota: code,
+          status: 'disponivel_mexicano',
+          titularNome: 'El Mexicano (Estoque Próprio)',
+          titularId: MEXICANO_INTERNAL_CLIENT_ID
+        });
+      }
+    }
+
+    const taxaOcupacaoPercent = totalCotas > 0
+      ? Math.round(((barcoVendidas + barcoReservadas) / totalCotas) * 100)
+      : 0;
+
+    totalEmbarcacoes++;
+    totalCotasFrota += totalCotas;
+    cotasDisponiveisEstoqueTotal += barcoDisponiveis;
+    cotasEmRepasseTotal += barcoRepasse;
+    cotasReservadas48hTotal += barcoReservadas;
+    cotasVendidasTotal += barcoVendidas;
+    vgvEstoqueDisponivelTotal += barcoDisponiveis * valorCota;
+
+    let parsedAcessorios = undefined;
+    if (b.acessorios) {
+      try {
+        parsedAcessorios = typeof b.acessorios === 'string' ? JSON.parse(b.acessorios) : b.acessorios;
+      } catch (e) {}
+    }
+
+    return {
+      ...b,
+      empresas,
+      totalCotas,
+      valorCota,
+      taxaAdmMensal,
+      statusMarina,
+      acessorios: parsedAcessorios,
+      emManutencao: isManutencao,
+      navegandoHoje: isNavegandoHoje,
+      cotasDisponiveisEstoque: barcoDisponiveis,
+      cotasEmRepasse: barcoRepasse,
+      cotasReservadas48h: barcoReservadas,
+      cotasVendidas: barcoVendidas,
+      taxaOcupacaoPercent,
+      slots
+    };
+  });
+
+  const taxaOcupacaoFrotaPercent = totalCotasFrota > 0
+    ? Math.round((cotasVendidasTotal / totalCotasFrota) * 100)
+    : 0;
+
+  return {
+    kpis: {
+      totalEmbarcacoes,
+      totalCotasFrota,
+      cotasDisponiveisEstoque: cotasDisponiveisEstoqueTotal,
+      vgvEstoqueDisponivel: vgvEstoqueDisponivelTotal,
+      cotasReservadas48h: cotasReservadas48hTotal,
+      cotasEmRepasse: cotasEmRepasseTotal,
+      cotasVendidas: cotasVendidasTotal,
+      taxaOcupacaoFrotaPercent
+    },
+    frota
+  };
+}
+
+// -------------------------------------------------------------------------
+// PERMUTAS (TRADE-IN)
+// -------------------------------------------------------------------------
+
+export async function getAllPermutas(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  try {
+    const [rows]: any = await currentPool.query(`
+      SELECT * FROM Permutas ORDER BY createdAt DESC
+    `);
+    return rows.map((r: any) => {
+      let fotos = [];
+      let documentos = [];
+      try { if (r.fotos) fotos = JSON.parse(r.fotos); } catch {}
+      try { if (r.documentos) documentos = JSON.parse(r.documentos); } catch {}
+      return {
+        ...r,
+        fotos,
+        documentos,
+        valorPropostoCliente: Number(r.valorPropostoCliente) || 0,
+        valorAprovadoDiretoria: r.valorAprovadoDiretoria !== null ? Number(r.valorAprovadoDiretoria) : null
+      };
+    });
+  } catch (err) {
+    console.error("[getAllPermutas Error]:", err);
+    return [];
+  }
+}
+
+export async function upsertPermuta(data: any): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const id = data.id || `perm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const createdAt = data.createdAt || new Date().toISOString();
+  const fotosStr = data.fotos ? JSON.stringify(data.fotos) : null;
+  const docsStr = data.documentos ? JSON.stringify(data.documentos) : null;
+
+  await currentPool.query(`
+    INSERT INTO Permutas (
+      id, propostaId, leadId, leadNome, tipoBem, marcaModelo, ano,
+      valorPropostoCliente, valorAprovadoDiretoria, statusAvaliacao,
+      motivoAvaliacao, avaliadoPor, avaliadoEm, fotos, documentos, observacoes, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      tipoBem = VALUES(tipoBem),
+      marcaModelo = VALUES(marcaModelo),
+      ano = VALUES(ano),
+      valorPropostoCliente = VALUES(valorPropostoCliente),
+      valorAprovadoDiretoria = VALUES(valorAprovadoDiretoria),
+      statusAvaliacao = VALUES(statusAvaliacao),
+      motivoAvaliacao = VALUES(motivoAvaliacao),
+      avaliadoPor = VALUES(avaliadoPor),
+      avaliadoEm = VALUES(avaliadoEm),
+      fotos = VALUES(fotos),
+      documentos = VALUES(documentos),
+      observacoes = VALUES(observacoes)
+  `, [
+    id,
+    data.propostaId || null,
+    data.leadId || null,
+    data.leadNome || null,
+    data.tipoBem || 'lancha',
+    data.marcaModelo,
+    data.ano || null,
+    data.valorPropostoCliente || 0,
+    data.valorAprovadoDiretoria || null,
+    data.statusAvaliacao || 'aguardando_avaliacao',
+    data.motivoAvaliacao || null,
+    data.avaliadoPor || null,
+    data.avaliadoEm || null,
+    fotosStr,
+    docsStr,
+    data.observacoes || null,
+    createdAt
+  ]);
+
+  const all = await getAllPermutas();
+  return all.find(p => p.id === id);
+}
+
+export async function avaliarPermutaDiretoria(id: string, payload: {
+  valorAprovadoDiretoria?: number;
+  statusAvaliacao: 'aprovado' | 'recusado';
+  motivoAvaliacao?: string;
+  avaliadoPor?: string;
+}): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const nowIso = new Date().toISOString();
+  await currentPool.query(`
+    UPDATE Permutas
+    SET valorAprovadoDiretoria = ?,
+        statusAvaliacao = ?,
+        motivoAvaliacao = ?,
+        avaliadoPor = ?,
+        avaliadoEm = ?
+    WHERE id = ?
+  `, [
+    payload.valorAprovadoDiretoria || null,
+    payload.statusAvaliacao,
+    payload.motivoAvaliacao || null,
+    payload.avaliadoPor || 'Diretoria El Mexicano',
+    nowIso,
+    id
+  ]);
+
+  const all = await getAllPermutas();
+  return all.find(p => p.id === id);
+}
+
+// -------------------------------------------------------------------------
+// CHECK-IN VISITAS & TEST DRIVES
+// -------------------------------------------------------------------------
+
+export async function getAllCheckinsVisita(): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+  try {
+    const [rows]: any = await currentPool.query(`
+      SELECT c.*, b.nome AS barcoNome
+      FROM CheckinVisitas c
+      LEFT JOIN Embarcacoes b ON b.id = c.embarcacaoId
+      ORDER BY c.createdAt DESC
+    `);
+    return rows.map((r: any) => ({
+      ...r,
+      embarcacaoNome: r.barcoNome || r.embarcacaoId,
+      compareceu: Boolean(r.compareceu)
+    }));
+  } catch (err) {
+    console.error("[getAllCheckinsVisita Error]:", err);
+    return [];
+  }
+}
+
+export async function createCheckinVisita(data: any): Promise<any> {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("DB offline");
+
+  const id = `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const createdAt = new Date().toISOString();
+
+  await currentPool.query(`
+    INSERT INTO CheckinVisitas (
+      id, reservaId, leadId, embarcacaoId, vendedorId, dataVisita,
+      compareceu, avaliacaoLead, feedbackLead, proximosPassos, temperaturaLead, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    id,
+    data.reservaId || null,
+    data.leadId || null,
+    data.embarcacaoId,
+    data.vendedorId || null,
+    data.dataVisita || createdAt.split('T')[0],
+    data.compareceu ? 1 : 0,
+    data.avaliacaoLead || 5,
+    data.feedbackLead || null,
+    data.proximosPassos || null,
+    data.temperaturaLead || 'quente',
+    createdAt
+  ]);
+
+  // Se vinculado a um lead, adiciona na timeline
+  if (data.leadId) {
+    try {
+      const compStr = data.compareceu ? 'Compareceu ao Test Drive / Visita' : 'Não compareceu ao Test Drive';
+      await addLeadTimelineEvent(data.leadId, {
+        tipo: 'visita_sea_trial',
+        titulo: `Check-in de Test Drive: ${compStr}`,
+        descricao: `Temperatura: ${data.temperaturaLead || 'quente'} | Avaliação: ${data.avaliacaoLead || 5}/5. Feedback: ${data.feedbackLead || 'Sem observações'}`,
+        autorNome: data.vendedorNome || 'Comercial'
+      });
+    } catch {}
+  }
+
+  const all = await getAllCheckinsVisita();
+  return all.find(c => c.id === id);
+}
+
 

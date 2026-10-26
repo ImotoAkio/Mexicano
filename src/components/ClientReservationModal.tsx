@@ -36,17 +36,25 @@ export default function ClientReservationModal({
     if (preselectedBoatId) return preselectedBoatId;
     return boats.length > 0 ? boats[0].id : '';
   });
+  const [dateValue, setDateValue] = useState(selectedDate);
+  const prevIsOpenRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (isOpen) {
+    const wasOpen = prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+
+    // Only reset state when modal transitions from closed to open
+    if (isOpen && !wasOpen) {
       if (preselectedBoatId) {
         setSelectedBoatId(preselectedBoatId);
       } else if (boats.length > 0) {
         setSelectedBoatId(boats[0].id);
       }
+      setDateValue(selectedDate);
       setIsSuccessState(false);
       setSuccessMsg(null);
       setErrorMsg(null);
+      setConfirmExtraObj(null);
       setObservacoes('');
       setCreatedReservation(null);
       setWhatsappStatus('idle');
@@ -54,7 +62,7 @@ export default function ClientReservationModal({
       setPrevisaoSaida('09:00');
       setPrevisaoChegada('');
     }
-  }, [isOpen, preselectedBoatId, boats]);
+  }, [isOpen, preselectedBoatId, boats, selectedDate]);
   const [observacoes, setObservacoes] = useState('');
   const [previsaoSaida, setPrevisaoSaida] = useState('09:00');
   const [previsaoChegada, setPrevisaoChegada] = useState('');
@@ -81,7 +89,7 @@ export default function ClientReservationModal({
     setWhatsappStatus('sending');
     try {
       const clientName = getFirstTwoNames(client.nome);
-      const datesFormatted = formatDateBR(selectedDate);
+      const datesFormatted = formatDateBR(dateValue);
 
       const token = localStorage.getItem('client_token');
       const res = await fetch('/api/whatsapp/send-calendar', {
@@ -137,7 +145,7 @@ export default function ClientReservationModal({
         },
         body: JSON.stringify({
           embarcacaoId: selectedBoatId,
-          date: selectedDate,
+          date: dateValue,
           periodo: 'dia_inteiro',
           observacoes,
           previsaoSaida: previsaoSaida || '09:00',
@@ -170,7 +178,7 @@ export default function ClientReservationModal({
         }, {
           embarcacaoId: selectedBoatId,
           clienteId: client.id,
-          data: selectedDate,
+          data: dateValue,
           periodo: 'dia_inteiro',
           observações: observacoes,
           status: 'agendado'
@@ -204,7 +212,7 @@ export default function ClientReservationModal({
         // Não quebramos a reserva se o Google falhar, mas mostramos que não sincronizou
       }
 
-      setSuccessMsg(`Reserva efetuada com sucesso para ${formatDateBR(selectedDate)}!`);
+      setSuccessMsg(`Reserva efetuada com sucesso para ${formatDateBR(dateValue)}!`);
       setIsSuccessState(true);
       
     } catch (err: any) {
@@ -215,6 +223,7 @@ export default function ClientReservationModal({
   };
 
   const handleFinish = () => {
+    setIsSuccessState(false);
     onSuccess(createdReservation);
     onClose();
   };
@@ -250,7 +259,7 @@ export default function ClientReservationModal({
               </div>
               <h2 className="text-2xl font-light text-white tracking-wide">Sua reserva foi realizada!</h2>
               <p className="text-sm text-white/60 max-w-sm mx-auto leading-relaxed">
-                A embarcação <strong className="text-white font-medium">{getBoatCode(b)}</strong> foi agendada para o dia <strong className="text-[#B69D74]">{formatDateBR(selectedDate)}</strong>.
+                A embarcação <strong className="text-white font-medium">{getBoatCode(b)}</strong> foi agendada para o dia <strong className="text-[#B69D74]">{formatDateBR(dateValue)}</strong>.
               </p>
             </div>
 
@@ -278,7 +287,7 @@ export default function ClientReservationModal({
             <div className="hidden">
               <MonthlyCalendarGenerator
                 initialBoatId={selectedBoatId}
-                initialDate={selectedDate}
+                initialDate={dateValue}
                 autoExport={true}
                 providedBoats={boats}
                 providedReservations={[...reservations, createdReservation].filter(Boolean)}
@@ -304,6 +313,23 @@ export default function ClientReservationModal({
   }
 
   // TELA DE CRIAÇÃO DA RESERVA
+  const _now = new Date();
+  const minDateStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
+  const selectedBoatObj = boats.find(b => b.id === selectedBoatId);
+  const isBoatInMaintenance = !!selectedBoatObj?.emManutencao;
+
+  const clientBoatEntry = Array.isArray(client?.embarcacoes)
+    ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === selectedBoatId)
+    : (client?.embarcacaoId === selectedBoatId ? client : null);
+  const isPlanoCompleto = clientBoatEntry?.plano === 'completo' || (!clientBoatEntry?.plano && client?.plano === 'completo');
+  const chosenDayOfWeek = dateValue ? new Date(dateValue + 'T12:00:00Z').getUTCDay() : -1;
+  const isClosedDay = (chosenDayOfWeek === 1 || chosenDayOfWeek === 2) && !isPlanoCompleto;
+  const isDateOccupied = !!(selectedBoatId && dateValue && reservations.some((r: any) =>
+    r.embarcacaoId === selectedBoatId && r.data === dateValue && r.status !== 'cancelado'
+  ));
+  const isPastDate = !!(dateValue && dateValue < minDateStr);
+  const isSelectionInvalid = isBoatInMaintenance || isClosedDay || isDateOccupied || isPastDate;
+
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center py-8 px-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95">
@@ -313,7 +339,7 @@ export default function ClientReservationModal({
           <div>
             <h3 className="text-lg font-light text-white tracking-wide">Nova Reserva</h3>
             <p className="text-xs text-[#B69D74] mt-0.5 uppercase tracking-widest font-semibold">
-              {formatDateBR(selectedDate)}
+              {formatDateBR(dateValue)}
             </p>
           </div>
           <button
@@ -333,7 +359,7 @@ export default function ClientReservationModal({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Cliente (ReadOnly) */}
             <div>
               <label className="block text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
@@ -342,6 +368,37 @@ export default function ClientReservationModal({
               <div className="w-full px-4 py-3 bg-white/5 border border-white/5 rounded-xl text-white/70 text-sm font-medium">
                 {client.nome}
               </div>
+            </div>
+
+            {/* Data do Passeio */}
+            <div>
+              <label className="block text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
+                Data do Agendamento
+              </label>
+              <input
+                type="date"
+                min={minDateStr}
+                value={dateValue}
+                onChange={(e) => {
+                  setDateValue(e.target.value);
+                  setConfirmExtraObj(null);
+                  setErrorMsg(null);
+                }}
+                className="w-full px-4 py-3 bg-[#111] border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74] focus:outline-none"
+                required
+              />
+              {isClosedDay && (
+                <p className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  A marina não funciona às segundas e terças-feiras para o plano desta embarcação.
+                </p>
+              )}
+              {!isClosedDay && isDateOccupied && (
+                <p className="mt-2 text-xs text-rose-400 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  Esta data já possui reserva ativa para a embarcação selecionada.
+                </p>
+              )}
             </div>
 
             {/* Embarcação Selection */}
@@ -357,22 +414,28 @@ export default function ClientReservationModal({
               ) : (
                 <select
                   value={selectedBoatId}
-                  onChange={(e) => setSelectedBoatId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedBoatId(e.target.value);
+                    setConfirmExtraObj(null);
+                    setErrorMsg(null);
+                  }}
                   className="w-full px-4 py-3 bg-[#111] border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74] focus:outline-none appearance-none cursor-pointer"
                   required
                 >
                   <option value="" disabled>-- Selecione sua Embarcação --</option>
                   {boats.map(b => (
-                    <option key={b.id} value={b.id}>{getBoatCode(b)}</option>
+                    <option key={b.id} value={b.id}>
+                      {getBoatCode(b)}{b.modelo ? ` · ${b.modelo}` : ''}{b.emManutencao ? ' (Em Manutenção)' : ''}
+                    </option>
                   ))}
                 </select>
               )}
-              {selectedBoatId && boats.find(b => b.id === selectedBoatId)?.emManutencao && (
-                <div className="mt-3 flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-amber-500 text-xs">
+              {isBoatInMaintenance && (
+                <div className="mt-3 flex items-start gap-2 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg text-rose-400 text-xs">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold uppercase tracking-wider block text-[10px] mb-0.5">Aviso de Manutenção</span>
-                    <span className="leading-tight">Esta embarcação encontra-se atualmente em manutenção. Seu agendamento será registrado, mas dependemos da conclusão dos reparos.</span>
+                    <span className="font-bold uppercase tracking-wider block text-[10px] mb-0.5">Embarcação em Manutenção</span>
+                    <span className="leading-tight">Esta embarcação encontra-se em manutenção no momento. Novos agendamentos estão temporariamente bloqueados até a conclusão dos reparos.</span>
                   </div>
                 </div>
               )}
@@ -456,7 +519,7 @@ export default function ClientReservationModal({
               <div className="pt-4">
                 <button
                   type="submit"
-                  disabled={isSubmitting || !selectedBoatId}
+                  disabled={isSubmitting || !selectedBoatId || isSelectionInvalid}
                   className="w-full py-4 rounded-xl bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 font-bold tracking-wide transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(182,157,116,0.15)] flex justify-center items-center"
                 >
                   {isSubmitting ? (

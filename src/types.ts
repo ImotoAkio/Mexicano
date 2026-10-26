@@ -7,6 +7,11 @@ export interface Cliente {
   embarcacoes?: Array<{
     embarcacaoId: string;
     cota: string;
+    plano?: 'normal' | 'completo';
+    emRepasse?: boolean;
+    valorRepasse?: number;
+    motivoRepasse?: string;
+    dataRepasse?: string;
     acessorios?: {
       tenda?: boolean;
       mesa?: boolean;
@@ -204,6 +209,8 @@ export interface Embarcacao {
   tipo_propulsao?: string; // Tipo de propulsão (ex: MOTOR, JET)
   capacidadePassageiros?: number; // Boat capacity
   totalCotas?: number; // Total number of quotas (e.g. 4, 8, 12; default 8)
+  valorCota?: number; // Valor padrão comercial da cota (R$)
+  taxaAdmMensal?: number; // Taxa mensal estimada de condomínio/administração Vale (R$)
   potencia?: string; // Potência (ex: 250 HP)
   donos: string[]; // List of Cliente IDs (unlimited)
   googleCalendarId?: string; // Optional Google Calendar ID directly linked to the boat
@@ -302,7 +309,9 @@ export interface Reserva {
   operadorChegada?: string;
   operadorSubida?: string;
   confirmacaoEnviada?: boolean;
-  origem?: 'cota' | 'marina' | 'avulso';
+  origem?: 'cota' | 'marina' | 'avulso' | 'comercial';
+  finalidadeComercial?: 'sea_trial' | 'evento' | 'midia' | 'institucional';
+  cotaUtilizada?: string;
   nomeAvulso?: string;
   telefoneAvulso?: string;
   modeloAvulso?: string;
@@ -974,3 +983,205 @@ export interface FechamentoQuinzenaComissao {
   updatedAt: string;
 }
 
+
+
+export interface HistoricoCota {
+  id: string;
+  embarcacaoId: string;
+  embarcacaoNome?: string;
+  cota: string;
+  tipoOperacao: 'venda' | 'recompra' | 'transferencia' | 'repasse' | 'reserva_48h' | 'liberacao';
+  clienteOrigemId?: string;
+  clienteOrigemNome?: string;
+  clienteDestinoId?: string;
+  clienteDestinoNome?: string;
+  valorNegociado?: number;
+  dataOperacao: string;
+  observacoes?: string;
+  registradoPor?: string;
+  createdAt: string;
+}
+
+// ==========================================
+// MÓDULO COMERCIAL - CRM, PROPOSTAS, PERMUTAS & ESTOQUE
+// ==========================================
+
+export type EtapaFunilLead =
+  | 'novo'
+  | 'qualificacao'
+  | 'visita_agendada'
+  | 'proposta_enviada'
+  | 'analise_juridica'
+  | 'fechado'
+  | 'perdido';
+
+export interface PerfilNauticoLead {
+  possuiHabilitacao?: boolean; // Arrais Amador, Mestre, etc.
+  categoriaHabilitacao?: string;
+  jaTeveBarcoOuJet?: boolean;
+  tipoExperienciaAnterior?: string;
+  quantidadeConvidadosHabitual?: number;
+  faixaOrcamento?: string; // Ex: "R$ 150k - R$ 250k"
+  preferenciaUso?: string[]; // Ex: ["Passeio diurno", "Churrasco", "Pernoite", "Esportes náuticos"]
+}
+
+export interface InteracaoTimelineLead {
+  id: string;
+  data: string;
+  tipo: 'nota' | 'whatsapp' | 'ligacao' | 'visita_sea_trial' | 'proposta' | 'mudanca_etapa' | 'sistema';
+  titulo: string;
+  descricao?: string;
+  autorNome?: string;
+}
+
+export interface LeadComercial {
+  id: string;
+  nome: string;
+  telefone?: string;
+  email?: string;
+  cpf?: string;
+  cidade?: string;
+  detalhes?: string;
+  etapaFunil: EtapaFunilLead;
+  origem?: 'instagram' | 'indicacao' | 'catalogo' | 'presencial' | 'outros';
+  temperatura?: 'quente' | 'morno' | 'frio';
+  valorEstimado?: number;
+  proximoContatoEm?: string | null;
+  dataVisitaAgendada?: string | null;
+  possuiPermuta?: boolean;
+  resumoPermuta?: string;
+  perfilNautico?: PerfilNauticoLead;
+  embarcacoesInteresse?: string[]; // IDs das embarcações
+  tipoInteresse?: 'lancha' | 'jet' | 'ambos'; // Tipo náutico de interesse
+  vendedorId?: string;
+  vendedorNome?: string;
+  indicadoPorClienteId?: string;
+  indicadoPorClienteNome?: string;
+  filaEsperaEmbarcacaoId?: string;
+  timeline?: InteracaoTimelineLead[];
+  motivoPerda?: string;
+  propostasCount?: number;
+  cotasReservadasCount?: number;
+  permutasCount?: number;
+  cotaReservadaCodigo?: string | null;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BalaoIntermediario {
+  id: string;
+  mesAno: string; // MM/YYYY ou YYYY-MM-DD
+  valor: number;
+  descricao?: string;
+}
+
+export interface ComparativoCustoInfo {
+  custoBarcoIndividual: number;
+  custoMarinaIndividualMensal: number;
+  custoSeguroIndividualAnual: number;
+  custoRevisaoIndividualAnual: number;
+  custoTotalPrimeiroAnoIndividual: number;
+  custoCotaMexicano: number;
+  taxaMensalRateada: number;
+  economiaEstimadaPrimeiroAno: number;
+}
+
+export interface PropostaComercial {
+  id: string;
+  codigoProposta: string;
+  leadId?: string;
+  leadNome: string;
+  leadTelefone?: string;
+  leadEmail?: string;
+  leadCpf?: string;
+  vendedorId?: string;
+  vendedorNome?: string;
+  embarcacaoId: string;
+  embarcacaoNome?: string;
+  cota: string;
+  tipoCota: 'estoque_mexicano' | 'repasse';
+  repasseClienteId?: string;
+  repasseClienteNome?: string;
+  valorTotal: number;
+  valorEntrada: number;
+  dataVencimentoEntrada?: string;
+  formaPagamentoEntrada?: string;
+  numParcelas: number;
+  valorParcela: number;
+  diaVencimento: number;
+  dataPrimeiraParcela?: string;
+  formaPagamentoParcelas?: string;
+  baloesIntermediarios?: BalaoIntermediario[];
+  permutaInfo?: {
+    temPermuta: boolean;
+    tipoBem?: string;
+    marcaModelo?: string;
+    ano?: number;
+    valorPropostoCliente?: number;
+    valorAprovadoDiretoria?: number;
+    statusAvaliacao?: 'aguardando_avaliacao' | 'aprovado' | 'recusado';
+  };
+  taxaAdmEstimada: number;
+  comparativoCustoInfo?: ComparativoCustoInfo;
+  status: 'rascunho' | 'enviada' | 'visualizada' | 'aceita' | 'recusada' | 'expirada' | 'convertida_venda';
+  validadeAte: string;
+  tokenPublico: string;
+  visualizadaEm?: string;
+  aceitaEm?: string;
+  observacoes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PermutaComercial {
+  id: string;
+  propostaId?: string;
+  leadId?: string;
+  leadNome?: string;
+  tipoBem: 'lancha' | 'jet_ski' | 'carro' | 'imovel' | 'outro';
+  marcaModelo: string;
+  ano?: number;
+  valorPropostoCliente: number;
+  valorAprovadoDiretoria?: number;
+  statusAvaliacao: 'aguardando_avaliacao' | 'aprovado' | 'recusado';
+  motivoAvaliacao?: string;
+  avaliadoPor?: string;
+  avaliadoEm?: string;
+  fotos?: string[];
+  documentos?: string[];
+  observacoes?: string;
+  createdAt: string;
+}
+
+export interface CotaReservada {
+  id: string;
+  embarcacaoId: string;
+  cota: string;
+  propostaId?: string;
+  leadId?: string;
+  leadNome?: string;
+  vendedorId?: string;
+  vendedorNome?: string;
+  motivoReserva?: string;
+  expiraEm: string; // ISO String (ex: now + 48h)
+  status: 'ativa' | 'expirada' | 'convertida' | 'cancelada';
+  createdAt: string;
+}
+
+export interface CheckinVisita {
+  id: string;
+  reservaId?: string;
+  leadId?: string;
+  embarcacaoId: string;
+  vendedorId?: string;
+  dataVisita: string;
+  compareceu: boolean;
+  avaliacaoLead: number; // 1 a 5 estrelas
+  feedbackLead?: string;
+  proximosPassos?: string;
+  temperaturaLead: 'frio' | 'morno' | 'quente' | 'fechamento';
+  createdAt: string;
+}

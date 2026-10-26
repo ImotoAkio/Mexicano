@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, ArrowRight, ArrowLeft, ShieldCheck, Lock, Eye, FileText, Database, Info, X } from 'lucide-react';
+import { ShieldAlert, ArrowRight, ArrowLeft, ShieldCheck, Lock, Eye, EyeOff, FileText, Database, Info, X } from 'lucide-react';
 import Logo from './Logo';
 
 interface ClientLoginPageProps {
@@ -12,6 +12,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
   const [identifier, setIdentifier] = useState(() => localStorage.getItem('client_last_cpf') || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -33,31 +34,26 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
   }, [view]);
 
   const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value;
-    // Simple mask for CPF if it's only numbers, otherwise treat as username
-    const onlyNumbers = val.replace(/\D/g, '');
-    if (onlyNumbers.length > 0 && val.match(/^[0-9.-]+$/)) {
-      if (onlyNumbers.length > 11) val = onlyNumbers.substring(0, 11);
-      let formatted = onlyNumbers;
-      if (onlyNumbers.length > 9) {
-        formatted = `${onlyNumbers.substring(0, 3)}.${onlyNumbers.substring(3, 6)}.${onlyNumbers.substring(6, 9)}-${onlyNumbers.substring(9)}`;
-      } else if (onlyNumbers.length > 6) {
-        formatted = `${onlyNumbers.substring(0, 3)}.${onlyNumbers.substring(3, 6)}.${onlyNumbers.substring(6)}`;
-      } else if (onlyNumbers.length > 3) {
-        formatted = `${onlyNumbers.substring(0, 3)}.${onlyNumbers.substring(3)}`;
-      }
-      setIdentifier(formatted);
-    } else {
-      setIdentifier(val);
+    const onlyNumbers = e.target.value.replace(/\D/g, '').substring(0, 11);
+    let formatted = onlyNumbers;
+    if (onlyNumbers.length > 9) {
+      formatted = `${onlyNumbers.substring(0, 3)}.${onlyNumbers.substring(3, 6)}.${onlyNumbers.substring(6, 9)}-${onlyNumbers.substring(9)}`;
+    } else if (onlyNumbers.length > 6) {
+      formatted = `${onlyNumbers.substring(0, 3)}.${onlyNumbers.substring(3, 6)}.${onlyNumbers.substring(6)}`;
+    } else if (onlyNumbers.length > 3) {
+      formatted = `${onlyNumbers.substring(0, 3)}.${onlyNumbers.substring(3)}`;
     }
+    setIdentifier(formatted);
+    if (error) setError('');
   };
 
   const handleCheckIdentifier = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
-    if (!identifier.trim()) {
-      setError('Informe seu CPF ou nome de usuário.');
+    const cleanCpf = identifier.replace(/\D/g, '');
+    if (cleanCpf.length !== 11) {
+      setError('Informe um CPF válido com 11 dígitos.');
       return;
     }
 
@@ -257,7 +253,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
           </div>
         )}
 
-        {/* === IDENTIFIER VIEW (CPF or Username) === */}
+        {/* === IDENTIFIER VIEW (CPF) === */}
         {view === 'identifier' && (
           <div className="flex-1 flex flex-col animate-in slide-in-from-right-8 fade-in duration-500">
             <div className="pt-2 pb-12">
@@ -273,18 +269,20 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
               Acesso
             </h2>
             <p className="text-white/40 text-sm font-light mb-10">
-              Identifique-se para acessar o sistema.
+              Informe seu CPF para acessar o painel.
             </p>
 
             <form onSubmit={(e) => { e.preventDefault(); handleCheckIdentifier(e); }} className="space-y-5">
               <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">CPF ou Usuário</label>
+                <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">CPF</label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  maxLength={14}
                   value={identifier}
                   onChange={handleIdentifierChange}
-                  className="w-full bg-[#111] border border-white/5 rounded-xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-[#B69D74]/50 focus:bg-[#151515] transition-all text-sm shadow-inner"
-                  placeholder="Seu CPF ou usuário"
+                  className="w-full bg-[#111] border border-white/5 rounded-xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-[#B69D74]/50 focus:bg-[#151515] transition-all text-sm shadow-inner font-mono tracking-wider"
+                  placeholder="000.000.000-00"
                   required
                   autoFocus
                 />
@@ -338,15 +336,25 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
             <form onSubmit={(e) => { e.preventDefault(); handleLogin(e); }} className="space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">Senha</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#111] border border-white/5 rounded-xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-[#B69D74]/50 focus:bg-[#151515] transition-all text-sm shadow-inner"
-                  placeholder="••••••••"
-                  required
-                  autoFocus
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-[#111] border border-white/5 rounded-xl pl-5 pr-12 py-4 text-white placeholder-white/20 focus:outline-none focus:border-[#B69D74]/50 focus:bg-[#151515] transition-all text-sm shadow-inner"
+                    placeholder="••••••••"
+                    required
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition-colors cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               {error && (
@@ -559,7 +567,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
               {privacyTab === 'general' && (
                 <div className="space-y-4 animate-in fade-in duration-200">
                   <p className="text-white/80">
-                    O <strong className="font-medium text-white/95">Grupo Vila Náutica</strong> composto por Vila Náutica, Vila Náutica, Vale Administradora e Passeios do Vale, preza pelo mais alto rigor no tratamento dos seus dados.
+                    O <strong className="font-medium text-white/95">Grupo Vila Náutica</strong>, composto por Vila Náutica, Vale Administradora e Passeios do Vale, preza pelo mais alto rigor no tratamento dos seus dados.
                   </p>
                   <p>
                     Esta aplicação foi desenvolvida sob rígidos padrões de segurança cibernética pela <strong className="text-white/85">Echo Desenvolvimento de Software</strong>, assegurando que toda informação trafegada e armazenada esteja devidamente protegida contra acessos não autorizados.
@@ -587,7 +595,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
                     </div>
                     <div className="p-3 bg-white/[0.02] border border-white/[0.04] rounded-xl">
                       <span className="block font-medium text-white/85 mb-1">Histórico de Reservas</span>
-                      <p className="text-white/40">Registro de das e períodos solicitados para navegação das embarcações.</p>
+                      <p className="text-white/40">Registro de datas e períodos solicitados para navegação das embarcações.</p>
                     </div>
                     <div className="p-3 bg-white/[0.02] border border-white/[0.04] rounded-xl">
                       <span className="block font-medium text-white/85 mb-1">Registros de Acesso</span>

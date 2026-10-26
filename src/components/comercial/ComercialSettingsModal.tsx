@@ -25,6 +25,9 @@ export interface ComercialSettings {
   faturamentoAtual: number;
   metaNovosContratos: number;
   metaNovosLeads: number;
+  metaVisitas?: number;
+  metaPropostas?: number;
+  metaIndividualVendedor?: number;
   diasAlertaVencimento: number;
   notificarNovosLeads: boolean;
   notificarPropostasSemResposta: boolean;
@@ -44,6 +47,9 @@ export const DEFAULT_COMERCIAL_SETTINGS: ComercialSettings = {
   faturamentoAtual: 486200,
   metaNovosContratos: 64,
   metaNovosLeads: 1284,
+  metaVisitas: 40,
+  metaPropostas: 80,
+  metaIndividualVendedor: 250000,
   diasAlertaVencimento: 30,
   notificarNovosLeads: true,
   notificarPropostasSemResposta: true,
@@ -467,6 +473,45 @@ export default function ComercialSettingsModal({
                       className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-bold focus:outline-hidden focus:border-stone-400"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Meta de Visitas / Test Drives
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.metaVisitas || 40}
+                      onChange={e => setSettings({ ...settings, metaVisitas: Number(e.target.value) || 0 })}
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-bold focus:outline-hidden focus:border-stone-400"
+                    />
+                  </div>
+
+                  <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                      Meta de Propostas Enviadas
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.metaPropostas || 80}
+                      onChange={e => setSettings({ ...settings, metaPropostas: Number(e.target.value) || 0 })}
+                      className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-bold focus:outline-hidden focus:border-stone-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-200/70 space-y-1">
+                  <label className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                    Meta Financeira Individual do Vendedor (R$)
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.metaIndividualVendedor || 250000}
+                    onChange={e => setSettings({ ...settings, metaIndividualVendedor: Number(e.target.value) || 0 })}
+                    className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-bold focus:outline-hidden focus:border-stone-400"
+                  />
+                  <span className="text-[10px] text-stone-400 block mt-0.5">Utilizada para o widget de comissão individual e VGV do vendedor logado</span>
                 </div>
               </div>
             )}

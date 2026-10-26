@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { reservationDB, boatDB, clientDB } from '../db';
 import { fetchGoogleCalendarEventsRange, CalendarEvent, mergeLocalAndGoogleEvents } from '../googleCalendar';
 import { Embarcacao, Cliente } from '../types';
+import { isInternalMexicano } from '../utils/constants';
 import { getBoatCode } from '../utils/boatUtils';
 // @ts-ignore
 import logoSrc from '../assets/images/vale_nauticos_logo_1780256879963.png';
@@ -234,7 +235,17 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
          const c = clientsList.find(x => x.id === res.clienteId);
          const boatCodeStr = b ? (b.numero ? `M${b.numero.padStart(2, '0')}` : b.nome) : 'MXX';
          let shortName = c ? getFirstTwoNames(c.nome) : 'Desconhecido';
-         if (!c && res.observações?.includes('[NOME_RECUPERADO:')) {
+         const isMex = c ? isInternalMexicano(c.id) || isInternalMexicano(c.nome) : res.origem === 'comercial';
+         if (isMex) {
+           const finalidade = res.finalidadeComercial === 'sea_trial'
+             ? 'TEST DRIVE'
+             : res.finalidadeComercial === 'evento'
+             ? 'EVENTO'
+             : res.finalidadeComercial === 'midia'
+             ? 'MÍDIA'
+             : 'COMERCIAL';
+           shortName = `${finalidade} (MEXICANO)`;
+         } else if (!c && res.observações?.includes('[NOME_RECUPERADO:')) {
            const match = res.observações.match(/\[NOME_RECUPERADO:(.*?)\]/);
            if (match) shortName = getFirstTwoNames(match[1].trim());
          }

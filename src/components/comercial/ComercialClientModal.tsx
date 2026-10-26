@@ -13,7 +13,6 @@ import {
   Check,
   AlertCircle,
   Building2,
-  CreditCard,
   FileText,
   Anchor,
   Compass,
@@ -43,11 +42,13 @@ interface ComercialClientModalProps {
   onSave: (savedClient: Cliente) => void;
   editingClient?: Cliente | null;
   boats: Embarcacao[];
+  clients?: Cliente[];
 }
 
 interface CotaItem {
   embarcacaoId: string;
   cota: string;
+  plano?: 'normal' | 'completo';
   acessorios?: {
     tenda?: boolean;
     mesa?: boolean;
@@ -62,9 +63,16 @@ export default function ComercialClientModal({
   onClose,
   onSave,
   editingClient = null,
-  boats = []
+  boats = [],
+  clients: propClients
 }: ComercialClientModalProps) {
   const isEditing = !!editingClient;
+
+  // Lista de outros clientes para controle de cotas ocupadas
+  const clients = useMemo(() => {
+    const list = propClients && propClients.length > 0 ? propClients : clientDB.getAll();
+    return list.filter(c => c.id !== editingClient?.id);
+  }, [propClients, editingClient, isOpen]);
 
   // Aba ativa: 'comercial' | 'embarcacoes' | 'dados' | 'endereco'
   const [activeTab, setActiveTab] = useState<'comercial' | 'embarcacoes' | 'dados' | 'endereco'>('comercial');
@@ -138,12 +146,14 @@ export default function ComercialClientModal({
         setCotasList(editingClient.embarcacoes.map((eb, idx) => ({
           embarcacaoId: eb.embarcacaoId || '',
           cota: normalizeCotaCode(eb.cota, idx + 1),
+          plano: eb.plano || editingClient.plano || 'normal',
           acessorios: eb.acessorios ? { ...eb.acessorios } : undefined
         })));
       } else if (editingClient.embarcacaoId) {
         setCotasList([{
           embarcacaoId: editingClient.embarcacaoId,
           cota: normalizeCotaCode(editingClient.cota, 1),
+          plano: editingClient.plano || 'normal',
           acessorios: editingClient.acessorios ? { ...editingClient.acessorios } : undefined
         }]);
       } else {
@@ -329,6 +339,7 @@ export default function ComercialClientModal({
       {
         embarcacaoId: defaultBoatId,
         cota: nextFree,
+        plano: 'normal',
         acessorios: {
           tenda: false,
           mesa: false,
@@ -402,16 +413,18 @@ export default function ComercialClientModal({
       const normalizedCotasList = validCotas.map((c, idx) => ({
         embarcacaoId: c.embarcacaoId,
         cota: normalizeCotaCode(c.cota, idx + 1),
+        plano: c.plano || 'normal',
         acessorios: c.acessorios
       }));
 
       // Determina embarcação e cota primárias para compatibilidade legado
       const primaryBoat = normalizedCotasList.length > 0 ? normalizedCotasList[0] : null;
+      const anyBoatCompleto = normalizedCotasList.some(c => c.plano === 'completo');
 
       const payload: Partial<Cliente> = {
         nome: nome.trim(),
         status,
-        plano,
+        plano: anyBoatCompleto ? 'completo' : 'normal',
         statusFinanceiro,
         empresas,
         observacoesFinanceiras: observacoesFinanceiras.trim(),
@@ -465,7 +478,7 @@ export default function ComercialClientModal({
   }
 
   const CLIENT_TABS: ClientTabItem[] = [
-    { id: 'comercial', label: 'Condição Comercial', icon: Sparkles, desc: 'Status do cadastro, plano de navegação e situação financeira' },
+    { id: 'comercial', label: 'Condição Comercial', icon: Sparkles, desc: 'Status do cadastro, plano de navegação e empresas vinculadas' },
     { id: 'embarcacoes', label: 'Embarcações & Cotas', icon: Ship, desc: 'Vínculos de cotas e acessórios por embarcação', count: cotasList.length },
     { id: 'dados', label: 'Dados Pessoais', icon: User, desc: 'Identificação civil e habilitação náutica do cotista' },
     { id: 'endereco', label: 'Contatos & Endereço', icon: MapPin, desc: 'Canais de comunicação e endereço residencial' },
@@ -556,7 +569,7 @@ export default function ComercialClientModal({
 
             <div className="flex items-center justify-between text-[10px] text-stone-400 pt-0.5">
               <span className="font-medium text-stone-600">Plano {plano === 'completo' ? 'Completo' : 'Normal'}</span>
-              <span className="font-semibold text-stone-700">{statusFinanceiro === 'em_dia' ? 'Em dia' : statusFinanceiro}</span>
+              <span className="font-semibold text-stone-700">{cotasList.length} {cotasList.length === 1 ? 'cota' : 'cotas'}</span>
             </div>
           </div>
         </aside>
@@ -638,39 +651,45 @@ export default function ComercialClientModal({
                   </div>
                 </div>
 
-                {/* Plano Comercial */}
-                <div className="bg-stone-50/70 p-4 rounded-xl border border-stone-200/80 space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-stone-400" />
-                    Plano Contratado
-                  </label>
+                {/* Plano Náutico por Embarcação */}
+                <div className="bg-stone-50/70 p-4 rounded-xl border border-stone-200/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-stone-400" />
+                      Plano Náutico por Embarcação
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('embarcacoes')}
+                      className="text-[11px] font-semibold text-mx-ink hover:underline cursor-pointer"
+                    >
+                      Configurar nas Cotas →
+                    </button>
+                  </div>
                   <p className="text-[11px] text-stone-500">
-                    Define as regras de atendimento, pacotes e coberturas inclusas.
+                    O acesso às segundas e terças é contratado individualmente por embarcação na aba <strong>Embarcações & Cotas</strong>, incidindo diretamente sobre a taxa administrativa do respectivo bem.
                   </p>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setPlano('completo')}
-                      className={`flex-1 py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                        plano === 'completo'
-                          ? 'bg-amber-50 border-amber-500 text-amber-900 shadow-xs'
-                          : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-100'
-                      }`}
-                    >
-                      <Award className="w-3.5 h-3.5 text-amber-600" />
-                      Plano Completo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPlano('normal')}
-                      className={`flex-1 py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                        plano === 'normal'
-                          ? 'bg-mx-ink-50 border-mx-ink text-mx-ink shadow-xs'
-                          : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-100'
-                      }`}
-                    >
-                      Plano Normal
-                    </button>
+                  <div className="space-y-1.5 pt-1">
+                    {cotasList.length === 0 ? (
+                      <span className="text-xs text-stone-400 italic">Nenhuma cota vinculada no momento.</span>
+                    ) : (
+                      cotasList.map((c, i) => {
+                        const b = boats.find(boat => boat.id === c.embarcacaoId);
+                        const isC = c.plano === 'completo';
+                        return (
+                          <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-white border border-stone-200/70 text-xs">
+                            <span className="font-semibold text-stone-800">
+                              {b ? `${getBoatCode(b)} — ${b.nome}` : `Embarcação #${i + 1}`} ({c.cota})
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              isC ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-stone-100 text-stone-600'
+                            }`}>
+                              {isC ? 'Plano Completo' : 'Normal'}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </div>
@@ -684,11 +703,10 @@ export default function ComercialClientModal({
                 <p className="text-[11px] text-stone-500">
                   Selecione as unidades onde o cliente possui cadastro ou autorização de serviço.
                 </p>
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
-                    { id: 'VALE', name: 'Vale Náutica', desc: 'Operação Náutica' },
-                    { id: 'MARINA', name: 'Marina', desc: 'Vagas & Garagem' },
-                    { id: 'MEXICANO', name: 'El Mexicano', desc: 'Embarcações & Bar' }
+                    { id: 'VALE', name: 'Vale Administradora', desc: 'Administra cotas' },
+                    { id: 'MARINA', name: 'Marina', desc: 'Guarda embarcações não administradas' }
                   ].map(emp => {
                     const isSelected = empresas.includes(emp.id);
                     return (
@@ -696,70 +714,25 @@ export default function ComercialClientModal({
                         key={emp.id}
                         type="button"
                         onClick={() => toggleEmpresa(emp.id)}
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                           isSelected
-                            ? 'border-mx-ink bg-mx-ink-50 shadow-xs'
+                            ? 'border-mx-ink bg-mx-ink-50 shadow-xs ring-1 ring-mx-ink/30'
                             : 'border-stone-200 bg-white hover:border-stone-300'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center justify-between mb-1">
                           <span className={`text-xs font-bold ${isSelected ? 'text-mx-ink' : 'text-stone-800'}`}>
                             {emp.name}
                           </span>
                           <div
-                            className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                            className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
                               isSelected ? 'bg-mx-ink border-mx-ink text-white' : 'border-stone-300 bg-white'
                             }`}
                           >
                             {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                           </div>
                         </div>
-                        <span className="text-[10px] text-stone-400">{emp.desc}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Status Financeiro */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5 text-stone-400" />
-                  Situação Financeira
-                </label>
-                <div className="grid grid-cols-3 gap-2.5">
-                  {[
-                    { id: 'em_dia', label: 'Em Dia', color: 'emerald', desc: 'Mensalidades e taxas pagas' },
-                    { id: 'pendente', label: 'Pendente', color: 'amber', desc: 'Faturas em processamento' },
-                    { id: 'inadimplente', label: 'Inadimplente', color: 'red', desc: 'Valores em atraso' }
-                  ].map(fin => {
-                    const isSelected = statusFinanceiro === fin.id;
-                    return (
-                      <button
-                        key={fin.id}
-                        type="button"
-                        onClick={() => setStatusFinanceiro(fin.id as any)}
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? 'border-stone-900 bg-stone-900 text-white shadow-xs'
-                            : 'border-stone-200 bg-white hover:border-stone-300 text-stone-800'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className={`w-2 h-2 rounded-full ${
-                              fin.color === 'emerald'
-                                ? 'bg-emerald-500'
-                                : fin.color === 'amber'
-                                ? 'bg-amber-500'
-                                : 'bg-red-500'
-                            }`}
-                          />
-                          <span className="text-xs font-bold">{fin.label}</span>
-                        </div>
-                        <span className={`text-[10px] block ${isSelected ? 'text-stone-300' : 'text-stone-400'}`}>
-                          {fin.desc}
-                        </span>
+                        <span className="text-[11px] text-stone-500 leading-snug block">{emp.desc}</span>
                       </button>
                     );
                   })}
@@ -898,7 +871,7 @@ export default function ComercialClientModal({
                               <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
                                 {slots.map(slot => {
                                   const occ = occMap.get(slot);
-                                  const occupiedByOtherClient = !!(occ && occ.clienteId !== clientToEdit?.id);
+                                  const occupiedByOtherClient = !!(occ && occ.clienteId !== editingClient?.id);
                                   const usedInOtherRow = cotasList.some(
                                     (other, otherIdx) =>
                                       otherIdx !== idx &&
@@ -998,6 +971,44 @@ export default function ComercialClientModal({
                               </button>
                             );
                           })}
+                        </div>
+                      </div>
+
+                      {/* Plano Contratado desta Cota */}
+                      <div className="pt-2.5 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[11px] font-bold text-stone-700 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-stone-400" />
+                            Plano de Atendimento desta Embarcação
+                          </span>
+                          <span className="text-[10px] text-stone-400 block mt-0.5">
+                            Acesso e navegação às segundas e terças-feiras (incide na taxa adm deste bem)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateCota(idx, { plano: 'normal' })}
+                            className={`py-1.5 px-3 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                              (item.plano || 'normal') === 'normal'
+                                ? 'bg-mx-ink-50 border-mx-ink text-mx-ink shadow-xs'
+                                : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
+                            }`}
+                          >
+                            Plano Normal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateCota(idx, { plano: 'completo' })}
+                            className={`py-1.5 px-3 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                              item.plano === 'completo'
+                                ? 'bg-amber-50 border-amber-500 text-amber-900 shadow-xs'
+                                : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
+                            }`}
+                          >
+                            <Award className="w-3.5 h-3.5 text-amber-600" />
+                            Plano Completo (+ Seg/Ter)
+                          </button>
                         </div>
                       </div>
                     </div>

@@ -220,7 +220,7 @@ export default function FeedbackForm({ isEmbedded = false, prefilledClient, onCl
   };
 
   return (
-    <div className={isEmbedded ? "w-full h-full flex items-center justify-center font-sans relative text-white" : "min-h-[100dvh] w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white selection:bg-[#B69D74]/30 selection:text-white"}>
+    <div className={isEmbedded ? "w-full max-h-[92dvh] flex items-start sm:items-center justify-center font-sans relative text-white overflow-y-auto subtle-scrollbar py-2" : "min-h-[100dvh] w-full bg-[#050505] flex items-center justify-center font-sans relative overflow-hidden text-white selection:bg-[#B69D74]/30 selection:text-white"}>
       {/* Canvas for Success Confetti */}
       <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-50 w-full h-full" />
 
@@ -229,14 +229,16 @@ export default function FeedbackForm({ isEmbedded = false, prefilledClient, onCl
         <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(ellipse_at_center,_rgba(182,157,116,0.06)_0%,_transparent_50%)] animate-pulse" style={{ animationDuration: '6s' }}></div>
       </div>
 
-      <div className={`w-full max-w-[460px] ${isEmbedded ? 'min-h-[650px] rounded-[2rem]' : 'min-h-[100dvh] md:min-h-[780px] md:h-[780px] md:rounded-[2.5rem]'} bg-[#0c0c0c]/85 backdrop-blur-3xl md:border border-white/[0.04] shadow-[0_0_80px_rgba(0,0,0,0.9)] relative z-10 flex flex-col p-6 sm:p-10 justify-between overflow-y-auto subtle-scrollbar`}>
+      <div className={`w-full max-w-[460px] ${isEmbedded ? 'max-h-[88dvh] rounded-[2rem] my-auto' : 'min-h-[100dvh] md:min-h-[780px] md:h-[780px] md:rounded-[2.5rem]'} bg-[#0c0c0c]/85 backdrop-blur-3xl md:border border-white/[0.04] shadow-[0_0_80px_rgba(0,0,0,0.9)] relative z-10 flex flex-col p-6 sm:p-8 justify-between overflow-y-auto subtle-scrollbar`}>
         
         {/* Top Header */}
-        <header className="flex flex-col items-center pt-2 relative">
+        <header className="flex flex-col items-center pt-1 relative shrink-0">
           {isEmbedded && onClose && (
             <button 
+              type="button"
               onClick={onClose}
-              className="absolute top-0 right-0 p-2 text-white/40 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors"
+              aria-label="Fechar"
+              className="absolute top-0 right-0 z-20 p-2 text-white/60 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

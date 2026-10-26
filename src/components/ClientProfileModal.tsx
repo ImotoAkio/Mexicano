@@ -20,7 +20,8 @@ import {
   Check,
   AlertTriangle,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import { Cliente, Embarcacao } from '../types';
 import InternalDrive from './finance/InternalDrive';
@@ -170,6 +171,7 @@ export default function ClientProfileModal({
         list.push({
           embarcacaoId: eb.embarcacaoId,
           cota: eb.cota || client.cota || 'N/A',
+          plano: eb.plano || client.plano || 'normal',
           acessorios: eb.acessorios,
           boat
         });
@@ -179,6 +181,7 @@ export default function ClientProfileModal({
       list.push({
         embarcacaoId: client.embarcacaoId,
         cota: client.cota || 'N/A',
+        plano: client.plano || 'normal',
         acessorios: client.acessorios,
         boat
       });
@@ -1023,11 +1026,18 @@ export default function ClientProfileModal({
 
                     <div className="bg-stone-50 p-3 rounded-xl border border-stone-100/90">
                       <span className="text-stone-400 text-[10px] font-bold uppercase tracking-wider block mb-1">
-                        Plano Escolhido
+                        Plano Náutico
                       </span>
-                      <span className="font-bold text-stone-900 uppercase text-xs">
-                        Plano {client.plano === 'completo' ? 'Completo' : 'Normal'}
-                      </span>
+                      {(() => {
+                        const hasComp = linkedBoats.some(b => (b as any).plano === 'completo') || client.plano === 'completo';
+                        const hasNorm = linkedBoats.some(b => (b as any).plano === 'normal');
+                        const label = (hasComp && hasNorm) ? 'Misto (Por Embarcação)' : (hasComp ? 'Plano Completo' : 'Plano Normal');
+                        return (
+                          <span className="font-bold text-stone-900 uppercase text-xs">
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     <div className="bg-stone-50 p-3 rounded-xl border border-stone-100/90">
@@ -1286,6 +1296,33 @@ export default function ClientProfileModal({
                                     {boat?.vaga || 'Não informada'}
                                   </span>
                                 </div>
+                              </div>
+
+                              <div className={`p-2.5 rounded-xl border col-span-2 flex items-center justify-between ${
+                                (item as any).plano === 'completo'
+                                  ? 'bg-amber-50/70 border-amber-200 text-amber-900'
+                                  : 'bg-stone-50 border-stone-200/80 text-stone-700'
+                              }`}>
+                                <div>
+                                  <span className="text-[9px] font-bold uppercase tracking-wider block opacity-75">
+                                    Plano de Agendamento (Seg e Ter)
+                                  </span>
+                                  <span className="font-bold text-xs flex items-center gap-1 mt-0.5">
+                                    {(item as any).plano === 'completo' ? (
+                                      <>
+                                        <Sparkles className="w-3 h-3 text-amber-600" />
+                                        Plano Completo (Segunda e Terça Liberados)
+                                      </>
+                                    ) : (
+                                      'Plano Normal (Quarta a Domingo)'
+                                    )}
+                                  </span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  (item as any).plano === 'completo' ? 'bg-amber-600 text-white' : 'bg-stone-200 text-stone-600'
+                                }`}>
+                                  {(item as any).plano === 'completo' ? 'Completo' : 'Normal'}
+                                </span>
                               </div>
                             </div>
 

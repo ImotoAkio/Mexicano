@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { clientDB, boatDB, syncWithRemote, onDbUpdate, isDbLoaded } from '../../db';
 import { Cliente, Embarcacao } from '../../types';
+import { getBoatCode, matchClientBoat, getClientAllBoatIds } from '../../utils/boatUtils';
 import ClientProfileModal from '../ClientProfileModal';
 import ComercialClientModal from './ComercialClientModal';
 import ComercialContratoViewerModal from './ComercialContratoViewerModal';
@@ -127,6 +128,25 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
     return { total, ativos, inativos, cotistas };
   }, [clients]);
 
+
+  // Função auxiliar de normalização de texto sem acentos
+  const normalizeText = (text?: string | null): string => {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  };
+
+  // Resolver embarcação associada a um cliente com suporte a ID, código (M16) ou nome
+  const resolveBoatForClient = (rawRef?: string): Embarcacao | undefined => {
+    if (!rawRef) return undefined;
+    const direct = boatsMap.get(rawRef);
+    if (direct) return direct;
+    return boats.find(b => matchClientBoat(rawRef, b));
+  };
+
   // Contagem de filtros ativos
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -141,35 +161,38 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
 
   // Filtragem de clientes com múltiplos critérios
   const filteredClients = useMemo(() => {
-    const term = searchTerm.toLowerCase().trim();
+    const rawTerm = searchTerm.trim();
+    const term = normalizeText(rawTerm);
+    const termDigits = rawTerm.replace(/\D/g, '');
 
     return clients.filter(client => {
-      // 1. Filtro por Embarcação (Multi-select)
+      // 1. Filtro por Embarcação (Multi-select robusto)
       if (filters.boatIds.length > 0) {
-        const clientBoatIds = new Set<string>();
-        if (client.embarcacaoId) clientBoatIds.add(client.embarcacaoId);
-        client.embarcacoes?.forEach(eb => {
-          if (eb.embarcacaoId) clientBoatIds.add(eb.embarcacaoId);
-        });
+        const clientBoatIds = getClientAllBoatIds(client, boats);
         const hasMatchingBoat = filters.boatIds.some(id => clientBoatIds.has(id));
         if (!hasMatchingBoat) return false;
       }
 
       // 2. Filtro por Plano (Multi-select)
       if (filters.planos.length > 0) {
-        if (!client.plano || !filters.planos.includes(client.plano)) return false;
+        const hasCompleto = (Array.isArray(client.embarcacoes) && client.embarcacoes.some(eb => eb?.plano === 'completo')) || client.plano === 'completo';
+        const hasNormal = (Array.isArray(client.embarcacoes) && client.embarcacoes.some(eb => (eb?.plano || 'normal') === 'normal')) || (!hasCompleto);
+        const matchesCompleto = filters.planos.includes('completo') && hasCompleto;
+        const matchesNormal = filters.planos.includes('normal') && hasNormal;
+        if (!matchesCompleto && !matchesNormal) return false;
       }
 
       // 3. Filtro por Status Financeiro (Multi-select)
       if (filters.statusFinanceiro.length > 0) {
-        if (!client.statusFinanceiro || !filters.statusFinanceiro.includes(client.statusFinanceiro)) {
+        const fin = client.statusFinanceiro || 'em_dia';
+        if (!filters.statusFinanceiro.includes(fin)) {
           return false;
         }
       }
 
       // 4. Filtro por Empresa (Multi-select)
       if (filters.empresas.length > 0) {
-        const clientEmpresas = client.empresas || [];
+        const clientEmpresas = (client.empresas && client.empresas.length > 0) ? client.empresas : ['VALE'];
         const hasMatchingEmpresa = filters.empresas.some(emp => clientEmpresas.includes(emp));
         if (!hasMatchingEmpresa) return false;
       }
@@ -187,32 +210,61 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
         if (filters.vinculo === 'sem_embarcacao' && hasBoats) return false;
       }
 
-      // 7. Busca Textual (Nome, CPF, Telefone, E-mail, Embarcação, Cota)
+      // 7. Busca Textual Rigorosa (Nome, CPF, Telefone, E-mail, Embarcação, Cota)
       if (term) {
-        const matchName = client.nome?.toLowerCase().includes(term);
-        const matchCpf = client.cpf?.replace(/\D/g, '').includes(term.replace(/\D/g, ''));
-        const matchPhone = client.telefone?.replace(/\D/g, '').includes(term.replace(/\D/g, ''));
-        const matchEmail = client.email?.toLowerCase().includes(term);
-        const matchCota = client.cota?.toLowerCase().includes(term);
+        const matchName = normalizeText(client.nome).includes(term);
+        const matchEmail = normalizeText(client.email).includes(term);
 
+        // CPF: se houver dígitos na busca, compara apenas dígitos; senão compara string direta
+        const cpfDigits = (client.cpf || '').replace(/\D/g, '');
+        const matchCpf = termDigits.length > 0
+          ? cpfDigits.includes(termDigits)
+          : normalizeText(client.cpf).includes(term);
+
+        // Telefone: se houver ao menos 3 dígitos, compara dígitos limpos
+        const telDigits = (client.telefone || '').replace(/\D/g, '');
+        const matchPhone = termDigits.length >= 3
+          ? telDigits.includes(termDigits)
+          : normalizeText(client.telefone).includes(term);
+
+        // Cota: testa cota principal e array de cotas
+        const matchCota = (client.cota && normalizeText(client.cota).includes(term)) ||
+          Boolean(client.embarcacoes && client.embarcacoes.some(eb => eb.cota && normalizeText(eb.cota).includes(term)));
+
+        // Embarcação: testa IDs, nomes, códigos (ex: M16, M10, 58) e modelos
+        const clientBoatIds = getClientAllBoatIds(client, boats);
         let matchBoat = false;
-        if (client.embarcacaoId) {
-          const b = boatsMap.get(client.embarcacaoId);
-          if (b && b.nome.toLowerCase().includes(term)) matchBoat = true;
+        for (const bId of clientBoatIds) {
+          const b = boatsMap.get(bId);
+          if (!b) continue;
+          if (normalizeText(b.nome).includes(term)) { matchBoat = true; break; }
+          if (normalizeText(b.modelo).includes(term)) { matchBoat = true; break; }
+          if (normalizeText(getBoatCode(b)).includes(term)) { matchBoat = true; break; }
         }
-        if (!matchBoat && client.embarcacoes) {
-          matchBoat = client.embarcacoes.some(eb => {
-            const b = boatsMap.get(eb.embarcacaoId);
-            return b && b.nome.toLowerCase().includes(term);
-          });
+        if (!matchBoat) {
+          if (client.embarcacaoId && normalizeText(client.embarcacaoId).includes(term)) matchBoat = true;
+          if (client.embarcacoes?.some(eb => normalizeText(eb.embarcacaoId).includes(term))) matchBoat = true;
         }
 
-        return matchName || matchCpf || matchPhone || matchEmail || matchCota || matchBoat;
+        // Empresa e Cidade/Estado
+        const matchEmpresa = Boolean(client.empresas?.some(emp => normalizeText(emp).includes(term)));
+        const matchCidade = client.cidade ? normalizeText(client.cidade).includes(term) : false;
+
+        return Boolean(
+          matchName ||
+          matchCpf ||
+          matchPhone ||
+          matchEmail ||
+          matchCota ||
+          matchBoat ||
+          matchEmpresa ||
+          matchCidade
+        );
       }
 
       return true;
     });
-  }, [clients, searchTerm, filters, boatsMap]);
+  }, [clients, searchTerm, filters, boatsMap, boats]);
 
   // Obter lista consolidada de embarcações e cotas de um cliente
   const getClientBoatsSummary = (client: Cliente) => {
@@ -220,19 +272,19 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
 
     if (client.embarcacoes && client.embarcacoes.length > 0) {
       client.embarcacoes.forEach(eb => {
-        const b = boatsMap.get(eb.embarcacaoId);
+        const b = resolveBoatForClient(eb.embarcacaoId);
         list.push({
-          name: b ? b.nome : (eb.embarcacaoId || 'Embarcação'),
+          name: b ? (getBoatCode(b) !== b.nome ? `${getBoatCode(b)} (${b.nome})` : b.nome) : (eb.embarcacaoId || 'Embarcação'),
           cota: eb.cota || client.cota || 'Cota',
-          id: eb.embarcacaoId
+          id: b?.id || eb.embarcacaoId
         });
       });
     } else if (client.embarcacaoId) {
-      const b = boatsMap.get(client.embarcacaoId);
+      const b = resolveBoatForClient(client.embarcacaoId);
       list.push({
-        name: b ? b.nome : client.embarcacaoId,
+        name: b ? (getBoatCode(b) !== b.nome ? `${getBoatCode(b)} (${b.nome})` : b.nome) : client.embarcacaoId,
         cota: client.cota || 'Cota',
-        id: client.embarcacaoId
+        id: b?.id || client.embarcacaoId
       });
     }
 
@@ -293,7 +345,7 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
           <p className="text-xs text-stone-500">
             {isMarinaGerente
               ? 'Gerencie cotistas, marinheiros autorizados e contratos vinculados à Marina.'
-              : 'Gerencie cotistas, contratos e clientes da Vale Náutica, Marina e El Mexicano.'}
+              : 'Gerencie cotistas, contratos e clientes da Vale Administradora e Marina.'}
           </p>
         </div>
 
@@ -680,19 +732,44 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
 
                       {/* Plano */}
                       <td className="py-3 px-4">
-                        {client.plano ? (
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${
-                              client.plano === 'completo'
-                                ? 'bg-amber-50 text-amber-800 border border-amber-200/60'
-                                : 'bg-stone-100 text-stone-600 border border-stone-200/60'
-                            }`}
-                          >
-                            {client.plano === 'completo' ? 'Completo' : 'Normal'}
-                          </span>
-                        ) : (
-                          <span className="text-stone-400 text-[11px]">—</span>
-                        )}
+                        {(() => {
+                          const ebs = Array.isArray(client.embarcacoes) && client.embarcacoes.length > 0
+                            ? client.embarcacoes
+                            : (client.embarcacaoId ? [{ embarcacaoId: client.embarcacaoId, cota: client.cota, plano: client.plano || 'normal' }] : []);
+                          
+                          if (ebs.length === 0) {
+                            return <span className="text-stone-400 text-[11px]">—</span>;
+                          }
+
+                          const completas = ebs.filter(e => e?.plano === 'completo');
+                          const normais = ebs.filter(e => (e?.plano || 'normal') === 'normal');
+
+                          if (completas.length > 0 && normais.length > 0) {
+                            return (
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                  {completas.length}x Completo
+                                </span>
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-100 text-stone-600">
+                                  {normais.length}x Normal
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          const isAllCompleto = completas.length > 0;
+                          return (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+                                isAllCompleto
+                                  ? 'bg-amber-50 text-amber-800 border border-amber-200/60'
+                                  : 'bg-stone-100 text-stone-600 border border-stone-200/60'
+                              }`}
+                            >
+                              {isAllCompleto ? 'Completo' : 'Normal'}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Empresas */}
@@ -704,7 +781,7 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
                                 key={emp}
                                 className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-stone-100 text-stone-600 border border-stone-200/50"
                               >
-                                {emp}
+                                {emp === 'VALE' ? 'Vale Administradora' : emp === 'MARINA' ? 'Marina' : emp}
                               </span>
                             ))}
                           </div>
@@ -795,17 +872,20 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {client.plano && (
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                            client.plano === 'completo'
-                              ? 'bg-amber-50 text-amber-800 border border-amber-200/60'
-                              : 'bg-stone-100 text-stone-600'
-                          }`}
-                        >
-                          {client.plano === 'completo' ? 'Completo' : 'Normal'}
-                        </span>
-                      )}
+                      {(() => {
+                        const hasComp = (Array.isArray(client.embarcacoes) && client.embarcacoes.some(e => e?.plano === 'completo')) || client.plano === 'completo';
+                        return (
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                              hasComp
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200/60'
+                                : 'bg-stone-100 text-stone-600'
+                            }`}
+                          >
+                            {hasComp ? 'Completo' : 'Normal'}
+                          </span>
+                        );
+                      })()}
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                           isAtivo
@@ -941,6 +1021,7 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
         isOpen={!!selectedClientForEdit}
         editingClient={selectedClientForEdit}
         boats={boats}
+        clients={clients}
         onClose={() => setSelectedClientForEdit(null)}
         onSave={saved => {
           setSelectedClientForEdit(null);
@@ -952,6 +1033,7 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
         isOpen={isNewClientOpen}
         editingClient={null}
         boats={boats}
+        clients={clients}
         onClose={() => setIsNewClientOpen(false)}
         onSave={saved => {
           setIsNewClientOpen(false);

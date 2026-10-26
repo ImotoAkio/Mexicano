@@ -345,7 +345,10 @@ async function setupViteAndListen() {
   if (process.env.NODE_ENV !== "production") {
     // Development mode uses Vite Dev Middleware for HMR/Asset bundle
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: { server: httpServer }
+      },
       appType: "spa"
     });
     

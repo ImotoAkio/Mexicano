@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Anchor, Building2, Zap, ChevronDown, Plus, X, Check, Loader2, Package } from 'lucide-react';
+import { User, Anchor, Building2, Zap, ChevronDown, Plus, X, Check, Loader2, Package, Sparkles } from 'lucide-react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
 
@@ -34,7 +34,8 @@ export default function ClientModal({
       bancosCadeiras?: boolean;
       observacoes?: string;
     };
-  }>>([{ embarcacaoId: '', cota: '' }]);
+    plano?: 'normal' | 'completo';
+  }>>([{ embarcacaoId: '', cota: '', plano: 'normal' }]);
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [cpf, setCpf] = useState('');
@@ -88,6 +89,7 @@ export default function ClientModal({
           setClientBoats(editingClient.embarcacoes.map(eb => ({
             embarcacaoId: eb.embarcacaoId || '',
             cota: eb.cota || '',
+            plano: eb.plano || editingClient.plano || 'normal',
             acessorios: eb.acessorios || {
               tenda: editingClient.acessorios?.tenda || false,
               mesa: editingClient.acessorios?.mesa || false,
@@ -100,6 +102,7 @@ export default function ClientModal({
           setClientBoats([{
             embarcacaoId: editingClient.embarcacaoId || '',
             cota: editingClient.cota || '',
+            plano: editingClient.plano || 'normal',
             acessorios: editingClient.acessorios || undefined
           }]);
         } else {
@@ -133,7 +136,7 @@ export default function ClientModal({
         setName('');
         setStatus('ativo');
         const availableBoats = propBoats && propBoats.length > 0 ? propBoats : boatDB.getAll();
-        setClientBoats([{ embarcacaoId: availableBoats[0]?.id || '', cota: '' }]);
+        setClientBoats([{ embarcacaoId: availableBoats[0]?.id || '', cota: '', plano: 'normal' }]);
         setEmail('');
         setPhone('');
         setCpf('');
@@ -232,6 +235,7 @@ export default function ClientModal({
         embarcacoes: validBoats.map(cb => ({
           embarcacaoId: cb.embarcacaoId,
           cota: cb.cota.toUpperCase(),
+          plano: cb.plano || 'normal',
           acessorios: boats.find(b => b.id === cb.embarcacaoId)?.tipo === 'lancha' ? cb.acessorios : undefined
         })),
         email,
@@ -256,7 +260,7 @@ export default function ClientModal({
         estado,
         statusFinanceiro,
         observacoesFinanceiras,
-        plano,
+        plano: validBoats.some(cb => cb.plano === 'completo') ? 'completo' : 'normal',
         empresas,
         status
       };
@@ -355,19 +359,23 @@ export default function ClientModal({
                 )}
               </div>
 
-              {/* Plano de Agendamento */}
+              {/* Resumo do Plano de Agendamento */}
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
-                  <span>Plano de Agendamento</span>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Plano de Segunda e Terça</span>
+                  {clientBoats.some(cb => cb.plano === 'completo') ? (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" /> Completo Ativo
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full">
+                      Normal
+                    </span>
+                  )}
                 </label>
-                <select
-                  value={plano}
-                  onChange={(e) => setPlano(e.target.value as 'normal' | 'completo')}
-                  className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 font-medium cursor-pointer"
-                >
-                  <option value="normal">Normal (Sem acesso a seg/ter)</option>
-                  <option value="completo">Plano Completo (Acesso total)</option>
-                </select>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Configurado individualmente por embarcação na coluna ao lado.
+                </p>
               </div>
 
               <div>
@@ -484,7 +492,7 @@ export default function ClientModal({
                   <button
                     type="button"
                     tabIndex={5}
-                    onClick={() => setClientBoats([...clientBoats, { embarcacaoId: boats[0]?.id || '', cota: 'C1' }])}
+                    onClick={() => setClientBoats([...clientBoats, { embarcacaoId: boats[0]?.id || '', cota: 'C1', plano: 'normal' }])}
                     className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" />
@@ -546,6 +554,47 @@ export default function ClientModal({
                             }}
                             className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-mono"
                           />
+                        </div>
+                      </div>
+
+                      {/* Plano Desta Embarcação */}
+                      <div className="pt-2.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-800">Plano Deste Veículo</label>
+                          <p className="text-[10px] text-slate-500">Acesso nos dias de segunda e terça-feira</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newList = [...clientBoats];
+                              newList[idx].plano = 'normal';
+                              setClientBoats(newList);
+                            }}
+                            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+                              (cb.plano || 'normal') === 'normal'
+                                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            Normal (Qua a Dom)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newList = [...clientBoats];
+                              newList[idx].plano = 'completo';
+                              setClientBoats(newList);
+                            }}
+                            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+                              cb.plano === 'completo'
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                            Plano Completo (+ Seg/Ter)
+                          </button>
                         </div>
                       </div>
 

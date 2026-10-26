@@ -54,6 +54,7 @@ const ContractGeneratorPage = lazy(() => import('./components/ContractGeneratorP
 const SimuladoPage = lazy(() => import('./components/SimuladoPage'));
 const UtvPage = lazy(() => import('./components/utv/UtvPage'));
 const MarinaAgendamentosView = lazy(() => import('./components/MarinaAgendamentosView'));
+const CatalogoPublicoPage = lazy(() => import('./components/comercial/CatalogoPublicoPage'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
 import {
   Compass,
@@ -306,7 +307,11 @@ export default function App() {
   useEffect(() => {
     if (clientToken) {
       fetchClientData(true);
-      const interval = setInterval(() => fetchClientData(false), 15000);
+      const interval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          fetchClientData(false);
+        }
+      }, 60000);
       return () => clearInterval(interval);
     }
   }, [clientToken]);
@@ -461,7 +466,17 @@ export default function App() {
   const isSimuladorRoute = currentPath === '/simulador-epi';
   const isSharedChecklistRoute = currentPath.startsWith('/checklist/share/');
   const isPierTvRoute = currentPath === '/tv-pier' || currentPath.startsWith('/tv-pier');
-  const isClientRoute = !isAdminRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute && !isPierTvRoute && !isQuizRoute;
+  const isCatalogoRoute = currentPath === '/catalogo' || currentPath.startsWith('/catalogo');
+  const isClientRoute = !isAdminRoute && !isCatalogoRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute && !isPierTvRoute && !isQuizRoute;
+
+  // ═══════════ CATÁLOGO DIGITAL PÚBLICO (/catalogo) ═══════════
+  if (isCatalogoRoute) {
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-[#F8F7F4]"><div className="w-8 h-8 border-4 border-[#2D0A16] border-t-transparent rounded-full animate-spin"></div></div>}>
+        <CatalogoPublicoPage />
+      </Suspense>
+    );
+  }
 
   // ═══════════ SIMULADO PUBLIC PAGE (/simulado) ═══════════
   if (isQuizRoute) {

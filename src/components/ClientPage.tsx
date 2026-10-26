@@ -480,7 +480,8 @@ export default function ClientPage() {
       // 5. Filter by plano
       let matchesPlano = true;
       if (filterPlano !== 'all') {
-        matchesPlano = (c.plano || 'normal') === filterPlano;
+        const hasComp = (Array.isArray(c.embarcacoes) && c.embarcacoes.some(eb => eb?.plano === 'completo')) || c.plano === 'completo';
+        matchesPlano = filterPlano === 'completo' ? hasComp : !hasComp;
       }
 
       return matchesStatus && matchesSearch && matchesBoat && matchesFinance && matchesBoatType && matchesPlano && matchesEmpresa;
@@ -887,9 +888,26 @@ export default function ClientPage() {
 
                       {/* Plano */}
                       <td className="py-3 px-4 text-center">
-                        <span className={`text-xs font-semibold ${client.plano === 'completo' ? 'text-indigo-900 font-bold' : 'text-slate-600'}`}>
-                          {client.plano === 'completo' ? 'Completo' : 'Normal'}
-                        </span>
+                        {(() => {
+                          const ebs = Array.isArray(client.embarcacoes) && client.embarcacoes.length > 0
+                            ? client.embarcacoes
+                            : (client.embarcacaoId ? [{ embarcacaoId: client.embarcacaoId, cota: client.cota, plano: client.plano || 'normal' }] : []);
+                          const comp = ebs.filter(e => e?.plano === 'completo');
+                          const norm = ebs.filter(e => (e?.plano || 'normal') === 'normal');
+                          if (comp.length > 0 && norm.length > 0) {
+                            return (
+                              <span className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                                {comp.length}x Completo
+                              </span>
+                            );
+                          }
+                          const isComp = comp.length > 0 || client.plano === 'completo';
+                          return (
+                            <span className={`text-xs font-semibold ${isComp ? 'text-indigo-900 font-bold' : 'text-slate-600'}`}>
+                              {isComp ? 'Completo' : 'Normal'}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Ações */}
@@ -1187,13 +1205,18 @@ export default function ClientPage() {
                           <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-indigo-500" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Plano</span>
                         </div>
-                        <span
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                            client.plano === 'completo' ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' : 'bg-slate-100 text-slate-800 border border-slate-200'
-                          }`}
-                        >
-                            {client.plano === 'completo' ? 'Plano Completo' : 'Normal'}
-                        </span>
+                        {(() => {
+                          const hasComp = (Array.isArray(client.embarcacoes) && client.embarcacoes.some(e => e?.plano === 'completo')) || client.plano === 'completo';
+                          return (
+                            <span
+                              className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                hasComp ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' : 'bg-slate-100 text-slate-800 border border-slate-200'
+                              }`}
+                            >
+                              {hasComp ? 'Plano Completo' : 'Normal'}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
 
