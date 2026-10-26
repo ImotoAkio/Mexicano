@@ -1,30 +1,20 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import QRCode from 'qrcode';
 import {
-  X,
-  Ship,
-  Sparkles,
+  Xmark,
   QrCode,
-  Share2,
+  ShareIos,
   Copy,
-  ExternalLink,
-  MessageSquare,
-  Flame,
-  CheckCircle2,
-  Clock,
+  Check,
+  OpenNewWindow,
   Download,
-  Send,
-  Users,
   Printer,
-  Compass,
-  Filter,
-  Eye,
-  RefreshCw,
-  Info
-} from 'lucide-react';
+  Search
+} from 'iconoir-react';
 import { Embarcacao, Cliente } from '../../types';
 import { boatDB, clientDB } from '../../db';
 import { getBoatEstoqueResumo } from '../../utils/cotaUtils';
+import logoMexicano from '../../assets/images/logo_mexicano_trim.png';
 
 interface ComercialCatalogoModalProps {
   isOpen: boolean;
@@ -34,27 +24,35 @@ interface ComercialCatalogoModalProps {
 }
 
 const UTM_OPTIONS = [
-  { id: 'whatsapp', label: 'WhatsApp (Conversa Direta)' },
-  { id: 'instagram_bio', label: 'Instagram (Link na Bio)' },
-  { id: 'instagram_stories', label: 'Instagram (Stories / Arraste)' },
-  { id: 'qrcode_marina', label: 'QR Code (Placa Marina / Pier)' },
-  { id: 'indicacao_cliente', label: 'Indicação de Cotista' },
-  { id: 'anuncio_digital', label: 'Campanha Digital / Anúncio' }
+  { id: 'whatsapp', label: 'WhatsApp Executivo' },
+  { id: 'instagram_bio', label: 'Instagram · Bio' },
+  { id: 'instagram_stories', label: 'Instagram · Direct' },
+  { id: 'qrcode_marina', label: 'Placa Píer / Marina' },
+  { id: 'indicacao_cliente', label: 'Indicação Private' },
+  { id: 'anuncio_digital', label: 'Campanha Digital' },
 ];
+
+function TricolorBar({ className = 'w-9 h-[2px]' }: { className?: string }) {
+  return (
+    <div className={`flex overflow-hidden shrink-0 ${className}`} aria-hidden="true">
+      <span className="flex-1 bg-[#4f7d32]" />
+      <span className="flex-1 bg-[#d6d3d1]" />
+      <span className="flex-1 bg-[#b4402f]" />
+    </div>
+  );
+}
 
 export default function ComercialCatalogoModal({
   isOpen,
   onClose,
-  vendedorNome = 'Equipe Comercial',
-  onLeadCaptured
+  vendedorNome = 'Consultoria Private El Mexicano',
 }: ComercialCatalogoModalProps) {
   const [boats, setBoats] = useState<Embarcacao[]>(() => boatDB.getAll() as Embarcacao[]);
-  const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll() as Cliente[]);
-  const [loadingRemote, setLoadingRemote] = useState(false);
+  const [clients] = useState<Cliente[]>(() => clientDB.getAll() as Cliente[]);
 
-  // Filtros internos
   const [selectedUtm, setSelectedUtm] = useState('whatsapp');
   const [filtroApenasDisponiveis, setFiltroApenasDisponiveis] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Estados de QR Code
   const [selectedBoatForQr, setSelectedBoatForQr] = useState<Embarcacao | null>(null);
@@ -65,12 +63,10 @@ export default function ComercialCatalogoModal({
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
   const [copiadoKit, setCopiadoKit] = useState<string | null>(null);
 
-  // Carregar dados frescos da frota comercial
   useEffect(() => {
     let isMounted = true;
     const fetchFrota = async () => {
       try {
-        setLoadingRemote(true);
         const token = localStorage.getItem('admin_token');
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetch('/api/comercial/frota-cotas', { headers });
@@ -80,23 +76,24 @@ export default function ComercialCatalogoModal({
             setBoats(data.frota);
           }
         }
-      } catch (e) {
-        console.warn("Usando cache local de embarcações:", e);
-      } finally {
-        if (isMounted) setLoadingRemote(false);
+      } catch {
+        // Fallback silencioso para cache local
       }
     };
 
     if (isOpen) {
       fetchFrota();
     }
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [isOpen]);
 
-  // Lista de barcos com cálculos consolidados de estoque e cotas disponíveis
   const catalogBoats = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return boats
-      .map(b => {
+      .filter((b) => b.nome && !b.nome.toLowerCase().includes('test boat'))
+      .map((b) => {
         const estoque = getBoatEstoqueResumo(b.id, clients, b);
         const valorCota = Number((b as any).valorCota) || 180000;
         const taxaAdmMensal = Number((b as any).taxaAdmMensal) || 2500;
@@ -108,18 +105,19 @@ export default function ComercialCatalogoModal({
           valorCota,
           taxaAdmMensal,
           totalDisponiveis,
-          temEstoqueOuRepasse: totalDisponiveis > 0
+          temEstoqueOuRepasse: totalDisponiveis > 0,
         };
       })
-      .filter(item => {
-        if (filtroApenasDisponiveis) {
-          return item.temEstoqueOuRepasse;
+      .filter((item) => {
+        if (filtroApenasDisponiveis && !item.temEstoqueOuRepasse) return false;
+        if (q) {
+          const hay = `${item.boat.nome} ${item.boat.modelo || ''} ${item.boat.fabricante || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
         }
         return true;
       });
-  }, [boats, clients, filtroApenasDisponiveis]);
+  }, [boats, clients, filtroApenasDisponiveis, searchQuery]);
 
-  // Gerador de links com parâmetros rastreáveis do vendedor
   const getShareUrl = (boatId?: string) => {
     const base = window.location.origin;
     const vendorParam = encodeURIComponent(vendedorNome);
@@ -135,63 +133,56 @@ export default function ComercialCatalogoModal({
     navigator.clipboard.writeText(url);
     const key = boatId || 'geral';
     setCopiadoId(key);
-    setTimeout(() => setCopiadoId(null), 2500);
+    setTimeout(() => setCopiadoId(null), 2400);
   };
 
-  // Copiador de Apresentação Express formatada para WhatsApp
   const copyKitMidia = (b: Embarcacao, vagasLivres: number, valorCota: number, taxaAdmMensal: number) => {
     const boatUrl = getShareUrl(b.id);
     const totalCotas = Number((b as any).totalCotas) || 4;
 
-    const texto = `🌊 *OPORTUNIDADE EXCLUSIVA EL MEXICANO* 🚤\n\n` +
-      `Conheça a *${b.nome}* (${b.modelo || b.fabricante || 'Lancha de Alto Padrão'}).\n\n` +
-      `✨ *Ficha Rápida da Embarcação:*\n` +
-      `• Fabricante / Modelo: ${b.fabricante || 'Premium'} ${b.modelo || ''}\n` +
-      `• Motorização: ${b.potencia || 'Motor Centro-Rabeta'}\n` +
-      `• Capacidade: ${b.capacidadePassageiros || 10} passageiros a bordo\n` +
-      `• Vaga: Marina Náutica (${b.vaga || 'Vaga Privativa'})\n` +
-      `• Estrutura: Churrasqueira gourmet, som náutico e conveniência completa\n\n` +
-      `💰 *Valores da Cota Inteligente:*\n` +
-      `• Fração (Cota): *R$ ${valorCota.toLocaleString('pt-BR')}*\n` +
-      `• Taxa Condominial Mensal (Vale Administradora): *R$ ${taxaAdmMensal.toLocaleString('pt-BR')}/mês*\n` +
-      `  _(Cobre marinharia, vaga na Marina, seguro e limpeza pós-uso)_\n\n` +
-      `🔥 *Disponibilidade Imediata:*\n` +
-      `Restam apenas *${vagasLivres} ${vagasLivres === 1 ? 'cota disponível' : 'cotas disponíveis'}* do total de ${totalCotas} cotas!\n\n` +
-      `💼 *Economia Real:*\n` +
-      `Economize até 80% em relação ao barco 100% individual, sem dor de cabeça com marinheiro ou manutenção.\n\n` +
-      `📲 *Acesse o Catálogo Digital com Fotos & Ficha Completa:*\n` +
+    const texto =
+      `EL MEXICANO\n` +
+      `Dossiê de Ativo Náutico — ${b.modelo || b.nome}\n\n` +
+      `ESPECIFICAÇÕES TÉCNICAS\n` +
+      `• Modelo: ${b.fabricante || 'Premium'} · ${b.modelo || 'Série Especial'}\n` +
+      `• Propulsão: ${b.potencia || 'Motorização Homologada'}\n` +
+      `• Capacidade: ${b.capacidadePassageiros || 10} passageiros\n` +
+      `• Alocação: ${b.vaga || 'Marina Náutica Privativa'}\n\n` +
+      `ESTRUTURA SOCIETÁRIA & VALUATION\n` +
+      `• Sistema: Cotas inteligentes (${totalCotas} frações totais)\n` +
+      `• Disponibilidade atual: ${vagasLivres} ${vagasLivres === 1 ? 'fração disponível' : 'frações disponíveis'}\n` +
+      `• Valor de aquisição da fração: R$ ${valorCota.toLocaleString('pt-BR')}\n` +
+      `• Taxa de gestão e marinharia: R$ ${taxaAdmMensal.toLocaleString('pt-BR')}/mês\n\n` +
+      `Ficha técnica e galeria completa:\n` +
       `${boatUrl}\n\n` +
-      `_Podemos agendar uma visita presencial na Marina ou tirar suas dúvidas?_\n` +
-      `Atenciosamente,\n*${vendedorNome}* | Consultor Náutico El Mexicano`;
+      `${vendedorNome}\nConsultoria Náutica · El Mexicano`;
 
     navigator.clipboard.writeText(texto);
     setCopiadoKit(b.id);
-    setTimeout(() => setCopiadoKit(null), 2500);
+    setTimeout(() => setCopiadoKit(null), 2400);
   };
 
-  // Gerar QR Code via biblioteca oficial
   const handleOpenQrModal = async (boat: Embarcacao) => {
     setSelectedBoatForQr(boat);
     setQrGenerating(true);
     try {
       const url = getShareUrl(boat.id);
       const dataUrl = await QRCode.toDataURL(url, {
-        width: 480,
-        margin: 2,
+        width: 520,
+        margin: 1,
         color: {
-          dark: '#2D0A16',
-          light: '#FFFFFF'
-        }
+          dark: '#111113',
+          light: '#FFFFFF',
+        },
       });
       setQrDataUrl(dataUrl);
     } catch (err) {
-      console.error("Erro ao gerar QR Code:", err);
+      console.error('Erro ao gerar QR Code:', err);
     } finally {
       setQrGenerating(false);
     }
   };
 
-  // Imprimir Placa Física Oficial da Marina
   const handlePrintMarinaPlacard = () => {
     if (!selectedBoatForQr || !qrDataUrl) return;
 
@@ -200,104 +191,101 @@ export default function ComercialCatalogoModal({
 
     const htmlContent = `
       <!DOCTYPE html>
-      <html>
+      <html lang="pt-BR">
       <head>
-        <title>Placa Marina - ${selectedBoatForQr.nome} - El Mexicano</title>
+        <meta charset="UTF-8" />
+        <title>Dossiê Píer — ${selectedBoatForQr.modelo || selectedBoatForQr.nome} | El Mexicano</title>
         <style>
-          @page { size: A4 portrait; margin: 15mm; }
+          @page { size: A4 portrait; margin: 18mm; }
+          * { box-sizing: border-box; }
           body {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Helvetica Neue', sans-serif;
             text-align: center;
-            color: #1c1917;
-            padding: 30px;
+            color: #111113;
+            padding: 20px;
             margin: 0;
-            background: #fff;
+            background: #FFFFFF;
           }
-          .border-box {
-            border: 4px solid #2D0A16;
-            border-radius: 24px;
-            padding: 40px 20px;
+          .sheet {
+            border: 1px solid #D4D4D8;
+            padding: 56px 48px;
             max-width: 600px;
             margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
           }
-          .brand-title {
-            font-size: 28px;
-            font-weight: 900;
-            letter-spacing: 2px;
-            color: #2D0A16;
-            margin-bottom: 4px;
+          .tricolor {
+            display: flex;
+            width: 54px;
+            height: 2px;
+            margin-bottom: 24px;
           }
-          .brand-subtitle {
-            font-size: 13px;
+          .tricolor span:nth-child(1) { flex: 1; background: #4f7d32; }
+          .tricolor span:nth-child(2) { flex: 1; background: #d6d3d1; }
+          .tricolor span:nth-child(3) { flex: 1; background: #b4402f; }
+          .eyebrow {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.24em;
             text-transform: uppercase;
-            letter-spacing: 3px;
-            color: #78716c;
-            margin-bottom: 25px;
+            color: #71717A;
+            margin-bottom: 8px;
           }
           .boat-name {
-            font-size: 34px;
-            font-weight: 800;
-            color: #0c0a09;
-            margin: 10px 0 4px;
+            font-size: 36px;
+            font-weight: 600;
+            letter-spacing: -0.035em;
+            color: #111113;
+            margin: 0 0 6px;
           }
           .boat-spec {
-            font-size: 15px;
-            color: #57534e;
-            margin-bottom: 25px;
+            font-size: 14px;
+            color: #52525B;
+            margin-bottom: 32px;
           }
           .qr-img {
-            width: 260px;
-            height: 260px;
-            margin: 15px auto;
-            border: 2px solid #e7e5e4;
-            border-radius: 16px;
-            padding: 10px;
-          }
-          .cta {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2D0A16;
-            margin-top: 20px;
+            width: 240px;
+            height: 240px;
+            margin: 0 auto 28px;
+            border: 1px solid #E4E4E7;
+            padding: 16px;
+            background: #FAFAFA;
           }
           .instructions {
             font-size: 13px;
-            color: #78716c;
-            margin-top: 6px;
-            line-height: 1.4;
+            color: #3F3F46;
+            max-width: 380px;
+            line-height: 1.55;
+            margin-bottom: 36px;
           }
           .footer {
-            margin-top: 30px;
-            font-size: 11px;
-            color: #a8a29e;
-            border-top: 1px solid #e7e5e4;
-            padding-top: 15px;
+            width: 100%;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #71717A;
+            border-top: 1px solid #E4E4E7;
+            padding-top: 16px;
           }
         </style>
       </head>
       <body>
-        <div class="border-box">
-          <div class="brand-title">EL MEXICANO</div>
-          <div class="brand-subtitle">Gestão Náutica • Cotas Inteligentes</div>
-
-          <div class="boat-name">${selectedBoatForQr.nome}</div>
-          <div class="boat-spec">${selectedBoatForQr.modelo || 'Lancha de Alto Padrão'} • ${selectedBoatForQr.fabricante || 'Estaleiro Premium'}</div>
-
+        <div class="sheet">
+          <div class="tricolor"><span></span><span></span><span></span></div>
+          <div class="eyebrow">El Mexicano</div>
+          <div class="boat-name">${selectedBoatForQr.modelo || selectedBoatForQr.nome}</div>
+          <div class="boat-spec">${selectedBoatForQr.fabricante || 'Estaleiro Premium'} · Ano ${selectedBoatForQr.ano || ''}</div>
           <img src="${qrDataUrl}" class="qr-img" />
-
-          <div class="cta">Aponte a câmera do seu celular</div>
           <div class="instructions">
-            Escaneie o QR Code para visualizar a ficha técnica completa, fotos em alta resolução,
-            disponibilidade de cotas e agendar um Test Drive exclusivo.
+            Aponte a câmera do smartphone para acessar o dossiê completo do ativo, disponibilidade societária e agendamento de visita privada.
           </div>
-
           <div class="footer">
-            Atendimento Consultivo: ${vendedorNome} • Gestão Náutica Vale Administradora
+            Consultor: ${vendedorNome} · Governança Vale Administradora
           </div>
         </div>
         <script>
-          window.onload = function() {
-            window.print();
-          };
+          window.onload = function() { window.print(); };
         </script>
       </body>
       </html>
@@ -308,18 +296,16 @@ export default function ComercialCatalogoModal({
     printWindow.document.close();
   };
 
-  // Baixar imagem do QR Code em PNG
   const handleDownloadQrPng = () => {
     if (!qrDataUrl || !selectedBoatForQr) return;
     const link = document.createElement('a');
     link.href = qrDataUrl;
-    link.download = `qrcode_${selectedBoatForQr.nome.toLowerCase().replace(/\s+/g, '_')}.png`;
+    link.download = `qrcode_${(selectedBoatForQr.modelo || selectedBoatForQr.nome).toLowerCase().replace(/\s+/g, '_')}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Fecha com a tecla ESC
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
@@ -334,66 +320,76 @@ export default function ComercialCatalogoModal({
   if (!isOpen) return null;
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-950/60 backdrop-blur-xs animate-in fade-in duration-150 cursor-pointer"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm cursor-pointer"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-3xl shadow-2xl border border-stone-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 cursor-default"
-        onClick={e => e.stopPropagation()}
+        className="bg-white rounded-3xl shadow-2xl border border-black/[0.08] w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden cursor-default"
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Header no Padrão Vila Náutica ─────────────────────────── */}
-        <div className="px-6 py-4 border-b border-stone-200/80 bg-[#F8F7F4] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#2D0A16] text-white flex items-center justify-center font-bold shadow-xs">
-              <Sparkles className="w-5 h-5 text-amber-300" />
-            </div>
+        <TricolorBar className="w-full h-[2.5px]" />
+        {/* ── Cabeçalho Minimalista ─────────────────────────────────────────── */}
+        <div className="px-6 sm:px-8 py-5 border-b border-neutral-200/80 bg-[#FBFBFD] flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <img src={logoMexicano} alt="El Mexicano" className="h-8 w-auto object-contain" />
+            <span className="h-4 w-px bg-neutral-300 hidden sm:block" />
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-stone-900 tracking-tight">
-                  Central do Catálogo Digital & Captação Ativa
-                </h2>
-                <span className="text-[10px] font-bold bg-[#2D0A16]/10 text-[#2D0A16] px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  Vila Náutica
-                </span>
-              </div>
-              <p className="text-xs text-stone-500 font-medium">
-                Gere links com sua tag de vendedor, cópias persuasivas para WhatsApp e QR Codes para placas da Marina.
-              </p>
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-400 block">
+                Studio de Captação & Distribuição
+              </span>
+              <h2 className="text-base sm:text-lg font-semibold text-[#111113] tracking-tight">
+                Catálogo Private Fleet
+              </h2>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-stone-400 hover:text-stone-800 hover:bg-stone-200/70 transition-colors cursor-pointer"
+            className="p-2 rounded-full text-neutral-400 hover:text-[#111113] hover:bg-neutral-100 transition-colors cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <Xmark className="w-5 h-5" strokeWidth={1.75} />
           </button>
         </div>
 
-        {/* ── Barra de Rastreamento & UTMs ──────────────────────────── */}
-        <div className="px-6 py-3.5 bg-stone-50 border-b border-stone-200 flex flex-wrap items-center justify-between gap-4 text-xs">
+        {/* ── Barra de Controle UTM & Busca ─────────────────────────────────── */}
+        <div className="px-6 sm:px-8 py-3.5 bg-[#F5F5F7] border-b border-neutral-200/80 flex flex-wrap items-center justify-between gap-4 text-xs">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="font-bold text-stone-700">Origem de Captação (UTM):</span>
+            <div className="relative w-56">
+              <Search
+                className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                strokeWidth={1.6}
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filtrar ativo..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs text-[#111113] outline-none focus:border-[#111113]"
+              />
+            </div>
+
             <select
               value={selectedUtm}
-              onChange={e => setSelectedUtm(e.target.value)}
-              className="bg-white border border-stone-300 rounded-xl px-3 py-1.5 font-semibold text-stone-800 focus:border-[#2D0A16] focus:ring-1 focus:ring-[#2D0A16] outline-hidden cursor-pointer"
+              onChange={(e) => setSelectedUtm(e.target.value)}
+              className="bg-white border border-neutral-200 rounded-lg px-3 py-1.5 font-medium text-[#111113] outline-none cursor-pointer"
             >
-              {UTM_OPTIONS.map(opt => (
-                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              {UTM_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  Canal: {opt.label}
+                </option>
               ))}
             </select>
 
-            <label className="flex items-center gap-1.5 cursor-pointer ml-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={filtroApenasDisponiveis}
-                onChange={e => setFiltroApenasDisponiveis(e.target.checked)}
-                className="w-4 h-4 rounded text-[#2D0A16] border-stone-300 focus:ring-[#2D0A16]"
+                onChange={(e) => setFiltroApenasDisponiveis(e.target.checked)}
+                className="w-3.5 h-3.5 rounded text-[#111113] border-neutral-300 focus:ring-[#111113]"
               />
-              <span className="font-semibold text-stone-600 text-xs">Apenas barcos com cotas livres</span>
+              <span className="font-medium text-neutral-600">Apenas com frações livres</span>
             </label>
           </div>
 
@@ -401,17 +397,17 @@ export default function ComercialCatalogoModal({
             <button
               type="button"
               onClick={() => copyVendedorLink()}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#2D0A16] text-white rounded-xl font-bold hover:bg-[#3D0E1F] transition-colors cursor-pointer shadow-xs"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#111113] hover:bg-[#2B1120] text-white rounded-full font-medium transition-colors cursor-pointer"
             >
               {copiadoId === 'geral' ? (
                 <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-                  Link Geral Copiado!
+                  <Check className="w-3.5 h-3.5" strokeWidth={1.8} />
+                  <span>Link Geral Copiado</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-3.5 h-3.5" />
-                  Copiar Link Geral do Catálogo
+                  <Copy className="w-3.5 h-3.5" strokeWidth={1.6} />
+                  <span>Copiar Link da Coleção</span>
                 </>
               )}
             </button>
@@ -420,195 +416,167 @@ export default function ComercialCatalogoModal({
               href={getShareUrl()}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-700 transition-colors shadow-2xs"
-              title="Abrir vitrine como cliente visualiza"
+              className="p-1.5 rounded-full border border-neutral-300 bg-white hover:border-[#111113] text-[#111113] transition-colors"
+              title="Abrir Catálogo Público"
             >
-              <ExternalLink className="w-4 h-4" />
+              <OpenNewWindow className="w-4 h-4" strokeWidth={1.6} />
             </a>
           </div>
         </div>
 
-        {/* ── Grid de Embarcações ───────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div className="flex items-center justify-between text-xs text-stone-500 font-medium">
-            <span>
-              Exibindo {catalogBoats.length} {catalogBoats.length === 1 ? 'embarcação' : 'embarcações'}
+        {/* ── Lista de Ativos ───────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-4">
+          <div className="flex items-center justify-between text-xs text-neutral-500">
+            <span className="font-mono text-[11px] uppercase tracking-wider">
+              {catalogBoats.length} {catalogBoats.length === 1 ? 'ativo listado' : 'ativos listados'}
             </span>
-            <span className="text-[11px] text-stone-400">
-              Vendedor Ativo: <strong className="text-stone-700">{vendedorNome}</strong>
+            <span>
+              Consultor: <strong className="text-[#111113] font-medium">{vendedorNome}</strong>
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {catalogBoats.map(({ boat, estoque, valorCota, taxaAdmMensal, totalDisponiveis }) => {
-              const vagasLivres = estoque.cotasDisponiveis;
-              const vagasRepasse = estoque.cotasRepasse;
-
-              return (
-                <div
-                  key={boat.id}
-                  className="bg-white rounded-2xl border border-stone-200/90 hover:border-stone-400 p-5 space-y-4 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-                >
-                  <div className="space-y-3">
-                    {/* Topo do Barco */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-base font-extrabold text-stone-900">{boat.nome}</h3>
-                          {boat.tamanho && (
-                            <span className="text-[10px] font-bold text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded">
-                              {boat.tamanho}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-stone-500">
-                          {boat.modelo || 'Lancha'} • {boat.fabricante || 'Estaleiro'} • Ano {boat.ano || 2022}
-                        </p>
-                      </div>
-
-                      {/* Badge de Escassez */}
-                      {totalDisponiveis > 0 ? (
-                        <div className="flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-full text-[11px] font-extrabold shrink-0">
-                          <Flame className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                          {totalDisponiveis === 1 ? 'Última cota livre!' : `${totalDisponiveis} cotas livres`}
-                        </div>
-                      ) : (
-                        <div className="bg-stone-100 text-stone-600 px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0">
-                          100% Vendida
-                        </div>
-                      )}
+            {catalogBoats.map(({ boat, estoque, valorCota, taxaAdmMensal, totalDisponiveis }) => (
+              <div
+                key={boat.id}
+                className="bg-white rounded-2xl border border-neutral-200/90 hover:border-neutral-400 p-5 flex flex-col justify-between space-y-5 transition-colors"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-neutral-400 block">
+                        {boat.fabricante || 'Estaleiro'} · {boat.ano || 2025}
+                      </span>
+                      <h3 className="text-lg font-semibold text-[#111113] tracking-tight">{boat.modelo || boat.nome}</h3>
+                      <p className="text-xs text-neutral-500">{boat.fabricante || 'Estaleiro Premium'}</p>
                     </div>
 
-                    {/* Especificações Rápidas */}
-                    <div className="grid grid-cols-3 gap-2 bg-stone-50 p-3 rounded-xl text-center text-xs text-stone-700">
-                      <div>
-                        <span className="text-stone-400 text-[10px] uppercase font-bold block">Quadro</span>
-                        <span className="font-bold text-stone-900">{estoque.totalCotas} cotas</span>
-                      </div>
-                      <div>
-                        <span className="text-stone-400 text-[10px] uppercase font-bold block">Estoque</span>
-                        <span className="font-bold text-emerald-700">{vagasLivres}</span>
-                      </div>
-                      <div>
-                        <span className="text-stone-400 text-[10px] uppercase font-bold block">Repasse</span>
-                        <span className="font-bold text-stone-900">{vagasRepasse}</span>
-                      </div>
-                    </div>
-
-                    {/* Ficha Financeira */}
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-stone-100">
-                      <div>
-                        <span className="text-stone-400 text-[10px] block">Cota</span>
-                        <span className="font-extrabold text-stone-900 text-sm">
-                          R$ {valorCota.toLocaleString('pt-BR')}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-stone-400 text-[10px] block">Taxa Adm Mensal</span>
-                        <span className="font-bold text-stone-700">
-                          R$ {taxaAdmMensal.toLocaleString('pt-BR')}/mês
-                        </span>
-                      </div>
-                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#F5F5F7] text-[#111113] text-[11px] font-medium tabular-nums shrink-0">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          totalDisponiveis > 0 ? 'bg-[#111113]' : 'bg-neutral-300'
+                        }`}
+                      />
+                      {totalDisponiveis > 0 ? `${totalDisponiveis}/${estoque.totalCotas} livres` : 'Alocada'}
+                    </span>
                   </div>
 
-                  {/* Ações por Embarcação */}
-                  <div className="pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenQrModal(boat)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-100 text-xs font-semibold transition-colors cursor-pointer"
-                        title="Ver e Imprimir Placa com QR Code"
-                      >
-                        <QrCode className="w-3.5 h-3.5 text-stone-800" />
-                        <span>Placa Marina</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => copyKitMidia(boat, totalDisponiveis, valorCota, taxaAdmMensal)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 text-xs font-bold transition-colors cursor-pointer"
-                        title="Copiar texto de vendas completo formatado para WhatsApp"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>{copiadoKit === boat.id ? 'Copiado!' : 'Kit WhatsApp'}</span>
-                      </button>
+                  <div className="grid grid-cols-3 border-y border-neutral-100 py-3 text-xs tabular-nums">
+                    <div>
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 block">
+                        Fração
+                      </span>
+                      <span className="font-semibold text-[#111113]">R$ {valorCota.toLocaleString('pt-BR')}</span>
                     </div>
+                    <div className="border-l border-neutral-100 pl-3">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 block">
+                        Taxa Mensal
+                      </span>
+                      <span className="font-medium text-neutral-700">R$ {taxaAdmMensal.toLocaleString('pt-BR')}</span>
+                    </div>
+                    <div className="border-l border-neutral-100 pl-3">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 block">
+                        Estoque / Rep.
+                      </span>
+                      <span className="font-medium text-neutral-700">
+                        {estoque.cotasDisponiveis} / {estoque.cotasRepasse}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenQrModal(boat)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 hover:border-neutral-400 text-neutral-700 text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" strokeWidth={1.6} />
+                      <span>Placa QR</span>
+                    </button>
 
                     <button
                       type="button"
-                      onClick={() => copyVendedorLink(boat.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2D0A16] hover:bg-[#3D0E1F] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
-                      title="Copiar link direto dessa lancha com UTM do vendedor"
+                      onClick={() => copyKitMidia(boat, totalDisponiveis, valorCota, taxaAdmMensal)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 hover:border-neutral-400 text-neutral-700 text-xs font-medium transition-colors cursor-pointer"
                     >
-                      <Share2 className="w-3.5 h-3.5 text-amber-300" />
-                      <span>{copiadoId === boat.id ? 'Link Copiado!' : 'Link c/ Tag'}</span>
+                      {copiadoKit === boat.id ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" strokeWidth={1.8} />
+                          <span>Dossiê Copiado</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" strokeWidth={1.6} />
+                          <span>Dossiê WhatsApp</span>
+                        </>
+                      )}
                     </button>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => copyVendedorLink(boat.id)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#111113] hover:bg-[#2B1120] text-white text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    <ShareIos className="w-3.5 h-3.5" strokeWidth={1.6} />
+                    <span>{copiadoId === boat.id ? 'Link Copiado' : 'Copiar Link'}</span>
+                  </button>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* ── MODAL QR CODE DA EMBARCAÇÃO (Impressão & Download) ───── */}
+        {/* ── MODAL QR CODE DA EMBARCAÇÃO ──────────────────────────────────── */}
         {selectedBoatForQr && (
-          <div 
-            className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-950/70 backdrop-blur-xs animate-in fade-in duration-150 cursor-pointer"
+          <div
+            className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-pointer"
             onClick={() => setSelectedBoatForQr(null)}
           >
-            <div 
-              className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center space-y-5 shadow-2xl border border-stone-200 animate-in zoom-in-95 duration-150 cursor-default"
-              onClick={e => e.stopPropagation()}
+            <div
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center space-y-5 shadow-2xl border border-black/[0.08] cursor-default"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-between items-center border-b border-stone-100 pb-3">
-                <div>
-                  <h3 className="text-base font-black text-stone-900 tracking-tight">QR Code da Embarcação</h3>
-                  <p className="text-xs text-stone-500">{selectedBoatForQr.nome}</p>
+              <div className="flex justify-between items-center border-b border-neutral-100 pb-3">
+                <div className="text-left">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-400 block">
+                    QR Code Píer
+                  </span>
+                  <h3 className="text-base font-semibold text-[#111113]">{selectedBoatForQr.modelo || selectedBoatForQr.nome}</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedBoatForQr(null)}
-                  className="p-1 rounded-lg text-stone-400 hover:text-stone-700 cursor-pointer"
+                  className="p-1.5 rounded-full text-neutral-400 hover:text-[#111113] cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <Xmark className="w-4 h-4" strokeWidth={1.75} />
                 </button>
               </div>
 
-              {/* Box de Exibição do QR Code */}
-              <div className="bg-stone-50 p-5 rounded-2xl border border-stone-200 inline-block mx-auto shadow-inner">
+              <div className="bg-[#F5F5F7] p-5 rounded-2xl border border-black/[0.04] inline-block mx-auto">
                 {qrGenerating || !qrDataUrl ? (
-                  <div className="w-52 h-52 flex items-center justify-center">
-                    <div className="w-8 h-8 border-4 border-[#2D0A16] border-t-transparent rounded-full animate-spin" />
+                  <div className="w-48 h-48 flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-[#111113] border-t-transparent rounded-full animate-spin" />
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <img
-                      src={qrDataUrl}
-                      alt={`QR Code ${selectedBoatForQr.nome}`}
-                      className="w-52 h-52 mx-auto rounded-xl shadow-xs bg-white p-2"
-                    />
-                    <span className="text-[11px] font-mono font-bold text-stone-600 block">
-                      Tag: {selectedBoatForQr.nome} ({selectedUtm})
-                    </span>
-                  </div>
+                  <img
+                    src={qrDataUrl}
+                    alt={`QR Code ${selectedBoatForQr.modelo || selectedBoatForQr.nome}`}
+                    className="w-48 h-48 mx-auto rounded-lg bg-white p-2"
+                  />
                 )}
               </div>
 
-              <p className="text-xs text-stone-500 leading-relaxed">
-                Ao apontar o celular para a placa, o visitante abre a ficha técnica com fotos da embarcação e entra direto no seu CRM com seu rastreio.
-              </p>
-
-              {/* Botões de Ação do QR Code */}
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <button
                   type="button"
                   onClick={handleDownloadQrPng}
                   disabled={!qrDataUrl}
-                  className="py-2.5 px-3 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  className="py-2.5 px-3 border border-neutral-200 hover:border-neutral-400 text-[#111113] rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-3.5 h-3.5" strokeWidth={1.6} />
                   <span>Baixar PNG</span>
                 </button>
 
@@ -616,9 +584,9 @@ export default function ComercialCatalogoModal({
                   type="button"
                   onClick={handlePrintMarinaPlacard}
                   disabled={!qrDataUrl}
-                  className="py-2.5 px-3 bg-[#2D0A16] hover:bg-[#3D0E1F] text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                  className="py-2.5 px-3 bg-[#111113] hover:bg-[#2B1120] text-white rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <Printer className="w-3.5 h-3.5 text-amber-300" />
+                  <Printer className="w-3.5 h-3.5" strokeWidth={1.6} />
                   <span>Imprimir Placa</span>
                 </button>
               </div>

@@ -55,6 +55,8 @@ import ComercialComissoesPage from './ComercialComissoesPage';
 import ComercialCrmPage from './ComercialCrmPage';
 import ComercialPropostaDrawer from './ComercialPropostaDrawer';
 import ComercialCatalogoModal from './ComercialCatalogoModal';
+import ComercialCatalogoGestaoPage from './ComercialCatalogoGestaoPage';
+import CatalogoPublicoPage from './CatalogoPublicoPage';
 import ComercialSeaTrialModal from './ComercialSeaTrialModal';
 import ClientProfileModal from '../ClientProfileModal';
 import ComercialContratoViewerModal from './ComercialContratoViewerModal';
@@ -783,10 +785,25 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
             ) : activeNav === 'vendas' || activeNav === 'recebimentos' ? (
               <ComercialVendasPage />
             ) : activeNav === 'catalogo' ? (
-              <ComercialCatalogoModal
-                isOpen={true}
-                onClose={() => setActiveNav('dashboard')}
-                vendedorNome={operadorNome}
+              <ComercialCatalogoGestaoPage
+                operadorNome={operadorNome}
+                onOpenProposta={(lead, boatId, cota) => {
+                  setPropostaLead(lead || null);
+                  setPropostaBoatId(boatId || null);
+                  setPropostaCota(cota || null);
+                  setPropostaDrawerOpen(true);
+                }}
+                onOpenSeaTrial={(lead, boatId) => {
+                  setSeaTrialLead(lead || null);
+                  setSeaTrialBoatId(boatId || null);
+                  setSeaTrialModalOpen(true);
+                }}
+                onOpenVenda={(boatId, cota, clienteId) => {
+                  setVendaBoatId(boatId || null);
+                  setVendaClientId(clienteId || null);
+                  setVendaDrawerOpen(true);
+                }}
+                onNavigateToEmbarcacoes={() => setActiveNav('embarcacoes')}
               />
             ) : activeNav === 'comissoes' ? (
               <ComercialComissoesPage />

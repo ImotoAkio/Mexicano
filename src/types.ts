@@ -207,6 +207,7 @@ export interface Embarcacao {
   chassi?: string; // N° do Chassi
   inscricao?: string; // N° de Inscrição na Marinha
   tipo_propulsao?: string; // Tipo de propulsão (ex: MOTOR, JET)
+  marcaMotor?: string; // Marca do motor (ex: Mercruiser, Rotax, Mercury, Volvo Penta, Yamaha)
   capacidadePassageiros?: number; // Boat capacity
   totalCotas?: number; // Total number of quotas (e.g. 4, 8, 12; default 8)
   valorCota?: number; // Valor padrão comercial da cota (R$)

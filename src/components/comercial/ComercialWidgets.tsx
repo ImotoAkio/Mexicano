@@ -1118,9 +1118,9 @@ export function SellerCommissionFloatingWidget({
 
   const vendedorNome = operadorNome || settings.nome || 'Consultor Comercial';
   const metaIndividual = settings.metaIndividualVendedor || 250000;
-  const faturamentoReal = resumo.faturamentoRealMes > 0 ? resumo.faturamentoRealMes : (settings.faturamentoAtual || 184500);
-  const comissaoTotal = resumo.totalVariavelPorVendedor > 0 ? resumo.totalVariavelPorVendedor : 4250;
-  const totalCotas = resumo.totalCotasMes > 0 ? resumo.totalCotasMes : 5;
+  const faturamentoReal = resumo.faturamentoRealMes;
+  const comissaoTotal = resumo.totalVariavelPorVendedor;
+  const totalCotas = resumo.totalCotasMes;
   const progressPercent = Math.min(100, Math.round((faturamentoReal / metaIndividual) * 100));
 
   const formatBRL = (val: number) => {

@@ -5,23 +5,15 @@ import {
   ArrowRightLeft,
   RotateCcw,
   History,
-  Ship,
-  User,
-  Users,
-  DollarSign,
-  Calendar,
   AlertCircle,
   CheckCircle2,
   Clock,
-  Sparkles,
   Search,
   Check,
-  Tag,
-  ShieldCheck,
-  Share2
+  Tag
 } from 'lucide-react';
 import { Embarcacao, Cliente, HistoricoCota, LeadComercial } from '../../types';
-import { DEFAULT_MEXICANO_CLIENT_ID, isMexicanoClient, formatBoatName } from '../../utils/constants';
+import { isMexicanoClient, formatBoatName } from '../../utils/constants';
 import { syncWithRemote, getAdminToken } from '../../db';
 import { normalizeCotaCode } from '../../utils/cotaUtils';
 
@@ -60,11 +52,11 @@ export default function ComercialCotaTransferModal({
 
   // Modo Reserva 48h
   const [leads, setLeads] = useState<LeadComercial[]>([]);
-  const [isLoadingLeads, setIsLoadingLeads] = useState(false);
+  const [, setIsLoadingLeads] = useState(false);
   const [leadSearch, setLeadSearch] = useState('');
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [selectedLeadNome, setSelectedLeadNome] = useState('');
-  const [selectedLeadTelefone, setSelectedLeadTelefone] = useState('');
+  const [, setSelectedLeadTelefone] = useState('');
   const [vendedorNome, setVendedorNome] = useState(() => {
     return localStorage.getItem('admin_nome') || localStorage.getItem('admin_user') || 'Equipe Comercial';
   });
@@ -207,7 +199,7 @@ export default function ComercialCotaTransferModal({
           clienteId: c.id,
           clienteNome: c.nome,
           isMexicano: isMex,
-          emRepasse: Boolean(c.emRepasse),
+          emRepasse: Boolean((c as any).emRepasse),
           valorRepasse: (c as any).valorRepasse ? Number((c as any).valorRepasse) : undefined
         });
       }
@@ -261,10 +253,6 @@ export default function ComercialCotaTransferModal({
     ).slice(0, 10);
   }, [leads, leadSearch]);
 
-  // -------------------------------------------------------------
-  // Ações de Submissão
-  // -------------------------------------------------------------
-
   // 1. Criar Reserva Comercial 48h
   const handleCriarReserva = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -310,7 +298,7 @@ export default function ComercialCotaTransferModal({
         throw new Error(data.message || 'Falha ao reservar cota');
       }
 
-      setSuccessMessage(`✅ Cota ${selectedCota} bloqueada com exclusividade por ${horasBloqueio}h para ${selectedLeadNome}!`);
+      setSuccessMessage(`Cota ${selectedCota} bloqueada por ${horasBloqueio}h para ${selectedLeadNome}.`);
       await syncWithRemote().catch(() => {});
       if (onSuccess) onSuccess();
       loadHistorico(selectedBoatId);
@@ -368,8 +356,8 @@ export default function ComercialCotaTransferModal({
 
       setSuccessMessage(
         isEmRepasse
-          ? `✅ Cota ${selectedCota} de ${currentOccupant.clienteNome} aberta para Repasse Comercial!`
-          : `✅ Cota ${selectedCota} removida do repasse comercial.`
+          ? `Cota ${selectedCota} de ${currentOccupant.clienteNome} aberta para repasse comercial.`
+          : `Cota ${selectedCota} removida do repasse comercial.`
       );
       await syncWithRemote().catch(() => {});
       if (onSuccess) onSuccess();
@@ -445,8 +433,8 @@ export default function ComercialCotaTransferModal({
 
       setSuccessMessage(
         tipoOperacao === 'recompra'
-          ? `✅ Cota ${selectedCota} recomprada com sucesso para o estoque da El Mexicano!`
-          : `✅ Cota ${selectedCota} transferida para o novo cotista!`
+          ? `Cota ${selectedCota} recomprada com sucesso para o estoque da El Mexicano.`
+          : `Cota ${selectedCota} transferida para o novo cotista.`
       );
       await syncWithRemote().catch(() => {});
       if (onSuccess) onSuccess();
@@ -465,123 +453,123 @@ export default function ComercialCotaTransferModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-stone-200/80 overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header no Padrão Vila Náutica */}
-        <header className="px-6 py-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/60">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-900/45 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-stone-200/80 overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header Sóbrio no Padrão Vila Náutica */}
+        <header className="px-6 py-4 border-b border-stone-200/70 flex items-center justify-between bg-white">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#2D0A16] text-white flex items-center justify-center shadow-sm">
+            <div className="w-9 h-9 rounded-xl bg-stone-100 border border-stone-200/70 text-stone-700 flex items-center justify-center shrink-0">
               {activeTab === 'reserva' ? (
-                <Lock className="w-5 h-5 text-amber-300" />
+                <Lock className="w-4 h-4" />
               ) : activeTab === 'repasse' ? (
-                <Tag className="w-5 h-5 text-sky-300" />
+                <Tag className="w-4 h-4" />
               ) : activeTab === 'transferencia' ? (
-                <ArrowRightLeft className="w-5 h-5 text-emerald-300" />
+                <ArrowRightLeft className="w-4 h-4" />
               ) : (
-                <History className="w-5 h-5 text-stone-300" />
+                <History className="w-4 h-4" />
               )}
             </div>
             <div>
               <h2 className="text-base font-bold text-stone-900 tracking-tight flex items-center gap-2">
                 Gestão de Cota & Fração Náutica
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-stone-200/80 text-stone-700">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-stone-100 border border-stone-200/80 text-stone-700 tabular-nums">
                   {selectedCota}
                 </span>
               </h2>
-              <p className="text-xs text-stone-500">
+              <p className="text-xs text-stone-400 mt-0.5">
                 {currentBoat ? `${currentBoat.nome} (${currentBoat.modelo || currentBoat.tipo})` : 'Selecione uma embarcação'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </header>
 
-        {/* Abas */}
-        <div className="px-6 border-b border-stone-200/70 bg-white flex items-center gap-2 overflow-x-auto text-xs font-semibold">
+        {/* Abas Monocromáticas */}
+        <div className="px-6 border-b border-stone-200/70 bg-white flex items-center gap-1 overflow-x-auto text-xs">
           <button
             type="button"
             onClick={() => setActiveTab('reserva')}
-            className={`py-3 px-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+            className={`py-3 px-3 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'reserva'
-                ? 'border-[#2D0A16] text-[#2D0A16] font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900'
+                ? 'border-[#2D0A16] text-stone-900 font-semibold'
+                : 'border-transparent text-stone-500 hover:text-stone-800 font-medium'
             }`}
           >
-            <Lock className="w-4 h-4 text-amber-500" />
-            <span>Bloqueio 48h (Reserva)</span>
+            <Lock className="w-3.5 h-3.5 opacity-70" />
+            <span>Bloqueio 48h</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('repasse')}
-            className={`py-3 px-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+            className={`py-3 px-3 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'repasse'
-                ? 'border-[#2D0A16] text-[#2D0A16] font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900'
+                ? 'border-[#2D0A16] text-stone-900 font-semibold'
+                : 'border-transparent text-stone-500 hover:text-stone-800 font-medium'
             }`}
           >
-            <Tag className="w-4 h-4 text-sky-500" />
-            <span>Colocar em Repasse</span>
+            <Tag className="w-3.5 h-3.5 opacity-70" />
+            <span>Repasse</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('transferencia')}
-            className={`py-3 px-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+            className={`py-3 px-3 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'transferencia'
-                ? 'border-[#2D0A16] text-[#2D0A16] font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900'
+                ? 'border-[#2D0A16] text-stone-900 font-semibold'
+                : 'border-transparent text-stone-500 hover:text-stone-800 font-medium'
             }`}
           >
-            <ArrowRightLeft className="w-4 h-4 text-emerald-600" />
+            <ArrowRightLeft className="w-3.5 h-3.5 opacity-70" />
             <span>Transferência / Recompra</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('historico')}
-            className={`py-3 px-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+            className={`py-3 px-3 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'historico'
-                ? 'border-[#2D0A16] text-[#2D0A16] font-bold'
-                : 'border-transparent text-stone-500 hover:text-stone-900'
+                ? 'border-[#2D0A16] text-stone-900 font-semibold'
+                : 'border-transparent text-stone-500 hover:text-stone-800 font-medium'
             }`}
           >
-            <History className="w-4 h-4 text-stone-500" />
+            <History className="w-3.5 h-3.5 opacity-70" />
             <span>Histórico</span>
           </button>
         </div>
 
         {/* Mensagens de Feedback */}
         {errorMessage && (
-          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2.5 text-xs text-red-800 animate-in fade-in">
+          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200/80 rounded-xl flex items-center gap-2.5 text-xs text-red-800">
             <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
         {successMessage && (
-          <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-xs text-emerald-800 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="mx-6 mt-4 p-3 bg-stone-900 rounded-xl flex items-center gap-2.5 text-xs text-white">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}
 
         {/* Corpo do Modal */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+        <div className="p-6 overflow-y-auto space-y-5 flex-1 bg-[#FAF9F6]">
           {/* Seletor de Embarcação e Cota */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-stone-50 rounded-xl border border-stone-200/80">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-white rounded-xl border border-stone-200/80">
             <div className="sm:col-span-2 space-y-1">
-              <label className="text-[11px] font-bold text-stone-600 uppercase tracking-wider block">
+              <label className="text-xs font-medium text-stone-600 block">
                 Embarcação
               </label>
               <select
                 value={selectedBoatId}
                 onChange={e => setSelectedBoatId(e.target.value)}
-                className="w-full h-9 px-3 bg-white border border-stone-200 rounded-lg text-xs font-semibold text-stone-800 focus:outline-none focus:ring-2 focus:ring-[#2D0A16]/20"
+                className="w-full h-9 px-3 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold text-stone-800 focus:outline-none focus:bg-white focus:border-stone-400"
               >
                 {boats.map(b => (
                   <option key={b.id} value={b.id}>
@@ -592,13 +580,13 @@ export default function ComercialCotaTransferModal({
             </div>
 
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-stone-600 uppercase tracking-wider block">
+              <label className="text-xs font-medium text-stone-600 block">
                 Fração / Cota
               </label>
               <select
                 value={selectedCota}
                 onChange={e => setSelectedCota(e.target.value)}
-                className="w-full h-9 px-3 bg-white border border-stone-200 rounded-lg text-xs font-bold text-[#2D0A16] focus:outline-none focus:ring-2 focus:ring-[#2D0A16]/20"
+                className="w-full h-9 px-3 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold text-stone-900 tabular-nums focus:outline-none focus:bg-white focus:border-stone-400"
               >
                 {slotsList.map(s => (
                   <option key={s.slot} value={s.slot}>
@@ -609,14 +597,14 @@ export default function ComercialCotaTransferModal({
             </div>
 
             {/* Status atual do titular da cota selecionada */}
-            <div className="sm:col-span-3 pt-2 border-t border-stone-200/60 flex items-center justify-between text-xs">
-              <span className="text-stone-500">Titular Atual:</span>
+            <div className="sm:col-span-3 pt-2.5 border-t border-stone-100 flex items-center justify-between text-xs">
+              <span className="text-stone-400">Titular atual</span>
               <span className="font-semibold text-stone-800">
                 {currentOccupant
                   ? currentOccupant.isMexicano
-                    ? '⭐ El Mexicano (Estoque Próprio Disponível)'
-                    : `${currentOccupant.clienteNome} ${currentOccupant.emRepasse ? '(Em Repasse)' : '(Cotista Titular)'}`
-                  : '⭐ El Mexicano (Estoque Próprio Disponível)'}
+                    ? 'El Mexicano (Estoque próprio disponível)'
+                    : `${currentOccupant.clienteNome} ${currentOccupant.emRepasse ? '(Em repasse)' : '(Cotista titular)'}`
+                  : 'El Mexicano (Estoque próprio disponível)'}
               </span>
             </div>
           </div>
@@ -625,21 +613,21 @@ export default function ComercialCotaTransferModal({
           {/* ABA 1: BLOQUEIO 48H (RESERVA DE COTA) */}
           {/* ------------------------------------------------------------- */}
           {activeTab === 'reserva' && (
-            <form onSubmit={handleCriarReserva} className="space-y-4">
-              <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
-                <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <form onSubmit={handleCriarReserva} className="space-y-4 bg-white p-4 rounded-xl border border-stone-200/80">
+              <div className="p-3 bg-stone-50 border border-stone-200/70 rounded-xl text-xs text-stone-600 flex items-start gap-2.5">
+                <Clock className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
                 <p>
-                  <strong>Regra de Bloqueio Comercial:</strong> A cota {selectedCota} ficará travada por 48 horas exclusivamente para este Lead, impedindo que outro vendedor lance propostas para a mesma fração simultaneamente.
+                  <strong className="font-semibold text-stone-800">Regra de bloqueio comercial:</strong> A cota {selectedCota} ficará reservada por 48 horas para este cliente, evitando propostas duplicadas na mesma fração.
                 </p>
               </div>
 
               {/* Busca / Seleção de Lead */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-stone-700 block">
-                  Vincular ao Lead Comercial *
+                <label className="text-xs font-medium text-stone-600 block">
+                  Vincular ao lead comercial *
                 </label>
                 <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                   <input
                     type="text"
                     placeholder="Buscar lead por nome ou digite um novo..."
@@ -648,13 +636,13 @@ export default function ComercialCotaTransferModal({
                       setLeadSearch(e.target.value);
                       setSelectedLeadNome(e.target.value);
                     }}
-                    className="w-full h-10 pl-9 pr-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#2D0A16]/20 focus:bg-white"
+                    className="w-full h-9 pl-9 pr-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-400 focus:bg-white"
                   />
                 </div>
 
                 {/* Lista de Leads encontrados */}
                 {leadSearch && filteredLeads.length > 0 && (
-                  <div className="border border-stone-200 rounded-xl p-1 bg-white shadow-md max-h-36 overflow-y-auto divide-y divide-stone-100">
+                  <div className="border border-stone-200 rounded-xl p-1 bg-white shadow-sm max-h-36 overflow-y-auto divide-y divide-stone-100">
                     {filteredLeads.map(l => (
                       <button
                         key={l.id}
@@ -671,7 +659,7 @@ export default function ComercialCotaTransferModal({
                           <p className="font-semibold text-stone-900">{l.nome}</p>
                           <p className="text-[10px] text-stone-400">{l.telefone || l.email || 'Sem contato'}</p>
                         </div>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 uppercase">
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-stone-100 text-stone-600">
                           {l.etapaFunil || 'Lead'}
                         </span>
                       </button>
@@ -680,62 +668,62 @@ export default function ComercialCotaTransferModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-stone-700 block">
-                    Vendedor Responsável
+                  <label className="text-xs font-medium text-stone-600 block">
+                    Vendedor responsável
                   </label>
                   <input
                     type="text"
                     value={vendedorNome}
                     onChange={e => setVendedorNome(e.target.value)}
-                    className="w-full h-9 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 focus:outline-none focus:bg-white"
+                    className="w-full h-9 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 focus:outline-none focus:bg-white focus:border-stone-400"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-stone-700 block">
-                    Prazo de Bloqueio
+                  <label className="text-xs font-medium text-stone-600 block">
+                    Prazo de bloqueio
                   </label>
                   <select
                     value={horasBloqueio}
                     onChange={e => setHorasBloqueio(Number(e.target.value))}
-                    className="w-full h-9 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 font-semibold focus:outline-none focus:bg-white"
+                    className="w-full h-9 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 font-semibold tabular-nums focus:outline-none focus:bg-white focus:border-stone-400"
                   >
-                    <option value={24}>24 Horas (1 dia)</option>
-                    <option value={48}>48 Horas (Padrão Comercial)</option>
-                    <option value={72}>72 Horas (Fim de Semana)</option>
+                    <option value={24}>24 horas (1 dia)</option>
+                    <option value={48}>48 horas (Padrão comercial)</option>
+                    <option value={72}>72 horas (Fim de semana)</option>
                   </select>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700 block">
-                  Motivo da Reserva / Observações
+                <label className="text-xs font-medium text-stone-600 block">
+                  Motivo da reserva / observações
                 </label>
                 <textarea
                   rows={2}
                   value={motivoReserva}
                   onChange={e => setMotivoReserva(e.target.value)}
-                  className="w-full p-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 focus:outline-none focus:bg-white"
+                  className="w-full p-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-800 focus:outline-none focus:bg-white focus:border-stone-400"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2.5">
+              <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg border border-stone-200 text-xs font-semibold text-stone-600 hover:bg-stone-50"
+                  className="h-9 px-4 rounded-lg border border-stone-200 text-xs font-medium text-stone-600 hover:bg-stone-50 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="px-5 py-2.5 rounded-lg bg-[#2D0A16] hover:bg-[#3B0D1E] text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="h-9 px-4 rounded-lg bg-[#2D0A16] hover:bg-[#3B0D1E] text-white text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  <Lock className="w-3.5 h-3.5 text-amber-300" />
-                  <span>{isLoading ? 'Bloqueando cota...' : `Confirmar Bloqueio de ${horasBloqueio}h`}</span>
+                  <Lock className="w-3.5 h-3.5 opacity-80" />
+                  <span>{isLoading ? 'Bloqueando cota...' : `Confirmar Bloqueio (${horasBloqueio}h)`}</span>
                 </button>
               </div>
             </form>
@@ -745,23 +733,23 @@ export default function ComercialCotaTransferModal({
           {/* ABA 2: REPASSE COMERCIAL */}
           {/* ------------------------------------------------------------- */}
           {activeTab === 'repasse' && (
-            <form onSubmit={handleSalvarRepasse} className="space-y-4">
-              <div className="p-3 bg-sky-50/80 border border-sky-200 rounded-xl text-xs text-sky-900 flex items-start gap-2.5">
-                <Tag className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+            <form onSubmit={handleSalvarRepasse} className="space-y-4 bg-white p-4 rounded-xl border border-stone-200/80">
+              <div className="p-3 bg-stone-50 border border-stone-200/70 rounded-xl text-xs text-stone-600 flex items-start gap-2.5">
+                <Tag className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
                 <p>
-                  <strong>Cota em Repasse:</strong> Fração pertencente a um cotista real que deseja revender com intermediação da equipe comercial El Mexicano.
+                  <strong className="font-semibold text-stone-800">Cota em repasse:</strong> Fração pertencente a um cotista titular que deseja revender com intermediação comercial da El Mexicano.
                 </p>
               </div>
 
               {currentOccupant?.isMexicano ? (
-                <div className="p-4 rounded-xl bg-stone-100 text-center text-xs text-stone-600">
-                  Esta cota pertence ao <strong>Estoque Próprio da El Mexicano</strong> e já está disponível para venda direta. O repasse só se aplica a cotas de cotistas externos.
+                <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/70 text-center text-xs text-stone-600">
+                  Esta cota pertence ao <strong className="font-semibold text-stone-800">Estoque Próprio da El Mexicano</strong> e já está disponível para venda direta.
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-between p-3.5 bg-stone-50 rounded-xl border border-stone-200">
+                  <div className="flex items-center justify-between p-3.5 bg-stone-50 rounded-xl border border-stone-200/80">
                     <div>
-                      <span className="text-xs font-bold text-stone-800 block">Sinalizar Cota em Repasse</span>
+                      <span className="text-xs font-semibold text-stone-900 block">Sinalizar cota em repasse</span>
                       <span className="text-[11px] text-stone-500">Exibir como disponível para venda na frota comercial</span>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -771,47 +759,46 @@ export default function ComercialCotaTransferModal({
                         onChange={e => setIsEmRepasse(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#2D0A16]"></div>
+                      <div className="w-10 h-5 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#2D0A16]"></div>
                     </label>
                   </div>
 
                   {isEmRepasse && (
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-stone-700 block">
-                        Valor Pedido na Revenda (R$) *
+                      <label className="text-xs font-medium text-stone-600 block">
+                        Valor pedido na revenda (R$) *
                       </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">R$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-stone-400">R$</span>
                         <input
                           type="number"
                           step="1000"
                           placeholder="Ex: 180000"
                           value={valorRepasse}
                           onChange={e => setValorRepasse(e.target.value)}
-                          className="w-full h-10 pl-9 pr-3 rounded-lg bg-stone-50 border border-stone-200 text-xs font-bold text-stone-900 focus:outline-none focus:bg-white"
+                          className="w-full h-9 pl-9 pr-3 rounded-lg bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-900 tabular-nums focus:outline-none focus:bg-white focus:border-stone-400"
                         />
                       </div>
-                      <p className="text-[10px] text-stone-400">
+                      <p className="text-[11px] text-stone-400 tabular-nums">
                         Valor sugerido da cota no catálogo: {currentBoat?.valorCota ? `R$ ${Number(currentBoat.valorCota).toLocaleString('pt-BR')}` : 'Não cadastrado'}
                       </p>
                     </div>
                   )}
 
-                  <div className="pt-2 flex items-center justify-end gap-2.5">
+                  <div className="pt-2 flex items-center justify-end gap-2">
                     <button
                       type="button"
                       onClick={onClose}
-                      className="px-4 py-2 rounded-lg border border-stone-200 text-xs font-semibold text-stone-600 hover:bg-stone-50"
+                      className="h-9 px-4 rounded-lg border border-stone-200 text-xs font-medium text-stone-600 hover:bg-stone-50 cursor-pointer"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="px-5 py-2.5 rounded-lg bg-[#2D0A16] hover:bg-[#3B0D1E] text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="h-9 px-4 rounded-lg bg-[#2D0A16] hover:bg-[#3B0D1E] text-white text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
-                      <Tag className="w-3.5 h-3.5 text-sky-300" />
-                      <span>{isLoading ? 'Salvando...' : 'Salvar Status de Repasse'}</span>
+                      <span>{isLoading ? 'Salvando...' : 'Salvar Repasse'}</span>
                     </button>
                   </div>
                 </>
@@ -823,18 +810,18 @@ export default function ComercialCotaTransferModal({
           {/* ABA 3: TRANSFERÊNCIA OU RECOMPRA */}
           {/* ------------------------------------------------------------- */}
           {activeTab === 'transferencia' && (
-            <form onSubmit={handleExecutarTransferencia} className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 p-1 bg-stone-100 rounded-xl border border-stone-200/80 text-xs font-semibold">
+            <form onSubmit={handleExecutarTransferencia} className="space-y-4 bg-white p-4 rounded-xl border border-stone-200/80">
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-stone-100 rounded-xl border border-stone-200/70 text-xs">
                 <button
                   type="button"
                   onClick={() => setTipoOperacao('recompra')}
                   className={`py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     tipoOperacao === 'recompra'
-                      ? 'bg-white text-[#2D0A16] shadow-xs font-bold'
-                      : 'text-stone-600 hover:text-stone-900'
+                      ? 'bg-white text-stone-900 shadow-2xs font-semibold'
+                      : 'text-stone-500 hover:text-stone-800 font-medium'
                   }`}
                 >
-                  <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                  <RotateCcw className="w-3.5 h-3.5 opacity-70" />
                   <span>Recompra (Estoque Mexicano)</span>
                 </button>
                 <button
@@ -842,24 +829,24 @@ export default function ComercialCotaTransferModal({
                   onClick={() => setTipoOperacao('transferencia')}
                   className={`py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     tipoOperacao === 'transferencia'
-                      ? 'bg-white text-[#2D0A16] shadow-xs font-bold'
-                      : 'text-stone-600 hover:text-stone-900'
+                      ? 'bg-white text-stone-900 shadow-2xs font-semibold'
+                      : 'text-stone-500 hover:text-stone-800 font-medium'
                   }`}
                 >
-                  <ArrowRightLeft className="w-3.5 h-3.5 text-blue-600" />
+                  <ArrowRightLeft className="w-3.5 h-3.5 opacity-70" />
                   <span>Transferência de Cotista</span>
                 </button>
               </div>
 
               {tipoOperacao === 'transferencia' && (
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-700 block">
-                    Cotista Destino (Comprador) *
+                  <label className="text-xs font-medium text-stone-600 block">
+                    Cotista destino (comprador) *
                   </label>
                   <select
                     value={targetClientId}
                     onChange={e => setTargetClientId(e.target.value)}
-                    className="w-full h-10 px-3 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold text-stone-900 focus:outline-none focus:bg-white"
+                    className="w-full h-9 px-3 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold text-stone-900 focus:outline-none focus:bg-white focus:border-stone-400"
                   >
                     <option value="">Selecione o cotista que assumirá a cota...</option>
                     {clients
@@ -873,10 +860,10 @@ export default function ComercialCotaTransferModal({
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-stone-700 block">
-                    Valor da Operação (R$)
+                  <label className="text-xs font-medium text-stone-600 block">
+                    Valor da operação (R$)
                   </label>
                   <input
                     type="number"
@@ -884,51 +871,51 @@ export default function ComercialCotaTransferModal({
                     placeholder="0,00"
                     value={valorNegociado}
                     onChange={e => setValorNegociado(e.target.value)}
-                    className="w-full h-9 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-900 focus:outline-none focus:bg-white"
+                    className="w-full h-9 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-900 tabular-nums focus:outline-none focus:bg-white focus:border-stone-400"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-stone-700 block">
-                    Data da Transferência
+                  <label className="text-xs font-medium text-stone-600 block">
+                    Data da transferência
                   </label>
                   <input
                     type="date"
                     value={dataOperacao}
                     onChange={e => setDataOperacao(e.target.value)}
-                    className="w-full h-9 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-900 focus:outline-none focus:bg-white"
+                    className="w-full h-9 px-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-900 tabular-nums focus:outline-none focus:bg-white focus:border-stone-400"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-stone-700 block">
-                  Observações / Motivo
+                <label className="text-xs font-medium text-stone-600 block">
+                  Observações / motivo
                 </label>
                 <textarea
                   rows={2}
                   placeholder="Informações contratuais ou justificativa da operação..."
                   value={observacoes}
                   onChange={e => setObservacoes(e.target.value)}
-                  className="w-full p-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-900 focus:outline-none focus:bg-white"
+                  className="w-full p-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-900 focus:outline-none focus:bg-white focus:border-stone-400"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2.5">
+              <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg border border-stone-200 text-xs font-semibold text-stone-600 hover:bg-stone-50"
+                  className="h-9 px-4 rounded-lg border border-stone-200 text-xs font-medium text-stone-600 hover:bg-stone-50 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="px-5 py-2.5 rounded-lg bg-[#2D0A16] hover:bg-[#3B0D1E] text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="h-9 px-4 rounded-lg bg-[#2D0A16] hover:bg-[#3B0D1E] text-white text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  <Check className="w-3.5 h-3.5 text-emerald-300" />
-                  <span>{isLoading ? 'Processando...' : tipoOperacao === 'recompra' ? 'Efetivar Recompra para Estoque' : 'Confirmar Transferência'}</span>
+                  <Check className="w-3.5 h-3.5 opacity-80" />
+                  <span>{isLoading ? 'Processando...' : tipoOperacao === 'recompra' ? 'Efetivar Recompra' : 'Confirmar Transferência'}</span>
                 </button>
               </div>
             </form>
@@ -940,11 +927,11 @@ export default function ComercialCotaTransferModal({
           {activeTab === 'historico' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-stone-700">Movimentações Registradas</span>
+                <span className="font-semibold text-stone-800">Movimentações registradas</span>
                 <button
                   type="button"
                   onClick={() => loadHistorico(selectedBoatId)}
-                  className="text-stone-500 hover:text-stone-800 text-[11px] underline cursor-pointer"
+                  className="text-stone-500 hover:text-stone-800 text-xs cursor-pointer"
                 >
                   Atualizar
                 </button>
@@ -953,38 +940,30 @@ export default function ComercialCotaTransferModal({
               {isLoadingHistorico ? (
                 <div className="p-8 text-center text-xs text-stone-400">Carregando histórico...</div>
               ) : historicoList.length === 0 ? (
-                <div className="p-8 text-center text-xs text-stone-400 bg-stone-50 rounded-xl border border-stone-200/80">
+                <div className="p-8 text-center text-xs text-stone-400 bg-white rounded-xl border border-stone-200/80">
                   Nenhuma movimentação registrada para esta embarcação ainda.
                 </div>
               ) : (
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                <div className="bg-white rounded-xl border border-stone-200/80 divide-y divide-stone-100 max-h-80 overflow-y-auto">
                   {historicoList.map(h => (
                     <div
                       key={h.id}
-                      className="p-3 bg-stone-50 rounded-xl border border-stone-200/80 flex items-start justify-between gap-3 text-xs"
+                      className="p-3.5 flex items-start justify-between gap-3 text-xs"
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-[#2D0A16] px-1.5 py-0.5 rounded bg-stone-200/70 text-[10px]">
+                          <span className="font-semibold text-stone-800 px-1.5 py-0.2 rounded bg-stone-100 border border-stone-200/70 text-[10px] tabular-nums">
                             {h.cota}
                           </span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            h.tipoOperacao === 'reserva_48h'
-                              ? 'bg-amber-100 text-amber-800'
-                              : h.tipoOperacao === 'repasse'
-                              ? 'bg-sky-100 text-sky-800'
-                              : h.tipoOperacao === 'recompra'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-stone-200 text-stone-700'
-                          }`}>
-                            {h.tipoOperacao.toUpperCase().replace('_', ' ')}
+                          <span className="text-[11px] font-medium text-stone-600">
+                            {h.tipoOperacao.replace('_', ' ')}
                           </span>
-                          <span className="text-[10px] text-stone-400">
-                            {new Date(h.createdAt || h.dataOperacao).toLocaleDateString('pt-BR')}
+                          <span className="text-[11px] text-stone-400 tabular-nums">
+                            • {new Date(h.createdAt || h.dataOperacao).toLocaleDateString('pt-BR')}
                           </span>
                         </div>
-                        <p className="text-stone-700 font-medium">
-                          {h.observacoes || `${h.clienteOrigemNome || ''} ➔ ${h.clienteDestinoNome || ''}`}
+                        <p className="text-stone-700">
+                          {h.observacoes || `${h.clienteOrigemNome || ''} → ${h.clienteDestinoNome || ''}`}
                         </p>
                         {h.registradoPor && (
                           <p className="text-[10px] text-stone-400">Por: {h.registradoPor}</p>
@@ -992,7 +971,7 @@ export default function ComercialCotaTransferModal({
                       </div>
 
                       {Number(h.valorNegociado || 0) > 0 && (
-                        <span className="font-bold text-stone-900 shrink-0 tabular-nums">
+                        <span className="font-semibold text-stone-900 shrink-0 tabular-nums">
                           R$ {Number(h.valorNegociado).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </span>
                       )}

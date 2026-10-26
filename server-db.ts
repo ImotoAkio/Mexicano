@@ -328,6 +328,9 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN potencia VARCHAR(100);`);
     } catch (e) {}
     try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN marcaMotor VARCHAR(100);`);
+    } catch (e) {}
+    try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN acessorios TEXT;`);
     } catch (e) {}
     try {
@@ -2306,8 +2309,8 @@ export async function upsertBoat(boat: any) {
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho, valorCota, taxaAdmMensal
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, marcaMotor, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho, valorCota, taxaAdmMensal
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -2319,6 +2322,7 @@ export async function upsertBoat(boat: any) {
       inscricao = VALUES(inscricao),
       tipo_propulsao = VALUES(tipo_propulsao),
       potencia = VALUES(potencia),
+      marcaMotor = VALUES(marcaMotor),
       donos = VALUES(donos),
       googleCalendarId = VALUES(googleCalendarId),
       whatsappGroupId = VALUES(whatsappGroupId),
@@ -2355,6 +2359,7 @@ export async function upsertBoat(boat: any) {
     boat.inscricao || null,
     boat.tipo_propulsao || null,
     boat.potencia || null,
+    boat.marcaMotor || null,
     donosJson,
     boat.googleCalendarId || null,
     boat.whatsappGroupId || null,

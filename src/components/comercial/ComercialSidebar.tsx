@@ -14,11 +14,11 @@ import {
   X,
   ArrowRight,
   Kanban,
-  Sparkles,
+  Compass,
   Anchor
 } from 'lucide-react';
 import logoMexicano from '../../assets/images/logo_mexicano_trim.png';
-import { clientDB, boatDB, onDbUpdate } from '../../db';
+import { clientDB, boatDB, onDbUpdate, getAdminToken } from '../../db';
 import { getBoatEstoqueResumo } from '../../utils/cotaUtils';
 import { loadComercialSettings, ComercialSettings } from './ComercialSettingsModal';
 import { VendaComercial, ConfigMotorComissoes } from '../../types';
@@ -37,7 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'ativos', label: 'Ativos & Cotas', icon: Anchor },
   { id: 'embarcacoes', label: 'Embarcações', icon: Ship },
   { id: 'vendas', label: 'Propostas & Vendas', icon: DollarSign },
-  { id: 'catalogo', label: 'Catálogo & Captação', icon: Sparkles },
+  { id: 'catalogo', label: 'Catálogo & Captação', icon: Compass },
   { id: 'comissoes', label: 'Comissões', icon: Wallet },
   { id: 'clientes', label: 'Cotistas', icon: Users },
   { id: 'contratos', label: 'Contratos', icon: FileSignature },
@@ -73,7 +73,7 @@ export default function ComercialSidebar({
   });
 
   const getAuthHeader = (): Record<string, string> => {
-    const token = localStorage.getItem('admin_token');
+    const token = getAdminToken() || localStorage.getItem('admin_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
@@ -163,14 +163,11 @@ export default function ComercialSidebar({
     (typeof window !== 'undefined' ? localStorage.getItem('admin_name') : null) ||
     'Consultor Comercial';
   const metaIndividual = metaSettings.metaIndividualVendedor || 250000;
-  const faturamentoAtual =
-    resumoComissoes.faturamentoRealMes > 0
-      ? resumoComissoes.faturamentoRealMes
-      : (metaSettings.faturamentoAtual || 184500);
+  const faturamentoAtual = resumoComissoes.faturamentoRealMes;
 
-  const progressPercent = Math.min(100, Math.round((faturamentoAtual / metaIndividual) * 100));
-  const totalCotasMes = resumoComissoes.totalCotasMes > 0 ? resumoComissoes.totalCotasMes : 5;
-  const comissaoTotalVendedor = resumoComissoes.totalVariavelPorVendedor > 0 ? resumoComissoes.totalVariavelPorVendedor : 4250;
+  const progressPercent = Math.min(100, Math.round((faturamentoAtual / Math.max(1, metaIndividual)) * 100));
+  const totalCotasMes = resumoComissoes.totalCotasMes;
+  const comissaoTotalVendedor = resumoComissoes.totalVariavelPorVendedor;
 
   const formatK = (val: number) => {
     if (metaSettings.ocultarValoresDashboard) return 'R$ ••••';
@@ -272,12 +269,12 @@ export default function ComercialSidebar({
         {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
         {!collapsed && badgeText && (
           <span
-            className={`text-[10px] font-semibold rounded-md px-1.5 py-0.5 tabular-nums ${
+            className={`text-[10px] font-medium rounded-md px-1.5 py-0.5 tabular-nums ${
               badgeType === 'contracts'
-                ? 'text-amber-700 bg-amber-100'
-                : badgeType === 'comissoes'
-                ? 'text-emerald-700 bg-emerald-50 border border-emerald-200/60'
-                : 'text-mx-green bg-mx-green-50'
+                ? 'text-amber-800 bg-amber-50 border border-amber-200/70'
+                : isActive
+                ? 'text-mx-ink bg-white/80'
+                : 'text-stone-500 bg-stone-100'
             }`}
           >
             {badgeText}
@@ -288,9 +285,7 @@ export default function ComercialSidebar({
             className={`absolute top-2 right-3 w-2 h-2 rounded-full ring-2 ring-white ${
               badgeType === 'contracts'
                 ? 'bg-amber-500'
-                : badgeType === 'comissoes'
-                ? 'bg-emerald-500'
-                : 'bg-mx-green'
+                : 'bg-[#2D0A16]'
             }`}
           />
         )}
@@ -355,7 +350,7 @@ export default function ComercialSidebar({
         {renderItem({ id: 'config', label: 'Configurações', icon: Settings })}
       </nav>
 
-      {/* Card de Comissões & Metas — Minimalista no padrão Mexicano */}
+      {/* Card de Comissões & Metas — Sóbrio no Padrão Vila Náutica */}
       {!collapsed ? (
         <div className="shrink-0 p-3 pt-1">
           <div
@@ -365,83 +360,61 @@ export default function ComercialSidebar({
             onKeyDown={e => {
               if (e.key === 'Enter' || e.key === ' ') onSelect('comissoes');
             }}
-            className="group relative overflow-hidden rounded-xl bg-[#2B1120] p-3 text-white shadow-xs border border-[#3e1b30] hover:border-[#5a2747] transition-all cursor-pointer select-none"
+            className="group rounded-xl bg-[#FAF9F6] hover:bg-stone-100/80 p-3.5 border border-stone-200/80 hover:border-stone-300 transition-colors cursor-pointer select-none"
           >
-            {/* Efeito de brilho suave no hover */}
-            <div className="pointer-events-none absolute -top-8 -right-8 w-20 h-20 rounded-full bg-white/[0.04] group-hover:bg-white/[0.08] transition-colors blur-lg" />
-
-            {/* Cabeçalho */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-amber-300">
-                  <Target className="w-3.5 h-3.5" strokeWidth={2.25} />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[11px] font-bold text-white tracking-tight leading-none block truncate max-w-[105px]">
-                    {vendedorLogado}
-                  </span>
-                  <span className="text-[9px] text-amber-300 font-medium">Comissão Individual</span>
-                </div>
-              </div>
-              {totalCotasMes > 0 ? (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 tabular-nums">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  {totalCotasMes} {totalCotasMes === 1 ? 'cota' : 'cotas'}
-                </span>
-              ) : (
-                <span className="text-[10px] font-medium text-stone-400 tabular-nums">
-                  0 cotas
-                </span>
-              )}
+            {/* Cabeçalho: Consultor + Cotas no mês */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-stone-900 tracking-tight truncate">
+                {vendedorLogado}
+              </span>
+              <span className="shrink-0 px-1.5 py-0.5 rounded bg-white border border-stone-200/80 text-[10px] font-medium text-stone-600 tabular-nums">
+                {totalCotasMes} {totalCotasMes === 1 ? 'cota' : 'cotas'}
+              </span>
             </div>
 
-            {/* Valor individual e VGV */}
-            <div className="my-1.5">
-              <div className="flex items-baseline justify-between">
-                <div className="text-base font-extrabold text-white tabular-nums tracking-tight">
-                  {formatBRL(comissaoTotalVendedor)}
-                </div>
-                <span className="text-[9px] text-stone-400">comissão acumulada</span>
-              </div>
-              <div className="text-[10px] text-stone-300/90 leading-snug mt-1 tabular-nums flex items-center justify-between">
-                <span>VGV: <strong className="text-white">{formatK(faturamentoAtual)}</strong></span>
-                <span className="text-stone-300">Meta: <strong className="text-white">{formatK(metaIndividual)}</strong></span>
-              </div>
+            {/* Valor principal de Comissão */}
+            <div className="mt-2.5 flex items-baseline justify-between gap-2">
+              <span className="text-base font-bold text-stone-900 tabular-nums tracking-tight">
+                {formatBRL(comissaoTotalVendedor)}
+              </span>
+              <span className="text-[10px] text-stone-400">comissão no mês</span>
             </div>
 
-            {/* Barra de Progresso Minimalista */}
-            <div className="mt-2.5 space-y-1">
-              <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+            {/* Barra de Progresso Sóbria (Padrão Vila Náutica) */}
+            <div className="mt-3 space-y-1.5">
+              <div className="h-1 w-full rounded-full bg-stone-200/80 overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-emerald-400 transition-all duration-500"
+                  className="h-full rounded-full bg-[#2D0A16] transition-all duration-500"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
-              <div className="flex items-center justify-between text-[9px] text-stone-400 tabular-nums">
-                <span>Atingimento da Meta Individual</span>
-                <span className="font-bold text-amber-300">{progressPercent}%</span>
+              <div className="flex items-center justify-between text-[10px] text-stone-500 tabular-nums">
+                <span>
+                  VGV <strong className="font-semibold text-stone-700">{formatK(faturamentoAtual)}</strong> / {formatK(metaIndividual)}
+                </span>
+                <span className="font-semibold text-stone-700">{progressPercent}%</span>
               </div>
             </div>
 
-            {/* Rodapé / Link discreto de ação */}
-            <div className="mt-2.5 pt-2 border-t border-white/10 flex items-center justify-between text-[10px] text-stone-300 group-hover:text-white transition-colors">
-              <span className="font-medium">Abrir painel de comissões</span>
-              <ArrowRight className="w-3 h-3 text-stone-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+            {/* Rodapé discreto de ação */}
+            <div className="mt-2.5 pt-2 border-t border-stone-200/60 flex items-center justify-between text-[11px] text-stone-500 group-hover:text-stone-900 transition-colors">
+              <span className="font-medium">Painel de comissões</span>
+              <ArrowRight className="w-3 h-3 text-stone-400 group-hover:text-stone-800 group-hover:translate-x-0.5 transition-all" />
             </div>
           </div>
         </div>
       ) : (
-        /* Versão compacta / ícone quando recolhida */
+        /* Versão compacta quando recolhida */
         <div className="shrink-0 p-3 pt-1 flex justify-center">
           <button
             type="button"
             onClick={() => onSelect('comissoes')}
-            className="w-10 h-10 rounded-xl bg-[#2B1120] text-white flex items-center justify-center border border-[#3e1b30] shadow-xs hover:border-[#5a2747] hover:scale-105 transition-all cursor-pointer relative group"
+            className="w-9 h-9 rounded-xl bg-[#FAF9F6] hover:bg-stone-100 text-stone-700 flex items-center justify-center border border-stone-200/80 hover:border-stone-300 transition-colors cursor-pointer relative"
             title={`Comissões: ${formatBRL(comissaoTotalVendedor)} (${totalCotasMes} cotas) • VGV: ${formatK(faturamentoAtual)} (${progressPercent}%)`}
           >
-            <Target className="w-4 h-4 text-amber-300" />
+            <Target className="w-4 h-4 text-stone-600" />
             {totalCotasMes > 0 && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-white animate-pulse" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#2D0A16] ring-2 ring-white" />
             )}
           </button>
         </div>

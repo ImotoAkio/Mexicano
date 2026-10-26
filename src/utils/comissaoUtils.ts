@@ -31,6 +31,65 @@ export const DEFAULT_MOTOR_COMISSOES_CONFIG: ConfigMotorComissoes = {
   ]
 };
 
+export interface AvaliacaoProcessosVenda {
+  vendaAtiva: boolean;
+  entradaPagaOk: boolean;
+  comprovanteOk: boolean;
+  contratoAquisicaoOk: boolean;
+  contratoAdmOk: boolean;
+  liberadaManual: boolean;
+  todosProcessosConcluidos: boolean;
+  etapasPendentes: string[];
+}
+
+export function avaliarProcessosVenda(
+  venda: VendaComercial,
+  config: ConfigMotorComissoes = DEFAULT_MOTOR_COMISSOES_CONFIG
+): AvaliacaoProcessosVenda {
+  const vendaAtiva = venda.status !== 'cancelada';
+  const req = config.requisitosVendaConcluida || DEFAULT_MOTOR_COMISSOES_CONFIG.requisitosVendaConcluida;
+
+  const isEntradaPaid =
+    Number(venda.valorEntrada) <= 0 ||
+    Boolean(venda.entradaPaga) ||
+    venda.statusEntradaFinanceiro === 'pago';
+
+  const hasComprovante =
+    Number(venda.valorEntrada) <= 0 || Boolean(venda.comprovanteEntrada);
+
+  const isAqSigned = venda.clienteContratoAquisicaoStatus === 'assinado';
+  const isAdmSigned = venda.clienteContratoAdmStatus === 'assinado';
+  const liberadaManual = Boolean(venda.comissaoLiberadaManual);
+
+  const etapasPendentes: string[] = [];
+  if (req.exigirEntradaPaga && !isEntradaPaid) {
+    etapasPendentes.push('Entrada Paga');
+  }
+  if (req.exigirComprovanteEntrada && !hasComprovante) {
+    etapasPendentes.push('Comprovante');
+  }
+  if (req.exigirContratoAquisicaoAssinado && !isAqSigned) {
+    etapasPendentes.push('Contrato Aquisição');
+  }
+  if (req.exigirContratoAdmAssinado && !isAdmSigned) {
+    etapasPendentes.push('Contrato Gestão');
+  }
+
+  const todosProcessosConcluidos =
+    vendaAtiva && (liberadaManual || etapasPendentes.length === 0);
+
+  return {
+    vendaAtiva,
+    entradaPagaOk: isEntradaPaid,
+    comprovanteOk: hasComprovante,
+    contratoAquisicaoOk: isAqSigned,
+    contratoAdmOk: isAdmSigned,
+    liberadaManual,
+    todosProcessosConcluidos,
+    etapasPendentes
+  };
+}
+
 export function getCurrentMonthKey(): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -41,6 +100,8 @@ export function getCurrentMonthKey(): string {
 export interface ComissoesResumoRealTime {
   competencia: string;
   totalCotasMes: number;
+  totalVendasAtivasMes: number;
+  pendentesCount: number;
   faturamentoRealMes: number;
   valorUnitarioFaixa: number;
   faixaDescricao: string;
@@ -65,8 +126,11 @@ export function calculateComissoesResumo(
     return dv === competencia;
   });
 
+  const concluidasSales = activeSales.filter(v => avaliarProcessosVenda(v, config).todosProcessosConcluidos);
+  const pendentesCount = activeSales.length - concluidasSales.length;
+
   const faturamentoRealMes = activeSales.reduce((acc, v) => acc + (Number(v.valorTotal) || 0), 0);
-  const totalCotasMes = activeSales.length;
+  const totalCotasMes = concluidasSales.length;
 
   // Faixa de comissão por cota
   const sortedFaixas = [...(config.faixasComissao || DEFAULT_MOTOR_COMISSOES_CONFIG.faixasComissao)].sort(
@@ -114,6 +178,8 @@ export function calculateComissoesResumo(
   return {
     competencia,
     totalCotasMes,
+    totalVendasAtivasMes: activeSales.length,
+    pendentesCount,
     faturamentoRealMes,
     valorUnitarioFaixa: Number(faixaAtual.valorPorCota) || 0,
     faixaDescricao: faixaAtual.descricao || `${totalCotasMes} cotas`,
