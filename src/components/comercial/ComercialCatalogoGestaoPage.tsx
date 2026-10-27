@@ -68,6 +68,10 @@ export interface VitrineSettings {
   showSeaTrial: boolean;
   destaquesIds: string[];
   ocultosIds: string[];
+  showroomYachtId?: string;
+  showroomJetId?: string;
+  showroomCustomTitleYacht?: string;
+  showroomCustomTitleJet?: string;
 }
 
 const DEFAULT_VITRINE_SETTINGS: VitrineSettings = {
@@ -82,6 +86,10 @@ const DEFAULT_VITRINE_SETTINGS: VitrineSettings = {
   showSeaTrial: true,
   destaquesIds: [],
   ocultosIds: [],
+  showroomYachtId: '',
+  showroomJetId: '',
+  showroomCustomTitleYacht: '',
+  showroomCustomTitleJet: '',
 };
 
 export default function ComercialCatalogoGestaoPage({
@@ -172,6 +180,15 @@ export default function ComercialCatalogoGestaoPage({
 
   useEffect(() => {
     loadData();
+    fetch('/api/comercial/vitrine/settings')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.settings) {
+          setVitrineSettings((prev) => ({ ...prev, ...d.settings }));
+          localStorage.setItem('vitrine_settings', JSON.stringify(d.settings));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const showToast = (msg: string) => {
@@ -182,6 +199,11 @@ export default function ComercialCatalogoGestaoPage({
   const handleSaveSettings = (newSettings: VitrineSettings) => {
     setVitrineSettings(newSettings);
     localStorage.setItem('vitrine_settings', JSON.stringify(newSettings));
+    fetch('/api/comercial/vitrine/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSettings),
+    }).catch(console.error);
     setPreviewKey((k) => k + 1);
     showToast('Configurações da vitrine salvas com sucesso');
   };
@@ -1357,7 +1379,7 @@ export default function ComercialCatalogoGestaoPage({
                                 onClick={() => onOpenSeaTrial(lead)}
                                 className="h-7 px-2.5 rounded-lg bg-[#2D0A16] text-white hover:bg-[#3B0D1E] text-xs font-medium transition-colors cursor-pointer shadow-2xs"
                               >
-                                Sea Trial
+                                Test Drive
                               </button>
                             )}
                           </div>
@@ -1445,6 +1467,94 @@ export default function ComercialCatalogoGestaoPage({
                 onChange={(e) => setVitrineSettings({ ...vitrineSettings, vendedorPadrao: e.target.value })}
                 className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-900 font-medium focus:outline-none focus:border-stone-400"
               />
+            </div>
+
+            {/* Showroom Studio Curadoria Inteligente */}
+            <div className="bg-gradient-to-br from-amber-50/40 via-white to-stone-50/60 rounded-2xl border border-amber-200/80 p-5 space-y-4 sm:col-span-2 shadow-2xs">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-stone-900 tracking-tight">
+                      Curadoria Showroom Studio (Hero em Destaque)
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Defina quem aparece no palco de estúdio interativo no topo da vitrine pública ou use a seleção inteligente automática.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono uppercase tracking-wider bg-amber-100/70 text-amber-900 px-2.5 py-1 rounded-full font-semibold">
+                  Hero Stage
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                {/* Seleção Lancha */}
+                <div className="space-y-2 bg-white p-4 rounded-xl border border-stone-200/80 shadow-2xs">
+                  <label className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
+                    <span>Lancha no Showroom Studio</span>
+                    <span className="text-[10px] font-semibold text-stone-400 font-mono">Linha Yachts</span>
+                  </label>
+                  <select
+                    value={vitrineSettings.showroomYachtId || ''}
+                    onChange={(e) => setVitrineSettings({ ...vitrineSettings, showroomYachtId: e.target.value })}
+                    className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-stone-50/50 text-xs text-stone-900 font-medium focus:outline-none focus:border-stone-400"
+                  >
+                    <option value="">★ Automático (Primeira lancha marcada com estrela de Destaque)</option>
+                    {processedBoats
+                      .filter((b) => !b.isJet && !b.isOculto)
+                      .map((item) => (
+                        <option key={item.boat.id} value={item.boat.id}>
+                          {item.boat.nome} · {item.boat.fabricante} {item.boat.modelo} {item.isDestaque ? '★ Destaque' : ''} (R$ {item.valorCota.toLocaleString('pt-BR')})
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Título personalizado (opcional, ex: Linha Yachts & Sport Boats)"
+                    value={vitrineSettings.showroomCustomTitleYacht || ''}
+                    onChange={(e) => setVitrineSettings({ ...vitrineSettings, showroomCustomTitleYacht: e.target.value })}
+                    className="w-full h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-[11px] text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-stone-400"
+                  />
+                  <span className="text-[10px] text-stone-400 block">
+                    Se vazio, o sistema usa o nome e estaleiro oficial do ativo selecionado.
+                  </span>
+                </div>
+
+                {/* Seleção Jetski */}
+                <div className="space-y-2 bg-white p-4 rounded-xl border border-stone-200/80 shadow-2xs">
+                  <label className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
+                    <span>Jetski no Showroom Studio</span>
+                    <span className="text-[10px] font-semibold text-stone-400 font-mono">Linha Watercraft</span>
+                  </label>
+                  <select
+                    value={vitrineSettings.showroomJetId || ''}
+                    onChange={(e) => setVitrineSettings({ ...vitrineSettings, showroomJetId: e.target.value })}
+                    className="w-full h-9 px-3 rounded-xl border border-stone-200 bg-stone-50/50 text-xs text-stone-900 font-medium focus:outline-none focus:border-stone-400"
+                  >
+                    <option value="">★ Automático (Primeiro jetski marcado com estrela de Destaque)</option>
+                    {processedBoats
+                      .filter((b) => b.isJet && !b.isOculto)
+                      .map((item) => (
+                        <option key={item.boat.id} value={item.boat.id}>
+                          {item.boat.nome} · {item.boat.fabricante} {item.boat.modelo} {item.isDestaque ? '★ Destaque' : ''} (R$ {item.valorCota.toLocaleString('pt-BR')})
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Título personalizado (opcional, ex: Linha High-Output Watercraft)"
+                    value={vitrineSettings.showroomCustomTitleJet || ''}
+                    onChange={(e) => setVitrineSettings({ ...vitrineSettings, showroomCustomTitleJet: e.target.value })}
+                    className="w-full h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-[11px] text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-stone-400"
+                  />
+                  <span className="text-[10px] text-stone-400 block">
+                    Se vazio, o sistema usa o modelo e estaleiro oficial do jet selecionado.
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1610,7 +1720,7 @@ export default function ComercialCatalogoGestaoPage({
               </div>
 
               <p className="text-[11px] text-stone-400 text-center max-w-xs leading-relaxed">
-                Rastreado para <strong>{selectedConsultant}</strong>. Escaneado no píer, abre o dossiê com agendamento de sea trial.
+                Rastreado para <strong>{selectedConsultant}</strong>. Escaneado no píer, abre o dossiê com agendamento de test drive.
               </p>
             </div>
 

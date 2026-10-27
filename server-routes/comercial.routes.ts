@@ -33,7 +33,9 @@ import {
   verificarDisponibilidadeVisita,
   getAllLeadsComercial,
   upsertLeadComercial,
-  invalidateDbCache
+  invalidateDbCache,
+  getConfigValue,
+  setConfigValue
 } from "../server-db";
 import { uploadToR2 } from "../server-r2";
 
@@ -533,9 +535,11 @@ router.get(["/catalogo/public", "/public/catalogo", "/catalogo-publico"], async 
       const totalCotas = Number(b.totalCotas) > 0 ? Number(b.totalCotas) : 4;
       const cotasDisponiveisCount = (Number(b.cotasDisponiveisEstoque) || 0) + (Number(b.cotasEmRepasse) || 0);
 
+      const isJetAsset = b.tipo === 'jet' || `${b.nome} ${b.modelo}`.toUpperCase().includes('JET') || `${b.nome} ${b.modelo}`.toUpperCase().includes('SEA DOO') || `${b.nome} ${b.modelo}`.toUpperCase().includes('RXT') || `${b.nome} ${b.modelo}`.toUpperCase().includes('GTI');
       return {
         id: b.id,
         nome: b.nome,
+        tipo: isJetAsset ? 'jet' : (b.tipo || 'lancha'),
         modelo: b.modelo || 'Lancha Esportiva & Passeio',
         fabricante: b.fabricante || 'Estaleiro Premium',
         ano: b.ano || new Date().getFullYear(),
@@ -641,11 +645,20 @@ router.get(["/catalogo/public", "/public/catalogo", "/catalogo-publico"], async 
       };
     }
 
+        let vitrineSettings = null;
+    try {
+      const raw = await getConfigValue("vitrine_settings");
+      if (raw) vitrineSettings = JSON.parse(raw);
+    } catch (e) {
+      console.warn("[VITRINE_SETTINGS LOAD ERROR]:", e);
+    }
+
     res.json({
       success: true,
       count: barcos.length,
       barcos,
-      vendedor: vendedorInfo
+      vendedor: vendedorInfo,
+      vitrineSettings
     });
   } catch (err: any) {
     console.error("[GET /catalogo/public Error]:", err);
@@ -919,7 +932,7 @@ router.post(["/visitas", "/comercial/visitas", "/visitas/checkin"], requireAdmin
   }
 });
 
-// Checagem de Conflito de Agenda (Reservas de Cotistas + Manutenções OS) para Visita Comercial / Sea Trial
+// Checagem de Conflito de Agenda (Reservas de Cotistas + Manutenções OS) para Visita Comercial / Test Drive
 router.get(["/disponibilidade-visita", "/comercial/disponibilidade-visita"], requireAdminAuth, async (req, res) => {
   try {
     const { embarcacaoId, data } = req.query;
@@ -931,6 +944,35 @@ router.get(["/disponibilidade-visita", "/comercial/disponibilidade-visita"], req
   } catch (err: any) {
     console.error("[GET disponibilidade-visita Error]:", err);
     res.status(500).json({ error: true, message: err.message || "Erro ao verificar disponibilidade" });
+  }
+});
+
+
+// ==========================================
+// Configurações da Vitrine Comercial & Showroom Studio
+// ==========================================
+router.get(["/vitrine/settings", "/comercial/vitrine/settings"], async (req, res) => {
+  try {
+    const raw = await getConfigValue("vitrine_settings");
+    let settings = null;
+    if (raw) {
+      try { settings = JSON.parse(raw); } catch {}
+    }
+    res.json({ success: true, settings });
+  } catch (err: any) {
+    console.error("[GET /vitrine/settings Error]:", err);
+    res.status(500).json({ error: true, message: "Erro ao carregar configurações da vitrine" });
+  }
+});
+
+router.post(["/vitrine/settings", "/comercial/vitrine/settings"], async (req, res) => {
+  try {
+    const settings = req.body || {};
+    await setConfigValue("vitrine_settings", JSON.stringify(settings));
+    res.json({ success: true, settings });
+  } catch (err: any) {
+    console.error("[POST /vitrine/settings Error]:", err);
+    res.status(500).json({ error: true, message: "Erro ao salvar configurações da vitrine" });
   }
 });
 

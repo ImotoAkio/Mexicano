@@ -21,6 +21,7 @@ import {
 } from 'iconoir-react';
 import QRCode from 'qrcode';
 import { boatDB } from '../../db';
+import { VitrineSettings } from '../../types';
 import logoMexicano from '../../assets/images/logo_mexicano_trim.png';
 import studioJetImg from '../../assets/images/1.webp';
 import studioBoatImg from '../../assets/images/2.webp';
@@ -197,14 +198,46 @@ export default function CatalogoPublicoPage({
   const utmMedium = searchParams.get('utm_medium') || '';
   const utmCampaign = searchParams.get('utm_campaign') || '';
 
-  // Configurações personalizadas da Vitrine (via Painel de Gestão)
-  const vitrineSettings = useMemo(() => {
+  // Configurações personalizadas da Vitrine (via Painel de Gestão e Servidor)
+  const [serverVitrineSettings, setServerVitrineSettings] = useState<VitrineSettings | null>(null);
+
+  const vitrineSettings = useMemo<VitrineSettings | null>(() => {
+    if (serverVitrineSettings) return serverVitrineSettings;
     try {
       const stored = localStorage.getItem('vitrine_settings');
       if (stored) return JSON.parse(stored);
     } catch {}
     return null;
-  }, []);
+  }, [serverVitrineSettings]);
+
+  // Curadoria Inteligente para o Showroom Studio
+  const featuredYacht = useMemo(() => {
+    if (!boats || boats.length === 0) return null;
+    if (vitrineSettings?.showroomYachtId) {
+      const found = boats.find((b) => b.id === vitrineSettings.showroomYachtId);
+      if (found) return found;
+    }
+    if (Array.isArray(vitrineSettings?.destaquesIds) && vitrineSettings.destaquesIds.length > 0) {
+      const found = boats.find((b) => vitrineSettings.destaquesIds.includes(b.id) && !isJetSkiAsset(b));
+      if (found) return found;
+    }
+    return boats.find((b) => !isJetSkiAsset(b)) || null;
+  }, [boats, vitrineSettings]);
+
+  const featuredJet = useMemo(() => {
+    if (!boats || boats.length === 0) return null;
+    if (vitrineSettings?.showroomJetId) {
+      const found = boats.find((b) => b.id === vitrineSettings.showroomJetId);
+      if (found) return found;
+    }
+    if (Array.isArray(vitrineSettings?.destaquesIds) && vitrineSettings.destaquesIds.length > 0) {
+      const found = boats.find((b) => vitrineSettings.destaquesIds.includes(b.id) && isJetSkiAsset(b));
+      if (found) return found;
+    }
+    return boats.find((b) => isJetSkiAsset(b)) || null;
+  }, [boats, vitrineSettings]);
+
+  const activeHeroBoat = heroShowcaseType === 'yacht' ? featuredYacht : featuredJet;
 
   const heroDescriptionText = useMemo(() => {
     const raw = vitrineSettings?.heroDescription;
@@ -284,6 +317,12 @@ export default function CatalogoPublicoPage({
               ? rawBoats.filter((b) => !vitrineSettings.ocultosIds.includes(b.id))
               : rawBoats;
             setBoats(filtered.length > 0 ? filtered : resolveFallbackList());
+            if (data.vitrineSettings) {
+              setServerVitrineSettings(data.vitrineSettings);
+              try {
+                localStorage.setItem('vitrine_settings', JSON.stringify(data.vitrineSettings));
+              } catch {}
+            }
             if (data.vendedor) setVendedor(data.vendedor);
           }
         } else {
@@ -1000,19 +1039,19 @@ export default function CatalogoPublicoPage({
 
                 <div className="border-l border-neutral-200/80 pl-6">
                   <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-neutral-400 block">
-                    Uso Inteligente
+                    Gestão Integral
                   </span>
                   <span className="text-2xl sm:text-3xl font-semibold tracking-tight tabular-nums text-[#111113] mt-1 block">
-                    Zero Ociosidade
+                    Zero Preocupação
                   </span>
-                  <span className="text-xs text-neutral-500">Pague só o que usa</span>
+                  <span className="text-xs text-neutral-500">Só agendar e navegar</span>
                 </div>
               </div>
             </div>
 
-            {/* Coluna Studio Stage (Apple Product Stage com recorte puro) */}
+            {/* Coluna Studio Stage (Apple Product Stage Curadoria Inteligente) */}
             <div className="lg:col-span-6">
-              <div className="relative bg-[#F5F5F7] rounded-3xl p-6 sm:p-10 border border-black/[0.05]">
+              <div className="relative bg-[#F5F5F7] rounded-3xl p-6 sm:p-10 border border-black/[0.05] shadow-xs">
                 {/* Seletor de Categoria em Destaque no Stage */}
                 <div className="flex items-center justify-between gap-4 mb-4">
                   <div>
@@ -1023,7 +1062,10 @@ export default function CatalogoPublicoPage({
                       </span>
                     </div>
                     <h2 className="text-lg font-semibold tracking-tight text-[#111113]">
-                      {heroShowcaseType === 'yacht' ? 'Linha Yachts & Sport Boats' : 'Linha High-Output Watercraft'}
+                      {heroShowcaseType === 'yacht'
+                        ? (vitrineSettings?.showroomCustomTitleYacht || (activeHeroBoat ? `${activeHeroBoat.fabricante} ${activeHeroBoat.modelo}` : 'Linha Yachts & Sport Boats'))
+                        : (vitrineSettings?.showroomCustomTitleJet || (activeHeroBoat ? `${activeHeroBoat.fabricante} ${activeHeroBoat.modelo}` : 'Linha High-Output Watercraft'))
+                      }
                     </h2>
                   </div>
 
@@ -1053,19 +1095,57 @@ export default function CatalogoPublicoPage({
                   </div>
                 </div>
 
-                {/* Imagem Studio com Transição Suave */}
-                <div className="relative h-[280px] sm:h-[360px] flex items-center justify-center overflow-hidden">
+                {/* Imagem Studio Interativa com Transição Suave e Clique para Dossiê */}
+                <div
+                  className="relative h-[280px] sm:h-[360px] flex items-center justify-center overflow-hidden cursor-pointer group"
+                  onClick={() => {
+                    if (activeHeroBoat) setDossierBoat(activeHeroBoat);
+                  }}
+                  title={activeHeroBoat ? `Clique para inspecionar o dossiê de ${activeHeroBoat.nome}` : undefined}
+                >
                   <AnimatePresence mode="wait">
-                    <motion.img
-                      key={heroShowcaseType}
-                      src={heroShowcaseType === 'yacht' ? studioBoatImg : studioJetImg}
-                      alt={heroShowcaseType === 'yacht' ? 'NX Boats NX280 Studio' : 'Sea-Doo RXT-X 300 Studio'}
+                    <motion.div
+                      key={activeHeroBoat?.id || heroShowcaseType}
                       initial={{ opacity: 0, scale: 0.96, y: 8 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.98, y: -8 }}
                       transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-                      className="max-h-full max-w-full object-contain mix-blend-multiply select-none"
-                    />
+                      className="w-full h-full flex items-center justify-center relative"
+                    >
+                      <img
+                        src={
+                          activeHeroBoat?.imagemPrincipal && !failedImages[`hero_${activeHeroBoat.id}`]
+                            ? activeHeroBoat.imagemPrincipal
+                            : (heroShowcaseType === 'yacht' ? studioBoatImg : studioJetImg)
+                        }
+                        alt={activeHeroBoat?.nome || (heroShowcaseType === 'yacht' ? 'NX Boats NX280 Studio' : 'Sea-Doo RXT-X 300 Studio')}
+                        onError={() => {
+                          if (activeHeroBoat) {
+                            setFailedImages(prev => ({ ...prev, [`hero_${activeHeroBoat.id}`]: true }));
+                          }
+                        }}
+                        className={`max-h-full max-w-full object-contain transition-transform duration-500 group-hover:scale-[1.03] select-none ${
+                          !activeHeroBoat?.imagemPrincipal || failedImages[`hero_${activeHeroBoat?.id}`]
+                            ? 'mix-blend-multiply'
+                            : 'rounded-2xl drop-shadow-md'
+                        }`}
+                      />
+
+                      {/* Tag Flutuante de Fração Disponível */}
+                      {activeHeroBoat && (
+                        <div className="absolute bottom-2 left-2 sm:bottom-4 sm:left-4 bg-white/95 backdrop-blur-md border border-black/[0.08] rounded-xl px-3 py-1.5 shadow-sm text-left pointer-events-none">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 block leading-tight">
+                            Fração Inteligente
+                          </span>
+                          <span className="text-xs font-bold text-[#111113] flex items-center gap-1.5 mt-0.5">
+                            <span>R$ {activeHeroBoat.valorCota.toLocaleString('pt-BR')}</span>
+                            <span className="text-[10px] font-normal text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200/60">
+                              {activeHeroBoat.cotasDisponiveisCount}/{activeHeroBoat.totalCotas} cotas
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                    </motion.div>
                   </AnimatePresence>
                 </div>
 
@@ -1074,34 +1154,55 @@ export default function CatalogoPublicoPage({
                   <div className="flex items-center gap-6">
                     <div>
                       <span className="text-neutral-400 block text-[10px] font-mono uppercase tracking-wider">
-                        Destaque da Linha
+                        Ativo em Destaque
                       </span>
                       <span className="font-semibold text-[#111113]">
-                        {heroShowcaseType === 'yacht' ? 'NX Boats · Focker · Phoenix' : 'Sea-Doo RXT-X 300 · Wake · GTI'}
+                        {activeHeroBoat
+                          ? `${activeHeroBoat.nome} · ${activeHeroBoat.fabricante} (${activeHeroBoat.ano})`
+                          : (heroShowcaseType === 'yacht' ? 'NX Boats · Focker · Phoenix' : 'Sea-Doo RXT-X 300 · Wake · GTI')
+                        }
                       </span>
                     </div>
                     <div className="hidden sm:block border-l border-neutral-200 pl-6">
                       <span className="text-neutral-400 block text-[10px] font-mono uppercase tracking-wider">
-                        Operação
+                        Motorização & Porte
                       </span>
-                      <span className="font-medium text-neutral-700">Marina, Seguro & Gestão Rateados</span>
+                      <span className="font-medium text-neutral-700">
+                        {activeHeroBoat
+                          ? `${getMotorizacaoExata(activeHeroBoat)} · ${activeHeroBoat.capacidade} Lugares`
+                          : 'Marina, Seguro & Gestão Rateados'
+                        }
+                      </span>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCategoryFilter(heroShowcaseType === 'yacht' ? 'yachts' : 'jets');
-                      document.getElementById('colecao')?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="inline-flex items-center gap-1.5 font-medium text-[#111113] hover:text-[#2B1120] transition-colors cursor-pointer group"
-                  >
-                    <span>Ver {heroShowcaseType === 'yacht' ? 'Lanchas' : 'Jetskis'}</span>
-                    <ArrowRight
-                      className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5"
-                      strokeWidth={1.75}
-                    />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {activeHeroBoat && (
+                      <button
+                        type="button"
+                        onClick={() => setDossierBoat(activeHeroBoat)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#111113] text-white hover:bg-[#2B1120] text-xs font-medium transition-all cursor-pointer shadow-2xs group"
+                      >
+                        <Compass className="w-3.5 h-3.5 text-neutral-300 group-hover:rotate-45 transition-transform" />
+                        <span>Inspecionar Dossiê</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategoryFilter(heroShowcaseType === 'yacht' ? 'yachts' : 'jets');
+                        document.getElementById('colecao')?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="inline-flex items-center gap-1 font-medium text-neutral-600 hover:text-[#111113] transition-colors cursor-pointer group text-xs"
+                    >
+                      <span>Ver {heroShowcaseType === 'yacht' ? 'Lanchas' : 'Jetskis'}</span>
+                      <ArrowRight
+                        className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5"
+                        strokeWidth={1.75}
+                      />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

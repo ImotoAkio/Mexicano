@@ -1186,3 +1186,40 @@ export interface CheckinVisita {
   temperaturaLead: 'frio' | 'morno' | 'quente' | 'fechamento';
   createdAt: string;
 }
+
+
+export interface VitrineSettings {
+  heroTitle: string;
+  heroSubtitle: string;
+  collectionTag: string;
+  heroDescription: string;
+  vendedorPadrao: string;
+  showSimulator: boolean;
+  showFloatingWhatsapp: boolean;
+  showSeaTrial: boolean;
+  destaquesIds: string[];
+  ocultosIds: string[];
+  // Showroom Studio Inteligente
+  showroomYachtId?: string;
+  showroomJetId?: string;
+  showroomCustomTitleYacht?: string;
+  showroomCustomTitleJet?: string;
+}
+
+export const DEFAULT_VITRINE_SETTINGS: VitrineSettings = {
+  heroTitle: 'Engenharia náutica.',
+  heroSubtitle: 'Fração inteligente.',
+  collectionTag: 'EL MEXICANO · COLEÇÃO 2026',
+  heroDescription:
+    'Acesso ao mais alto padrão náutico com máxima inteligência financeira. Adquira a sua fração ideal de embarcações e motos aquáticas de alta performance com até 80% de economia, divisão justa de custos e gestão integral de marina.',
+  vendedorPadrao: 'Vitor Akio Almeida Imoto',
+  showSimulator: true,
+  showFloatingWhatsapp: true,
+  showSeaTrial: true,
+  destaquesIds: [],
+  ocultosIds: [],
+  showroomYachtId: '',
+  showroomJetId: '',
+  showroomCustomTitleYacht: '',
+  showroomCustomTitleJet: '',
+};

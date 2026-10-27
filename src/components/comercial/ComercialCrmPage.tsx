@@ -80,7 +80,7 @@ const ETAPAS: {
   },
   {
     id: 'visita_agendada',
-    label: 'Visita / Sea Trial',
+    label: 'Visita / Test Drive',
     sublabel: 'Presença na Marina confirmada'
   },
   {
@@ -1047,7 +1047,7 @@ export default function ComercialCrmPage({
             </span>
           </div>
           <p className="text-xs text-stone-500 mt-1">
-            Gestão da jornada náutica: captação, sea trial na marina, propostas personalizadas e fechamento de cotas.
+            Gestão da jornada náutica: captação, test drive na marina, propostas personalizadas e fechamento de cotas.
           </p>
         </div>
 
@@ -1144,7 +1144,7 @@ export default function ComercialCrmPage({
         {/* Visitas Agendadas */}
         <div className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-semibold text-stone-500 block uppercase tracking-wider">Visitas & Sea Trial</span>
+            <span className="text-[11px] font-semibold text-stone-500 block uppercase tracking-wider">Visitas & Test Drive</span>
             <span className="text-2xl font-bold text-stone-900 tabular-nums mt-0.5 block">
               {kpiStats.visitasAgendadas}
             </span>
@@ -2068,7 +2068,7 @@ export default function ComercialCrmPage({
         </div>
       )}
 
-      {/* ─── 6. MODAL INTELIGENTE DE TRANSIÇÃO: AGENDAMENTO DE VISITA / SEA TRIAL COM CHECAGEM DE CONFLITO ─── */}
+      {/* ─── 6. MODAL INTELIGENTE DE TRANSIÇÃO: AGENDAMENTO DE VISITA / TEST DRIVE COM CHECAGEM DE CONFLITO ─── */}
       {leadParaVisita && (
         <div 
           className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
@@ -2084,7 +2084,7 @@ export default function ComercialCrmPage({
                   <Ship className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-stone-900">Agendar Visita / Sea Trial</h3>
+                  <h3 className="text-sm font-bold text-stone-900">Agendar Visita / Test Drive</h3>
                   <p className="text-[11px] text-stone-500">Lead: {leadParaVisita.nome}</p>
                 </div>
               </div>

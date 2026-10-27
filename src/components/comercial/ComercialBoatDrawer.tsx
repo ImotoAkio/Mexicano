@@ -371,7 +371,7 @@ export default function ComercialBoatDrawer({
       `🏢 *Taxa Condominial Mensal (Vale Administradora):* R$ ${Number(editingBoat.taxaAdmMensal || taxaAdmMensal || 2500).toLocaleString('pt-BR')}/mês\n\n` +
       `✨ *Diferenciais:* Gestão náutica 100% descomplicada, marinharia inclusa, manutenção preventiva rigorosa e agendamento digital no aplicativo.\n\n` +
       `📲 *Acesse o Catálogo Digital & Fotos:* ${link}\n\n` +
-      `_Podemos agendar uma visita presencial ou Sea Trial neste final de semana?_`;
+      `_Podemos agendar uma visita presencial ou Test Drive neste final de semana?_`;
 
     navigator.clipboard.writeText(text);
     setCopiedCopyText(true);
@@ -766,7 +766,7 @@ export default function ComercialBoatDrawer({
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-stone-900 flex items-center gap-2">
                     <Compass className="w-4 h-4 text-stone-500" />
-                    Direito de Uso Comercial & Sea Trials
+                    Direito de Uso Comercial & Test Drive
                   </h3>
                   <button
                     type="button"
@@ -774,11 +774,11 @@ export default function ComercialBoatDrawer({
                     className="h-8 px-3 rounded-lg bg-[#2D0A16] hover:bg-[#3B0D1E] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Anchor className="w-3.5 h-3.5 opacity-80" />
-                    <span>Agendar Visita / Sea Trial</span>
+                    <span>Agendar Visita / Test Drive</span>
                   </button>
                 </div>
                 <p className="text-xs text-stone-500 leading-relaxed">
-                  Como a <strong className="font-semibold text-stone-700">El Mexicano</strong> é titular das cotas em estoque, a equipe comercial possui direito de uso para realizar apresentações a bordo e <em>Sea Trials</em> com clientes, desde que não haja reserva de cotista no mesmo horário.
+                  Como a <strong className="font-semibold text-stone-700">El Mexicano</strong> é titular das cotas em estoque, a equipe comercial possui direito de uso para realizar apresentações a bordo e <em>Test Drive</em> com clientes, desde que não haja reserva de cotista no mesmo horário.
                 </p>
               </div>
 

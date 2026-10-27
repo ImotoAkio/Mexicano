@@ -130,7 +130,7 @@ export function KpiRow({ periodLabel = 'Últimos 30 dias', vendas = [] }: KpiRow
           r =>
             r.origem === 'comercial' ||
             r.finalidadeComercial === 'sea_trial' ||
-            (((r as any).observacoes || (r as any).observacoes) && ((r as any).observacoes || (r as any).observacoes).toLowerCase().includes('sea trial')) ||
+            (((r as any).observacoes || '') && (((r as any).observacoes || '').toLowerCase().includes('sea trial') || ((r as any).observacoes || '').toLowerCase().includes('test drive'))) ||
             (((r as any).observacoes || (r as any).observacoes) && ((r as any).observacoes || (r as any).observacoes).toLowerCase().includes('visita'))
         ).length;
         setReservasCount(seaTrials);
