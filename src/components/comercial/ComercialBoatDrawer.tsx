@@ -19,11 +19,26 @@ import {
   Share2,
   Calendar,
   Compass,
-  ExternalLink
+  ExternalLink,
+  Upload,
+  Plus,
+  Trash2,
+  Star,
+  ChevronLeft,
+  ChevronRight,
+  Flame,
+  Music,
+  Sun,
+  Droplets,
+  Coffee,
+  Armchair,
+  Sliders,
+  Sparkles
 } from 'lucide-react';
 import { Embarcacao, Cliente, Reserva, LeadComercial } from '../../types';
 import { boatDB, getAdminToken, syncWithRemote } from '../../db';
 import { DEFAULT_TOTAL_COTAS, getBoatCotasStatusList, getBoatEstoqueResumo } from '../../utils/cotaUtils';
+import { isJetSkiBoat } from '../../utils/boatUtils';
 
 interface ComercialBoatDrawerProps {
   open: boolean;
@@ -94,6 +109,12 @@ export default function ComercialBoatDrawer({
   const [horasMotor, setHorasMotor] = useState<number>(0);
   const [empresas, setEmpresas] = useState<string[]>(['VALE', 'MEXICANO']);
   const [imagemUrl, setImagemUrl] = useState('');
+  const [fotos, setFotos] = useState<string[]>([]);
+  const [newFotoUrlInput, setNewFotoUrlInput] = useState('');
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
+  const [descricaoComercial, setDescricaoComercial] = useState('');
+  const [itensConforto, setItensConforto] = useState<string[]>([]);
+  const [newItemConfortoInput, setNewItemConfortoInput] = useState('');
 
   // Cotistas Vinculados
   const [selectedDonos, setSelectedDonos] = useState<string[]>([]);
@@ -104,7 +125,10 @@ export default function ComercialBoatDrawer({
     mesa: false,
     churrasqueira: false,
     bancosCadeiras: false,
-    extintores: true
+    extintores: true,
+    som: false,
+    ducha: false,
+    solario: false
   });
 
   // Reservas e Manutenções ativas carregadas do servidor
@@ -127,23 +151,79 @@ export default function ComercialBoatDrawer({
     if (editingBoat) {
       setNome(editingBoat.nome || '');
       setNumero(editingBoat.numero || '');
-      setTipo(editingBoat.tipo === 'jet' ? 'jet' : 'lancha');
+      const isJet = editingBoat.tipo === 'jet' || isJetSkiBoat(editingBoat);
+      setTipo(isJet ? 'jet' : 'lancha');
       setFabricante(editingBoat.fabricante || '');
       setModelo(editingBoat.modelo || '');
       setAno(editingBoat.ano || new Date().getFullYear());
-      setTamanho(editingBoat.tamanho ? String(editingBoat.tamanho) : '');
+      setTamanho(editingBoat.tamanho ? String(editingBoat.tamanho) : (editingBoat.comprimento ? String(editingBoat.comprimento) : ''));
       setPotencia(editingBoat.potencia || '');
       setMarcaMotor(editingBoat.marcaMotor || '');
-      setTipoPropulsao(editingBoat.tipo_propulsao || (editingBoat.tipo === 'jet' ? 'Hidrojato' : 'Centro-Rabeta'));
-      setCapacidadePassageiros(editingBoat.capacidadePassageiros || (editingBoat.tipo === 'jet' ? 3 : 8));
+      setTipoPropulsao(editingBoat.tipo_propulsao || (isJet ? 'Hidrojato' : 'Centro-Rabeta'));
+      setCapacidadePassageiros(editingBoat.capacidadePassageiros || (isJet ? 3 : 8));
       setTotalCotas(editingBoat.totalCotas && Number(editingBoat.totalCotas) > 0 ? Number(editingBoat.totalCotas) : DEFAULT_TOTAL_COTAS);
       setValorCota(editingBoat.valorCota ? Number(editingBoat.valorCota) : 0);
-      setTaxaAdmMensal(editingBoat.taxaAdmMensal ? Number(editingBoat.taxaAdmMensal) : 0);
+      setTaxaAdmMensal(
+        editingBoat.taxaAdmMensal && Number(editingBoat.taxaAdmMensal) > 0
+          ? Number(editingBoat.taxaAdmMensal)
+          : (isJet ? 350 : 2500)
+      );
       setVaga(editingBoat.vaga || '');
       setStatusOperacional(editingBoat.statusOperacional || (editingBoat.emManutencao ? 'em_manutencao' : 'disponivel'));
       setHorasMotor(editingBoat.horasMotor || editingBoat.horimetroActual || 0);
       setEmpresas(editingBoat.empresas && editingBoat.empresas.length > 0 ? editingBoat.empresas : ['VALE', 'MEXICANO']);
-      setImagemUrl(editingBoat.imagemUrl || '');
+
+      const loadedFotos: string[] = [];
+      if (editingBoat.imagemUrl && editingBoat.imagemUrl.trim()) {
+        loadedFotos.push(editingBoat.imagemUrl.trim());
+      }
+      if (Array.isArray(editingBoat.fotos)) {
+        editingBoat.fotos.forEach(f => {
+          if (f && typeof f === 'string' && f.trim() && !loadedFotos.includes(f.trim())) {
+            loadedFotos.push(f.trim());
+          }
+        });
+      }
+      const rawAcess: any = editingBoat.acessorios;
+      if (rawAcess && typeof rawAcess === 'object' && Array.isArray(rawAcess.fotos)) {
+        rawAcess.fotos.forEach((f: any) => {
+          if (f && typeof f === 'string' && f.trim() && !loadedFotos.includes(f.trim())) {
+            loadedFotos.push(f.trim());
+          }
+        });
+      }
+      setFotos(loadedFotos);
+      setImagemUrl(loadedFotos[0] || editingBoat.imagemUrl || '');
+      setNewFotoUrlInput('');
+      setDescricaoComercial(
+        editingBoat.descricaoComercial ||
+        (rawAcess && typeof rawAcess === 'object' ? rawAcess.descricaoComercial || '' : '')
+      );
+
+      const defaultConforto = isJet
+        ? [
+            'Painel Digital Multifunção',
+            'Freio e Ré Inteligente (iBR)',
+            'Modo Sport & ECO',
+            'Escada de Reembarque',
+            'Sistema de Som Bluetooth Náutico',
+            'Compartimento Estanque p/ Celular'
+          ]
+        : [
+            'Churrasqueira Gourmet',
+            'Som Náutico Bluetooth',
+            'Toldo Retrátil',
+            'Ducha de Popa Pressurizada',
+            'Solário de Proa',
+            'Mesa de Centro Rebatível'
+          ];
+      const savedConforto =
+        rawAcess && typeof rawAcess === 'object' && Array.isArray(rawAcess.itensConforto) && rawAcess.itensConforto.length > 0
+          ? rawAcess.itensConforto
+          : defaultConforto;
+      setItensConforto(savedConforto);
+      setNewItemConfortoInput('');
+
       setSelectedDonos(Array.isArray(editingBoat.donos) ? [...editingBoat.donos] : []);
 
       setAcessorios({
@@ -151,7 +231,10 @@ export default function ComercialBoatDrawer({
         mesa: !!editingBoat.acessorios?.mesa,
         churrasqueira: !!editingBoat.acessorios?.churrasqueira,
         bancosCadeiras: !!editingBoat.acessorios?.bancosCadeiras,
-        extintores: editingBoat.acessorios?.extintores !== undefined ? !!editingBoat.acessorios.extintores : true
+        extintores: editingBoat.acessorios?.extintores !== undefined ? !!editingBoat.acessorios.extintores : true,
+        som: !!(editingBoat.acessorios as any)?.som,
+        ducha: !!(editingBoat.acessorios as any)?.ducha,
+        solario: !!(editingBoat.acessorios as any)?.solario
       });
 
       // Carregar reservas e bloqueios da embarcação
@@ -176,13 +259,28 @@ export default function ComercialBoatDrawer({
       setHorasMotor(0);
       setEmpresas(isMarinaGerente ? ['MARINA'] : ['VALE', 'MEXICANO']);
       setImagemUrl('');
+      setFotos([]);
+      setNewFotoUrlInput('');
+      setDescricaoComercial('');
+      setItensConforto([
+        'Churrasqueira Gourmet',
+        'Som Náutico Bluetooth',
+        'Toldo Retrátil',
+        'Ducha de Popa Pressurizada',
+        'Solário de Proa',
+        'Mesa de Centro Rebatível'
+      ]);
+      setNewItemConfortoInput('');
       setSelectedDonos([]);
       setAcessorios({
         tenda: false,
         mesa: false,
         churrasqueira: false,
         bancosCadeiras: false,
-        extintores: true
+        extintores: true,
+        som: false,
+        ducha: false,
+        solario: false
       });
       setActiveTab('ficha');
     }
@@ -287,9 +385,141 @@ export default function ComercialBoatDrawer({
     };
   }, [editingBoat, statusOperacional, proximasSaidas]);
 
+  // Gerenciamento de Galeria de Fotos (Múltiplas Imagens)
+  const handleMultiImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingPhotos(true);
+    setErrorMessage(null);
+    const uploadedUrls: string[] = [];
+
+    try {
+      const token = getAdminToken() || localStorage.getItem('admin_token');
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 8 * 1024 * 1024) {
+          setErrorMessage(`A imagem "${file.name}" excede o limite de 8MB.`);
+          continue;
+        }
+        const formData = new FormData();
+        formData.append('image', file);
+        const res = await fetch('/api/upload/boat-image', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.imageUrl) {
+          uploadedUrls.push(data.imageUrl);
+        } else {
+          setErrorMessage(data.message || `Erro ao enviar "${file.name}".`);
+        }
+      }
+
+      if (uploadedUrls.length > 0) {
+        const updatedFotos = [...fotos];
+        uploadedUrls.forEach(u => {
+          if (!updatedFotos.includes(u)) updatedFotos.push(u);
+        });
+        setFotos(updatedFotos);
+        setImagemUrl(updatedFotos[0] || '');
+        setSuccessMessage(
+          uploadedUrls.length === 1
+            ? '1 foto carregada na galeria. Clique em Salvar Galeria para publicar.'
+            : `${uploadedUrls.length} fotos carregadas na galeria. Clique em Salvar Galeria para publicar.`
+        );
+        setTimeout(() => setSuccessMessage(null), 3500);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Falha na comunicação ao enviar imagens.');
+    } finally {
+      setIsUploadingPhotos(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleAddPhotoUrl = () => {
+    const raw = newFotoUrlInput.trim();
+    if (!raw) return;
+    const urls = raw
+      .split(/[\n,]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (urls.length === 0) return;
+
+    const updatedFotos = [...fotos];
+    urls.forEach(u => {
+      if (!updatedFotos.includes(u)) updatedFotos.push(u);
+    });
+    setFotos(updatedFotos);
+    setImagemUrl(updatedFotos[0] || '');
+    setNewFotoUrlInput('');
+  };
+
+  const handleSetCoverPhoto = (idx: number) => {
+    if (idx <= 0 || idx >= fotos.length) return;
+    const chosen = fotos[idx];
+    const rest = fotos.filter((_, i) => i !== idx);
+    const updated = [chosen, ...rest];
+    setFotos(updated);
+    setImagemUrl(updated[0] || '');
+  };
+
+  const handleMovePhoto = (idx: number, dir: -1 | 1) => {
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= fotos.length) return;
+    const updated = [...fotos];
+    const temp = updated[idx];
+    updated[idx] = updated[targetIdx];
+    updated[targetIdx] = temp;
+    setFotos(updated);
+    setImagemUrl(updated[0] || '');
+  };
+
+  const handleRemovePhoto = (idx: number) => {
+    const updated = fotos.filter((_, i) => i !== idx);
+    setFotos(updated);
+    setImagemUrl(updated[0] || '');
+  };
+
+  const handleAddItemConforto = () => {
+    const raw = newItemConfortoInput.trim();
+    if (!raw) return;
+    const items = raw.split(',').map(s => s.trim()).filter(Boolean);
+    const next = [...itensConforto];
+    items.forEach(it => {
+      if (!next.includes(it)) next.push(it);
+    });
+    setItensConforto(next);
+    setNewItemConfortoInput('');
+  };
+
+  const handleToggleAcessorio = (key: 'som' | 'tenda' | 'mesa' | 'bancosCadeiras' | 'churrasqueira' | 'ducha', label: string) => {
+    const nextVal = !acessorios[key];
+    setAcessorios(prev => ({ ...prev, [key]: nextVal }));
+    if (nextVal) {
+      if (!itensConforto.includes(label)) {
+        setItensConforto(prev => [...prev, label]);
+      }
+    } else {
+      setItensConforto(prev => prev.filter(i => i !== label));
+    }
+  };
+
+  const handleRemoveItemConforto = (item: string) => {
+    setItensConforto(prev => prev.filter(i => i !== item));
+    if (item.includes('Churrasqueira')) setAcessorios(prev => ({ ...prev, churrasqueira: false }));
+    if (item.includes('Som')) setAcessorios(prev => ({ ...prev, som: false }));
+    if (item.includes('Toldo') || item.includes('Tenda')) setAcessorios(prev => ({ ...prev, tenda: false }));
+    if (item.includes('Ducha')) setAcessorios(prev => ({ ...prev, ducha: false }));
+    if (item.includes('Mesa')) setAcessorios(prev => ({ ...prev, mesa: false }));
+    if (item.includes('Cadeira') || item.includes('Assento')) setAcessorios(prev => ({ ...prev, bancosCadeiras: false }));
+  };
+
   // Salvar Alterações na Embarcação
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
     if (isReadOnly) return;
 
     if (!nome.trim()) {
@@ -301,6 +531,26 @@ export default function ComercialBoatDrawer({
     setErrorMessage(null);
 
     try {
+      const finalFotos = [...fotos];
+      if (newFotoUrlInput.trim()) {
+        newFotoUrlInput
+          .trim()
+          .split(/[\n,]+/)
+          .map(s => s.trim())
+          .filter(Boolean)
+          .forEach(u => {
+            if (!finalFotos.includes(u)) finalFotos.push(u);
+          });
+        setFotos(finalFotos);
+        setNewFotoUrlInput('');
+      } else if (imagemUrl.trim() && !finalFotos.includes(imagemUrl.trim())) {
+        finalFotos.unshift(imagemUrl.trim());
+        setFotos(finalFotos);
+      }
+
+      const primaryCoverUrl = finalFotos[0] || imagemUrl.trim() || '';
+      setImagemUrl(primaryCoverUrl);
+
       const payload: Partial<Embarcacao> = {
         nome: nome.trim(),
         numero: numero.trim(),
@@ -309,6 +559,7 @@ export default function ComercialBoatDrawer({
         modelo: modelo.trim(),
         ano: Number(ano) || new Date().getFullYear(),
         tamanho: tamanho.trim(),
+        comprimento: tamanho.trim(),
         potencia: potencia.trim(),
         marcaMotor: marcaMotor.trim(),
         tipo_propulsao: tipoPropulsao.trim(),
@@ -322,9 +573,17 @@ export default function ComercialBoatDrawer({
         horasMotor: Number(horasMotor) || 0,
         horimetroActual: Number(horasMotor) || 0,
         empresas,
-        imagemUrl: imagemUrl.trim(),
+        imagemUrl: primaryCoverUrl,
+        fotos: finalFotos,
+        descricaoComercial: descricaoComercial.trim(),
         donos: selectedDonos,
-        acessorios
+        acessorios: {
+          ...acessorios,
+          itensConforto,
+          configurado: true,
+          ...(finalFotos.length > 0 ? { fotos: finalFotos } : {}),
+          ...(descricaoComercial.trim() ? { descricaoComercial: descricaoComercial.trim() } : {})
+        } as any
       };
 
       let savedBoat: Embarcacao;
@@ -336,7 +595,7 @@ export default function ComercialBoatDrawer({
 
       await syncWithRemote().catch(() => {});
       if (onSave) onSave(savedBoat);
-      setSuccessMessage('Embarcação salva com sucesso.');
+      setSuccessMessage('Dados e galeria de mídias da embarcação salvos com sucesso.');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       console.error('Erro ao salvar:', err);
@@ -366,10 +625,10 @@ export default function ComercialBoatDrawer({
       `*Embarcação:* ${editingBoat.nome} (${editingBoat.modelo || editingBoat.fabricante || 'Lancha'})\n` +
       `*Ano:* ${editingBoat.ano} | *Motorização:* ${editingBoat.potencia || 'Embarcada'}\n` +
       `*Capacidade:* ${editingBoat.capacidadePassageiros || 8} pessoas a bordo\n` +
-      `*Localização:* Marina Náutica (Vaga ${editingBoat.vaga || 'Privativa'})\n\n` +
+      `*Localização:* Marina Club Velho Chico (Vaga ${editingBoat.vaga || 'Privativa'})\n\n` +
       `💰 *Valor da Fração (Cota):* R$ ${Number(editingBoat.valorCota || valorCota || 180000).toLocaleString('pt-BR')}\n` +
-      `🏢 *Taxa Condominial Mensal (Vale Administradora):* R$ ${Number(editingBoat.taxaAdmMensal || taxaAdmMensal || 2500).toLocaleString('pt-BR')}/mês\n\n` +
-      `✨ *Diferenciais:* Gestão náutica 100% descomplicada, marinharia inclusa, manutenção preventiva rigorosa e agendamento digital no aplicativo.\n\n` +
+      `🏢 *Taxa Condominial Mensal (Vale Administradora):* R$ ${Number(taxaAdmMensal || (tipo === 'jet' ? 350 : 2500)).toLocaleString('pt-BR')}/mês\n\n` +
+      `✨ *Diferenciais:* Gestão náutica 100% descomplicada, vaga e conservação inclusas na Marina Club Velho Chico, manutenção preventiva rigorosa e agendamento digital no aplicativo.\n\n` +
       `📲 *Acesse o Catálogo Digital & Fotos:* ${link}\n\n` +
       `_Podemos agendar uma visita presencial ou Test Drive neste final de semana?_`;
 
@@ -851,7 +1110,7 @@ export default function ComercialBoatDrawer({
                   <h3 className="text-sm font-semibold">Custos e regras da Vale Administradora</h3>
                 </div>
                 <p className="text-xs text-stone-500 leading-relaxed tabular-nums">
-                  Rateio mensal fixo estimado para o cotista: <strong className="font-semibold text-stone-800">R$ {Number(taxaAdmMensal || 2500).toLocaleString('pt-BR')}/mês</strong>. Inclui marinharia de cais, vaga seca/molhada, lavagem pós-uso, seguro náutico e vistorias preventivas da embarcação.
+                  Rateio mensal fixo estimado para o cotista: <strong className="font-semibold text-stone-800">R$ {Number(taxaAdmMensal || (tipo === 'jet' ? 350 : 2500)).toLocaleString('pt-BR')}/mês</strong>. {tipo === 'jet' ? 'Inclui vaga seca coberta na Marina Club Velho Chico, lavagem pós-uso, seguro náutico e revisões preventivas do jet ski.' : 'Inclui apoio de cais e píer na Marina Club Velho Chico, vaga seca/molhada, lavagem pós-uso, seguro náutico e vistorias preventivas da embarcação.'}
                 </p>
               </div>
 
@@ -862,6 +1121,33 @@ export default function ComercialBoatDrawer({
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-stone-600 block">Tipo de ativo *</label>
+                    <select
+                      disabled={isReadOnly}
+                      value={tipo}
+                      onChange={e => {
+                        const newTipo = e.target.value as 'lancha' | 'jet';
+                        setTipo(newTipo);
+                        if (newTipo === 'jet') {
+                          setTaxaAdmMensal(350);
+                          setTipoPropulsao('Hidrojato');
+                          setCapacidadePassageiros(3);
+                        } else {
+                          if (taxaAdmMensal === 350 || taxaAdmMensal === 0) {
+                            setTaxaAdmMensal(2500);
+                          }
+                          setTipoPropulsao('Centro-Rabeta');
+                          setCapacidadePassageiros(8);
+                        }
+                      }}
+                      className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs font-medium text-stone-800 focus:outline-none focus:border-stone-400 cursor-pointer"
+                    >
+                      <option value="lancha">Lancha (Embarcação)</option>
+                      <option value="jet">Jet Ski (Moto Aquática - R$ 350/mês)</option>
+                    </select>
+                  </div>
+
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-stone-600 block">Nome do barco *</label>
                     <input
@@ -895,6 +1181,18 @@ export default function ComercialBoatDrawer({
                       value={ano}
                       onChange={e => setAno(Number(e.target.value))}
                       className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-800 tabular-nums focus:outline-none focus:border-stone-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-stone-600 block">Comprimento / Porte (Pés)</label>
+                    <input
+                      type="text"
+                      disabled={isReadOnly}
+                      value={tamanho}
+                      onChange={e => setTamanho(e.target.value)}
+                      placeholder="Ex: 29 pés ou 3 Lugares"
+                      className="w-full h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-800 focus:outline-none focus:border-stone-400"
                     />
                   </div>
 
@@ -1046,50 +1344,372 @@ export default function ComercialBoatDrawer({
           )}
 
           {/* ============================================================= */}
-          {/* ABA 4: GALERIA & KIT MÍDIA EXPRESS */}
+          {/* ABA 4: GALERIA MULTI-FOTOS, PÁGINA DE VENDA & KIT MÍDIA */}
           {/* ============================================================= */}
           {activeTab === 'kit_midia' && (
             <div className="space-y-4">
-              {/* Foto da Embarcação */}
-              <div className="p-4 bg-white rounded-xl border border-stone-200/80 space-y-3">
-                <h4 className="text-sm font-semibold text-stone-900">
-                  Foto de capa comercial
-                </h4>
+              {/* 1. Galeria de Imagens Comercial (Múltiplas Fotos) */}
+              <div className="p-4 bg-white rounded-xl border border-stone-200/80 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-stone-100">
+                  <div>
+                    <h4 className="text-sm font-semibold text-stone-900 flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-stone-500" />
+                      Galeria de Fotos da Embarcação
+                    </h4>
+                    <p className="text-[11px] text-stone-500 mt-0.5">
+                      Adicione várias fotos para compor a página de venda completa no catálogo. A 1ª foto é a capa principal.
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-lg bg-stone-100 text-stone-700 text-xs font-semibold tabular-nums">
+                    {fotos.length} {fotos.length === 1 ? 'imagem' : 'imagens'}
+                  </span>
+                </div>
 
-                <div className="relative w-full h-48 rounded-xl bg-stone-50 border border-stone-200/80 overflow-hidden flex items-center justify-center">
-                  {imagemUrl ? (
-                    <img
-                      src={imagemUrl}
-                      alt={nome}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="text-center text-stone-400 space-y-1">
-                      <ImageIcon className="w-7 h-7 mx-auto opacity-50" />
-                      <p className="text-xs">Sem foto cadastrada</p>
+                {/* Preview da Foto de Capa + Grade de Fotos */}
+                {fotos.length > 0 ? (
+                  <div className="space-y-3">
+                    {/* Foto Principal (Capa) em destaque */}
+                    <div className="relative w-full h-52 rounded-xl bg-stone-100 border border-stone-200/80 overflow-hidden group">
+                      <img
+                        src={fotos[0]}
+                        alt={`${nome} - Capa`}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
+                      <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-stone-900/85 backdrop-blur-xs text-white text-[11px] font-semibold">
+                        <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                        <span>Foto de Capa Principal (1/{fotos.length})</span>
+                      </div>
+                      {!isReadOnly && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(0)}
+                          className="absolute top-3 right-3 h-7 px-2.5 rounded-md bg-white/90 hover:bg-red-600 text-stone-700 hover:text-white text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                          title="Remover foto de capa"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Remover</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Grade com todas as fotos da galeria */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {fotos.map((url, idx) => {
+                        const isCover = idx === 0;
+                        return (
+                          <div
+                            key={`${url}-${idx}`}
+                            className={`relative rounded-xl overflow-hidden border bg-stone-50 group transition-all ${
+                              isCover
+                                ? 'border-[#2D0A16] ring-1 ring-[#2D0A16]'
+                                : 'border-stone-200/80 hover:border-stone-400'
+                            }`}
+                          >
+                            <div className="aspect-[16/10] w-full overflow-hidden bg-stone-100">
+                              <img
+                                src={url}
+                                alt={`${nome} foto ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+
+                            {/* Barra de controle por miniatura */}
+                            <div className="p-2 bg-white border-t border-stone-100 flex items-center justify-between gap-1 text-[11px]">
+                              {isCover ? (
+                                <span className="font-semibold text-[#2D0A16] flex items-center gap-1 truncate">
+                                  <Star className="w-3 h-3 fill-[#2D0A16] shrink-0" />
+                                  Capa (#1)
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={isReadOnly}
+                                  onClick={() => handleSetCoverPhoto(idx)}
+                                  className="text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1 truncate cursor-pointer"
+                                  title="Definir esta imagem como foto de capa principal"
+                                >
+                                  <Star className="w-3 h-3 text-stone-400 shrink-0" />
+                                  <span>Usar como capa</span>
+                                </button>
+                              )}
+
+                              {!isReadOnly && (
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={() => handleMovePhoto(idx, -1)}
+                                    className="p-1 rounded hover:bg-stone-100 text-stone-500 disabled:opacity-30 cursor-pointer"
+                                    title="Mover para esquerda"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === fotos.length - 1}
+                                    onClick={() => handleMovePhoto(idx, 1)}
+                                    className="p-1 rounded hover:bg-stone-100 text-stone-500 disabled:opacity-30 cursor-pointer"
+                                    title="Mover para direita"
+                                  >
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemovePhoto(idx)}
+                                    className="p-1 rounded hover:bg-red-50 text-stone-400 hover:text-red-600 cursor-pointer"
+                                    title="Excluir imagem"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative w-full h-40 rounded-xl bg-stone-50 border border-dashed border-stone-300 flex flex-col items-center justify-center text-center p-4">
+                    <ImageIcon className="w-7 h-7 text-stone-400 mb-1.5 opacity-60" />
+                    <p className="text-xs font-medium text-stone-600">Nenhuma foto cadastrada nesta embarcação</p>
+                    <p className="text-[11px] text-stone-400 mt-0.5">
+                      Envie fotos do seu computador/celular ou adicione links de imagens abaixo.
+                    </p>
+                  </div>
+                )}
+
+                {/* Controles de Adição: Upload Múltiplo + URL */}
+                {!isReadOnly && (
+                  <div className="space-y-2.5 pt-1">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <label className="h-9 px-3.5 rounded-lg bg-stone-100 hover:bg-stone-200/80 border border-stone-200/80 text-stone-800 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0">
+                        <Upload className="w-3.5 h-3.5 text-stone-600" />
+                        <span>{isUploadingPhotos ? 'Enviando fotos...' : 'Enviar Fotos do Dispositivo'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          disabled={isUploadingPhotos}
+                          onChange={handleMultiImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <input
+                          type="text"
+                          placeholder="Ou cole a URL da imagem (ex: https://...)"
+                          value={newFotoUrlInput}
+                          onChange={e => setNewFotoUrlInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddPhotoUrl();
+                            }
+                          }}
+                          className="flex-1 h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-800 focus:outline-none focus:border-stone-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddPhotoUrl}
+                          className="h-9 px-3 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200/80 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Adicionar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Conteúdo da Página de Venda (Descrição Comercial & Equipamentos) */}
+              <div className="p-4 bg-white rounded-xl border border-stone-200/80 space-y-4">
+                <div className="pb-2 border-b border-stone-100">
+                  <h4 className="text-sm font-semibold text-stone-900">
+                    Conteúdo da Página de Venda no Catálogo
+                  </h4>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    Personalize o texto de apresentação e os itens de série exibidos na ficha completa da embarcação.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-stone-700 block">
+                    Apresentação / Descrição comercial do ativo
+                  </label>
+                  <textarea
+                    rows={3}
+                    disabled={isReadOnly}
+                    value={descricaoComercial}
+                    onChange={e => setDescricaoComercial(e.target.value)}
+                    placeholder="Descreva os diferenciais desta embarcação, estado de conservação, acabamento de bordo, navegação e experiência para o cotista..."
+                    className="w-full p-3 rounded-lg border border-stone-200 text-xs text-stone-800 focus:outline-none focus:border-stone-400 leading-relaxed"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-stone-800 block">
+                      Memorial descritivo de equipamentos & conforto a bordo ({itensConforto.length})
+                    </label>
+                    <span className="font-mono text-[10px] text-stone-400">
+                      Configure os acessórios desta embarcação
+                    </span>
+                  </div>
+
+                  {/* Toggles Rápidos dos 6 Acessórios Principais */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { key: 'churrasqueira', label: 'Churrasqueira Gourmet', icon: Flame },
+                      { key: 'som', label: 'Som Náutico Bluetooth', icon: Music },
+                      { key: 'tenda', label: 'Toldo Retrátil', icon: Sun },
+                      { key: 'ducha', label: 'Ducha de Popa Pressurizada', icon: Droplets },
+                      { key: 'mesa', label: 'Mesa de Centro Rebatível', icon: Coffee },
+                      { key: 'bancosCadeiras', label: 'Cadeiras / Assentos Confort', icon: Armchair },
+                    ].map(acc => {
+                      const isActive =
+                        acc.key === 'churrasqueira'
+                          ? (acessorios.churrasqueira || itensConforto.some(i => i.toLowerCase().includes('churrasqueira')))
+                          : acc.key === 'som'
+                          ? (acessorios.som || itensConforto.some(i => i.toLowerCase().includes('som')))
+                          : acc.key === 'tenda'
+                          ? (acessorios.tenda || itensConforto.some(i => i.toLowerCase().includes('toldo') || i.toLowerCase().includes('tenda')))
+                          : acc.key === 'ducha'
+                          ? (acessorios.ducha || itensConforto.some(i => i.toLowerCase().includes('ducha')))
+                          : acc.key === 'mesa'
+                          ? (acessorios.mesa || itensConforto.some(i => i.toLowerCase().includes('mesa')))
+                          : (acessorios.bancosCadeiras || itensConforto.some(i => i.toLowerCase().includes('cadeira') || i.toLowerCase().includes('assento')));
+
+                      const Icon = acc.icon;
+
+                      return (
+                        <button
+                          key={acc.key}
+                          type="button"
+                          disabled={isReadOnly}
+                          onClick={() => handleToggleAcessorio(acc.key as any, acc.label)}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2 ${
+                            isActive
+                              ? 'bg-stone-900 text-white border-stone-900 shadow-2xs'
+                              : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200 opacity-60 hover:opacity-100'
+                          }`}
+                        >
+                          <span
+                            className={`w-4 h-4 rounded-md flex items-center justify-center shrink-0 border ${
+                              isActive ? 'bg-white text-stone-900 border-white' : 'border-stone-300 bg-white'
+                            }`}
+                          >
+                            {isActive && <Check className="w-3 h-3" strokeWidth={3} />}
+                          </span>
+                          <span className="text-[11px] font-medium truncate">{acc.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Chips de Itens Ativos */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {itensConforto.map(item => (
+                      <span
+                        key={item}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200/80 text-xs font-medium text-stone-800"
+                      >
+                        <span>{item}</span>
+                        {!isReadOnly && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItemConforto(item)}
+                            className="text-stone-400 hover:text-red-600 cursor-pointer"
+                            title="Remover item"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+
+                  {!isReadOnly && (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={newItemConfortoInput}
+                          onChange={e => setNewItemConfortoInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddItemConforto();
+                            }
+                          }}
+                          placeholder="Adicionar diferencial (ex: Solário de Proa, Teka EVA, GPS Garmin, Guincho Elétrico...)"
+                          className="flex-1 h-8.5 px-3 rounded-lg border border-stone-200 text-xs text-stone-800 focus:outline-none focus:border-stone-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddItemConforto}
+                          className="h-8.5 px-3 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Incluir</span>
+                        </button>
+                      </div>
+
+                      {/* Sugestões de Diferenciais */}
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {[
+                          'Solário de Proa',
+                          'Teka EVA Premium',
+                          'GPS / Sonar Garmin',
+                          'Guincho Elétrico',
+                          'Cristaleira Iluminada',
+                          'Farol de Busca 360°',
+                          'Inversor 110V/220V',
+                          'Salvatagem Marinha',
+                          'Cooler Embutido',
+                          'Carreta Rodoviária'
+                        ].map(diff => (
+                          <button
+                            key={diff}
+                            type="button"
+                            onClick={() => {
+                              if (!itensConforto.includes(diff)) {
+                                setItensConforto(prev => [...prev, diff]);
+                              }
+                            }}
+                            className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors cursor-pointer ${
+                              itensConforto.includes(diff)
+                                ? 'bg-stone-200 text-stone-500 border-stone-300 opacity-50 cursor-default'
+                                : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-200'
+                            }`}
+                          >
+                            + {diff}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="URL da imagem..."
-                    value={imagemUrl}
-                    onChange={e => setImagemUrl(e.target.value)}
-                    className="flex-1 h-9 px-3 rounded-lg border border-stone-200 text-xs text-stone-800 focus:outline-none focus:border-stone-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    className="h-9 px-3.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium cursor-pointer transition-colors"
-                  >
-                    Salvar Imagem
-                  </button>
-                </div>
+                {!isReadOnly && (
+                  <div className="pt-2 border-t border-stone-100 flex items-center justify-end">
+                    <button
+                      type="button"
+                      disabled={isSaving || isUploadingPhotos}
+                      onClick={handleSave}
+                      className="h-9 px-4 rounded-lg bg-[#2D0A16] hover:bg-[#3B0D1E] text-white text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Save className="w-3.5 h-3.5 opacity-80" />
+                      <span>{isSaving ? 'Salvando...' : 'Salvar Galeria & Página de Venda'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Botões do Kit Mídia Express */}
+              {/* 3. Botões do Kit Mídia Express */}
               <div className="p-4 bg-white rounded-xl border border-stone-200/80 space-y-3">
                 <h4 className="text-sm font-semibold text-stone-900">
                   Divulgação comercial e WhatsApp

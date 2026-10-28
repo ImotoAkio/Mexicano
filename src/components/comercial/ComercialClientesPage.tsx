@@ -344,8 +344,8 @@ export default function ComercialClientesPage({ userRole }: ComercialClientesPag
           </div>
           <p className="text-xs text-stone-500">
             {isMarinaGerente
-              ? 'Gerencie cotistas, marinheiros autorizados e contratos vinculados à Marina.'
-              : 'Gerencie cotistas, contratos e clientes da Vale Administradora e Marina.'}
+              ? 'Gerencie cotistas, condutores autorizados e contratos vinculados à Marina Club Velho Chico.'
+              : 'Gerencie cotistas, contratos e clientes da Vale Administradora e Marina Club Velho Chico.'}
           </p>
         </div>
 

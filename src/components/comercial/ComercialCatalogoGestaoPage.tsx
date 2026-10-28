@@ -37,7 +37,9 @@ import {
 import { Embarcacao, Cliente, LeadComercial } from '../../types';
 import { boatDB, clientDB } from '../../db';
 import { getBoatEstoqueResumo, getBoatCotasStatusList } from '../../utils/cotaUtils';
+import { getTaxaAdmMensal, isJetSkiBoat } from '../../utils/boatUtils';
 import ComercialBoatDrawer from './ComercialBoatDrawer';
+import ComercialEquipamentosModal from './ComercialEquipamentosModal';
 
 interface ComercialCatalogoGestaoPageProps {
   operadorNome?: string;
@@ -141,6 +143,8 @@ export default function ComercialCatalogoGestaoPage({
   // Modais de Operação
   const [boatDrawerOpen, setBoatDrawerOpen] = useState(false);
   const [selectedBoatForEdit, setSelectedBoatForEdit] = useState<Embarcacao | null>(null);
+  const [equipModalOpen, setEquipModalOpen] = useState(false);
+  const [selectedBoatForEquip, setSelectedBoatForEquip] = useState<Embarcacao | null>(null);
   const [qrModalBoat, setQrModalBoat] = useState<Embarcacao | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrGenerating, setQrGenerating] = useState(false);
@@ -274,16 +278,11 @@ export default function ComercialCatalogoGestaoPage({
         const estoque = getBoatEstoqueResumo(b.id, clients, b);
         const slots = getBoatCotasStatusList(b.id, clients, b);
         const valorCota = Number((b as any).valorCota) || 180000;
-        const taxaAdmMensal = Number((b as any).taxaAdmMensal) || 2500;
+        const isJet = isJetSkiBoat(b);
+        const taxaAdmMensal = getTaxaAdmMensal(b);
         const totalDisponiveis = estoque.cotasDisponiveis + estoque.cotasRepasse;
         const isOculto = vitrineSettings.ocultosIds.includes(b.id);
         const isDestaque = vitrineSettings.destaquesIds.includes(b.id);
-        const isJet =
-          b.tipo === 'jet' ||
-          `${b.nome} ${b.modelo}`.toUpperCase().includes('JET') ||
-          `${b.nome} ${b.modelo}`.toUpperCase().includes('SEA DOO') ||
-          `${b.nome} ${b.modelo}`.toUpperCase().includes('RXT') ||
-          `${b.nome} ${b.modelo}`.toUpperCase().includes('GTI');
 
         return {
           boat: b,
@@ -356,12 +355,12 @@ export default function ComercialCatalogoGestaoPage({
       `• Estaleiro / Modelo: ${b.fabricante || 'Premium'} · ${b.modelo || 'Série Especial'}\n` +
       `• Propulsão: ${b.potencia || 'Motorização Homologada'}\n` +
       `• Capacidade: ${b.capacidadePassageiros || 10} passageiros\n` +
-      `• Alocação: ${b.vaga || 'Marina Náutica Privativa'}\n\n` +
+      `• Alocação: ${b.vaga && b.vaga !== 'Marina Náutica' && b.vaga !== 'Marina Náutica Privativa' ? b.vaga : 'Marina Club Velho Chico'}\n\n` +
       `ESTRUTURA SOCIETÁRIA & VALUATION\n` +
       `• Sistema: Propriedade compartilhada (${totalCotas} frações societárias)\n` +
       `• Disponibilidade atual: ${totalDisponiveis} ${totalDisponiveis === 1 ? 'fração livre' : 'frações livres'}\n` +
       `• Valor da Fração: R$ ${valorCota.toLocaleString('pt-BR')}\n` +
-      `• Taxa de Gestão / Marinharia: R$ ${taxaAdmMensal.toLocaleString('pt-BR')}/mês\n\n` +
+      `• Taxa de Gestão na Marina Club Velho Chico: R$ ${taxaAdmMensal.toLocaleString('pt-BR')}/mês\n\n` +
       `Acesse a vitrine digital interativa e galeria fotográfica:\n` +
       `${boatUrl}\n\n` +
       `${selectedConsultant}\nConsultoria Náutica Patrimonial · El Mexicano`;
@@ -947,6 +946,20 @@ export default function ComercialCatalogoGestaoPage({
                                 <span>Kit WhatsApp</span>
                               </button>
 
+                              {/* Configurar Equipamentos e Acessórios no Catálogo */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBoatForEquip(boat);
+                                  setEquipModalOpen(true);
+                                }}
+                                className="h-7 px-2.5 rounded-lg bg-stone-900 hover:bg-black text-white text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                title="Configurar Acessórios Inclusos no Catálogo (Som, Tenda, Mesa, Cadeira, Churrasqueira, Ducha, Diferenciais...)"
+                              >
+                                <Sliders className="w-3 h-3 text-stone-300" />
+                                <span>Equipamentos</span>
+                              </button>
+
                               {/* QR Code / Placa Marina */}
                               <button
                                 type="button"
@@ -1108,6 +1121,20 @@ export default function ComercialCatalogoGestaoPage({
                         ) : (
                           <Share2 className="w-3.5 h-3.5" />
                         )}
+                      </button>
+
+                      {/* Configurar Equipamentos e Acessórios no Catálogo */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedBoatForEquip(boat);
+                          setEquipModalOpen(true);
+                        }}
+                        className="h-8 px-2.5 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
+                        title="Configurar Acessórios e Diferenciais desta embarcação no Catálogo"
+                      >
+                        <Sliders className="w-3.5 h-3.5 text-stone-300" />
+                        <span>Equipamentos</span>
                       </button>
 
                       <button
@@ -1495,7 +1522,7 @@ export default function ComercialCatalogoGestaoPage({
                 <div className="space-y-2 bg-white p-4 rounded-xl border border-stone-200/80 shadow-2xs">
                   <label className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
                     <span>Lancha no Showroom Studio</span>
-                    <span className="text-[10px] font-semibold text-stone-400 font-mono">Linha Yachts</span>
+                    <span className="text-[10px] font-semibold text-stone-400 font-mono">Linha Lanchas</span>
                   </label>
                   <select
                     value={vitrineSettings.showroomYachtId || ''}
@@ -1513,7 +1540,7 @@ export default function ComercialCatalogoGestaoPage({
                   </select>
                   <input
                     type="text"
-                    placeholder="Título personalizado (opcional, ex: Linha Yachts & Sport Boats)"
+                    placeholder="Título personalizado (opcional, ex: Linha Lanchas)"
                     value={vitrineSettings.showroomCustomTitleYacht || ''}
                     onChange={(e) => setVitrineSettings({ ...vitrineSettings, showroomCustomTitleYacht: e.target.value })}
                     className="w-full h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-[11px] text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-stone-400"
@@ -1527,7 +1554,7 @@ export default function ComercialCatalogoGestaoPage({
                 <div className="space-y-2 bg-white p-4 rounded-xl border border-stone-200/80 shadow-2xs">
                   <label className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
                     <span>Jetski no Showroom Studio</span>
-                    <span className="text-[10px] font-semibold text-stone-400 font-mono">Linha Watercraft</span>
+                    <span className="text-[10px] font-semibold text-stone-400 font-mono">Linha Jetski</span>
                   </label>
                   <select
                     value={vitrineSettings.showroomJetId || ''}
@@ -1545,7 +1572,7 @@ export default function ComercialCatalogoGestaoPage({
                   </select>
                   <input
                     type="text"
-                    placeholder="Título personalizado (opcional, ex: Linha High-Output Watercraft)"
+                    placeholder="Título personalizado (opcional, ex: Linha Jetskis)"
                     value={vitrineSettings.showroomCustomTitleJet || ''}
                     onChange={(e) => setVitrineSettings({ ...vitrineSettings, showroomCustomTitleJet: e.target.value })}
                     className="w-full h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-[11px] text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-stone-400"
@@ -1758,6 +1785,21 @@ export default function ComercialCatalogoGestaoPage({
         onSave={(saved) => {
           setBoats(boatDB.getAll() as Embarcacao[]);
           setToastMessage(`Ativo "${saved.modelo || saved.nome}" atualizado com sucesso.`);
+          setTimeout(() => setToastMessage(null), 3500);
+        }}
+      />
+
+      {/* ── 8. MODAL DE CONFIGURAÇÃO DE EQUIPAMENTOS & ACESSÓRIOS ── */}
+      <ComercialEquipamentosModal
+        isOpen={equipModalOpen}
+        onClose={() => {
+          setEquipModalOpen(false);
+          setSelectedBoatForEquip(null);
+        }}
+        boat={selectedBoatForEquip}
+        onSaveSuccess={(saved) => {
+          setBoats(boatDB.getAll() as Embarcacao[]);
+          setToastMessage(`Memorial descritivo de "${saved.modelo || saved.nome}" salvo com sucesso.`);
           setTimeout(() => setToastMessage(null), 3500);
         }}
       />

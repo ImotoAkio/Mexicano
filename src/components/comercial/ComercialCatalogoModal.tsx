@@ -14,6 +14,7 @@ import {
 import { Embarcacao, Cliente } from '../../types';
 import { boatDB, clientDB } from '../../db';
 import { getBoatEstoqueResumo } from '../../utils/cotaUtils';
+import { getTaxaAdmMensal } from '../../utils/boatUtils';
 import logoMexicano from '../../assets/images/logo_mexicano_trim.png';
 
 interface ComercialCatalogoModalProps {
@@ -96,7 +97,7 @@ export default function ComercialCatalogoModal({
       .map((b) => {
         const estoque = getBoatEstoqueResumo(b.id, clients, b);
         const valorCota = Number((b as any).valorCota) || 180000;
-        const taxaAdmMensal = Number((b as any).taxaAdmMensal) || 2500;
+        const taxaAdmMensal = getTaxaAdmMensal(b);
         const totalDisponiveis = estoque.cotasDisponiveis + estoque.cotasRepasse;
 
         return {
@@ -147,12 +148,12 @@ export default function ComercialCatalogoModal({
       `• Modelo: ${b.fabricante || 'Premium'} · ${b.modelo || 'Série Especial'}\n` +
       `• Propulsão: ${b.potencia || 'Motorização Homologada'}\n` +
       `• Capacidade: ${b.capacidadePassageiros || 10} passageiros\n` +
-      `• Alocação: ${b.vaga || 'Marina Náutica Privativa'}\n\n` +
+      `• Alocação: ${b.vaga && b.vaga !== 'Marina Náutica' && b.vaga !== 'Marina Náutica Privativa' ? b.vaga : 'Marina Club Velho Chico'}\n\n` +
       `ESTRUTURA SOCIETÁRIA & VALUATION\n` +
       `• Sistema: Cotas inteligentes (${totalCotas} frações totais)\n` +
       `• Disponibilidade atual: ${vagasLivres} ${vagasLivres === 1 ? 'fração disponível' : 'frações disponíveis'}\n` +
       `• Valor de aquisição da fração: R$ ${valorCota.toLocaleString('pt-BR')}\n` +
-      `• Taxa de gestão e marinharia: R$ ${taxaAdmMensal.toLocaleString('pt-BR')}/mês\n\n` +
+      `• Taxa de gestão na Marina Club Velho Chico: R$ ${taxaAdmMensal.toLocaleString('pt-BR')}/mês\n\n` +
       `Ficha técnica e galeria completa:\n` +
       `${boatUrl}\n\n` +
       `${vendedorNome}\nConsultoria Náutica · El Mexicano`;

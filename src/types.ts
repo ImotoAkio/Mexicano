@@ -204,6 +204,7 @@ export interface Embarcacao {
   ano: number;
   vaga?: string;
   tamanho?: string | number;
+  comprimento?: string | number; // Comprimento em pés (ex: "29 pés", "24ft", "12m")
   chassi?: string; // N° do Chassi
   inscricao?: string; // N° de Inscrição na Marinha
   tipo_propulsao?: string; // Tipo de propulsão (ex: MOTOR, JET)
@@ -217,7 +218,9 @@ export interface Embarcacao {
   googleCalendarId?: string; // Optional Google Calendar ID directly linked to the boat
   emManutencao?: boolean; // Tag for maintenance
   whatsappGroupId?: string; // Evolution API group ID for notifications
-  imagemUrl?: string; // URL for the boat image
+  imagemUrl?: string; // URL for the boat cover image
+  fotos?: string[]; // Galeria completa de fotos da embarcação
+  descricaoComercial?: string; // Texto de apresentação comercial para a página de venda no catálogo
   documentoUrl?: string; // URL for the boat document PDF
   seguroUrl?: string; // URL for the boat insurance PDF
   temSom?: boolean; // Indicates if the boat requires sound control checks
@@ -236,6 +239,10 @@ export interface Embarcacao {
     bancosCadeiras?: boolean;
     churrasqueira?: boolean;
     extintores?: boolean;
+    som?: boolean;
+    ducha?: boolean;
+    solario?: boolean;
+    itensConforto?: string[];
     observacoes?: string;
     ultimaConferencia?: string;
     historico?: RegistroAcessorios[];

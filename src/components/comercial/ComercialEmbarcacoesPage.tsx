@@ -27,6 +27,7 @@ import {
 import { boatDB, clientDB, syncWithRemote, onDbUpdate, isDbLoaded } from '../../db';
 import { Embarcacao, Cliente } from '../../types';
 import { getBoatCotaOccupancyMap, getBoatTotalCotas, getClientCotasForBoat, getBoatEstoqueResumo, getBoatCotasStatusList, normalizeCotaCode } from '../../utils/cotaUtils';
+import { getTaxaAdmMensal } from '../../utils/boatUtils';
 import { isInternalMexicano, formatBoatName } from '../../utils/constants';
 import ComercialBoatDrawer from './ComercialBoatDrawer';
 import ComercialCotaTransferModal from './ComercialCotaTransferModal';
@@ -888,7 +889,7 @@ export default function ComercialEmbarcacoesPage({
             const isSoldOut = estoque.cotasDisponiveisMexicano === 0 && estoque.cotasRepasse === 0;
 
             const valorCota = Number(boat.valorCota) || 180000;
-            const taxaAdmMensal = Number(boat.taxaAdmMensal) || 2500;
+            const taxaAdmMensal = getTaxaAdmMensal(boat);
 
             const handleCopyLink = () => {
               const vendedor = localStorage.getItem('admin_nome') || 'comercial';

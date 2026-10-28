@@ -489,6 +489,26 @@ router.get(["/catalogo/public", "/public/catalogo", "/catalogo-publico"], async 
       'https://images.unsplash.com/photo-1507652313519-d4e9174996dd?auto=format&fit=crop&w=1200&q=80'
     ];
 
+    const inferBoatLength = (modelo: string, tamanho?: any, isJet?: boolean): string => {
+      if (tamanho !== undefined && tamanho !== null && String(tamanho).trim()) {
+        const clean = String(tamanho).trim();
+        if (clean !== '28 pés' || (modelo && (modelo.includes('280') || modelo.includes('28')))) return clean;
+      }
+      if (isJet) return '3 Lugares';
+      const match = (modelo || '').match(/(?:NX|FOCKER|PHOENIX|MX|F|ECOMARINE)?\s*(\d{2,3})/i);
+      if (match && match[1]) {
+        const num = parseInt(match[1], 10);
+        if (num >= 160 && num <= 600) {
+          const feet = num % 10 === 0 ? `${num / 10}` : `${(num / 10).toFixed(1).replace('.', ',')}`;
+          return `${feet} pés`;
+        }
+        if (num >= 16 && num <= 65) {
+          return `${num} pés`;
+        }
+      }
+      return (tamanho && String(tamanho).trim()) ? String(tamanho).trim() : 'Porte Homologado';
+    };
+
     // Ocultar dados confidenciais internos (nomes de cotistas, dados financeiros restritos)
     const barcos = vitrineRaw.map((b: any, index: number) => {
       let fotos: string[] = [];
@@ -507,38 +527,111 @@ router.get(["/catalogo/public", "/public/catalogo", "/catalogo-publico"], async 
         fotos.push(fallbackNauticalImages[index % fallbackNauticalImages.length]);
       }
 
+      const isJetAsset = b.tipo === 'jet' || `${b.nome} ${b.modelo}`.toUpperCase().includes('JET') || `${b.nome} ${b.modelo}`.toUpperCase().includes('SEA DOO') || `${b.nome} ${b.modelo}`.toUpperCase().includes('RXT') || `${b.nome} ${b.modelo}`.toUpperCase().includes('GTI');
+
       let itensConforto: string[] = [];
-      if (b.acessorios) {
-        if (Array.isArray(b.acessorios)) {
-          itensConforto = b.acessorios;
-        } else if (typeof b.acessorios === 'string') {
+      const rawAcessorios = b.acessorios;
+      let parsedAcessoriosObj: any = null;
+      if (rawAcessorios) {
+        if (Array.isArray(rawAcessorios)) {
+          itensConforto = rawAcessorios.filter((x: any) => typeof x === 'string' && x.trim());
+        } else if (typeof rawAcessorios === 'object') {
+          parsedAcessoriosObj = rawAcessorios;
+        } else if (typeof rawAcessorios === 'string') {
           try {
-            const parsed = JSON.parse(b.acessorios);
-            if (Array.isArray(parsed)) itensConforto = parsed;
-            else itensConforto = b.acessorios.split(',').map((s: string) => s.trim());
+            const parsed = JSON.parse(rawAcessorios);
+            if (Array.isArray(parsed)) {
+              itensConforto = parsed.filter((x: any) => typeof x === 'string' && x.trim());
+            } else if (typeof parsed === 'object' && parsed !== null) {
+              parsedAcessoriosObj = parsed;
+            } else {
+              itensConforto = rawAcessorios.split(',').map((s: string) => s.trim()).filter(Boolean);
+            }
           } catch {
-            itensConforto = b.acessorios.split(',').map((s: string) => s.trim());
+            itensConforto = rawAcessorios.split(',').map((s: string) => s.trim()).filter(Boolean);
           }
         }
       }
-      if (itensConforto.length === 0) {
-        itensConforto = [
-          'Churrasqueira Gourmet',
-          'Som Náutico Bluetooth',
-          'Toldo Retrátil',
-          'Ducha de Popa Pressurizada',
-          'Solário de Proa',
-          'Mesa de Centro Rebatível'
-        ];
+
+      if (parsedAcessoriosObj && parsedAcessoriosObj.configurado) {
+        if (Array.isArray(parsedAcessoriosObj.itensConforto)) {
+          itensConforto = parsedAcessoriosObj.itensConforto.filter((x: any) => typeof x === 'string' && x.trim());
+        }
+      } else {
+        if (parsedAcessoriosObj) {
+          if (Array.isArray(parsedAcessoriosObj.fotos)) {
+            parsedAcessoriosObj.fotos.forEach((f: any) => {
+              if (f && typeof f === 'string' && !fotos.includes(f)) fotos.push(f);
+            });
+          }
+          const labelsMap: Record<string, string> = {
+            tenda: 'Toldo Retrátil',
+            mesa: 'Mesa de Centro Rebatível',
+            churrasqueira: 'Churrasqueira Gourmet',
+            bancosCadeiras: 'Cadeiras / Assentos Confort',
+            extintores: 'Salvatagem Homologada',
+            som: 'Som Náutico Bluetooth',
+            ducha: 'Ducha de Popa Pressurizada',
+            solario: 'Solário de Proa'
+          };
+          Object.keys(labelsMap).forEach((k) => {
+            if (parsedAcessoriosObj[k] === true && !itensConforto.includes(labelsMap[k])) {
+              itensConforto.push(labelsMap[k]);
+            }
+          });
+          if (Array.isArray(parsedAcessoriosObj.itensConforto)) {
+            parsedAcessoriosObj.itensConforto.forEach((item: any) => {
+              if (item && typeof item === 'string' && item.trim() && !itensConforto.includes(item.trim())) {
+                itensConforto.push(item.trim());
+              }
+            });
+          }
+        }
+
+        if (itensConforto.length === 0) {
+          if (isJetAsset) {
+            itensConforto = [
+              'Painel Digital Multifunção',
+              'Freio e Ré Inteligente (iBR)',
+              'Modo Sport & ECO',
+              'Escada de Reembarque',
+              'Sistema de Som Bluetooth Náutico',
+              'Compartimento Estanque p/ Celular'
+            ];
+          } else {
+            itensConforto = [
+              'Churrasqueira Gourmet',
+              'Som Náutico Bluetooth',
+              'Toldo Retrátil',
+              'Ducha de Popa Pressurizada',
+              'Solário de Proa',
+              'Mesa de Centro Rebatível'
+            ];
+          }
+        }
       }
 
       const totalCotas = Number(b.totalCotas) > 0 ? Number(b.totalCotas) : 4;
       const cotasDisponiveisCount = (Number(b.cotasDisponiveisEstoque) || 0) + (Number(b.cotasEmRepasse) || 0);
+      const publicSlots = Array.isArray(b.slots)
+        ? b.slots.map((s: any) => ({
+            cota: s.cota,
+            status:
+              s.status === 'disponivel_mexicano'
+                ? 'disponivel'
+                : s.status === 'em_repasse'
+                ? 'repasse'
+                : s.status === 'reservada'
+                ? 'reservada'
+                : 'alocada',
+            valor: s.repasseInfo?.valorRepasse || Number(b.valorCota) || 180000
+          }))
+        : [];
 
-      const isJetAsset = b.tipo === 'jet' || `${b.nome} ${b.modelo}`.toUpperCase().includes('JET') || `${b.nome} ${b.modelo}`.toUpperCase().includes('SEA DOO') || `${b.nome} ${b.modelo}`.toUpperCase().includes('RXT') || `${b.nome} ${b.modelo}`.toUpperCase().includes('GTI');
       return {
         id: b.id,
         nome: b.nome,
+        numero: b.numero || '',
         tipo: isJetAsset ? 'jet' : (b.tipo || 'lancha'),
         modelo: b.modelo || 'Lancha Esportiva & Passeio',
         fabricante: b.fabricante || 'Estaleiro Premium',
@@ -551,15 +644,19 @@ router.get(["/catalogo/public", "/public/catalogo", "/catalogo-publico"], async 
         capacidade: b.capacidadePassageiros || (b.tipo === 'jet' ? 3 : 8),
         fotos,
         imagemPrincipal: fotos[0],
+        descricaoComercial: b.descricaoComercial || (parsedAcessoriosObj && parsedAcessoriosObj.descricaoComercial) || '',
         itensConforto,
+        acessorios: parsedAcessoriosObj || null,
         valorCota: Number(b.valorCota) || 180000,
-        taxaAdmMensal: Number(b.taxaAdmMensal) || 2500,
+        taxaAdmMensal: isJetAsset ? 350 : (Number(b.taxaAdmMensal) > 0 ? Number(b.taxaAdmMensal) : 2500),
         totalCotas,
         cotasDisponiveisCount,
         cotasEstoqueCount: Number(b.cotasDisponiveisEstoque) || 0,
         cotasRepasseCount: Number(b.cotasEmRepasse) || 0,
-        vaga: b.vaga || 'Marina Náutica',
-        tamanho: b.tamanho || '28 pés',
+        slots: publicSlots,
+        vaga: !b.vaga || !b.vaga.trim() || b.vaga === 'Marina Náutica' || b.vaga === 'Marina Privativa' || b.vaga === 'Marina Náutica Privativa' ? 'Marina Club Velho Chico' : b.vaga,
+        tamanho: inferBoatLength(b.modelo || '', b.comprimento || b.tamanho, isJetAsset),
+        comprimento: inferBoatLength(b.modelo || '', b.comprimento || b.tamanho, isJetAsset),
         statusMarina: b.statusMarina || 'na_marina'
       };
     });
@@ -663,6 +760,91 @@ router.get(["/catalogo/public", "/public/catalogo", "/catalogo-publico"], async 
   } catch (err: any) {
     console.error("[GET /catalogo/public Error]:", err);
     res.status(500).json({ error: true, message: "Erro ao carregar catálogo público" });
+  }
+});
+
+// ==========================================
+// Atualização de Equipamentos & Acessórios da Embarcação no Catálogo
+// ==========================================
+router.post(["/catalogo/barco/:id/acessorios", "/barco/:id/acessorios"], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      som,
+      tenda,
+      mesa,
+      bancosCadeiras,
+      churrasqueira,
+      ducha,
+      diferenciais,
+      itensConforto,
+      observacoes
+    } = req.body;
+
+    const currentPool = getDbPool();
+    if (!currentPool) return res.status(500).json({ error: "Banco de dados offline" });
+
+    const [rows]: any = await currentPool.query("SELECT * FROM Embarcacoes WHERE id = ?", [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "Embarcação não encontrada" });
+    }
+
+    const existingBoat = rows[0];
+    let existingAcessorios: any = {};
+    if (existingBoat.acessorios) {
+      try {
+        existingAcessorios = typeof existingBoat.acessorios === 'string'
+          ? JSON.parse(existingBoat.acessorios)
+          : existingBoat.acessorios;
+      } catch {}
+    }
+
+    let resolvedItensConforto: string[] = Array.isArray(itensConforto) ? itensConforto.filter((x: any) => typeof x === 'string' && x.trim()) : [];
+    if (!itensConforto || resolvedItensConforto.length === 0) {
+      resolvedItensConforto = [];
+      if (churrasqueira) resolvedItensConforto.push('Churrasqueira Gourmet');
+      if (som) resolvedItensConforto.push('Som Náutico Bluetooth');
+      if (tenda) resolvedItensConforto.push('Toldo Retrátil');
+      if (ducha) resolvedItensConforto.push('Ducha de Popa Pressurizada');
+      if (mesa) resolvedItensConforto.push('Mesa de Centro Rebatível');
+      if (bancosCadeiras) resolvedItensConforto.push('Cadeiras / Assentos Confort');
+      if (Array.isArray(diferenciais)) {
+        diferenciais.forEach((d: string) => {
+          if (d && typeof d === 'string' && d.trim() && !resolvedItensConforto.includes(d.trim())) {
+            resolvedItensConforto.push(d.trim());
+          }
+        });
+      }
+    }
+
+    const updatedAcessorios = {
+      ...existingAcessorios,
+      som: Boolean(som),
+      tenda: Boolean(tenda),
+      mesa: Boolean(mesa),
+      bancosCadeiras: Boolean(bancosCadeiras),
+      churrasqueira: Boolean(churrasqueira),
+      ducha: Boolean(ducha),
+      diferenciais: Array.isArray(diferenciais) ? diferenciais.filter((d: any) => typeof d === 'string' && d.trim()) : [],
+      itensConforto: resolvedItensConforto,
+      configurado: true,
+      ...(observacoes !== undefined ? { observacoes } : {})
+    };
+
+    const acessoriosJson = JSON.stringify(updatedAcessorios);
+    await currentPool.query("UPDATE Embarcacoes SET acessorios = ? WHERE id = ?", [acessoriosJson, id]);
+
+    invalidateDbCache();
+
+    return res.json({
+      success: true,
+      boatId: id,
+      acessorios: updatedAcessorios,
+      itensConforto: resolvedItensConforto
+    });
+  } catch (err: any) {
+    console.error("Erro ao atualizar equipamentos da embarcação:", err);
+    return res.status(500).json({ error: err.message || "Erro ao salvar acessórios" });
   }
 });
 
@@ -825,7 +1007,7 @@ router.post(["/leads/captura", "/captura-lead"], async (req, res) => {
       : '';
 
     const whatsappMessage = `🌊 *Olá! Estive navegando no Catálogo Digital da El Mexicano.* 🚤\n\n` +
-      `Gostei muito da embarcação *${boatName || 'disponível no catálogo'}* e quero conhecer as condições da cota e agendar uma visita na Marina!\n\n` +
+      `Gostei muito da embarcação *${boatName || 'disponível no catálogo'}* e quero conhecer as condições da cota e agendar uma visita na Marina Club Velho Chico!\n\n` +
       `👤 *Meu Nome:* ${nome.trim()}\n` +
       `📱 *WhatsApp:* ${telefone.trim()}` +
       permutaMention +

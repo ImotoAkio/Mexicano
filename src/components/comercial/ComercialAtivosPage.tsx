@@ -19,6 +19,7 @@ import {
 import { boatDB, clientDB, syncWithRemote, onDbUpdate, getAdminToken } from '../../db';
 import { Embarcacao, Cliente, LeadComercial, CotaReservada } from '../../types';
 import { getBoatEstoqueResumo, getBoatCotasStatusList, normalizeCotaCode } from '../../utils/cotaUtils';
+import { getTaxaAdmMensal } from '../../utils/boatUtils';
 import ComercialBoatDrawer from './ComercialBoatDrawer';
 import ComercialCotaTransferModal from './ComercialCotaTransferModal';
 
@@ -148,7 +149,7 @@ export default function ComercialAtivosPage({
       const statusMarina = getBoatStatusMarina(boat);
 
       const valorCota = Number(boat.valorCota) || 180000;
-      const taxaAdmMensal = Number(boat.taxaAdmMensal) || 2500;
+      const taxaAdmMensal = getTaxaAdmMensal(boat);
       const totalCotas = Math.max(4, Math.min(8, Number(boat.totalCotas) || 8));
 
       const ocupadas = resumo.cotasVendidas;

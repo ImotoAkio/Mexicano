@@ -102,10 +102,13 @@ export function getBoatCotaOccupancyMap(
   if (!boatId) return map;
 
   const activeClients = clients.filter(c => c.status !== 'inativo');
+  const realClients = activeClients.filter(c => !isInternalMexicano(c.id) && !isInternalMexicano(c.nome));
+  const mexClients = activeClients.filter(c => isInternalMexicano(c.id) || isInternalMexicano(c.nome));
+
   const pendingLegacyEntries: Cliente[] = [];
 
-  // Passada 1: Registrar todas as cotas que já possuem código explícito (C1, C2...)
-  activeClients.forEach(c => {
+  // Passada 1: Registrar todas as cotas explícitas dos clientes REAIS (C1, C2...)
+  realClients.forEach(c => {
     const entriesForBoat = Array.isArray(c.embarcacoes)
       ? c.embarcacoes.filter(eb => eb && eb.embarcacaoId === boatId)
       : [];
@@ -119,9 +122,9 @@ export function getBoatCotaOccupancyMap(
             clienteId: c.id,
             clienteNome: c.nome,
             cliente: c,
-            isMexicano: isInternalMexicano(c.id) || isInternalMexicano(c.nome)
+            isMexicano: false
           });
-        } else if (!isInternalMexicano(c.id) && !isInternalMexicano(c.nome)) {
+        } else {
           pendingLegacyEntries.push(c);
         }
       });
@@ -133,17 +136,17 @@ export function getBoatCotaOccupancyMap(
           clienteId: c.id,
           clienteNome: c.nome,
           cliente: c,
-          isMexicano: isInternalMexicano(c.id) || isInternalMexicano(c.nome)
+          isMexicano: false
         });
-      } else if (!isInternalMexicano(c.id) && !isInternalMexicano(c.nome)) {
+      } else {
         pendingLegacyEntries.push(c);
       }
-    } else if (Array.isArray(boat?.donos) && boat!.donos!.includes(c.id) && !isInternalMexicano(c.id) && !isInternalMexicano(c.nome)) {
+    } else if (Array.isArray(boat?.donos) && boat!.donos!.includes(c.id)) {
       pendingLegacyEntries.push(c);
     }
   });
 
-  // Passada 2: Alocar entradas legadas ("1/4", "Cota", etc.) nas primeiras cotas livres
+  // Passada 2: Alocar entradas legadas ou em colisão de clientes REAIS nas primeiras cotas livres
   let nextSlot = 1;
   pendingLegacyEntries.forEach(c => {
     while (map.has(`C${nextSlot}`)) {
@@ -155,9 +158,43 @@ export function getBoatCotaOccupancyMap(
       clienteId: c.id,
       clienteNome: c.nome,
       cliente: c,
-      isMexicano: isInternalMexicano(c.id) || isInternalMexicano(c.nome)
+      isMexicano: false
     });
     nextSlot++;
+  });
+
+  // Passada 3: Registrar cotas em estoque pertencentes à entidade interna El Mexicano
+  // O estoque interno NUNCA sobrescreve clientes reais nem bloqueia cotas necessárias aos clientes reais
+  mexClients.forEach(c => {
+    const entriesForBoat = Array.isArray(c.embarcacoes)
+      ? c.embarcacoes.filter(eb => eb && eb.embarcacaoId === boatId)
+      : [];
+
+    entriesForBoat.forEach(eb => {
+      const explicit = parseExplicitCotaCode(eb.cota);
+      if (explicit && !map.has(explicit)) {
+        map.set(explicit, {
+          cota: explicit,
+          clienteId: c.id,
+          clienteNome: c.nome,
+          cliente: c,
+          isMexicano: true
+        });
+      }
+    });
+
+    if (c.embarcacaoId === boatId) {
+      const explicit = parseExplicitCotaCode(c.cota);
+      if (explicit && !map.has(explicit)) {
+        map.set(explicit, {
+          cota: explicit,
+          clienteId: c.id,
+          clienteNome: c.nome,
+          cliente: c,
+          isMexicano: true
+        });
+      }
+    }
   });
 
   return map;
@@ -401,9 +438,9 @@ export function normalizeClientsCotasInPlace(clients: Cliente[], boats: Embarcac
     return occupiedByBoat.get(boatId)!;
   };
 
-  // 1ª Passada: registrar todos os códigos explícitos já válidos (C1, C2...)
+  // 1ª Passada: registrar todos os códigos explícitos já válidos (C1, C2...) de clientes REAIS
   clients.forEach(c => {
-    if (c.status === 'inativo') return;
+    if (c.status === 'inativo' || isInternalMexicano(c.id) || isInternalMexicano(c.nome)) return;
     if (Array.isArray(c.embarcacoes) && c.embarcacoes.length > 0) {
       c.embarcacoes.forEach(eb => {
         if (!eb?.embarcacaoId) return;
@@ -436,6 +473,7 @@ export function normalizeClientsCotasInPlace(clients: Cliente[], boats: Embarcac
   };
 
   clients.forEach(c => {
+    if (c.status === 'inativo' || isInternalMexicano(c.id) || isInternalMexicano(c.nome)) return;
     if (Array.isArray(c.embarcacoes) && c.embarcacoes.length > 0) {
       c.embarcacoes.forEach(eb => {
         if (!eb?.embarcacaoId) {

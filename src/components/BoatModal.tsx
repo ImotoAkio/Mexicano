@@ -52,6 +52,7 @@ export default function BoatModal({
   const [emManutencao, setEmManutencao] = useState(false);
   const [temSom, setTemSom] = useState(false);
   const [imagemUrl, setImagemUrl] = useState('');
+  const [fotos, setFotos] = useState<string[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [documentoUrl, setDocumentoUrl] = useState('');
   const [isUploadingDocumento, setIsUploadingDocumento] = useState(false);
@@ -88,7 +89,7 @@ export default function BoatModal({
         setAno(editingBoat.ano || new Date().getFullYear());
         setVaga(editingBoat.vaga || '');
         setHorasMotor(editingBoat.horasMotor !== undefined ? editingBoat.horasMotor : '');
-        setTamanho(editingBoat.tamanho || '');
+        setTamanho(editingBoat.tamanho || (editingBoat.comprimento ? String(editingBoat.comprimento) : '') || '');
         setChassi(editingBoat.chassi || '');
         setInscricao(editingBoat.inscricao || '');
         setTipoPropulsao(editingBoat.tipo_propulsao || 'MOTOR');
@@ -110,7 +111,15 @@ export default function BoatModal({
         setWhatsappGroupId(editingBoat.whatsappGroupId || '');
         setEmManutencao(editingBoat.emManutencao || false);
         setTemSom(editingBoat.temSom || false);
-        setImagemUrl(editingBoat.imagemUrl || '');
+        const loadedFotos: string[] = [];
+        if (editingBoat.imagemUrl && editingBoat.imagemUrl.trim()) loadedFotos.push(editingBoat.imagemUrl.trim());
+        if (Array.isArray(editingBoat.fotos)) {
+          editingBoat.fotos.forEach(f => {
+            if (f && typeof f === 'string' && f.trim() && !loadedFotos.includes(f.trim())) loadedFotos.push(f.trim());
+          });
+        }
+        setFotos(loadedFotos);
+        setImagemUrl(loadedFotos[0] || editingBoat.imagemUrl || '');
         setDocumentoUrl(editingBoat.documentoUrl || '');
         setSeguroUrl(editingBoat.seguroUrl || '');
         setEmpresas(editingBoat.empresas && editingBoat.empresas.length > 0 ? editingBoat.empresas : defaultEmps);
@@ -136,6 +145,7 @@ export default function BoatModal({
         setEmManutencao(false);
         setTemSom(false);
         setImagemUrl('');
+        setFotos([]);
         setDocumentoUrl('');
         setSeguroUrl('');
         setEmpresas(defaultEmps);
@@ -167,39 +177,50 @@ export default function BoatModal({
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('A imagem não pode ter mais que 5MB.', 'error');
-      return;
-    }
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setIsUploadingImage(true);
-    const formData = new FormData();
-    formData.append('image', file);
+    const uploaded: string[] = [];
 
     try {
       const token = localStorage.getItem('admin_token');
-      const res = await fetch('/api/upload/boat-image', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setImagemUrl(data.imageUrl);
-        showToast('Imagem carregada com sucesso!');
-      } else {
-        showToast(data.message || 'Erro ao fazer upload da imagem', 'error');
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 8 * 1024 * 1024) {
+          showToast(`A imagem "${file.name}" não pode ter mais que 8MB.`, 'error');
+          continue;
+        }
+        const formData = new FormData();
+        formData.append('image', file);
+        const res = await fetch('/api/upload/boat-image', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.imageUrl) {
+          uploaded.push(data.imageUrl);
+        } else {
+          showToast(data.message || 'Erro ao fazer upload da imagem', 'error');
+        }
+      }
+      if (uploaded.length > 0) {
+        const nextFotos = [...fotos];
+        uploaded.forEach(u => {
+          if (!nextFotos.includes(u)) nextFotos.push(u);
+        });
+        setFotos(nextFotos);
+        setImagemUrl(nextFotos[0] || '');
+        showToast(uploaded.length === 1 ? 'Imagem carregada com sucesso!' : `${uploaded.length} imagens carregadas!`);
       }
     } catch (err: any) {
       showToast('Falha na comunicação com o servidor para envio de imagem', 'error');
     } finally {
       setIsUploadingImage(false);
+      e.target.value = '';
     }
   };
 
@@ -274,6 +295,7 @@ export default function BoatModal({
         vaga: vaga.trim() || undefined,
         horasMotor: horasMotor === '' ? 0 : Number(horasMotor),
         tamanho: tamanho !== '' ? tamanho : undefined,
+        comprimento: tamanho !== '' ? tamanho : undefined,
         chassi: chassi.trim() || undefined,
         inscricao: inscricao.trim() || undefined,
         tipo_propulsao: tipoPropulsao.trim() || undefined,
@@ -284,7 +306,8 @@ export default function BoatModal({
         whatsappGroupId: whatsappGroupId.trim() || undefined,
         emManutencao,
         temSom,
-        imagemUrl: imagemUrl || undefined,
+        imagemUrl: fotos[0] || imagemUrl || undefined,
+        fotos: fotos.length > 0 ? fotos : (imagemUrl ? [imagemUrl] : undefined),
         documentoUrl: documentoUrl || undefined,
         seguroUrl: seguroUrl || undefined,
         empresas: finalEmpresas
@@ -484,7 +507,7 @@ export default function BoatModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tamanho (Pés)</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Comprimento / Porte (Pés)</label>
                   <input
                     id="input-boat-tamanho"
                     type="text"
@@ -812,32 +835,59 @@ export default function BoatModal({
                 </div>
               </div>
 
-              {/* Foto da Embarcação */}
-              <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
-                <input 
-                  type="file" 
-                  accept="image/png, image/jpeg, image/jpg, image/webp" 
-                  onChange={handleImageUpload}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  title="Clique para enviar uma foto"
-                />
-                {isUploadingImage ? (
-                  <div className="flex flex-col items-center py-2">
-                    <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin mb-1" />
-                    <span className="text-[10px] font-semibold text-slate-600">Enviando foto...</span>
-                  </div>
-                ) : imagemUrl ? (
-                  <div className="flex flex-col items-center space-y-1.5">
-                    <div className="w-20 h-16 rounded-lg overflow-hidden shadow-xs border border-slate-200">
-                      <img src={imagemUrl} alt="Preview" className="w-full h-full object-cover" />
+              {/* Fotos da Embarcação (Suporta Múltiplas) */}
+              <div className="space-y-2">
+                <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 relative group hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
+                  <input 
+                    type="file" 
+                    multiple
+                    accept="image/png, image/jpeg, image/jpg, image/webp" 
+                    onChange={handleImageUpload}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    title="Clique para enviar uma ou várias fotos"
+                  />
+                  {isUploadingImage ? (
+                    <div className="flex flex-col items-center py-2">
+                      <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin mb-1" />
+                      <span className="text-[10px] font-semibold text-slate-600">Enviando fotos...</span>
                     </div>
-                    <span className="text-[10px] font-semibold text-indigo-600 flex items-center"><Edit2 className="w-3 h-3 mr-1" /> Trocar foto</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center py-2 text-slate-500 group-hover:text-indigo-500 transition-colors">
-                    <ImageIcon className="w-5 h-5 mb-1 text-slate-400" />
-                    <span className="text-xs font-semibold">Foto da Embarcação</span>
-                    <span className="text-[9px] text-slate-400">PNG/JPG (Max 5MB)</span>
+                  ) : fotos.length > 0 || imagemUrl ? (
+                    <div className="flex flex-col items-center space-y-1.5">
+                      <div className="w-24 h-16 rounded-lg overflow-hidden shadow-xs border border-slate-200">
+                        <img src={fotos[0] || imagemUrl} alt="Preview" className="w-full h-full object-cover" />
+                      </div>
+                      <span className="text-[10px] font-semibold text-indigo-600 flex items-center">
+                        <Upload className="w-3 h-3 mr-1" /> Adicionar mais fotos ({fotos.length || 1})
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center py-2 text-slate-500 group-hover:text-indigo-500 transition-colors">
+                      <ImageIcon className="w-5 h-5 mb-1 text-slate-400" />
+                      <span className="text-xs font-semibold">Galeria de Fotos</span>
+                      <span className="text-[9px] text-slate-400">Selecione 1 ou várias imagens</span>
+                    </div>
+                  )}
+                </div>
+
+                {fotos.length > 1 && (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {fotos.map((url, idx) => (
+                      <div key={`${url}-${idx}`} className="relative group rounded-lg overflow-hidden border border-slate-200 aspect-square bg-slate-100">
+                        <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = fotos.filter((_, i) => i !== idx);
+                            setFotos(next);
+                            setImagemUrl(next[0] || '');
+                          }}
+                          className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          title="Remover foto"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

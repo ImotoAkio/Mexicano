@@ -29,6 +29,7 @@ import {
 } from '../../types';
 import { boatDB, clientDB } from '../../db';
 import { getBoatCotasStatusList, getBoatEstoqueResumo, getFirstAvailableCota } from '../../utils/cotaUtils';
+import { getTaxaAdmMensal } from '../../utils/boatUtils';
 
 interface ComercialPropostaDrawerProps {
   isOpen: boolean;
@@ -140,6 +141,7 @@ export default function ComercialPropostaDrawer({
       const basePrice = (selectedBoat.tamanho ? Number(selectedBoat.tamanho) : 26) * 7500;
       setValorTotal(basePrice > 0 ? basePrice : 180000);
       setValorEntrada(Math.round((basePrice > 0 ? basePrice : 180000) * 0.3));
+      setTaxaAdmMensal(getTaxaAdmMensal(selectedBoat));
     }
   }, [selectedBoatId]);
 

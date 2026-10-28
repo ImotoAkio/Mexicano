@@ -33,7 +33,8 @@ import {
   normalizeCotaCode,
   getBoatCotaOccupancyMap,
   getBoatCotasList,
-  getBoatTotalCotas
+  getBoatTotalCotas,
+  getBoatEstoqueResumo
 } from '../../utils/cotaUtils';
 
 interface ComercialClientModalProps {
@@ -838,11 +839,10 @@ export default function ComercialClientModal({
                           >
                             <option value="">Selecione a embarcação...</option>
                             {sortedBoats.map(b => {
-                              const occMap = getBoatCotaOccupancyMap(b.id, clients, b);
-                              const totalSlots = getBoatTotalCotas(b, occMap.size);
+                              const estoque = getBoatEstoqueResumo(b.id, clients, b);
                               return (
                                 <option key={b.id} value={b.id}>
-                                  {getBoatCode(b)} — {b.nome} ({occMap.size}/{totalSlots} cotas)
+                                  {getBoatCode(b)} — {b.nome} ({estoque.cotasDisponiveis}/{estoque.totalCotas} livres)
                                 </option>
                               );
                             })}

@@ -148,3 +148,42 @@ export function getClientAllBoatIds(client?: any, boats: Embarcacao[] = []): Set
 
   return matched;
 }
+/**
+ * Detecta se a embarcação é uma moto aquática (Jet Ski).
+ */
+export function isJetSkiBoat(boat?: Partial<Embarcacao> | null): boolean {
+  if (!boat) return false;
+  if (boat.tipo === 'jet') return true;
+  if (boat.tipo === 'lancha') return false;
+  const text = `${boat.nome || ''} ${boat.modelo || ''} ${boat.fabricante || ''}`.toUpperCase();
+  return (
+    text.includes('JET') ||
+    text.includes('SEA DOO') ||
+    text.includes('SEADOO') ||
+    text.includes('SEA-DOO') ||
+    text.includes('RXT') ||
+    text.includes('GTI') ||
+    text.includes('WAKE') ||
+    text.includes('GTX') ||
+    text.includes('GTR') ||
+    text.includes('SPARK') ||
+    text.includes('MOTO AQUÁTICA') ||
+    text.includes('MOTO AQUATICA') ||
+    text.includes('WATERCRAFT')
+  );
+}
+
+/**
+ * Retorna a Taxa Administrativa mensal da embarcação.
+ * Regra de negócio:
+ * - Para Jet Ski: R$ 350 fixo
+ * - Para Lancha: varia conforme cadastrado (b.taxaAdmMensal), com fallback padrão de R$ 2.500
+ */
+export function getTaxaAdmMensal(boat?: Partial<Embarcacao> | null): number {
+  if (!boat) return 2500;
+  if (isJetSkiBoat(boat)) {
+    return 350;
+  }
+  const custom = Number(boat.taxaAdmMensal);
+  return custom > 0 ? custom : 2500;
+}

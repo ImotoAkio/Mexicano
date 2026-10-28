@@ -358,10 +358,19 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN tamanho VARCHAR(50);`);
     } catch (e) {}
     try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN comprimento VARCHAR(50);`);
+    } catch (e) {}
+    try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN valorCota DECIMAL(12,2) DEFAULT 0;`);
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN taxaAdmMensal DECIMAL(10,2) DEFAULT 0;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN fotos LONGTEXT;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN descricaoComercial TEXT;`);
     } catch (e) {}
 
     // 3. Reservas Table
@@ -1818,11 +1827,35 @@ export async function pullDatabase(forceFresh = false) {
         donosList = [];
       }
     }
+    const parsedAcessorios = b.acessorios ? (typeof b.acessorios === 'string' ? (() => { try { return JSON.parse(b.acessorios); } catch { return undefined; } })() : b.acessorios) : undefined;
+    let fotosList: string[] = [];
+    if (b.fotos) {
+      try {
+        const parsedFotos = typeof b.fotos === 'string' ? JSON.parse(b.fotos) : b.fotos;
+        if (Array.isArray(parsedFotos)) {
+          parsedFotos.forEach((f: any) => {
+            if (f && typeof f === 'string' && !fotosList.includes(f)) fotosList.push(f);
+          });
+        }
+      } catch {}
+    }
+    if (fotosList.length === 0 && parsedAcessorios && Array.isArray((parsedAcessorios as any).fotos)) {
+      (parsedAcessorios as any).fotos.forEach((f: any) => {
+        if (f && typeof f === 'string' && !fotosList.includes(f)) fotosList.push(f);
+      });
+    }
+    if (b.imagemUrl && !fotosList.includes(b.imagemUrl)) {
+      fotosList = [b.imagemUrl, ...fotosList];
+    }
+    const effectiveImagemUrl = b.imagemUrl || fotosList[0] || undefined;
+    const effectiveDescricao = b.descricaoComercial || (parsedAcessorios && (parsedAcessorios as any).descricaoComercial) || undefined;
+
     return {
       ...b,
       empresas: embarcacaoEmpresasMap.get(b.id) || ['VALE'],
       vaga: b.vaga || '',
-      tamanho: b.tamanho || '',
+      tamanho: b.tamanho || b.comprimento || (parsedAcessorios && (parsedAcessorios as any).tamanho) || (parsedAcessorios && (parsedAcessorios as any).comprimento) || '',
+      comprimento: b.comprimento || b.tamanho || (parsedAcessorios && (parsedAcessorios as any).comprimento) || (parsedAcessorios && (parsedAcessorios as any).tamanho) || '',
       chassi: b.chassi || '',
       inscricao: b.inscricao || '',
       tipo_propulsao: b.tipo_propulsao || '',
@@ -1831,7 +1864,10 @@ export async function pullDatabase(forceFresh = false) {
       emManutencao: b.emManutencao === 1 || b.emManutencao === true,
       whatsappGroupId: b.whatsappGroupId || undefined,
       temSom: b.temSom === 1 || b.temSom === true,
-      acessorios: b.acessorios ? JSON.parse(b.acessorios) : undefined,
+      imagemUrl: effectiveImagemUrl,
+      fotos: fotosList,
+      descricaoComercial: effectiveDescricao,
+      acessorios: parsedAcessorios,
       capacidadePassageiros: b.capacidadePassageiros !== null && b.capacidadePassageiros !== undefined ? Number(b.capacidadePassageiros) : undefined,
       totalCotas: b.totalCotas !== null && b.totalCotas !== undefined && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4),
       valorCota: b.valorCota !== null && b.valorCota !== undefined ? Number(b.valorCota) : 0,
@@ -2287,11 +2323,29 @@ export async function reconcileBoatCotasWithMexicano(connectionOrPool: any, spec
   }
 }
 
+let boatMediaColumnsEnsured = false;
+
 export async function upsertBoat(boat: any) {
   invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   if (!boat || !boat.id) throw new Error("Invalid boat object: id is required.");
+
+  if (!boatMediaColumnsEnsured) {
+    try {
+      await currentPool.query(`ALTER TABLE Embarcacoes ADD COLUMN fotos LONGTEXT;`);
+    } catch (e) {}
+    try {
+      await currentPool.query(`ALTER TABLE Embarcacoes ADD COLUMN descricaoComercial TEXT;`);
+    } catch (e) {}
+    try {
+      await currentPool.query(`ALTER TABLE Embarcacoes ADD COLUMN tamanho VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await currentPool.query(`ALTER TABLE Embarcacoes ADD COLUMN comprimento VARCHAR(50);`);
+    } catch (e) {}
+    boatMediaColumnsEnsured = true;
+  }
 
   const donosJson = Array.isArray(boat.donos)
     ? JSON.stringify(boat.donos)
@@ -2300,17 +2354,50 @@ export async function upsertBoat(boat: any) {
   const anoNum = boat.ano && !isNaN(Number(boat.ano)) ? Number(boat.ano) : null;
   const emManutencaoVal = boat.emManutencao ? 1 : 0;
   const temSomVal = boat.temSom ? 1 : 0;
-  const acessoriosJson = boat.acessorios 
-    ? (typeof boat.acessorios === 'string' ? boat.acessorios : JSON.stringify(boat.acessorios))
-    : null;
+
+  let normalizedFotos: string[] = [];
+  if (Array.isArray(boat.fotos)) {
+    normalizedFotos = boat.fotos.filter((f: any) => f && typeof f === 'string' && f.trim()).map((f: string) => f.trim());
+  } else if (typeof boat.fotos === 'string' && boat.fotos.trim()) {
+    try {
+      const parsed = JSON.parse(boat.fotos);
+      if (Array.isArray(parsed)) normalizedFotos = parsed.filter(Boolean);
+    } catch {}
+  }
+  const primaryImg = (boat.imagemUrl && String(boat.imagemUrl).trim()) || normalizedFotos[0] || null;
+  if (primaryImg && !normalizedFotos.includes(primaryImg)) {
+    normalizedFotos = [primaryImg, ...normalizedFotos];
+  }
+  const fotosJson = normalizedFotos.length > 0 ? JSON.stringify(normalizedFotos) : null;
+  const descricaoComercialVal = boat.descricaoComercial ? String(boat.descricaoComercial).trim() : null;
+
+  const rawComprimento = boat.comprimento !== undefined && boat.comprimento !== null && String(boat.comprimento).trim() !== ''
+    ? String(boat.comprimento).trim()
+    : (boat.tamanho !== undefined && boat.tamanho !== null && String(boat.tamanho).trim() !== '' ? String(boat.tamanho).trim() : null);
+
+  const acessoriosObj = boat.acessorios
+    ? (typeof boat.acessorios === 'string' ? (() => { try { return JSON.parse(boat.acessorios); } catch { return {}; } })() : { ...boat.acessorios })
+    : {};
+  if (normalizedFotos.length > 0) {
+    acessoriosObj.fotos = normalizedFotos;
+  }
+  if (descricaoComercialVal !== null) {
+    acessoriosObj.descricaoComercial = descricaoComercialVal;
+  }
+  if (rawComprimento !== null) {
+    acessoriosObj.comprimento = rawComprimento;
+    acessoriosObj.tamanho = rawComprimento;
+  }
+  const acessoriosJson = Object.keys(acessoriosObj).length > 0 ? JSON.stringify(acessoriosObj) : null;
+
   const historicoHorasJson = boat.historicoHoras
     ? (typeof boat.historicoHoras === 'string' ? boat.historicoHoras : JSON.stringify(boat.historicoHoras))
     : null;
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, marcaMotor, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho, valorCota, taxaAdmMensal
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, marcaMotor, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, fotos, descricaoComercial, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho, valorCota, taxaAdmMensal
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -2328,6 +2415,8 @@ export async function upsertBoat(boat: any) {
       whatsappGroupId = VALUES(whatsappGroupId),
       emManutencao = VALUES(emManutencao),
       imagemUrl = VALUES(imagemUrl),
+      fotos = VALUES(fotos),
+      descricaoComercial = VALUES(descricaoComercial),
       temSom = VALUES(temSom),
       documentoUrl = VALUES(documentoUrl),
       seguroUrl = VALUES(seguroUrl),
@@ -2364,7 +2453,9 @@ export async function upsertBoat(boat: any) {
     boat.googleCalendarId || null,
     boat.whatsappGroupId || null,
     emManutencaoVal,
-    boat.imagemUrl || null,
+    primaryImg,
+    fotosJson,
+    descricaoComercialVal,
     temSomVal,
     boat.documentoUrl || null,
     boat.seguroUrl || null,
@@ -2376,10 +2467,16 @@ export async function upsertBoat(boat: any) {
     boat.capacidadePassageiros !== undefined && boat.capacidadePassageiros !== null ? Number(boat.capacidadePassageiros) : null,
     boat.totalCotas !== undefined && boat.totalCotas !== null && Number(boat.totalCotas) > 0 ? Number(boat.totalCotas) : (boat.nome === 'M55' || boat.id === 'boat_M55' ? 8 : 4),
     boat.vaga || null,
-    boat.tamanho !== undefined && boat.tamanho !== null && boat.tamanho !== '' ? String(boat.tamanho) : null,
+    rawComprimento,
     valorCotaNum,
     taxaAdmMensalNum
   ]);
+
+  try {
+    if (rawComprimento !== null) {
+      await currentPool.query("UPDATE Embarcacoes SET comprimento = ? WHERE id = ?", [rawComprimento, boat.id]);
+    }
+  } catch (e) {}
 
   if (boat.empresas && Array.isArray(boat.empresas)) {
     await currentPool.query("DELETE FROM EmbarcacaoEmpresas WHERE embarcacaoId = ?", [boat.id]);
@@ -6915,7 +7012,8 @@ export async function getFrotaConsolidadaComCotas(): Promise<any> {
     const empresas = empMap.get(b.id) || ['VALE'];
     const totalCotas = Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4);
     const valorCota = Number(b.valorCota) || 0;
-    const taxaAdmMensal = Number(b.taxaAdmMensal) || 0;
+    const isJetDb = b.tipo === 'jet' || `${b.nome || ''} ${b.modelo || ''} ${b.fabricante || ''}`.toUpperCase().includes('JET') || `${b.nome || ''} ${b.modelo || ''}`.toUpperCase().includes('SEA DOO') || `${b.nome || ''} ${b.modelo || ''}`.toUpperCase().includes('RXT') || `${b.nome || ''} ${b.modelo || ''}`.toUpperCase().includes('GTI');
+    const taxaAdmMensal = isJetDb ? 350 : (Number(b.taxaAdmMensal) > 0 ? Number(b.taxaAdmMensal) : 2500);
 
     // Status Operacional na Marina
     const isManutencao = b.emManutencao === 1 || manutencoesAbertas.some((m: any) => m.embarcacaoId === b.id);
@@ -7062,6 +7160,29 @@ export async function getFrotaConsolidadaComCotas(): Promise<any> {
       } catch (e) {}
     }
 
+    let fotosList: string[] = [];
+    if (b.fotos) {
+      try {
+        const parsedFotos = typeof b.fotos === 'string' ? JSON.parse(b.fotos) : b.fotos;
+        if (Array.isArray(parsedFotos)) {
+          parsedFotos.forEach((f: any) => {
+            if (f && typeof f === 'string' && !fotosList.includes(f)) fotosList.push(f);
+          });
+        }
+      } catch {}
+    }
+    if (fotosList.length === 0 && parsedAcessorios && Array.isArray((parsedAcessorios as any).fotos)) {
+      (parsedAcessorios as any).fotos.forEach((f: any) => {
+        if (f && typeof f === 'string' && !fotosList.includes(f)) fotosList.push(f);
+      });
+    }
+    if (b.imagemUrl && !fotosList.includes(b.imagemUrl)) {
+      fotosList = [b.imagemUrl, ...fotosList];
+    }
+    const effectiveImagemUrl = b.imagemUrl || fotosList[0] || undefined;
+    const effectiveDescricao = b.descricaoComercial || (parsedAcessorios && (parsedAcessorios as any).descricaoComercial) || undefined;
+    const effectiveComprimento = b.comprimento || b.tamanho || (parsedAcessorios && ((parsedAcessorios as any).comprimento || (parsedAcessorios as any).tamanho)) || '';
+
     return {
       ...b,
       empresas,
@@ -7069,6 +7190,11 @@ export async function getFrotaConsolidadaComCotas(): Promise<any> {
       valorCota,
       taxaAdmMensal,
       statusMarina,
+      tamanho: effectiveComprimento,
+      comprimento: effectiveComprimento,
+      imagemUrl: effectiveImagemUrl,
+      fotos: fotosList,
+      descricaoComercial: effectiveDescricao,
       acessorios: parsedAcessorios,
       emManutencao: isManutencao,
       navegandoHoje: isNavegandoHoje,

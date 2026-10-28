@@ -32,7 +32,8 @@ import {
   getBoatTotalCotas,
   getFirstAvailableCota,
   normalizeCotaCode,
-  getClientCotasForBoat
+  getClientCotasForBoat,
+  getBoatEstoqueResumo
 } from '../../utils/cotaUtils';
 import ComercialClientModal from './ComercialClientModal';
 
@@ -352,8 +353,8 @@ export default function ComercialVendaDrawer({
   const [dataVenda, setDataVenda] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
   // Valores da Venda e Entrada
-  const [valorTotal, setValorTotal] = useState<string>('55000');
-  const [valorEntrada, setValorEntrada] = useState<string>('12040');
+  const [valorTotal, setValorTotal] = useState<string>('');
+  const [valorEntrada, setValorEntrada] = useState<string>('');
   const [dataEntrada, setDataEntrada] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [entradaPaga, setEntradaPaga] = useState<boolean>(false);
   const [comprovanteEntrada, setComprovanteEntrada] = useState<string | null>(null);
@@ -422,6 +423,11 @@ export default function ComercialVendaDrawer({
     setBoats([...bt]);
     setErrorMsg(null);
     setActiveTab('cotista');
+    setValorTotal('');
+    setValorEntrada('');
+    setEntradaPaga(false);
+    setComprovanteEntrada(null);
+    setComprovanteNome(null);
 
     if (preselectedClientId) {
       setClienteId(preselectedClientId);
@@ -491,17 +497,19 @@ export default function ComercialVendaDrawer({
         return codeA.localeCompare(codeB);
       })
       .map(b => {
-        const occMap = getBoatCotaOccupancyMap(b.id, clients, b);
-        const ocupadas = occMap.size;
-        const total = getBoatTotalCotas(b, ocupadas);
+        const estoque = getBoatEstoqueResumo(b.id, clients, b);
         const code = formatBoatMxx(b);
+        const isSoldOut = estoque.cotasDisponiveis === 0;
+
         return {
           value: b.id,
           label: code,
           sublabel: [b.fabricante, b.modelo].filter(Boolean).join(' • ') || undefined,
-          badge: `${ocupadas}/${total} cotas`,
-          badgeTone: ocupadas >= total ? 'amber' : 'emerald',
-          keywords: `${code} ${b.nome || ''} ${b.numero || ''} ${b.modelo || ''} ${b.fabricante || ''}`
+          badge: isSoldOut
+            ? `0/${estoque.totalCotas} (Esgotado)`
+            : `${estoque.cotasDisponiveis}/${estoque.totalCotas} livres`,
+          badgeTone: isSoldOut ? 'amber' : 'emerald',
+          keywords: `${code} ${b.nome || ''} ${b.numero || ''} ${b.modelo || ''} ${b.fabricante || ''} ${estoque.cotasDisponiveis} livres`
         };
       });
   }, [boats, clients]);
@@ -514,10 +522,19 @@ export default function ComercialVendaDrawer({
     return getBoatCotaOccupancyMap(embarcacaoId, clients, selectedBoat);
   }, [embarcacaoId, clients, selectedBoat]);
 
-  // Lista sequencial padronizada de cotas (C1..CN) conforme a capacidade configurada
+  // Contagem de cotas ocupadas por cotistas reais (ignora estoque próprio Mexicano)
+  const realOccupiedCount = useMemo(() => {
+    let count = 0;
+    cotasOcupadasMap.forEach(occ => {
+      if (!occ.isMexicano) count++;
+    });
+    return count;
+  }, [cotasOcupadasMap]);
+
+  // Lista sequencial padronizada de cotas (C1..CN) conforme a capacidade real configurada
   const boatCotasList = useMemo(() => {
-    return getBoatCotasList(selectedBoat, cotasOcupadasMap.size);
-  }, [selectedBoat, cotasOcupadasMap.size]);
+    return getBoatCotasList(selectedBoat, realOccupiedCount);
+  }, [selectedBoat, realOccupiedCount]);
 
   // Cotas que o cliente selecionado já possui nesta embarcação
   const clientExistingCotas = useMemo(() => {
@@ -683,7 +700,7 @@ export default function ComercialVendaDrawer({
 
     const normCota = normalizeCotaCode(cota, 1);
     const occupant = cotasOcupadasMap.get(normCota);
-    if (occupant) {
+    if (occupant && !occupant.isMexicano) {
       setErrorMsg(`A cota ${normCota} já está ocupada por ${occupant.clienteNome} nesta embarcação. Por favor selecione uma cota disponível.`);
       setActiveTab('cotista');
       return;
@@ -920,12 +937,12 @@ export default function ComercialVendaDrawer({
             <div className="pt-4 border-t border-stone-200/60 space-y-2 mt-4">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-stone-500 font-medium">Valor da Cota:</span>
-                <span className="font-bold text-stone-900 tabular-nums">{formatBRL(valorTotalNum)}</span>
+                <span className="font-bold text-stone-900 tabular-nums">{valorTotalNum > 0 ? formatBRL(valorTotalNum) : '—'}</span>
               </div>
 
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-stone-500 font-medium">Sinal / Entrada:</span>
-                <span className="font-semibold text-emerald-700 tabular-nums">{formatBRL(valorEntradaNum)}</span>
+                <span className="font-semibold text-emerald-700 tabular-nums">{valorEntradaNum > 0 ? formatBRL(valorEntradaNum) : '—'}</span>
               </div>
 
               <div className="flex items-center justify-between text-[10px] text-stone-500 pt-0.5">
@@ -933,7 +950,7 @@ export default function ComercialVendaDrawer({
                   {selectedBoat ? formatBoatMxx(selectedBoat) : 'Sem embarcação'}
                 </span>
                 <span className="font-semibold text-stone-800 tabular-nums">
-                  {numParcelasInt > 0 ? `${numParcelasInt}x ${formatBRL(valorParcelaFinal)}` : 'À vista'}
+                  {valorTotalNum > 0 && numParcelasInt > 0 ? `${numParcelasInt}x ${formatBRL(valorParcelaFinal)}` : valorTotalNum > 0 ? 'À vista' : '—'}
                 </span>
               </div>
             </div>
@@ -1051,7 +1068,7 @@ export default function ComercialVendaDrawer({
                         Cota Adquirida <span className="text-rose-500">*</span>
                       </label>
                       <span className="text-[11px] text-stone-500">
-                        Selecione a cota disponível na embarcação ({cotasOcupadasMap.size}/{boatCotasList.length} ocupadas)
+                        Selecione a cota disponível na embarcação ({realOccupiedCount}/{boatCotasList.length} ocupadas • {Math.max(0, boatCotasList.length - realOccupiedCount)} {Math.max(0, boatCotasList.length - realOccupiedCount) === 1 ? 'livre' : 'livres'})
                       </span>
                     </div>
 
@@ -1149,13 +1166,14 @@ export default function ComercialVendaDrawer({
                         type="number"
                         step="0.01"
                         min="0"
+                        placeholder="0,00"
                         value={valorTotal}
                         onChange={e => {
                           setValorTotal(e.target.value);
                           setValorParcelaManual('');
                         }}
                         required
-                        className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-sm font-bold text-stone-900 tabular-nums focus:outline-hidden focus:border-stone-400"
+                        className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-sm font-bold text-stone-900 tabular-nums focus:outline-hidden focus:border-stone-400 placeholder:text-stone-300"
                       />
                       <span className="text-[10px] text-stone-500 block">
                         Destino: {defaultConfigInfo.vendaPadraoEmpresa}
@@ -1170,12 +1188,13 @@ export default function ComercialVendaDrawer({
                         type="number"
                         step="0.01"
                         min="0"
+                        placeholder="0,00"
                         value={valorEntrada}
                         onChange={e => {
                           setValorEntrada(e.target.value);
                           setValorParcelaManual('');
                         }}
-                        className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-sm font-bold text-emerald-700 tabular-nums focus:outline-hidden focus:border-emerald-600"
+                        className="w-full h-10 px-3 rounded-xl border border-stone-200 bg-white text-sm font-bold text-emerald-700 tabular-nums focus:outline-hidden focus:border-emerald-600 placeholder:text-stone-300"
                       />
                       <span className="text-[10px] text-stone-500 block tabular-nums">
                         Saldo: {formatBRL(saldoRemanescente)}
