@@ -125,7 +125,8 @@ export default function ComercialSidebar({
     window.addEventListener('db_synced', handleVendaUpdated);
 
     // Conexão Socket.io para acompanhar vendas e comissões em tempo real instantâneo
-    const socket = io('/', {
+    const socket = io("/", {
+      auth: { token: localStorage.getItem("admin_token") },
       path: '/socket.io',
       transports: ['polling', 'websocket'],
       reconnectionAttempts: 10,
@@ -305,7 +306,7 @@ export default function ComercialSidebar({
           {/* Espaçador para garantir centralização matemática da logo */}
           <div className="w-7 shrink-0" />
           <div className="flex-1 flex items-center justify-center">
-            <img src={logoMexicano} alt="El Mexicano" className="h-12 w-auto select-none" draggable={false} />
+            <img src={logoMexicano} alt="El Mexicano" className="h-12 w-auto select-none dark:drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" draggable={false} />
           </div>
           {onToggleCollapse && (
             <button
@@ -328,7 +329,7 @@ export default function ComercialSidebar({
         </div>
       ) : (
         <div className="h-20 flex flex-col items-center justify-center border-b border-stone-100/60 px-1 gap-1">
-          <img src={logoMexicano} alt="El Mexicano" className="h-7 w-auto select-none" draggable={false} />
+          <img src={logoMexicano} alt="El Mexicano" className="h-7 w-auto select-none dark:drop-shadow-[0_0_6px_rgba(255,255,255,0.4)]" draggable={false} />
           {onToggleCollapse && (
             <button
               onClick={onToggleCollapse}
@@ -360,7 +361,7 @@ export default function ComercialSidebar({
             onKeyDown={e => {
               if (e.key === 'Enter' || e.key === ' ') onSelect('comissoes');
             }}
-            className="group rounded-xl bg-[#FAF9F6] hover:bg-stone-100/80 p-3.5 border border-stone-200/80 hover:border-stone-300 transition-colors cursor-pointer select-none"
+            className="group rounded-xl bg-[#FAF9F6] dark:bg-[#18181b] hover:bg-stone-100/80 dark:hover:bg-[#222226] p-3.5 border border-stone-200/80 dark:border-stone-800 transition-colors cursor-pointer select-none"
           >
             {/* Cabeçalho: Consultor + Cotas no mês */}
             <div className="flex items-center justify-between gap-2">
@@ -409,7 +410,7 @@ export default function ComercialSidebar({
           <button
             type="button"
             onClick={() => onSelect('comissoes')}
-            className="w-9 h-9 rounded-xl bg-[#FAF9F6] hover:bg-stone-100 text-stone-700 flex items-center justify-center border border-stone-200/80 hover:border-stone-300 transition-colors cursor-pointer relative"
+            className="w-9 h-9 rounded-xl bg-[#FAF9F6] dark:bg-[#18181b] hover:bg-stone-100 dark:hover:bg-[#222226] text-stone-700 dark:text-stone-300 flex items-center justify-center border border-stone-200/80 dark:border-stone-800 transition-colors cursor-pointer relative"
             title={`Comissões: ${formatBRL(comissaoTotalVendedor)} (${totalCotasMes} cotas) • VGV: ${formatK(faturamentoAtual)} (${progressPercent}%)`}
           >
             <Target className="w-4 h-4 text-stone-600" />

@@ -105,7 +105,7 @@ router.post("/calendar/config", requireAdminAuth, async (req, res) => {
 // Route: Save an activity log (Audit)
 
 // Route: Public config (only safe/cosmetic keys, no auth required)
-const PUBLIC_CONFIG_KEYS = new Set(["custom_sidebar_logo", "marina_checkin_saida", "marina_checkin_chegada", "marina_checkin_antecedencia", "marina_abertura", "marina_fechamento", "marina_horarios_semana", "pagamentos_online_habilitado"]);
+const PUBLIC_CONFIG_KEYS = new Set(["custom_sidebar_logo", "marina_checkin_saida", "marina_checkin_chegada", "marina_checkin_antecedencia", "marina_abertura", "marina_fechamento", "marina_horarios_semana", "marina_datas_fechadas", "pagamentos_online_habilitado"]);
 router.get("/config/public", async (req, res) => {
   try {
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
@@ -170,6 +170,13 @@ router.get("/config", requireAdminAuth, async (req, res) => {
       try { marina_horarios_semana = JSON.parse(marina_horarios_semana_str); } catch { marina_horarios_semana = null; }
     }
 
+    // Special closed dates / holidays set by admin (JSON array of { data: 'YYYY-MM-DD', motivo: string })
+    const marina_datas_fechadas_str = await getConfigValue("marina_datas_fechadas");
+    let marina_datas_fechadas = [];
+    if (marina_datas_fechadas_str) {
+      try { marina_datas_fechadas = JSON.parse(marina_datas_fechadas_str); } catch { marina_datas_fechadas = []; }
+    }
+
     const client = await getGoogleAuthClient();
     res.json({
       google_client_id,
@@ -182,6 +189,7 @@ router.get("/config", requireAdminAuth, async (req, res) => {
       marina_abertura,
       marina_fechamento,
       marina_horarios_semana,
+      marina_datas_fechadas,
       whatsapp_conf_template1,
       whatsapp_conf_template2,
       whatsapp_cal_template,
@@ -207,6 +215,7 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
             nautical_csv_mapping, asaas_api_key, asaas_api_url, asaas_webhook_token,
             marina_checkin_saida, marina_checkin_chegada, marina_checkin_antecedencia,
             marina_abertura, marina_fechamento, marina_horarios_semana,
+            marina_datas_fechadas,
             pagamentos_online_habilitado } = req.body;
 
     if (google_client_id !== undefined) {
@@ -271,6 +280,21 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
     }
     if (marina_horarios_semana !== undefined) {
       await setConfigValue("marina_horarios_semana", JSON.stringify(marina_horarios_semana));
+    }
+    if (marina_datas_fechadas !== undefined) {
+      const serialized = typeof marina_datas_fechadas === 'string'
+        ? marina_datas_fechadas
+        : JSON.stringify(marina_datas_fechadas);
+      await setConfigValue("marina_datas_fechadas", serialized);
+
+      const io = (req.app as any).locals?.io;
+      if (io) {
+        io.emit('config_updated', {
+          marina_datas_fechadas: typeof marina_datas_fechadas === 'string'
+            ? JSON.parse(marina_datas_fechadas)
+            : marina_datas_fechadas
+        });
+      }
     }
 
     // Asaas integration settings
@@ -460,7 +484,7 @@ router.post("/config/setup-asaas-webhook", requireAdminAuth, sensitiveLimiter, a
 // ---------------- Google Calendar Proxy ----------------
 // Permite que chamadas à API do Google feitas no frontend utilizem a credencial
 // da Service Account carregada de forma centralizada pelo backend, sem expor a chave
-router.all("/calendar-proxy/*", requireAnyAuth, async (req, res) => {
+router.all("/calendar-proxy/*", requireAdminAuth, async (req, res) => {
   const authClient = await getGoogleAuthClient();
   if (!authClient) {
     return res.status(503).json({

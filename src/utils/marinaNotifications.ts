@@ -153,12 +153,16 @@ if (typeof window !== 'undefined') {
 export function isSoundEnabled(): boolean {
   if (typeof window === 'undefined') return true;
   const val = localStorage.getItem(STORAGE_KEY_SOUND);
-  return val === null ? true : val === 'true';
+  const legacyVal = localStorage.getItem('marina_sound_alerts');
+  if (val === 'false' || legacyVal === 'false') return false;
+  return true;
 }
 
 export function setSoundEnabled(enabled: boolean) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY_SOUND, enabled ? 'true' : 'false');
+  const str = enabled ? 'true' : 'false';
+  localStorage.setItem(STORAGE_KEY_SOUND, str);
+  localStorage.setItem('marina_sound_alerts', str);
   dispatchSettingsChanged();
 }
 
@@ -272,6 +276,79 @@ export function playNotificationSound(severity: MarinaNotificationSeverity = 'in
   }
 }
 
+/**
+ * Bip sonoro específico para o painel do Gerente da Marina.
+ * Toca um sino marítimo elegante em duas notas harmônicas (D5 -> A5) ou acorde de alerta.
+ */
+export function playMarinaBeep(type: 'reserva' | 'alerta' | 'sucesso' | 'info' = 'reserva'): void {
+  if (typeof window === 'undefined') return;
+  if (!isSoundEnabled()) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
+    const now = ctx.currentTime;
+
+    if (type === 'alerta') {
+      // Tom de alerta/cancelamento
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = 'triangle';
+      osc2.type = 'sine';
+
+      osc1.frequency.setValueAtTime(659.25, now); // E5
+      osc1.frequency.setValueAtTime(880.00, now + 0.12); // A5
+      osc1.frequency.setValueAtTime(1046.50, now + 0.24); // C6
+
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.55);
+      osc2.stop(now + 0.55);
+    } else {
+      // Sino náutico límpido para nova reserva ou descida (587.33Hz D5 -> 880Hz A5 + harmônico D6)
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'triangle';
+
+      osc1.frequency.setValueAtTime(587.33, now); // D5
+      osc1.frequency.setValueAtTime(880.00, now + 0.12); // A5
+
+      osc2.frequency.setValueAtTime(1174.66, now + 0.12); // D6 harmônico suave
+
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now + 0.12);
+      osc1.stop(now + 0.48);
+      osc2.stop(now + 0.48);
+    }
+  } catch (err) {
+    console.warn('[MarinaNotifications] Falha na reprodução de bip sonoro:', err);
+  }
+}
+
 /* -------------------------------------------------------------
    WEB / MOBILE PUSH NOTIFICATIONS API
 ------------------------------------------------------------- */
@@ -302,7 +379,7 @@ export async function sendSystemNotification(title: string, body: string, data?:
   if (!isPushEnabled() || Notification.permission !== 'granted') return false;
 
   try {
-    const options: NotificationOptions = {
+    const options: NotificationOptions & { vibrate?: number[] } = {
       body,
       icon: '/logos/favicon.ico',
       badge: '/logos/favicon.ico',

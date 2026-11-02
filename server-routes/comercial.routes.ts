@@ -766,7 +766,7 @@ router.get(["/catalogo/public", "/public/catalogo", "/catalogo-publico"], async 
 // ==========================================
 // Atualização de Equipamentos & Acessórios da Embarcação no Catálogo
 // ==========================================
-router.post(["/catalogo/barco/:id/acessorios", "/barco/:id/acessorios"], async (req, res) => {
+router.post(["/catalogo/barco/:id/acessorios", "/barco/:id/acessorios"], requireAdminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -1147,7 +1147,7 @@ router.get(["/vitrine/settings", "/comercial/vitrine/settings"], async (req, res
   }
 });
 
-router.post(["/vitrine/settings", "/comercial/vitrine/settings"], async (req, res) => {
+router.post(["/vitrine/settings", "/comercial/vitrine/settings"], requireAdminAuth, async (req, res) => {
   try {
     const settings = req.body || {};
     await setConfigValue("vitrine_settings", JSON.stringify(settings));
@@ -1155,6 +1155,43 @@ router.post(["/vitrine/settings", "/comercial/vitrine/settings"], async (req, re
   } catch (err: any) {
     console.error("[POST /vitrine/settings Error]:", err);
     res.status(500).json({ error: true, message: "Erro ao salvar configurações da vitrine" });
+  }
+});
+
+// ==========================================
+// Metas Comerciais da Equipe (Definidas por Administradores)
+// ==========================================
+router.get(["/metas", "/comercial/metas"], requireAdminAuth, async (req, res) => {
+  try {
+    const raw = await getConfigValue("comercial_team_metas");
+    let metas = null;
+    if (raw) {
+      try { metas = JSON.parse(raw); } catch {}
+    }
+    res.json({ success: true, metas });
+  } catch (err: any) {
+    console.error("[GET /metas Error]:", err);
+    res.status(500).json({ error: true, message: "Erro ao carregar metas da equipe" });
+  }
+});
+
+router.post(["/metas", "/comercial/metas"], requireAdminAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const role = (user?.role || "").toLowerCase().trim();
+    if (role !== "admin") {
+      return res.status(403).json({
+        error: true,
+        message: "Apenas administradores têm permissão para configurar as metas de vendas da equipe."
+      });
+    }
+
+    const metas = req.body || {};
+    await setConfigValue("comercial_team_metas", JSON.stringify(metas));
+    res.json({ success: true, metas, message: "Metas da equipe atualizadas pelo administrador com sucesso." });
+  } catch (err: any) {
+    console.error("[POST /metas Error]:", err);
+    res.status(500).json({ error: true, message: "Erro ao salvar metas da equipe" });
   }
 });
 

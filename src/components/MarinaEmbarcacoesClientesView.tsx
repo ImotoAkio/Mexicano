@@ -89,6 +89,7 @@ export default function MarinaEmbarcacoesClientesView({
 
     const token = localStorage.getItem('admin_token');
     const socket = io(window.location.origin, {
+      auth: { token: localStorage.getItem("admin_token") },
       auth: token ? { token } : undefined,
       transports: ['polling', 'websocket']
     });
@@ -346,7 +347,7 @@ export default function MarinaEmbarcacoesClientesView({
 
   const handleEditBoat = (boat: Embarcacao) => {
     if (isValeBoat(boat)) {
-      alert("Embarcações vinculadas à Vale Náutica estão disponíveis apenas para consulta e não podem ser editadas pelo Gerente de Marina.");
+      alert("Embarcações vinculadas à Vale Administradora estão disponíveis apenas para consulta e não podem ser editadas pelo Gerente de Marina.");
       return;
     }
     setSelectedBoat(null);
@@ -357,7 +358,7 @@ export default function MarinaEmbarcacoesClientesView({
   const handleDeleteBoat = async (id: string, name: string) => {
     const boat = boats.find(b => b.id === id);
     if (boat && isValeBoat(boat)) {
-      alert("Embarcações vinculadas à Vale Náutica não podem ser excluídas.");
+      alert("Embarcações vinculadas à Vale Administradora não podem ser excluídas.");
       return;
     }
     if (!window.confirm(`Tem certeza que deseja excluir a embarcação "${name}" da frota da Marina Club? Esta ação removerá o registro do sistema.`)) {
@@ -463,7 +464,7 @@ export default function MarinaEmbarcacoesClientesView({
               </span>
             </div>
             <p className="text-slate-500 font-medium text-[11px] sm:text-xs mt-0.5">
-              Você pode <strong className="text-teal-800">cadastrar novas embarcações e editar livremente os veículos vinculados à Marina Club</strong>. Embarcações vinculadas à <strong className="text-indigo-700">Vale Náutica</strong> são exibidas apenas para consulta operacional.
+              Você pode <strong className="text-teal-800">cadastrar novas embarcações e editar livremente os veículos vinculados à Marina Club</strong>. Embarcações vinculadas à <strong className="text-indigo-700">Vale Administradora</strong> são exibidas apenas para consulta operacional.
             </p>
           </div>
         </div>
@@ -628,7 +629,7 @@ export default function MarinaEmbarcacoesClientesView({
             className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-[#186b77]"
           >
             <option value="all">Todas as Empresas</option>
-            <option value="VALE">Vale Náutica</option>
+            <option value="VALE">Vale Administradora</option>
             <option value="MARINA">Marina</option>
             <option value="MEXICANO">Mexicano</option>
           </select>
@@ -744,7 +745,7 @@ export default function MarinaEmbarcacoesClientesView({
                               </span>
                             ) : isVale ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200/80 rounded-md text-[10px] font-bold">
-                                <Lock className="w-2.5 h-2.5 text-indigo-500" /> Vale Náutica
+                                <Lock className="w-2.5 h-2.5 text-indigo-500" /> Vale Administradora
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-md text-[10px] font-bold">
@@ -824,7 +825,7 @@ export default function MarinaEmbarcacoesClientesView({
                                   <span>Editar</span>
                                 </button>
                               ) : (
-                                <span className="px-2 py-1 bg-slate-50 border border-slate-200 text-slate-400 font-bold rounded-xl text-[10px] inline-flex items-center gap-1 select-none" title="Embarcação vinculada à Vale Náutica (somente leitura)">
+                                <span className="px-2 py-1 bg-slate-50 border border-slate-200 text-slate-400 font-bold rounded-xl text-[10px] inline-flex items-center gap-1 select-none" title="Embarcação vinculada à Vale Administradora (somente leitura)">
                                   <Lock className="w-3 h-3" />
                                   <span>Leitura</span>
                                 </span>
@@ -879,7 +880,7 @@ export default function MarinaEmbarcacoesClientesView({
                             </span>
                           ) : (
                             <span className="px-2.5 py-1 bg-slate-950/80 backdrop-blur-md text-slate-200 font-bold text-[10px] rounded-xl flex items-center gap-1 shadow-md">
-                              <Lock className="w-3 h-3 text-indigo-400" /> Vale Náutica
+                              <Lock className="w-3 h-3 text-indigo-400" /> Vale Administradora
                             </span>
                           )}
 
@@ -1028,7 +1029,7 @@ export default function MarinaEmbarcacoesClientesView({
                             <span>Ver Ficha (Somente Leitura)</span>
                           </button>
                           <p className="text-[10px] text-slate-400 text-center font-medium flex items-center justify-center gap-1 pt-0.5">
-                            <Lock className="w-2.5 h-2.5" /> Frota Vale Náutica (Bloqueado para edição)
+                            <Lock className="w-2.5 h-2.5" /> Frota Vale Administradora (Bloqueado para edição)
                           </p>
                         </div>
                       )}
@@ -1220,7 +1221,7 @@ export default function MarinaEmbarcacoesClientesView({
                   <p className="text-xs text-slate-400 font-medium">
                     {isMarinaBoat(selectedBoat)
                       ? 'Ficha Técnica Operacional • Frota Marina Club (Gestão Habilitada)'
-                      : 'Ficha Técnica Operacional • Frota Vale Náutica (Somente Leitura)'}
+                      : 'Ficha Técnica Operacional • Frota Vale Administradora (Somente Leitura)'}
                   </p>
                 </div>
               </div>
@@ -1421,7 +1422,7 @@ export default function MarinaEmbarcacoesClientesView({
                 <>
                   <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                     <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    Embarcação vinculada à Vale Náutica (somente leitura para o Gerente da Marina).
+                    Embarcação vinculada à Vale Administradora (somente leitura para o Gerente da Marina).
                   </span>
                   <button
                     onClick={() => setSelectedBoat(null)}

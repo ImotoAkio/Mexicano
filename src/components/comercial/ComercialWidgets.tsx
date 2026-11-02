@@ -45,7 +45,7 @@ import {
   X,
 } from 'lucide-react';
 import { useComercialSettings } from './ComercialSettingsModal';
-import { Cliente, Embarcacao, VendaComercial, ConfigMotorComissoes } from '../../types';
+import { Cliente, Embarcacao, VendaComercial, ConfigMotorComissoes, LeadComercial } from '../../types';
 import { clientDB, boatDB, reservationDB, onDbUpdate } from '../../db';
 import {
   calculateEstoqueCotasConsolidado,
@@ -58,6 +58,12 @@ import {
   calculateComissoesResumo,
   getCurrentMonthKey,
 } from '../../utils/comissaoUtils';
+import {
+  DashboardPeriodInfo,
+  computePeriodInfo,
+  isDateInRange,
+  calculateDelta,
+} from './comercialDateUtils';
 
 /* ───────────────────────── Shared Card ───────────────────────── */
 
@@ -110,97 +116,166 @@ function Delta({ value, positive }: { value: string; positive: boolean }) {
 /* ───────────────────────── KPI cards de Topo ───────────────────────── */
 
 interface KpiRowProps {
+  periodInfo?: DashboardPeriodInfo;
   periodLabel?: string;
   vendas?: VendaComercial[];
+  leads?: LeadComercial[];
+  propostas?: any[];
 }
 
-export function KpiRow({ periodLabel = 'Últimos 30 dias', vendas = [] }: KpiRowProps) {
+export function KpiRow({
+  periodInfo,
+  periodLabel = 'Últimos 30 dias',
+  vendas = [],
+  leads,
+  propostas,
+}: KpiRowProps) {
   const [settings] = useComercialSettings();
   const [clients, setClients] = useState<Cliente[]>(() => clientDB.getAll());
-  const [reservasCount, setReservasCount] = useState<number>(0);
-  const [leadsCount, setLeadsCount] = useState<number>(0);
+  const [reservas, setReservas] = useState(() => reservationDB.getAll());
+  const [internalLeads, setInternalLeads] = useState<LeadComercial[]>([]);
+  const [internalPropostas, setInternalPropostas] = useState<any[]>([]);
+
+  // Período ativo
+  const activePeriod = useMemo(() => {
+    return periodInfo || computePeriodInfo('30d');
+  }, [periodInfo]);
 
   useEffect(() => {
     const syncData = () => {
       setClients([...clientDB.getAll()]);
-      try {
-        const resList = reservationDB.getAll();
-        // Contagem de visitas e test drives agendados
-        const seaTrials = resList.filter(
-          r =>
-            r.origem === 'comercial' ||
-            r.finalidadeComercial === 'sea_trial' ||
-            (((r as any).observacoes || '') && (((r as any).observacoes || '').toLowerCase().includes('sea trial') || ((r as any).observacoes || '').toLowerCase().includes('test drive'))) ||
-            (((r as any).observacoes || (r as any).observacoes) && ((r as any).observacoes || (r as any).observacoes).toLowerCase().includes('visita'))
-        ).length;
-        setReservasCount(seaTrials);
-      } catch {
-        setReservasCount(0);
-      }
+      setReservas([...reservationDB.getAll()]);
     };
 
     syncData();
     const unsub = onDbUpdate(syncData);
 
-    // Buscar leads do endpoint da API
     const token = localStorage.getItem('admin_token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    fetch('/api/leads', { headers })
-      .then(res => (res.ok ? res.json() : []))
-      .then(data => {
-        if (Array.isArray(data)) {
-          setLeadsCount(data.length);
-          const comVisita = data.filter((l: any) => l.etapaFunil === 'visita_agendada' || l.dataVisitaAgendada).length;
-          setReservasCount(prev => Math.max(prev, comVisita));
-        } else {
-          setLeadsCount(0);
-        }
-      })
-      .catch(() => setLeadsCount(0));
+
+    if (!leads) {
+      fetch('/api/leads', { headers })
+        .then(res => (res.ok ? res.json() : []))
+        .then(data => {
+          if (Array.isArray(data)) setInternalLeads(data);
+        })
+        .catch(() => {});
+    }
+
+    if (!propostas) {
+      fetch('/api/comercial/propostas', { headers })
+        .then(res => (res.ok ? res.json() : {}))
+        .then(data => {
+          if (Array.isArray(data.propostas)) setInternalPropostas(data.propostas);
+        })
+        .catch(() => {});
+    }
 
     return () => unsub();
-  }, []);
+  }, [leads, propostas]);
 
-  // Contratos fechados em tempo real (vendas ativas/concluídas com contrato assinado + cotistas assinados)
-  const contratosFechados = useMemo(() => {
-    const vendasAssinadas = vendas.filter(
-      v => v.status !== 'cancelada' && (v.clienteStatusContrato === 'assinado' || v.status === 'concluida')
+  const leadsList = leads || internalLeads;
+  const propostasList = propostas || internalPropostas;
+
+  // 1. Leads no período atual vs anterior
+  const currLeads = useMemo(() => {
+    const inRange = leadsList.filter(l => isDateInRange(l.createdAt, activePeriod.startDate, activePeriod.endDate));
+    return inRange.length;
+  }, [leadsList, activePeriod]);
+
+  const prevLeads = useMemo(() => {
+    return leadsList.filter(l => isDateInRange(l.createdAt, activePeriod.prevStartDate, activePeriod.prevEndDate)).length;
+  }, [leadsList, activePeriod]);
+
+  const deltaLeads = useMemo(() => calculateDelta(currLeads, prevLeads), [currLeads, prevLeads]);
+
+  // 2. Visitas / Sea Trials no período atual vs anterior
+  const isSeaTrialOrVisit = (r: any) => {
+    if (r.origem === 'comercial' || r.finalidadeComercial === 'sea_trial') return true;
+    const obs = String(r.observacoes || '').toLowerCase();
+    return obs.includes('sea trial') || obs.includes('test drive') || obs.includes('visita');
+  };
+
+  const currVisitas = useMemo(() => {
+    const fromReservas = reservas.filter(r => isSeaTrialOrVisit(r) && isDateInRange(r.data, activePeriod.startDate, activePeriod.endDate)).length;
+    const fromLeads = leadsList.filter(
+      l =>
+        (l.etapaFunil === 'visita_agendada' || Boolean(l.dataVisitaAgendada)) &&
+        isDateInRange(l.dataVisitaAgendada || l.updatedAt || l.createdAt, activePeriod.startDate, activePeriod.endDate)
     ).length;
+    return fromReservas + fromLeads;
+  }, [reservas, leadsList, activePeriod]);
 
-    const clientesAssinados = clients.filter(
-      c => c.statusContrato === 'assinado' && !isInternalMexicano(c.id) && !isInternalMexicano(c.nome)
+  const prevVisitas = useMemo(() => {
+    const fromReservas = reservas.filter(r => isSeaTrialOrVisit(r) && isDateInRange(r.data, activePeriod.prevStartDate, activePeriod.prevEndDate)).length;
+    const fromLeads = leadsList.filter(
+      l =>
+        (l.etapaFunil === 'visita_agendada' || Boolean(l.dataVisitaAgendada)) &&
+        isDateInRange(l.dataVisitaAgendada || l.updatedAt || l.createdAt, activePeriod.prevStartDate, activePeriod.prevEndDate)
     ).length;
+    return fromReservas + fromLeads;
+  }, [reservas, leadsList, activePeriod]);
 
-    return Math.max(vendasAssinadas || 0, clientesAssinados || 0);
-  }, [vendas, clients]);
+  const deltaVisitas = useMemo(() => calculateDelta(currVisitas, prevVisitas), [currVisitas, prevVisitas]);
 
-  // Propostas enviadas (simulações comerciais e propostas em curso)
-  const propostasEnviadas = useMemo(() => {
-    const vendasEmProposta = vendas.filter(v => v.status === 'ativa').length;
-    const clientesEmNegociacao = clients.filter(c => c.statusContrato === 'pendente').length;
-    return Math.max(vendasEmProposta + clientesEmNegociacao, 0);
-  }, [vendas, clients]);
+  // 3. Propostas Enviadas no período atual vs anterior
+  const currPropostas = useMemo(() => {
+    const fromProps = propostasList.filter(p =>
+      isDateInRange(p.createdAt || p.dataEmissao || p.dataCriacao, activePeriod.startDate, activePeriod.endDate)
+    ).length;
+    const fromVendasEmProposta = vendas.filter(
+      v => v.status === 'ativa' && isDateInRange(v.createdAt, activePeriod.startDate, activePeriod.endDate)
+    ).length;
+    return fromProps + fromVendasEmProposta;
+  }, [propostasList, vendas, activePeriod]);
+
+  const prevPropostas = useMemo(() => {
+    const fromProps = propostasList.filter(p =>
+      isDateInRange(p.createdAt || p.dataEmissao || p.dataCriacao, activePeriod.prevStartDate, activePeriod.prevEndDate)
+    ).length;
+    const fromVendasEmProposta = vendas.filter(
+      v => v.status === 'ativa' && isDateInRange(v.createdAt, activePeriod.prevStartDate, activePeriod.prevEndDate)
+    ).length;
+    return fromProps + fromVendasEmProposta;
+  }, [propostasList, vendas, activePeriod]);
+
+  const deltaPropostas = useMemo(() => calculateDelta(currPropostas, prevPropostas), [currPropostas, prevPropostas]);
+
+  // 4. Contratos Fechados no período atual vs anterior
+  const currContratos = useMemo(() => {
+    return vendas.filter(
+      v => v.status !== 'cancelada' && isDateInRange(v.dataVenda || v.createdAt, activePeriod.startDate, activePeriod.endDate)
+    ).length;
+  }, [vendas, activePeriod]);
+
+  const prevContratos = useMemo(() => {
+    return vendas.filter(
+      v => v.status !== 'cancelada' && isDateInRange(v.dataVenda || v.createdAt, activePeriod.prevStartDate, activePeriod.prevEndDate)
+    ).length;
+  }, [vendas, activePeriod]);
+
+  const deltaContratos = useMemo(() => calculateDelta(currContratos, prevContratos), [currContratos, prevContratos]);
 
   // Metas configuradas pelo usuário ou padrões do sistema
-  const metaLeads = settings.metaNovosLeads || 1500;
-  const metaVisitas = settings.metaVisitas || 45;
-  const metaPropostas = settings.metaPropostas || 180;
-  const metaContratos = settings.metaNovosContratos || 70;
+  const metaLeads = settings.metaNovosLeads || 100;
+  const metaVisitas = settings.metaVisitas || 30;
+  const metaPropostas = settings.metaPropostas || 50;
+  const metaContratos = settings.metaNovosContratos || 20;
 
-  const leadsPct = Math.min(100, Math.round((leadsCount / Math.max(1, metaLeads)) * 100));
-  const visitasPct = Math.min(100, Math.round((reservasCount / Math.max(1, metaVisitas)) * 100));
-  const propostasPct = Math.min(100, Math.round((propostasEnviadas / Math.max(1, metaPropostas)) * 100));
-  const contratosPct = Math.min(100, Math.round((contratosFechados / Math.max(1, metaContratos)) * 100));
+  const leadsPct = Math.min(100, Math.round((currLeads / Math.max(1, metaLeads)) * 100));
+  const visitasPct = Math.min(100, Math.round((currVisitas / Math.max(1, metaVisitas)) * 100));
+  const propostasPct = Math.min(100, Math.round((currPropostas / Math.max(1, metaPropostas)) * 100));
+  const contratosPct = Math.min(100, Math.round((currContratos / Math.max(1, metaContratos)) * 100));
 
   const kpis = [
     {
       id: 'leads',
       label: 'Novos Leads',
       sublabel: 'Contatos captados',
-      value: leadsCount.toLocaleString('pt-BR'),
-      delta: '15,5%',
-      positive: true,
-      prev: '1.112',
+      value: currLeads.toLocaleString('pt-BR'),
+      delta: deltaLeads.value,
+      positive: deltaLeads.positive,
+      prev: prevLeads.toLocaleString('pt-BR'),
       metaLabel: `Meta: ${metaLeads.toLocaleString('pt-BR')} (${leadsPct}%)`,
       progress: leadsPct,
       icon: UserPlus,
@@ -210,10 +285,10 @@ export function KpiRow({ periodLabel = 'Últimos 30 dias', vendas = [] }: KpiRow
       id: 'visitas',
       label: 'Visitas / Test Drives Agendados',
       sublabel: 'Experiências na Marina',
-      value: reservasCount.toLocaleString('pt-BR'),
-      delta: '12,4%',
-      positive: true,
-      prev: '34',
+      value: currVisitas.toLocaleString('pt-BR'),
+      delta: deltaVisitas.value,
+      positive: deltaVisitas.positive,
+      prev: prevVisitas.toLocaleString('pt-BR'),
       metaLabel: `Meta: ${metaVisitas.toLocaleString('pt-BR')} (${visitasPct}%)`,
       progress: visitasPct,
       icon: CalendarCheck,
@@ -223,10 +298,10 @@ export function KpiRow({ periodLabel = 'Últimos 30 dias', vendas = [] }: KpiRow
       id: 'propostas',
       label: 'Propostas Enviadas',
       sublabel: 'Simulações geradas',
-      value: propostasEnviadas.toLocaleString('pt-BR'),
-      delta: '8,6%',
-      positive: true,
-      prev: '136',
+      value: currPropostas.toLocaleString('pt-BR'),
+      delta: deltaPropostas.value,
+      positive: deltaPropostas.positive,
+      prev: prevPropostas.toLocaleString('pt-BR'),
       metaLabel: `Meta: ${metaPropostas.toLocaleString('pt-BR')} (${propostasPct}%)`,
       progress: propostasPct,
       icon: Send,
@@ -236,10 +311,10 @@ export function KpiRow({ periodLabel = 'Últimos 30 dias', vendas = [] }: KpiRow
       id: 'contratos',
       label: 'Contratos Fechados',
       sublabel: 'Cotas comercializadas',
-      value: contratosFechados.toLocaleString('pt-BR'),
-      delta: '18,2%',
-      positive: true,
-      prev: '54',
+      value: currContratos.toLocaleString('pt-BR'),
+      delta: deltaContratos.value,
+      positive: deltaContratos.positive,
+      prev: prevContratos.toLocaleString('pt-BR'),
       metaLabel: `Meta: ${metaContratos.toLocaleString('pt-BR')} (${contratosPct}%)`,
       progress: contratosPct,
       icon: FileSignature,
@@ -293,17 +368,65 @@ export function KpiRow({ periodLabel = 'Últimos 30 dias', vendas = [] }: KpiRow
 
 /* ───────────────────────── Revenue & VGV Card + Estoque de Cotas ───────────────────────── */
 
-const REVENUE_TIMELINE = [
-  { d: '1 out', atual: 18500, anterior: 12000, desc: 'Entrada Focker 272 C3' },
-  { d: '3 out', atual: 46000, anterior: 31000, desc: 'Cota Focker 305' },
-  { d: '6 out', atual: 84000, anterior: 55000, desc: 'Fechamento Jet Yamaha C1' },
-  { d: '9 out', atual: 132000, anterior: 89000, desc: 'Sinal Lancha Armatti' },
-  { d: '12 out', atual: 198000, anterior: 142000, desc: 'Contratos Quinzena 1' },
-  { d: '15 out', atual: 275000, anterior: 198000, desc: 'Cota Focker 272 C4' },
-  { d: '18 out', atual: 348000, anterior: 254000, desc: 'Fechamento Sea-Doo GTX' },
-  { d: '21 out', atual: 412000, anterior: 318000, desc: 'Entradas da Semana 3' },
-  { d: '24 out', atual: 486200, anterior: 390000, desc: 'VGV acumulado corrente' },
-];
+function generateRevenueTimeline(
+  vendas: VendaComercial[],
+  periodInfo: DashboardPeriodInfo,
+  isVendedorScope: boolean,
+  currentName: string
+) {
+  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const startTime = periodInfo.startDate.getTime();
+  const endTime = periodInfo.endDate.getTime();
+  const totalDuration = Math.max(1, endTime - startTime);
+
+  const prevStartTime = periodInfo.prevStartDate.getTime();
+  const prevEndTime = periodInfo.prevEndDate.getTime();
+  const prevDuration = Math.max(1, prevEndTime - prevStartTime);
+
+  const filterVenda = (v: VendaComercial) => {
+    if (v.status === 'cancelada') return false;
+    if (!isVendedorScope) return true;
+    if (!currentName) return true;
+    return (v.vendedorNome || '').toLowerCase().includes(currentName);
+  };
+
+  const currentVendas = vendas.filter(v => filterVenda(v) && isDateInRange(v.dataVenda || v.createdAt, periodInfo.startDate, periodInfo.endDate));
+  const prevVendas = vendas.filter(v => filterVenda(v) && isDateInRange(v.dataVenda || v.createdAt, periodInfo.prevStartDate, periodInfo.prevEndDate));
+
+  const pointsCount = 7;
+  const timeline = [];
+
+  for (let i = 0; i < pointsCount; i++) {
+    const fraction = (i + 1) / pointsCount;
+    const pointTime = new Date(startTime + fraction * totalDuration);
+    const prevPointTime = new Date(prevStartTime + fraction * prevDuration);
+
+    const dLabel = `${pointTime.getDate()} ${meses[pointTime.getMonth()]}`;
+
+    const currSum = currentVendas
+      .filter(v => {
+        const t = new Date(v.dataVenda || v.createdAt).getTime();
+        return t <= pointTime.getTime();
+      })
+      .reduce((sum, v) => sum + (Number(v.valorTotal) || 0), 0);
+
+    const prevSum = prevVendas
+      .filter(v => {
+        const t = new Date(v.dataVenda || v.createdAt).getTime();
+        return t <= prevPointTime.getTime();
+      })
+      .reduce((sum, v) => sum + (Number(v.valorTotal) || 0), 0);
+
+    timeline.push({
+      d: dLabel,
+      atual: currSum,
+      anterior: prevSum,
+      desc: currSum > 0 ? `VGV acumulado até ${dLabel}` : 'Sem fechamentos neste marco',
+    });
+  }
+
+  return timeline;
+}
 
 function RevenueTooltip({ active, payload, label, hideValues }: any) {
   if (!active || !payload?.length) return null;
@@ -318,20 +441,20 @@ function RevenueTooltip({ active, payload, label, hideValues }: any) {
   return (
     <div className="rounded-xl bg-stone-900 text-white shadow-xl px-3.5 py-2.5 text-[11px] border border-stone-800">
       <div className="flex items-center justify-between gap-3 mb-1.5 border-b border-stone-800 pb-1">
-        <p className="font-bold text-stone-200">{label} 2026</p>
+        <p className="font-bold text-stone-200">{label}</p>
         {item?.desc && <span className="text-[10px] text-stone-400 truncate max-w-[140px]">{item.desc}</span>}
       </div>
       <p className="flex items-center justify-between gap-3 text-stone-300">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-emerald-400" />
-          VGV Mês Atual:
+          VGV Período Atual:
         </span>
         <span className="font-bold text-white tabular-nums">{fmt(atual)}</span>
       </p>
       <p className="flex items-center justify-between gap-3 text-stone-400 mt-0.5">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-stone-500" />
-          Mês Anterior:
+          Período Anterior:
         </span>
         <span className="font-medium tabular-nums">{fmt(anterior)}</span>
       </p>
@@ -340,16 +463,22 @@ function RevenueTooltip({ active, payload, label, hideValues }: any) {
 }
 
 interface RevenueCardProps {
+  periodInfo?: DashboardPeriodInfo;
   vendas?: VendaComercial[];
   operadorNome?: string;
 }
 
-export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
+export function RevenueCard({ periodInfo, vendas = [], operadorNome }: RevenueCardProps) {
   const [settings] = useComercialSettings();
   const hide = settings.ocultarValoresDashboard;
 
   // Visualização: 'equipe' ou 'vendedor'
   const [viewScope, setViewScope] = useState<'equipe' | 'vendedor'>('equipe');
+
+  // Período ativo
+  const activePeriod = useMemo(() => {
+    return periodInfo || computePeriodInfo('30d');
+  }, [periodInfo]);
 
   // Dados de estoque em tempo real
   const [boats, setBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
@@ -369,31 +498,40 @@ export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
     return calculateEstoqueCotasConsolidado(boats, clients, vendas);
   }, [boats, clients, vendas]);
 
-  // VGV real do mês a partir de vendas registradas
+  // VGV real do período a partir de vendas registradas (sem mocks!)
   const realVgvEquipe = useMemo(() => {
-    if (vendas.length > 0) {
-      const activeTotal = vendas
-        .filter(v => v.status !== 'cancelada')
-        .reduce((sum, v) => sum + (Number(v.valorTotal) || 0), 0);
-      if (activeTotal > 0) return activeTotal;
-    }
-    return settings.faturamentoAtual || 486200;
-  }, [vendas, settings.faturamentoAtual]);
+    return vendas
+      .filter(v => v.status !== 'cancelada' && isDateInRange(v.dataVenda || v.createdAt, activePeriod.startDate, activePeriod.endDate))
+      .reduce((sum, v) => sum + (Number(v.valorTotal) || 0), 0);
+  }, [vendas, activePeriod]);
 
-  // VGV do vendedor logado
+  // VGV real do vendedor logado no período
   const realVgvVendedor = useMemo(() => {
     const currentName = (operadorNome || settings.nome || '').toLowerCase().trim();
-    if (vendas.length > 0) {
-      const vendedorVendas = vendas.filter(v => {
+    return vendas
+      .filter(v => {
         if (v.status === 'cancelada') return false;
+        if (!isDateInRange(v.dataVenda || v.createdAt, activePeriod.startDate, activePeriod.endDate)) return false;
         if (!currentName) return true;
         return (v.vendedorNome || '').toLowerCase().includes(currentName);
-      });
-      const sum = vendedorVendas.reduce((acc, v) => acc + (Number(v.valorTotal) || 0), 0);
-      if (sum > 0) return sum;
-    }
-    return Math.round(realVgvEquipe * 0.42);
-  }, [vendas, operadorNome, settings.nome, realVgvEquipe]);
+      })
+      .reduce((acc, v) => acc + (Number(v.valorTotal) || 0), 0);
+  }, [vendas, operadorNome, settings.nome, activePeriod]);
+
+  // VGV do período anterior para cálculo exato de delta
+  const prevVgv = useMemo(() => {
+    const currentName = (operadorNome || settings.nome || '').toLowerCase().trim();
+    return vendas
+      .filter(v => {
+        if (v.status === 'cancelada') return false;
+        if (!isDateInRange(v.dataVenda || v.createdAt, activePeriod.prevStartDate, activePeriod.prevEndDate)) return false;
+        if (isVendedorScope && currentName) {
+          return (v.vendedorNome || '').toLowerCase().includes(currentName);
+        }
+        return true;
+      })
+      .reduce((acc, v) => acc + (Number(v.valorTotal) || 0), 0);
+  }, [vendas, operadorNome, settings.nome, isVendedorScope, activePeriod]);
 
   // Valores ativos conforme escopo
   const isVendedorScope = viewScope === 'vendedor';
@@ -403,13 +541,47 @@ export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
     : settings.metaMensalFaturamento || 600000;
   const pct = Math.min(100, Math.round((faturamentoAtual / Math.max(1, meta)) * 100));
 
-  // Projeção linear do fim do mês baseada no dia atual
+  const vgvDelta = useMemo(() => {
+    return calculateDelta(faturamentoAtual, prevVgv);
+  }, [faturamentoAtual, prevVgv]);
+
+  // Projeção proporcional do fim do período baseada no tempo decorrido
   const projecaoMes = useMemo(() => {
     const now = new Date();
-    const currentDay = Math.max(1, now.getDate());
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    return Math.round((faturamentoAtual / currentDay) * daysInMonth);
-  }, [faturamentoAtual]);
+    const start = activePeriod.startDate.getTime();
+    const end = activePeriod.endDate.getTime();
+    const current = Math.min(Math.max(now.getTime(), start), end);
+    const elapsed = current - start;
+    const total = end - start;
+    if (elapsed <= 0 || faturamentoAtual === 0) return 0;
+    const ratio = total / elapsed;
+    return Math.round(faturamentoAtual * ratio);
+  }, [faturamentoAtual, activePeriod]);
+
+  const revenueTimeline = useMemo(() => {
+    return generateRevenueTimeline(
+      vendas,
+      activePeriod,
+      isVendedorScope,
+      (operadorNome || settings.nome || '').toLowerCase().trim()
+    );
+  }, [vendas, activePeriod, isVendedorScope, operadorNome, settings.nome]);
+
+  const maxTimelineVal = useMemo(() => {
+    const peak = Math.max(
+      ...revenueTimeline.map(t => Math.max(t.atual, t.anterior)),
+      faturamentoAtual,
+      prevVgv,
+      0
+    );
+    return peak > 0 ? peak : meta;
+  }, [revenueTimeline, faturamentoAtual, prevVgv, meta]);
+
+  const yTicks = useMemo(() => {
+    if (maxTimelineVal === 0) return [0, 50000, 100000, 200000];
+    const step = maxTimelineVal / 3;
+    return [0, Math.round(step), Math.round(step * 2), Math.round(maxTimelineVal * 1.1)];
+  }, [maxTimelineVal]);
 
   const formatBRL = (val: number) => {
     if (hide) return 'R$ ••••••';
@@ -442,7 +614,7 @@ export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
               </span>
             </div>
             <p className="text-[11px] text-stone-400 mt-0.5">
-              Evolução temporal das vendas realizadas vs. meta financeira do período
+              Evolução temporal das vendas realizadas vs. meta financeira do período ({activePeriod.label})
             </p>
           </div>
 
@@ -479,8 +651,8 @@ export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
                 {formatBRL(faturamentoAtual)}
               </p>
               <div className="mt-1 flex items-center gap-2">
-                <Delta value="24,4%" positive />
-                <span className="text-[11px] text-stone-400">vs. período anterior</span>
+                <Delta value={vgvDelta.value} positive={vgvDelta.positive} />
+                <span className="text-[11px] text-stone-400">vs. período anterior ({formatBRL(prevVgv)})</span>
               </div>
             </div>
 
@@ -496,7 +668,7 @@ export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
                 />
               </div>
               <div className="flex items-center justify-between text-[10px] text-stone-500 pt-0.5">
-                <span>Ritmo diário</span>
+                <span>Ritmo do período</span>
                 <span className="font-semibold text-stone-700">
                   Projeção: {formatCompactBRL(projecaoMes)}
                 </span>
@@ -506,7 +678,7 @@ export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
 
           <div className="h-[180px] -mr-2">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={REVENUE_TIMELINE} margin={{ top: 8, right: 10, left: -18, bottom: 0 }}>
+              <AreaChart data={revenueTimeline} margin={{ top: 8, right: 10, left: -18, bottom: 0 }}>
                 <defs>
                   <linearGradient id="vgvFillGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#2B1120" stopOpacity={0.28} />
@@ -526,7 +698,7 @@ export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
                   axisLine={false}
                   tick={{ fontSize: 10, fill: '#a8a09b' }}
                   tickFormatter={v => (hide ? '•••' : v === 0 ? '0' : `${Math.round(v / 1000)}K`)}
-                  ticks={[0, 150000, 300000, 500000]}
+                  ticks={yTicks}
                 />
                 <Tooltip content={<RevenueTooltip hideValues={hide} />} cursor={{ stroke: '#2B1120', strokeDasharray: '3 3' }} />
                 <Area
@@ -703,11 +875,12 @@ export function RevenueCard({ vendas = [], operadorNome }: RevenueCardProps) {
 /* ───────────────────────── Ranking de Embarcações / Planos Mais Vendidos ───────────────────────── */
 
 interface TopPlansCardProps {
+  periodInfo?: DashboardPeriodInfo;
   vendas?: VendaComercial[];
   onSelectBoat?: (boatId: string) => void;
 }
 
-export function TopPlansCard({ vendas = [], onSelectBoat }: TopPlansCardProps) {
+export function TopPlansCard({ periodInfo, vendas = [], onSelectBoat }: TopPlansCardProps) {
   const [settings] = useComercialSettings();
   const isCompact = settings.densidadeTabelas === 'compacta';
   const hide = settings.ocultarValoresDashboard;
@@ -734,21 +907,27 @@ export function TopPlansCard({ vendas = [], onSelectBoat }: TopPlansCardProps) {
         const totalCotas = getBoatTotalCotas(boat);
         const estoque = getBoatEstoqueResumo(boatId, clients, boat);
 
-        // Vendas desta embarcação
-        const boatVendas = vendas.filter(v => v.embarcacaoId === boatId && v.status !== 'cancelada');
+        // Vendas desta embarcação no período (se especificado) ou total ativo
+        const boatVendas = vendas.filter(v => {
+          if (v.embarcacaoId !== boatId || v.status === 'cancelada') return false;
+          if (periodInfo) {
+            return isDateInRange(v.dataVenda || v.createdAt, periodInfo.startDate, periodInfo.endDate);
+          }
+          return true;
+        });
 
         // Contagem de cotas vendidas (prioriza vendas registradas ou cotistas ativos)
         const cotasVendidas = Math.max(boatVendas.length, estoque.cotasVendidas);
 
-        // VGV gerado (soma das vendas ou estimativa padrão de mercado náutico por cota)
+        // VGV gerado (soma real das vendas ou valor cadastrado por cota na embarcação)
         let vgvGerado = boatVendas.reduce((sum, v) => sum + (Number(v.valorTotal) || 0), 0);
         if (vgvGerado === 0 && cotasVendidas > 0) {
-          const estimatedQuotaValue = boat.tipo === 'lancha' ? 85000 : 45000;
-          vgvGerado = cotasVendidas * estimatedQuotaValue;
+          const quotaVal = Number(boat.valorCota) || 0;
+          vgvGerado = cotasVendidas * quotaVal;
         }
 
-        // Ticket médio
-        const ticketMedio = cotasVendidas > 0 ? Math.round(vgvGerado / cotasVendidas) : 0;
+        // Ticket médio real
+        const ticketMedio = cotasVendidas > 0 ? Math.round(vgvGerado / cotasVendidas) : (Number(boat.valorCota) || 0);
         const taxaAbsorcao = Math.min(100, Math.round((cotasVendidas / Math.max(1, totalCotas)) * 100));
 
         return {
@@ -769,7 +948,7 @@ export function TopPlansCard({ vendas = [], onSelectBoat }: TopPlansCardProps) {
         if (sortBy === 'ticket') return b.ticketMedio - a.ticketMedio;
         return b.cotasVendidas - a.cotasVendidas || b.vgvGerado - a.vgvGerado;
       });
-  }, [boats, clients, vendas, sortBy]);
+  }, [boats, clients, vendas, sortBy, periodInfo]);
 
   const formatBRL = (val: number) => {
     if (hide) return 'R$ ••••••';
@@ -932,37 +1111,72 @@ export function TopPlansCard({ vendas = [], onSelectBoat }: TopPlansCardProps) {
 
 /* ───────────────────────── Most active day ───────────────────────── */
 
-const DAYS = [
-  { d: 'Dom', v: 62 },
-  { d: 'Seg', v: 38 },
-  { d: 'Ter', v: 44 },
-  { d: 'Qua', v: 52 },
-  { d: 'Qui', v: 34 },
-  { d: 'Sex', v: 58 },
-  { d: 'Sáb', v: 100, peak: '186' },
-];
+export function ActiveDayCard({ periodInfo }: { periodInfo?: DashboardPeriodInfo } = {}) {
+  const [resList, setResList] = useState(() => reservationDB.getAll());
 
-export function ActiveDayCard() {
+  useEffect(() => {
+    const sync = () => setResList([...reservationDB.getAll()]);
+    sync();
+    return onDbUpdate(sync);
+  }, []);
+
+  const daysData = useMemo(() => {
+    const dayCounts = [0, 0, 0, 0, 0, 0, 0]; // 0: Dom, 1: Seg, 2: Ter, 3: Qua, 4: Qui, 5: Sex, 6: Sáb
+
+    // Filtrar pelo período se houver dados correspondentes; caso contrário, usa toda a base de reservas para volume confiável
+    const filtered = periodInfo
+      ? resList.filter(r => isDateInRange(r.data, periodInfo.startDate, periodInfo.endDate))
+      : resList;
+
+    const source = filtered.length > 0 ? filtered : resList;
+
+    source.forEach(r => {
+      if (!r.data) return;
+      const d = new Date(`${r.data}T12:00:00`);
+      if (!isNaN(d.getTime())) {
+        dayCounts[d.getDay()]++;
+      }
+    });
+
+    const maxVal = Math.max(...dayCounts, 1);
+    const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+    return dayNames.map((d, idx) => {
+      const count = dayCounts[idx];
+      const isPeak = count === maxVal && count > 0;
+      return {
+        d,
+        count,
+        v: count === 0 ? 8 : Math.max(12, Math.round((count / maxVal) * 100)),
+        peak: isPeak ? String(count) : undefined,
+      };
+    });
+  }, [resList, periodInfo]);
+
   return (
     <Card className="p-5">
-      <CardHeader title="Dia com mais atendimentos & visitas" />
+      <CardHeader
+        title="Dia com mais atendimentos & saídas"
+        subtitle="Distribuição semanal de embarques e agendamentos"
+      />
       <div className="mt-4 h-[150px] flex items-end gap-2.5">
-        {DAYS.map(day => (
+        {daysData.map(day => (
           <div key={day.d} className="flex-1 h-full flex flex-col items-center justify-end gap-2">
             {day.peak && <span className="text-[12px] font-semibold text-stone-900 tabular-nums">{day.peak}</span>}
             <div
               className={`w-full rounded-lg ${
                 day.peak
                   ? 'bg-gradient-to-b from-[#4a1f39] to-[#2B1120] shadow-[0_6px_14px_-6px_rgba(43,17,32,0.7)]'
-                  : 'bg-stone-100'
+                  : 'bg-stone-100 hover:bg-stone-200 transition-colors'
               }`}
               style={{ height: `${day.v * 0.78}%` }}
+              title={`${day.d}: ${day.count} agendamentos`}
             />
           </div>
         ))}
       </div>
       <div className="mt-2 flex gap-2.5">
-        {DAYS.map(day => (
+        {daysData.map(day => (
           <span
             key={day.d}
             className={`flex-1 text-center text-[11px] ${day.peak ? 'text-[#2B1120] font-bold' : 'text-stone-400'}`}
@@ -977,29 +1191,71 @@ export function ActiveDayCard() {
 
 /* ───────────────────────── Conversion gauge ───────────────────────── */
 
-export function ConversionGaugeCard({ value: customValue }: { value?: number } = {}) {
-  const [leadsCount, setLeadsCount] = useState<number>(0);
-  const [vendasCount, setVendasCount] = useState<number>(0);
+interface ConversionGaugeCardProps {
+  value?: number;
+  periodInfo?: DashboardPeriodInfo;
+  leads?: LeadComercial[];
+  vendas?: VendaComercial[];
+}
+
+export function ConversionGaugeCard({
+  value: customValue,
+  periodInfo,
+  leads = [],
+  vendas = [],
+}: ConversionGaugeCardProps = {}) {
+  const [internalLeads, setInternalLeads] = useState<LeadComercial[]>([]);
+  const [internalVendas, setInternalVendas] = useState<VendaComercial[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    fetch('/api/leads', { headers })
-      .then(res => (res.ok ? res.json() : []))
-      .then(data => { if (Array.isArray(data)) setLeadsCount(data.length); })
-      .catch(() => {});
 
-    fetch('/api/comercial/vendas', { headers })
-      .then(res => (res.ok ? res.json() : {}))
-      .then(data => { if (Array.isArray(data.vendas)) setVendasCount(data.vendas.length); })
-      .catch(() => {});
-  }, []);
+    if (leads.length === 0) {
+      fetch('/api/leads', { headers })
+        .then(res => (res.ok ? res.json() : []))
+        .then(data => {
+          if (Array.isArray(data)) setInternalLeads(data);
+        })
+        .catch(() => {});
+    }
+
+    if (vendas.length === 0) {
+      fetch('/api/comercial/vendas', { headers })
+        .then(res => (res.ok ? res.json() : {}))
+        .then(data => {
+          if (Array.isArray(data.vendas)) setInternalVendas(data.vendas);
+        })
+        .catch(() => {});
+    }
+  }, [leads.length, vendas.length]);
+
+  const activeLeads = leads.length > 0 ? leads : internalLeads;
+  const activeVendas = vendas.length > 0 ? vendas : internalVendas;
+
+  // Filtrar leads e vendas no período (ou base geral se período tiver poucos dados)
+  const leadsInPeriod = useMemo(() => {
+    if (!periodInfo) return activeLeads;
+    const inRange = activeLeads.filter(l => isDateInRange(l.createdAt, periodInfo.startDate, periodInfo.endDate));
+    return inRange.length > 0 ? inRange : activeLeads;
+  }, [activeLeads, periodInfo]);
+
+  const vendasInPeriod = useMemo(() => {
+    const valid = activeVendas.filter(v => v.status !== 'cancelada');
+    if (!periodInfo) return valid;
+    const inRange = valid.filter(v => isDateInRange(v.dataVenda || v.createdAt, periodInfo.startDate, periodInfo.endDate));
+    return inRange.length > 0 ? inRange : valid;
+  }, [activeVendas, periodInfo]);
+
+  const totalLeads = leadsInPeriod.length;
+  const totalConversoes = vendasInPeriod.length;
 
   const calculatedValue = customValue !== undefined 
     ? customValue 
-    : leadsCount > 0 
-      ? Math.min(100, Math.round((Math.max(vendasCount, 1) / leadsCount) * 100)) 
-      : 68;
+    : totalLeads > 0 
+      ? Math.min(100, Math.round((totalConversoes / totalLeads) * 100)) 
+      : 0;
+
   const value = calculatedValue;
   const ticks = 48;
   const cx = 110;
@@ -1008,9 +1264,18 @@ export function ConversionGaugeCard({ value: customValue }: { value?: number } =
   const rInner = 74;
   const filled = Math.round((value / 100) * ticks);
 
+  const statusSubtitle = totalLeads === 0
+    ? 'Aguardando captação de leads'
+    : value >= 15
+    ? `Conversão excelente (${totalConversoes} de ${totalLeads} cotas)`
+    : `${totalConversoes} vendas de ${totalLeads} oportunidades`;
+
   return (
     <Card className="p-5">
-      <CardHeader title="Taxa de conversão de cotas" />
+      <CardHeader
+        title="Taxa de conversão de cotas"
+        subtitle="Relação entre novos contatos e vendas fechadas"
+      />
       <div className="relative mt-2 flex justify-center">
         <svg viewBox="0 0 220 112" className="w-full max-w-[240px]">
           {Array.from({ length: ticks }).map((_, i) => {
@@ -1036,7 +1301,7 @@ export function ConversionGaugeCard({ value: customValue }: { value?: number } =
         </svg>
         <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
           <span className="text-[30px] leading-none font-bold text-stone-900 tabular-nums tracking-tight">{value}%</span>
-          <span className="mt-1 text-[11px] text-stone-400">Acima da meta média de 60%</span>
+          <span className="mt-1 text-[11px] text-stone-400">{statusSubtitle}</span>
         </div>
       </div>
       <div className="mt-3 flex justify-center">

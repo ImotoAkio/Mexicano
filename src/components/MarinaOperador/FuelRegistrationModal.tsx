@@ -65,8 +65,8 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
         setComprovanteUrl(reservaTarget.abastecimentoComprovanteUrl || null);
       } else {
         setLiters('');
-        setStatusCobranca('pendente');
-        setPaymentType('pix');
+        setStatusCobranca(standaloneMode === 'avulso' ? 'pago' : 'pendente');
+        setPaymentType(standaloneMode === 'avulso' ? 'pix' : 'faturado');
         setComprovanteUrl(null);
       }
     }
@@ -181,47 +181,49 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
           {Number(liters) > 0 && (
             <div className="animate-in slide-in-from-top-4 space-y-6">
 
-              {/* Payment Status Segmented Control */}
-              <div className="space-y-3 border-t border-slate-100 pt-5">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Tratamento Financeiro</label>
-                <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setStatusCobranca('pendente')}
-                    className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
-                      statusCobranca === 'pendente'
-                        ? 'bg-slate-900 text-white shadow-md'
-                        : 'text-slate-500 hover:text-slate-900 border border-transparent'
-                    }`}
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>PENDENTE</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatusCobranca('pago')}
-                    className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
-                      statusCobranca === 'pago'
-                        ? 'bg-cyan-600 text-white shadow-md'
-                        : 'text-slate-500 hover:text-cyan-700 border border-transparent'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>COBRADO AGORA</span>
-                  </button>
+              {/* Payment Status Segmented Control (Only for boats, avulso is always paid immediately) */}
+              {standaloneMode !== 'avulso' && (
+                <div className="space-y-3 border-t border-slate-100 pt-5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Condição de Cobrança</label>
+                  <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => { setStatusCobranca('pendente'); setPaymentType('faturado'); }}
+                      className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
+                        statusCobranca === 'pendente'
+                          ? 'bg-purple-900 text-white shadow-md'
+                          : 'text-slate-500 hover:text-slate-900 border border-transparent'
+                      }`}
+                    >
+                      <Building2 className="w-4 h-4 text-purple-300" />
+                      <span>ADMINISTRADORA</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setStatusCobranca('pago'); if (paymentType === 'faturado' || !paymentType) setPaymentType('pix'); }}
+                      className={`py-3 px-3 rounded-lg text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 font-black ${
+                        statusCobranca === 'pago'
+                          ? 'bg-cyan-600 text-white shadow-md'
+                          : 'text-slate-500 hover:text-cyan-700 border border-transparent'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>PAGO NO ATO</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Pendente Mode */}
               {statusCobranca === 'pendente' && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-amber-100 text-amber-700 shrink-0">
-                    <Clock className="w-5 h-5" />
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-purple-100 text-purple-700 shrink-0">
+                    <Building2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-amber-900 text-sm">Cobrança Futura</h4>
-                    <p className="text-xs text-amber-700 mt-1 font-medium leading-relaxed">
-                      O abastecimento de <strong>{liters}L</strong> será registrado no sistema e ficará como pendente para que o financeiro cobre posteriormente.
+                    <h4 className="font-bold text-purple-900 text-sm">Lançamento na Administradora (Pendente)</h4>
+                    <p className="text-xs text-purple-800 mt-1 font-medium leading-relaxed">
+                      O abastecimento de <strong>{liters}L</strong> será faturado a <strong>R$ {getFuelPrice('faturado').toFixed(2)}/L</strong> na Administradora e gerará um registro financeiro pendente com validade no dia de hoje.
                     </p>
                   </div>
                 </div>
@@ -240,7 +242,6 @@ export const FuelRegistrationModal: React.FC<FuelRegistrationModalProps> = ({
                         { id: 'pix', label: 'PIX (Digital)', icon: QrCode },
                         { id: 'cartao_credito', label: 'C. Crédito', icon: CreditCard },
                         { id: 'cartao_debito', label: 'C. Débito', icon: CreditCard },
-                        { id: 'faturado', label: 'Administradora', icon: Building2 },
                       ].map((item) => {
                         const IconComponent = item.icon;
                         const isSelected = paymentType === item.id;

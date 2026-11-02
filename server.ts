@@ -41,6 +41,8 @@ import driveRoutes from "./server-routes/drive.routes";
 import configRoutes from "./server-routes/config.routes";
 import utvRoutes from "./server-routes/utv.routes";
 import marinaAgendamentosRoutes from "./server-routes/marina-agendamentos.routes";
+import notificationsRoutes from "./server-routes/notifications.routes";
+import { startNotificationScheduler } from "./server-notifications-scheduler";
 import {
   getDbPool, getDbStatus, initializeDatabase, pullDatabase,
   upsertClient, deleteClient, upsertBoat, deleteBoat,
@@ -92,12 +94,42 @@ const JWT_EXPIRY = "8h";
 const JWT_CLIENT_EXPIRY = "30d";
 
 // Create Express app
+// Allowed origins configuration
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://192.168.5.152:3000"
+];
+if (process.env.APP_URL) {
+  allowedOrigins.push(process.env.APP_URL);
+  if (process.env.APP_URL.startsWith("https://")) {
+    allowedOrigins.push(process.env.APP_URL.replace("https://", "http://"));
+  }
+}
+
+function checkOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (origin.startsWith("http://192.168.")) return true;
+  if (origin.endsWith(".echo.dev.br") || origin === "https://echo.dev.br") return true;
+  return false;
+}
+
 const app = express();
 const httpServer = http.createServer(app);
 export const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: (origin, callback) => {
+      if (checkOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS not allowed"));
+      }
+    },
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 app.locals.io = io; // Expose socket.io to route handlers via req.app.locals.io
@@ -126,23 +158,9 @@ app.use(helmet({
 }));
 
 // CORS configuration - allow standard local development origins and production domain
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  "http://192.168.5.152:3000"
-];
-if (process.env.APP_URL) {
-  allowedOrigins.push(process.env.APP_URL);
-  if (process.env.APP_URL.startsWith("https://")) {
-    allowedOrigins.push(process.env.APP_URL.replace("https://", "http://"));
-  }
-}
-
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://192.168.") || origin.includes("echo.dev.br")) {
+    if (checkOriginAllowed(origin)) {
       callback(null, true);
     } else {
       callback(null, false);
@@ -151,11 +169,21 @@ app.use(cors({
   credentials: true
 }));
 
+function maskSensitiveAudit(val: string): string {
+  if (!val) return val;
+  const clean = val.replace(/\D/g, '');
+  if (clean.length === 11) {
+    return `${clean.slice(0, 3)}.***.***-${clean.slice(-2)}`;
+  }
+  return val;
+}
+
 // Audit Logging Utility for LGPD Compliance (Art. 37)
 export function writeAuditLog(userId: string, userRole: string, action: string, ip: string, details?: string) {
   const clientIp = ip || 'unknown';
   const timestamp = new Date().toISOString();
-  const logEntry = `[AUDIT] IP: ${clientIp} | User: ${userId} (${userRole}) | Action: ${action} | Details: ${details || "N/A"}`;
+  const maskedUser = maskSensitiveAudit(userId);
+  const logEntry = `[AUDIT] [${timestamp}] IP: ${clientIp} | User: ${maskedUser} (${userRole}) | Action: ${action} | Details: ${details || "N/A"}`;
   console.log(logEntry);
 }
 
@@ -239,6 +267,42 @@ app.use("/api/fuel", fuelRoutes);
 app.use("/api", funcionariosRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/utv", utvRoutes);
+app.use("/api", notificationsRoutes);
+
+// Short Magic Link direct redirect for client WhatsApp notifications
+app.get("/m/:code", async (req, res) => {
+  try {
+    const code = req.params.code;
+    if (!code) return res.redirect("/portal");
+
+    const pool = (await import("./server-db")).getDbPool();
+    if (!pool) return res.redirect("/portal");
+
+    const nowIso = new Date().toISOString();
+    const [rows] = await pool.query(
+      "SELECT * FROM MagicLinks WHERE code = ? AND expiresAt > ? LIMIT 1",
+      [code, nowIso]
+    );
+    const linkRecord = (rows as any[])[0];
+
+    if (!linkRecord) {
+      console.warn(`[MagicLink] Código '${code}' inválido ou expirado.`);
+      return res.redirect("/portal?expirado=1");
+    }
+
+    // Registra acesso
+    await pool.query(
+      "UPDATE MagicLinks SET accessCount = accessCount + 1, lastAccessedAt = ? WHERE id = ?",
+      [nowIso, linkRecord.id]
+    ).catch(() => {});
+
+    // Redireciona com 302 para o portal carregando o token do cliente e a reserva alvo
+    return res.redirect(`/portal?token=${encodeURIComponent(linkRecord.token)}&reserva=${encodeURIComponent(linkRecord.reservaId || '')}`);
+  } catch (err) {
+    console.error("Erro no redirecionamento do short link /m/:code:", err);
+    return res.redirect("/portal");
+  }
+});
 
 
 
@@ -283,26 +347,54 @@ app.get("/api/public/checklist/:checklistId", async (req, res) => {
 });
 
 // Socket.io integration
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      (socket as any).user = decoded;
-    } catch (err) {
-      (socket as any).user = { username: 'Operador', role: 'marina' };
-    }
-  } else {
-    (socket as any).user = { username: 'Operador', role: 'marina' };
+  if (!token) {
+    return next(new Error("Authentication token required"));
   }
-  next();
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as any;
+    (socket as any).user = decoded;
+    next();
+  } catch (err) {
+    return next(new Error("Invalid or expired authentication token"));
+  }
 });
 
-io.on("connection", (socket) => {
-  const username = (socket as any).user?.username || 'Operador';
-  console.log(`User connected to socket: ${username}`);
+io.on("connection", async (socket) => {
+  const user = (socket as any).user;
+  const username = user?.nome || user?.username || 'Usuário';
+  const role = (user?.role || '').toLowerCase();
+
+  // Entrar nas salas apropriadas com base no perfil
+  if (role === 'client') {
+    socket.join(`client:${user.id}`);
+    try {
+      const dbData = await pullDatabase();
+      const client = dbData.clients.find((c: any) => c.id === user.id);
+      if (client) {
+        const clientBoats = client.embarcacoes && client.embarcacoes.length > 0
+          ? client.embarcacoes.map((eb: any) => eb.embarcacaoId)
+          : [client.embarcacaoId];
+        clientBoats.forEach((boatId: string) => {
+          if (boatId) socket.join(`boat:${boatId}`);
+        });
+      }
+    } catch (e) {
+      console.warn("Falha ao associar barcos ao socket do cliente:", e);
+    }
+  } else {
+    // Membros da equipe / administração entram na sala staff
+    socket.join("staff");
+  }
 
   socket.on("sendMessage", async (data) => {
+    // Apenas operadores e administradores podem enviar mensagens no chat interno
+    if (role === 'client') {
+      return;
+    }
+
     try {
       const currentPool = getDbPool();
       if (!currentPool) return;
@@ -310,8 +402,8 @@ io.on("connection", (socket) => {
       const msgId = `msg_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
       const newMsg = {
         id: msgId,
-        senderId: (socket as any).user.id || (socket as any).user.username,
-        senderName: (socket as any).user.username,
+        senderId: user.id || user.username,
+        senderName: user.nome || user.username || 'Operador',
         content: data.content,
         isSystemMessage: 0,
         createdAt: new Date().toISOString()
@@ -322,14 +414,15 @@ io.on("connection", (socket) => {
         [newMsg.id, newMsg.senderId, newMsg.senderName, newMsg.content, newMsg.createdAt, newMsg.isSystemMessage]
       );
 
-      io.emit("receiveMessage", newMsg);
+      // Envia a mensagem do chat interno exclusivamente para a equipe
+      io.to("staff").emit("receiveMessage", newMsg);
     } catch (err) {
       console.error("Socket error saving msg:", err);
     }
   });
 
   socket.on("disconnect", () => {
-    console.log(`User disconnected: ${username}`);
+    // Desconectado
   });
 });
 
@@ -339,6 +432,11 @@ async function setupViteAndListen() {
   // Initialize Database Pool & ensure DB tables exist in MySQL/MariaDB
   try {
     await initializeDatabase();
+    try {
+      startNotificationScheduler();
+    } catch (schedErr) {
+      console.warn("Could not start notification scheduler:", schedErr);
+    }
   } catch (e) {
     console.warn("Could not auto-initialize tables:", e);
   }

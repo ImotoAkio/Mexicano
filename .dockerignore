@@ -8,3 +8,8 @@ npm-debug.log
 yarn-error.log
 README.md
 uploads
+tools
+scratch
+*.zip
+.agents
+.claude

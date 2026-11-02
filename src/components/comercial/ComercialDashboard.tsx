@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search,
-  SunLight,
   Bell,
   Calendar,
   NavArrowDown,
@@ -27,6 +26,8 @@ import {
   Command,
   LayoutDashboard,
   DollarSign,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import UserAvatarMenu from '../header/UserAvatarMenu';
 import ComercialSidebar from './ComercialSidebar';
@@ -34,6 +35,7 @@ import AddWidgetDrawer from './AddWidgetDrawer';
 import ComercialSettingsModal, {
   useComercialSettings,
   loadComercialSettings,
+  syncThemeWithDOM,
   playNotificationBeep,
 } from './ComercialSettingsModal';
 import {
@@ -62,6 +64,11 @@ import ClientProfileModal from '../ClientProfileModal';
 import ComercialContratoViewerModal from './ComercialContratoViewerModal';
 import { clientDB, boatDB, onDbUpdate } from '../../db';
 import { Cliente, Embarcacao, VendaComercial, LeadComercial } from '../../types';
+import {
+  PeriodFilterType,
+  DashboardPeriodInfo,
+  computePeriodInfo,
+} from './comercialDateUtils';
 
 interface ComercialDashboardProps {
   onLogout?: () => void;
@@ -130,36 +137,41 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
     return () => clearTimeout(t);
   }, [shortcutToast]);
 
-  // Dados locais para Busca Rápida (Ctrl+K) e Notificações
+  // Dados locais para Busca Rápida (Ctrl+K), Notificações e Dashboard
   const [allClients, setAllClients] = useState<Cliente[]>(() => clientDB.getAll());
   const [allBoats, setAllBoats] = useState<Embarcacao[]>(() => boatDB.getAll());
   const [allVendas, setAllVendas] = useState<VendaComercial[]>([]);
+  const [allLeads, setAllLeads] = useState<LeadComercial[]>([]);
+  const [allPropostas, setAllPropostas] = useState<any[]>([]);
 
-  // Filtro de período do Dashboard
-  type PeriodFilterType = '30d' | 'mes_atual' | 'mes_anterior' | 'trimestre' | 'ano';
+  // Filtro de período do Dashboard dinâmico e reativo
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterType>('30d');
   const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false);
 
-  const periodOptions: Record<PeriodFilterType, { label: string; range: string }> = {
-    '30d': { label: 'Últimos 30 dias', range: '23 set 2026 – 22 out 2026' },
-    'mes_atual': { label: 'Este Mês (Outubro 2026)', range: '01 out 2026 – 31 out 2026' },
-    'mes_anterior': { label: 'Mês Anterior (Setembro 2026)', range: '01 set 2026 – 30 set 2026' },
-    'trimestre': { label: 'Último Trimestre', range: '01 ago 2026 – 31 out 2026' },
-    'ano': { label: 'Ano de 2026', range: '01 jan 2026 – 31 dez 2026' },
-  };
+  const currentPeriodInfo = useMemo(() => computePeriodInfo(periodFilter), [periodFilter]);
 
-  const currentPeriod = periodOptions[periodFilter];
-
-  const fetchDashboardVendas = async () => {
+  const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('admin_token');
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch('/api/comercial/vendas', { credentials: 'include', headers });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.vendas)) {
-          setAllVendas(data.vendas);
-        }
+
+      const [vendasRes, leadsRes, propsRes] = await Promise.all([
+        fetch('/api/comercial/vendas', { credentials: 'include', headers }),
+        fetch('/api/leads', { credentials: 'include', headers }),
+        fetch('/api/comercial/propostas', { credentials: 'include', headers }),
+      ]);
+
+      if (vendasRes.ok) {
+        const vData = await vendasRes.json();
+        if (Array.isArray(vData.vendas)) setAllVendas(vData.vendas);
+      }
+      if (leadsRes.ok) {
+        const lData = await leadsRes.json();
+        if (Array.isArray(lData)) setAllLeads(lData);
+      }
+      if (propsRes.ok) {
+        const pData = await propsRes.json();
+        if (Array.isArray(pData.propostas)) setAllPropostas(pData.propostas);
       }
     } catch {}
   };
@@ -168,15 +180,19 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
     const syncLocal = () => {
       setAllClients([...clientDB.getAll()]);
       setAllBoats([...boatDB.getAll()]);
-      fetchDashboardVendas();
+      fetchDashboardData();
     };
     syncLocal();
-    fetchDashboardVendas();
-    window.addEventListener('comercial-venda-updated', fetchDashboardVendas);
+    fetchDashboardData();
+    window.addEventListener('comercial-venda-updated', fetchDashboardData);
+    window.addEventListener('lead-updated', fetchDashboardData);
+    window.addEventListener('comercial-proposta-updated', fetchDashboardData);
     const unsub = onDbUpdate(syncLocal);
     return () => {
       unsub();
-      window.removeEventListener('comercial-venda-updated', fetchDashboardVendas);
+      window.removeEventListener('comercial-venda-updated', fetchDashboardData);
+      window.removeEventListener('lead-updated', fetchDashboardData);
+      window.removeEventListener('comercial-proposta-updated', fetchDashboardData);
     };
   }, []);
 
@@ -227,6 +243,11 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
       return next;
     });
   };
+
+  // Sincronizar tema escuro/claro no DOM
+  useEffect(() => {
+    syncThemeWithDOM(settings.tema);
+  }, [settings.tema]);
 
   // Fechar popover de notificações ao clicar fora
   useEffect(() => {
@@ -552,14 +573,24 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
               )}
             </button>
 
-            {/* Botão de Densidade / Interface */}
+            {/* Alternador rápido de Tema (Claro / Escuro) */}
             <button
               type="button"
-              onClick={() => openSettingsOnTab('interface')}
+              onClick={() => {
+                const isCurrentlyDark = (settings.tema || 'light') === 'dark';
+                const nextTema = isCurrentlyDark ? 'light' : 'dark';
+                updateSettings({ tema: nextTema });
+                syncThemeWithDOM(nextTema);
+                showToast(nextTema === 'dark' ? 'Modo escuro ativado' : 'Modo claro ativado');
+              }}
               className="w-9 h-9 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer"
-              title="Interface & Visualização"
+              title={(settings.tema || 'light') === 'dark' ? 'Alternar para tema claro' : 'Alternar para tema escuro'}
             >
-              <SunLight className="w-[18px] h-[18px]" />
+              {(settings.tema || 'light') === 'dark' ? (
+                <Sun className="w-[18px] h-[18px] text-amber-400" />
+              ) : (
+                <Moon className="w-[18px] h-[18px] text-stone-600" />
+              )}
             </button>
 
             {/* Central de Notificações Comercial */}
@@ -846,38 +877,41 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="h-9 px-3 rounded-xl bg-white border border-stone-200 flex items-center gap-2 text-[12px] font-medium text-stone-700 shadow-2xs">
                       <Calendar className="w-3.5 h-3.5 text-stone-500" />
-                      <span className="tabular-nums font-semibold">{currentPeriod.range}</span>
+                      <span className="tabular-nums font-semibold">{currentPeriodInfo.range}</span>
                     </div>
 
-                    {/* Dropdown de Período */}
+                    {/* Dropdown de Período Dinâmico */}
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
                         className="h-9 px-3 rounded-xl bg-white border border-stone-200 flex items-center gap-1.5 text-[12px] font-semibold text-stone-800 hover:bg-stone-50 transition-colors cursor-pointer shadow-2xs"
                       >
-                        {currentPeriod.label}
+                        {currentPeriodInfo.label}
                         <NavArrowDown className="w-3.5 h-3.5 text-stone-400" />
                       </button>
 
                       {periodDropdownOpen && (
                         <div className="absolute right-0 mt-1.5 w-56 rounded-2xl bg-white border border-stone-200 shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100">
-                          {(Object.keys(periodOptions) as PeriodFilterType[]).map(key => (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => {
-                                setPeriodFilter(key);
-                                setPeriodDropdownOpen(false);
-                              }}
-                              className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between hover:bg-stone-50 transition-colors cursor-pointer ${
-                                periodFilter === key ? 'font-bold text-[#2B1120] bg-stone-100/60' : 'text-stone-700'
-                              }`}
-                            >
-                              <span>{periodOptions[key].label}</span>
-                              {periodFilter === key && <span className="w-1.5 h-1.5 rounded-full bg-[#2B1120]" />}
-                            </button>
-                          ))}
+                          {(['30d', 'mes_atual', 'mes_anterior', 'trimestre', 'ano'] as PeriodFilterType[]).map(key => {
+                            const info = computePeriodInfo(key);
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => {
+                                  setPeriodFilter(key);
+                                  setPeriodDropdownOpen(false);
+                                }}
+                                className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between hover:bg-stone-50 transition-colors cursor-pointer ${
+                                  periodFilter === key ? 'font-bold text-[#2B1120] bg-stone-100/60' : 'text-stone-700'
+                                }`}
+                              >
+                                <span>{info.label}</span>
+                                {periodFilter === key && <span className="w-1.5 h-1.5 rounded-full bg-[#2B1120]" />}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -899,18 +933,36 @@ export default function ComercialDashboard({ onLogout, operadorNome }: Comercial
                   </div>
                 </div>
 
-                {/* 1. KPIs de Topo com Comparativo e Barra de Meta */}
-                <KpiRow periodLabel={currentPeriod.label} vendas={allVendas} />
+                {/* 1. KPIs de Topo com Comparativo e Barra de Meta (100% Reais com base no Período Selecionado) */}
+                <KpiRow
+                  periodInfo={currentPeriodInfo}
+                  periodLabel={currentPeriodInfo.label}
+                  vendas={allVendas}
+                  leads={allLeads}
+                  propostas={allPropostas}
+                />
 
                 {/* 2. Grid Central: Gráfico de Receita & VGV, Estoque de Cotas e Ranking de Embarcações */}
                 <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
                   <div className="space-y-4 min-w-0">
-                    <RevenueCard vendas={allVendas} operadorNome={operadorNome} />
-                    <TopPlansCard vendas={allVendas} onSelectBoat={() => setActiveNav('embarcacoes')} />
+                    <RevenueCard
+                      periodInfo={currentPeriodInfo}
+                      vendas={allVendas}
+                      operadorNome={operadorNome}
+                    />
+                    <TopPlansCard
+                      periodInfo={currentPeriodInfo}
+                      vendas={allVendas}
+                      onSelectBoat={() => setActiveNav('embarcacoes')}
+                    />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4 content-start">
-                    <ActiveDayCard />
-                    <ConversionGaugeCard />
+                    <ActiveDayCard periodInfo={currentPeriodInfo} />
+                    <ConversionGaugeCard
+                      periodInfo={currentPeriodInfo}
+                      leads={allLeads}
+                      vendas={allVendas}
+                    />
                     <div className="md:col-span-2 xl:col-span-1">
                       <AiAssistantCard />
                     </div>

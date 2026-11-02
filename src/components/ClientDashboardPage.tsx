@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock, MessageCircle, Sparkles } from 'lucide-react';
+import { LogOut, Anchor, Calendar, User, Phone, Mail, FileText, Download, Trash2, ShieldCheck, Lock, Eye, Database, Info, X, Home, Wallet, CreditCard, Ship, Bell, ChevronLeft, ChevronRight, Plus, CheckCircle, Smartphone, Share, CheckCircle2, Check, ChevronDown, Droplets, Waves, Wrench, QrCode, Ticket, RefreshCw, Search, AlertTriangle, ShieldAlert, Clock, MessageCircle, Sparkles, Compass } from 'lucide-react';
 import { JetSkiIcon } from './icons/JetSkiIcon';
 import { io } from 'socket.io-client';
 // @ts-ignore
@@ -9,6 +9,7 @@ import boatImgLancha from '../assets/images/lancha.webp';
 import boatImgJet from '../assets/images/jet.webp';
 import ClientReservationModal from './ClientReservationModal';
 import ClientCheckinModal from './ClientCheckinModal';
+import ClientBoardingTicketModal from './ClientBoardingTicketModal';
 import ClientMaintenanceModal from './ClientMaintenanceModal';
 import FeedbackForm from './FeedbackForm';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
@@ -16,6 +17,8 @@ import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
 import { getBoatCode } from '../utils/boatUtils';
 import { Chamado } from '../types';
 import { chamadoDB } from '../db';
+import InstallAppSheet from './pwa/InstallAppSheet';
+import { usePWAInstall } from '../lib/pwaInstall';
 
 const TAB_ORDER = ['home', 'calendar', 'finance', 'maintenance'] as const;
 type TabKey = typeof TAB_ORDER[number];
@@ -59,11 +62,22 @@ interface ClientDashboardPageProps {
   transacoes?: any[];
   chamados?: Chamado[];
   manutencoes?: any[];
+  marinaDatasFechadas?: Array<{ data: string; motivo: string }>;
   onLogout: () => void;
   onRefresh?: (forceRefresh?: boolean) => void;
 }
 
-export default function ClientDashboardPage({ client, boats, reservations, transacoes = [], chamados = [], manutencoes = [], onLogout, onRefresh }: ClientDashboardPageProps) {
+export default function ClientDashboardPage({
+  client,
+  boats,
+  reservations,
+  transacoes = [],
+  chamados = [],
+  manutencoes = [],
+  marinaDatasFechadas: initialMarinaDatasFechadas = [],
+  onLogout,
+  onRefresh
+}: ClientDashboardPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [tabDirection, setTabDirection] = useState(0);
 
@@ -159,6 +173,33 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [pixPaidAt, setPixPaidAt] = useState<string>('');
   const activePixRef = useRef<{ paymentId: string | null; txId: string | null }>({ paymentId: null, txId: null });
 
+  // Datas Fechadas da Marina cadastradas pelo Administrador
+  const [marinaDatasFechadas, setMarinaDatasFechadas] = useState<Array<{ data: string; motivo: string }>>(() => {
+    return Array.isArray(initialMarinaDatasFechadas) ? initialMarinaDatasFechadas : [];
+  });
+
+  useEffect(() => {
+    if (Array.isArray(initialMarinaDatasFechadas) && initialMarinaDatasFechadas.length > 0) {
+      setMarinaDatasFechadas(initialMarinaDatasFechadas);
+    }
+  }, [initialMarinaDatasFechadas]);
+
+  useEffect(() => {
+    fetch('/api/config/public?chaves=marina_datas_fechadas')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.configs?.marina_datas_fechadas) {
+          try {
+            const parsed = typeof data.configs.marina_datas_fechadas === 'string'
+              ? JSON.parse(data.configs.marina_datas_fechadas)
+              : data.configs.marina_datas_fechadas;
+            if (Array.isArray(parsed)) setMarinaDatasFechadas(parsed);
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     activePixRef.current = {
       paymentId: activePixPaymentId,
@@ -167,10 +208,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   }, [activePixPaymentId, selectedTransactionForPix]);
 
   useEffect(() => {
+    const token = localStorage.getItem('client_token');
     const socket = io('/', {
       path: '/socket.io',
       transports: ['polling', 'websocket'],
-      reconnectionAttempts: 10
+      reconnectionAttempts: 10,
+      auth: { token }
     });
 
     socket.on('marina_update', (data: any) => {
@@ -194,14 +237,17 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         setPagamentosHabilitados(isHab);
         try { localStorage.setItem('pagamentos_online_habilitado_cache', isHab ? '1' : '0'); } catch {}
       }
+      if (data && data.marina_datas_fechadas !== undefined) {
+        setMarinaDatasFechadas(Array.isArray(data.marina_datas_fechadas) ? data.marina_datas_fechadas : []);
+      }
     });
 
     socket.on('asaas_payment_updated', (data: any) => {
       if (data?.status === 'pago' && activePixRef.current.txId) {
         const matchesPaymentId = data.paymentId && activePixRef.current.paymentId && String(data.paymentId) === String(activePixRef.current.paymentId);
         const matchesTxId = Array.isArray(data.transactionIds) && data.transactionIds.includes(activePixRef.current.txId);
-        const matchesClientBulk = activePixRef.current.txId === 'bulk' && (!Array.isArray(data.clientIds) || data.clientIds.includes(clientIdRef.current));
-        if (matchesPaymentId || matchesTxId || matchesClientBulk || !data.paymentId) {
+        const matchesClientBulk = activePixRef.current.txId === 'bulk' && Array.isArray(data.clientIds) && data.clientIds.includes(clientIdRef.current);
+        if (matchesPaymentId || matchesTxId || matchesClientBulk) {
           const now = new Date();
           setPixPaidAt(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
           setPixPaymentConfirmed(true);
@@ -342,7 +388,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
       const token = localStorage.getItem('client_token');
       if (token) {
-        fetch('/api/financeiro/configuracoes', {
+        fetch('/api/client/financeiro-config', {
           headers: { 'Authorization': `Bearer ${token}` }
         })
           .then(res => res.json())
@@ -519,6 +565,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [selectedReservationForCheckin, setSelectedReservationForCheckin] = useState<any>(null);
+  const [isBoardingTicketModalOpen, setIsBoardingTicketModalOpen] = useState(false);
+  const [selectedReservationForTicket, setSelectedReservationForTicket] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const d = new Date();
     const tzOffset = d.getTimezoneOffset() * 60000;
@@ -530,6 +578,27 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [isCanceling, setIsCanceling] = useState(false);
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{title: string, msg: string, type: 'error'|'success'|'warning'} | null>(null);
+
+  // Auto-abertura de modal de check-in quando o cliente acessa via Magic Link do WhatsApp
+  useEffect(() => {
+    try {
+      const autoResId = localStorage.getItem('auto_checkin_reserva_id');
+      if (autoResId && reservations && reservations.length > 0) {
+        // Busca a reserva exata ou fallback para qualquer reserva ativa
+        let target = reservations.find((r: any) => String(r.id) === String(autoResId));
+        if (!target) {
+          target = reservations.find((r: any) => r.status !== 'cancelado') || reservations[0];
+        }
+        if (target) {
+          setSelectedReservationForCheckin(target);
+          setIsCheckinModalOpen(true);
+          localStorage.removeItem('auto_checkin_reserva_id');
+        }
+      }
+    } catch (e) {
+      console.warn("Erro ao carregar auto checkin:", e);
+    }
+  }, [reservations]);
 
   const rawTransacoesList = (client as any)?.transacoes || transacoes || [];
   const transacoesList = rawTransacoesList.filter((t: any) => !t.tipo || t.tipo === 'receita');
@@ -588,68 +657,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const [previewPDFDoc, setPreviewPDFDoc] = useState<any>(null);
   const [previewFields, setPreviewFields] = useState<any>(null);
 
-  // PWA Install states
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [showIOSInstructions, setShowIOSInstructions] = useState(false);
-
-  // PWA Install prompt capture
-  useEffect(() => {
-    // Check if already installed as standalone
-    const standalone = window.matchMedia('(display-mode: standalone)').matches
-      || (window.navigator as any).standalone === true;
-    setIsStandalone(standalone);
-
-    // Detect iOS
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const iosDevice = /iphone|ipad|ipod/.test(userAgent);
-    setIsIOS(iosDevice);
-
-    // Show install banner for iOS if not standalone
-    if (iosDevice && !standalone) {
-      setShowInstallBanner(true);
-    }
-
-    // Capture beforeinstallprompt for Android/Chrome
-    const handleBeforeInstall = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      if (!standalone) {
-        setShowInstallBanner(true);
-      }
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-
-    // Listen for successful install
-    const handleInstalled = () => {
-      setShowInstallBanner(false);
-      setDeferredPrompt(null);
-      setIsStandalone(true);
-    };
-    window.addEventListener('appinstalled', handleInstalled);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-      window.removeEventListener('appinstalled', handleInstalled);
-    };
-  }, []);
-
-  const handleInstallApp = async () => {
-    if (isIOS) {
-      setShowIOSInstructions(true);
-      return;
-    }
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setShowInstallBanner(false);
-    }
-    setDeferredPrompt(null);
-  };
+  // PWA Install hook (dismissal management, OS detection, beforeinstallprompt, auto-prompt)
+  const pwa = usePWAInstall({ autoShow: true, autoShowDelayMs: 4000 });
 
   const showToast = (title: string, msg: string, type: 'error'|'success'|'warning' = 'error') => {
     setToastMsg({ title, msg, type });
@@ -824,145 +833,133 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
   const renderHome = () => (
     <div className="flex flex-col flex-1 animate-in fade-in zoom-in-95 duration-500">
 
-      {/* Dynamic Check-in Banners */}
+      {/* Dynamic Check-in Banners - Luxury Boarding Pass Style */}
       {todayReservations.map((reservation) => {
         const isCheckedIn = reservation.status === 'confirmado';
         const boatInfo = boats.find(b => b.id === reservation.embarcacaoId);
         
         return (
           <div key={reservation.id} className="px-6 mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className={`bg-gradient-to-br ${isCheckedIn ? 'from-[#121c15] to-[#070b08] border-emerald-500/30' : 'from-[#1c1a16] to-[#0a0907] border-[#B69D74]/30'} border rounded-3xl p-5 shadow-2xl relative overflow-hidden`}>
-              <div className={`absolute top-0 right-0 w-32 h-32 ${isCheckedIn ? 'bg-emerald-500/10' : 'bg-[#B69D74]/20'} rounded-full blur-[40px] translate-x-1/2 -translate-y-1/2 pointer-events-none`}></div>
+            <div className={`bg-[#0d0d12]/95 border ${isCheckedIn ? 'border-emerald-500/40 shadow-[0_10px_30px_rgba(16,185,129,0.15)]' : 'border-[#B69D74]/40 shadow-[0_10px_35px_rgba(182,157,116,0.15)]'} rounded-3xl p-5 relative overflow-hidden backdrop-blur-2xl`}>
+              {/* Efeito Glow e Marca d'água */}
+              <div className={`absolute top-0 right-0 w-44 h-44 ${isCheckedIn ? 'bg-emerald-500/10' : 'bg-[#B69D74]/15'} rounded-full blur-[50px] translate-x-1/3 -translate-y-1/3 pointer-events-none`} />
               
               <div className="relative z-10">
+                {/* Cabeçalho do Cartão de Embarque */}
+                <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isCheckedIn ? 'bg-emerald-500/20 text-emerald-400' : 'bg-[#B69D74]/20 text-[#B69D74]'}`}>
+                      {isCheckedIn ? <Check className="w-4 h-4" /> : <Anchor className="w-4 h-4 animate-pulse" />}
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-mono tracking-widest text-[#B69D74] block">
+                        Cartão de Embarque Náutico
+                      </span>
+                      <h2 className="text-sm font-semibold text-white tracking-wide">
+                        {isCheckedIn ? 'Passeio Confirmado & Liberado' : 'Seu Passeio é Hoje!'} {boatInfo ? `· ${getBoatCode(boatInfo)}` : ''}
+                      </h2>
+                    </div>
+                  </div>
+                  {!isCheckedIn && (
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider bg-[#B69D74]/20 text-[#B69D74] border border-[#B69D74]/30">
+                      Aguardando
+                    </span>
+                  )}
+                </div>
+
                 {isCheckedIn ? (
-                  <details className="group">
-                    <summary className="flex items-center justify-between list-none cursor-pointer select-none">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                          <Check className="w-4 h-4 text-emerald-400" />
-                        </div>
-                        <div>
-                          <h2 className="text-sm font-semibold text-white tracking-wide">Passeio confirmado! {boatInfo ? `- ${getBoatCode(boatInfo)}` : ''}</h2>
-                          <p className="text-[10px] text-white/50 mt-0.5">Toque para ver detalhes</p>
-                        </div>
-                      </div>
-                      <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
-                        <ChevronDown className="w-4 h-4 text-white/50 group-open:rotate-180 transition-transform duration-300" />
-                      </div>
-                    </summary>
-                    
-                    <div className="mt-4 pt-4 border-t border-white/5 space-y-4">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white/[0.02] border border-white/5 rounded-2xl p-3 text-xs">
-                        <div>
-                          <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Destino</span>
-                          <span className="text-white font-medium truncate block">{reservation?.destino || 'Não informado'}</span>
-                        </div>
-                        <div>
-                          <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Previsão Saída</span>
-                          <span className="text-white font-medium">{reservation?.previsaoSaida || reservation?.horaSaida || '00:00'}</span>
-                        </div>
-                        <div>
-                          <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Retorno</span>
-                          <span className="text-white font-medium">{reservation?.previsaoChegada || reservation?.horaChegada || '00:00'}</span>
-                        </div>
-                        <div>
-                          <span className="block text-[9px] text-white/40 uppercase tracking-wider mb-0.5">Pessoas</span>
-                          <span className="text-white font-medium">{reservation?.pessoasABordo || '1'}</span>
-                        </div>
-                      </div>
+                  <div className="mt-4 space-y-4">
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          setSelectedReservationForTicket(reservation);
+                          setIsBoardingTicketModalOpen(true);
+                        }}
+                        className="flex-1 py-3.5 bg-gradient-to-r from-[#B69D74] via-[#dfcaaa] to-[#B69D74] hover:brightness-110 active:scale-[0.99] text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-[0_10px_25px_rgba(182,157,116,0.3)] flex items-center justify-center gap-2 cursor-pointer group"
+                      >
+                        <Ticket className="w-4 h-4 text-slate-950 group-hover:rotate-12 transition-transform" />
+                        <span>Ticket de Embarque</span>
+                        <span className="ml-1 px-1.5 py-0.5 rounded bg-black/15 text-[9px] font-mono font-black tracking-tight">QR</span>
+                      </button>
 
-                      <div className="flex gap-2">
+                      {cancelConfirmId === reservation.id ? (
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setCancelConfirmId(null)}
+                            className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
+                          >
+                            Voltar
+                          </button>
+                          <button 
+                            onClick={() => handleCancelReservation(reservation.id)}
+                            disabled={isCanceling}
+                            className="px-3 py-2 bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg disabled:opacity-50 cursor-pointer"
+                          >
+                            {isCanceling ? '...' : 'Confirmar Cancelar'}
+                          </button>
+                        </div>
+                      ) : (
                         <button 
-                          onClick={() => handleDownloadPDF(reservation)}
-                          className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2"
+                          onClick={() => setCancelConfirmId(reservation.id)}
+                          className="px-4 py-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-medium uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          Baixar NORMAM
+                          Cancelar
                         </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    <p className="text-xs text-white/60 font-light leading-relaxed">
+                      Preencha o <strong className="text-white">Plano de Navegação NORMAM</strong> para autorizar a descida da sua embarcação ao píer.
+                    </p>
 
-                        {cancelConfirmId === reservation.id ? (
-                          <div className="flex-1 flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      {cancelConfirmId === reservation.id ? (
+                        <div className="flex-1 animate-in zoom-in-95 duration-300 bg-rose-500/10 border border-rose-500/30 p-4 rounded-2xl">
+                          <p className="text-xs text-rose-300 font-medium mb-3">Deseja realmente cancelar seu agendamento de hoje?</p>
+                          <div className="flex gap-2">
                             <button 
                               onClick={() => setCancelConfirmId(null)}
-                              className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors"
+                              className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
                             >
                               Voltar
                             </button>
                             <button 
                               onClick={() => handleCancelReservation(reservation.id)}
                               disabled={isCanceling}
-                              className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg disabled:opacity-50"
+                              className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold uppercase tracking-wider rounded-xl transition-colors shadow-lg disabled:opacity-50 cursor-pointer"
                             >
-                              {isCanceling ? '...' : 'Cancelar'}
+                              {isCanceling ? 'Cancelando...' : 'Sim, Cancelar'}
                             </button>
                           </div>
-                        ) : (
+                        </div>
+                      ) : (
+                        <>
+                          <button 
+                            onClick={() => {
+                              if (totalAberto > 0) {
+                                showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para confirmar.', 'warning');
+                                return;
+                              }
+                              setSelectedReservationForCheckin(reservation);
+                              setIsCheckinModalOpen(true);
+                            }}
+                            className="flex-1 py-3 bg-gradient-to-r from-[#B69D74] to-[#cbb28b] hover:brightness-110 active:scale-[0.99] text-slate-950 text-xs font-semibold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            Realizar Check-in / Saída
+                          </button>
                           <button 
                             onClick={() => setCancelConfirmId(reservation.id)}
-                            className="px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors"
+                            className="py-3 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-medium uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
                           >
                             Cancelar
                           </button>
-                        )}
-                      </div>
+                        </>
+                      )}
                     </div>
-                  </details>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#B69D74]/20 flex items-center justify-center">
-                          <Anchor className="w-4 h-4 text-[#B69D74] animate-pulse" />
-                        </div>
-                        <h2 className="text-sm font-semibold text-white tracking-wide">Seu passeio é hoje! {boatInfo ? `- ${getBoatCode(boatInfo)}` : ''}</h2>
-                      </div>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        {cancelConfirmId === reservation.id ? (
-                          <div className="flex-1 animate-in zoom-in-95 duration-300 bg-rose-500/10 border border-rose-500/30 p-4 rounded-2xl">
-                            <p className="text-xs text-rose-300 font-medium mb-3">Tem certeza que deseja CANCELAR o passeio de hoje?</p>
-                            <div className="flex gap-2">
-                              <button 
-                                onClick={() => setCancelConfirmId(null)}
-                                className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors"
-                              >
-                                Voltar
-                              </button>
-                              <button 
-                                onClick={() => handleCancelReservation(reservation.id)}
-                                disabled={isCanceling}
-                                className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg disabled:opacity-50"
-                              >
-                                {isCanceling ? 'Aguarde...' : 'Sim, Cancelar'}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <button 
-                              onClick={() => {
-                                if (totalAberto > 0) {
-                                  showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para confirmar.', 'warning');
-                                  return;
-                                }
-                                setSelectedReservationForCheckin(reservation);
-                                setIsCheckinModalOpen(true);
-                              }}
-                              className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors shadow-lg"
-                            >
-                              Confirmar Saída
-                            </button>
-                            <button 
-                              onClick={() => setCancelConfirmId(reservation.id)}
-                              className="py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors"
-                            >
-                              Cancelar
-                            </button>
-                          </>
-                        )}
-                      </div>
-                  </>
+                  </div>
                 )}
               </div>
             </div>
@@ -1023,8 +1020,27 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 return (
                   <div key={boat.id} className="min-w-full snap-center px-6 flex flex-col items-center relative">
 
-                    {/* Boat Image */}
-                    <div className="relative z-10 w-full max-w-[320px] aspect-square flex items-center justify-center [animation:luxury-scale-up_1.5s_cubic-bezier(0.16,1,0.3,1)_forwards]">
+                    {/* Boat Image & Showroom Stage */}
+                    <div className="relative z-10 w-full max-w-[340px] aspect-square flex items-center justify-center [animation:luxury-scale-up_1.5s_cubic-bezier(0.16,1,0.3,1)_forwards]">
+                      
+                      {/* Rosa dos Ventos Náutica Vetorial concêntrica em filigrana dourada */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+                        <svg viewBox="0 0 200 200" fill="none" className="w-[85%] h-[85%] text-[#B69D74]">
+                          <circle cx="100" cy="100" r="92" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2 3" />
+                          <circle cx="100" cy="100" r="76" stroke="currentColor" strokeWidth="0.75" />
+                          <circle cx="100" cy="100" r="54" stroke="currentColor" strokeWidth="0.5" strokeDasharray="4 2" />
+                          <line x1="100" y1="8" x2="100" y2="192" stroke="currentColor" strokeWidth="0.5" strokeDasharray="3 3" />
+                          <line x1="8" y1="100" x2="192" y2="100" stroke="currentColor" strokeWidth="0.5" strokeDasharray="3 3" />
+                          <polygon points="100,18 104,80 100,75 96,80" fill="currentColor" opacity="0.6" />
+                          <polygon points="100,182 104,120 100,125 96,120" fill="currentColor" opacity="0.6" />
+                          <polygon points="18,100 80,96 75,100 80,104" fill="currentColor" opacity="0.6" />
+                          <polygon points="182,100 120,96 125,100 120,104" fill="currentColor" opacity="0.6" />
+                        </svg>
+                      </div>
+
+                      {/* Reflexo Aquático / Sombra Suave sob o Casco */}
+                      <div className="absolute bottom-6 w-3/4 h-8 bg-[#B69D74]/25 rounded-[100%] blur-xl pointer-events-none" />
+
                       <img
                         src={imgSource}
                         alt={boat.nome}
@@ -1033,51 +1049,56 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                             e.currentTarget.src = fallbackImg;
                           }
                         }}
-                        className="w-full h-auto drop-shadow-[0_20px_50px_rgba(0,0,0,0.8)] [animation:luxury-float_6s_ease-in-out_infinite]"
+                        className="w-full h-auto drop-shadow-[0_25px_45px_rgba(0,0,0,0.95)] [animation:luxury-float_6s_ease-in-out_infinite] relative z-10"
                         style={{ WebkitUserDrag: 'none' } as React.CSSProperties}
                       />
                     </div>
 
-                    {/* Status Card Glass */}
-                    <div className="w-full bg-[#111]/80 backdrop-blur-xl border border-white/10 rounded-3xl p-5 shadow-2xl relative z-20 -mt-10 mb-8">
+                    {/* Status Card Glass - Refinado com acabamento de Alta Joalheria */}
+                    <div className="w-full bg-[#0e0e12]/90 backdrop-blur-2xl border border-[#B69D74]/30 rounded-3xl p-5 shadow-[0_15px_40px_rgba(0,0,0,0.85)] relative z-20 -mt-8 mb-8">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">Sua Embarcação</p>
-                          <h2 className="text-lg font-medium text-white tracking-wide mt-1">{getBoatCode(boat)}</h2>
+                          <p className="text-[10px] uppercase font-mono tracking-[0.2em] text-[#B69D74]">Embarcação Vinculada</p>
+                          <h2 className="text-lg font-medium text-white tracking-wide mt-0.5">{getBoatCode(boat)}</h2>
                         </div>
-                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center border border-white/5">
+                        <div className="w-11 h-11 rounded-2xl bg-white/[0.03] flex items-center justify-center border border-[#B69D74]/25 shadow-inner">
                           {isJet ? <JetSkiIcon className="w-5 h-5 text-[#B69D74]" /> : <Ship className="w-5 h-5 text-[#B69D74]" />}
                         </div>
                       </div>
 
-                      <div className="mt-5 flex items-center gap-3">
-                        <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-medium uppercase tracking-wider ${boatStatus.colorClass}`}>
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-mono font-medium uppercase tracking-wider ${boatStatus.colorClass}`}>
                           <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${boatStatus.pulseClass}`}></span>
                           {boatStatus.text}
                         </span>
                         {boat.modelo && (
-                          <span className="px-3 py-1.5 rounded-full bg-white/5 border border-white/5 text-[10px] text-white/60 uppercase tracking-wider">
+                          <span className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-[10px] text-white/70 font-mono uppercase tracking-wider">
                             {boat.modelo}
+                          </span>
+                        )}
+                        {boat.vaga && (
+                          <span className="px-3 py-1.5 rounded-full bg-[#B69D74]/10 border border-[#B69D74]/20 text-[10px] text-[#B69D74] font-mono uppercase tracking-wider">
+                            Vaga {boat.vaga}
                           </span>
                         )}
                       </div>
 
                       {/* Documentos da Embarcação (Padrão: Documento e Seguro) */}
-                      <div className="mt-4 pt-4 border-t border-white/5">
+                      <div className="mt-4 pt-4 border-t border-white/[0.06]">
                         <div className="flex items-center justify-between mb-2.5">
-                          <span className="text-[10px] uppercase tracking-wider text-white/40 font-medium">Documentos da Embarcação</span>
-                          <span className="text-[10px] text-[#B69D74] font-medium flex items-center gap-1">
-                            <Lock className="w-3 h-3" /> Acesso Integrado
+                          <span className="text-[10px] uppercase tracking-wider text-white/40 font-mono font-medium">Documentos & Licenças</span>
+                          <span className="text-[10px] text-[#B69D74] font-mono font-medium flex items-center gap-1">
+                            <Lock className="w-3 h-3" /> Acesso Digital
                           </span>
                         </div>
                         <div className="grid grid-cols-2 gap-2.5">
                           <button
                             type="button"
                             onClick={() => handleOpenDocModal(boat, 'documento')}
-                            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-xs text-white/90 font-medium transition-all cursor-pointer group"
+                            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] active:scale-[0.98] border border-white/10 hover:border-[#B69D74]/30 text-xs text-white/90 font-medium transition-all cursor-pointer group"
                           >
                             <FileText className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
-                            <span className="truncate">Documento</span>
+                            <span className="truncate">TIE / Doc</span>
                             {boat.documentoUrl && (
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" title="Disponível" />
                             )}
@@ -1085,10 +1106,10 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                           <button
                             type="button"
                             onClick={() => handleOpenDocModal(boat, 'seguro')}
-                            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-xs text-white/90 font-medium transition-all cursor-pointer group"
+                            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] active:scale-[0.98] border border-white/10 hover:border-[#B69D74]/30 text-xs text-white/90 font-medium transition-all cursor-pointer group"
                           >
                             <ShieldCheck className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-                            <span className="truncate">Seguro</span>
+                            <span className="truncate">Apólice Seguro</span>
                             {boat.seguroUrl && (
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" title="Disponível" />
                             )}
@@ -1127,16 +1148,34 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         )}
       </div>
 
-      {/* Quick Stats or Next Reservation */}
-      <div className="px-6 pb-6 mt-8">
-        <h3 className="text-xs uppercase tracking-widest text-white/40 mb-4 font-semibold">Próxima Reserva</h3>
+      {/* Quick Stats or Next Reservation - Interativo de Alto Padrão */}
+      <div className="px-6 pb-6 mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs uppercase font-mono tracking-widest text-[#B69D74] font-semibold">
+            Próxima Navegação
+          </h3>
+          <button
+            onClick={() => handleTabChange('calendar')}
+            className="text-[11px] text-white/50 hover:text-white transition-colors cursor-pointer"
+          >
+            Ver calendário →
+          </button>
+        </div>
         
         {(() => {
           const nextRes = myReservations.filter(r => r.data >= todayStrLocal && r.status !== 'cancelado' && !cancelledIds.includes(r.id)).sort((a,b) => a.data.localeCompare(b.data))[0];
           if (!nextRes) {
             return (
-              <div className="bg-white/[0.02] border border-white/5 border-dashed rounded-2xl p-6 text-center">
-                <p className="text-xs text-white/30 tracking-wide">Você não possui reservas futuras.</p>
+              <div className="bg-[#0e0e12]/80 border border-white/[0.06] rounded-2xl p-6 text-center backdrop-blur-xl">
+                <p className="text-xs text-white/40 tracking-wide mb-3">Você não possui passeios futuros agendados.</p>
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('calendar')}
+                  className="px-5 py-2.5 bg-white/[0.04] hover:bg-[#B69D74]/15 border border-[#B69D74]/30 rounded-xl text-xs text-[#B69D74] font-medium transition-all cursor-pointer inline-flex items-center gap-2"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Agendar Saída no Calendário
+                </button>
               </div>
             );
           }
@@ -1145,22 +1184,32 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           const day = resDate.getDate();
           const b = boats.find(b => b.id === nextRes.embarcacaoId) || primaryBoat;
           return (
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-md flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-white/5 flex flex-col items-center justify-center border border-white/5 shrink-0">
-                <span className="text-[10px] font-bold text-[#B69D74] uppercase">{monthName}</span>
-                <span className="text-base font-light text-white">{day}</span>
+            <div 
+              onClick={() => {
+                setSelectedReservationForCheckin(nextRes);
+                setIsCheckinModalOpen(true);
+              }}
+              className="bg-[#0e0e12]/90 border border-white/10 hover:border-[#B69D74]/40 rounded-2xl p-4 backdrop-blur-xl flex items-center gap-4 transition-all duration-300 cursor-pointer group shadow-lg"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-[#B69D74]/30 flex flex-col items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <span className="text-[10px] font-mono font-bold text-[#B69D74] uppercase">{monthName}</span>
+                <span className="text-lg font-light text-white font-mono">{day}</span>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-white">Dia Inteiro</p>
-                <p className="text-xs text-white/40 mt-0.5">{getBoatCode(b)}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-white group-hover:text-[#B69D74] transition-colors">Dia Inteiro</p>
+                  <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-mono font-bold tracking-wider ${
+                    nextRes.status === 'confirmado'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-[#B69D74]/20 text-[#B69D74] border border-[#B69D74]/30'
+                  }`}>
+                    {nextRes.status === 'confirmado' ? 'Confirmada' : 'Agendado'}
+                  </span>
+                </div>
+                <p className="text-xs text-white/50 mt-1 font-mono">{getBoatCode(b)}</p>
+                <p className="text-[10px] text-white/30 mt-0.5">Toque para preencher o plano de navegação</p>
               </div>
-              <span className={`text-[9px] px-2.5 py-1 rounded-md uppercase font-bold tracking-wider ${
-                nextRes.status === 'confirmado'
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'bg-amber-500/20 text-amber-400'
-              }`}>
-                {nextRes.status === 'confirmado' ? 'Confirmada' : 'Agendado'}
-              </span>
+              <ChevronRight className="w-4 h-4 text-white/30 group-hover:text-[#B69D74] group-hover:translate-x-1 transition-all" />
             </div>
           );
         })()}
@@ -1229,7 +1278,14 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
     }
   };
 
-  const openReservation = (dateObj: Date, isoStr: string, isOccupied: boolean, isClosed: boolean, contestableRes?: any) => {
+  const openReservation = (
+    dateObj: Date,
+    isoStr: string,
+    isOccupied: boolean,
+    isClosed: boolean,
+    contestableRes?: any,
+    specialClosed?: { data: string; motivo: string }
+  ) => {
     const _now = new Date();
     const todayStr = [
       _now.getFullYear(),
@@ -1243,6 +1299,12 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
     if (totalAberto > 0) {
       showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para realizar agendamentos ou contestações.', 'warning');
+      return;
+    }
+
+    if (specialClosed) {
+      const motivoText = specialClosed.motivo ? ` (${specialClosed.motivo})` : '';
+      showToast('Aviso', `A marina estará fechada nesta data${motivoText}. Agendamentos não permitidos.`, 'warning');
       return;
     }
 
@@ -1500,13 +1562,18 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 String(dateObj.getDate()).padStart(2, '0')
               ].join('-');
 
+              // Verificar se a data é um dia de fechamento geral/feriado cadastrado pelo administrador
+              const specialClosed = marinaDatasFechadas.find(item => item.data === isoStr);
+              const isSpecialClosed = !!specialClosed;
+
               // Verificar se a marina está fechada para esta embarcação específica (Segunda = 1, Terça = 2)
               const dayOfWeek = dateObj.getDay();
               const activeBoatEntry = Array.isArray(client.embarcacoes)
                 ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === activeBoatId)
                 : (client.embarcacaoId === activeBoatId ? client : null);
               const isPlanoCompletoForActiveBoat = activeBoatEntry?.plano === 'completo' || (!activeBoatEntry?.plano && client.plano === 'completo');
-              const isClosed = (dayOfWeek === 1 || dayOfWeek === 2) && !isPlanoCompletoForActiveBoat;
+              const isWeeklyClosed = (dayOfWeek === 1 || dayOfWeek === 2) && !isPlanoCompletoForActiveBoat;
+              const isClosed = isSpecialClosed || isWeeklyClosed;
 
               // Verificar se o CLIENTE tem reserva nessa embarcação ou se está ocupada
               const hasMyReservation = myBoatReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
@@ -1518,7 +1585,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
               // Identificar possibilidade de contestação
               let contestableRes = null;
-              if (isOccupied && !hasMyReservation && !past) {
+              if (isOccupied && !hasMyReservation && !past && !isSpecialClosed) {
                 const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
                 if (isWeekend && isOccupied.tipoReserva === 'extra') {
                   const rDateObj = new Date(isoStr + "T00:00:00");
@@ -1544,24 +1611,32 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               return (
                 <button
                   key={idx}
-                  onClick={() => openReservation(dateObj, isoStr, !!isOccupied, isClosed, contestableRes)}
+                  title={specialClosed ? `Marina Fechada: ${specialClosed.motivo || 'Fechamento Programado'}` : isWeeklyClosed ? 'Fechado (Seg/Ter)' : undefined}
+                  onClick={() => openReservation(dateObj, isoStr, !!isOccupied, isClosed, contestableRes, specialClosed)}
                   className={`
                     relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all duration-300
                     ${(past || (isOccupied && !contestableRes) || isClosed) ? 'opacity-30' : 'hover:scale-105 cursor-pointer shadow-lg'}
                     ${hasMyReservation
                       ? 'bg-[#B69D74]/20 border border-[#B69D74]/40 text-[#B69D74]'
-                      : contestableRes
-                        ? 'bg-amber-500/10 border border-amber-500/30 text-amber-500 hover:bg-amber-500/20'
-                        : isOccupied
-                          ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
-                          : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
+                      : isSpecialClosed
+                        ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                        : contestableRes
+                          ? 'bg-amber-500/10 border border-amber-500/30 text-amber-500 hover:bg-amber-500/20'
+                          : isOccupied
+                            ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                            : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
                     ${isToday && !hasMyReservation && !isOccupied && !contestableRes ? 'ring-1 ring-white/20 bg-white/10 text-white' : ''}
                   `}
                 >
-                  <span className={`text-sm ${hasMyReservation || isOccupied ? 'font-bold' : 'font-medium'}`}>
+                  <span className={`text-sm ${hasMyReservation || isOccupied || isSpecialClosed ? 'font-bold' : 'font-medium'}`}>
                     {dateObj.getDate()}
                   </span>
 
+                  {isSpecialClosed && !hasMyReservation && (
+                    <span className="text-[8px] font-bold uppercase tracking-tighter text-rose-400 mt-0.5 line-clamp-1 px-1">
+                      Fechado
+                    </span>
+                  )}
                   {hasMyReservation && (
                     <div className={`w-1.5 h-1.5 rounded-full bg-[#B69D74] mt-1 shadow-[0_0_8px_rgba(182,157,116,0.8)] ${hasMyReservation.id === lastAddedResId ? 'animate-[ping_2s_ease-out_1,pulse_2s_infinite]' : ''}`} />
                   )}
@@ -1579,6 +1654,26 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                 </button>
               );
             })}
+          </div>
+
+          {/* Legenda Visual Tátil do Calendário */}
+          <div className="mt-4 pt-4 border-t border-white/[0.06] grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-white/60 font-mono">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#B69D74] shadow-[0_0_6px_rgba(182,157,116,0.8)] shrink-0" />
+              <span>Sua Reserva</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+              <span>Reservado</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              <span>Suplência</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full border border-dashed border-white/30 shrink-0" />
+              <span>Fechado (Seg/Ter/Feriados)</span>
+            </div>
           </div>
         </div>
 
@@ -1667,12 +1762,14 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDownloadPDF(res);
+                          setSelectedReservationForTicket(res);
+                          setIsBoardingTicketModalOpen(true);
                         }}
-                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-medium text-[#B69D74] transition-colors cursor-pointer"
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-[#B69D74]/20 hover:bg-[#B69D74]/30 border border-[#B69D74]/40 rounded-xl text-[10px] font-bold text-[#B69D74] transition-all cursor-pointer shadow-sm"
+                        title="Abrir Ticket de Embarque"
                       >
-                        <Download className="w-3 h-3" />
-                        PDF
+                        <Ticket className="w-3 h-3" />
+                        Ticket de Embarque
                       </button>
                     )}
                     {isFuture && res.status !== 'cancelado' && (
@@ -1731,44 +1828,64 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
     return (
       <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pt-0 pb-24">
-        {/* Cartão Estilo Black Card */}
-        <div className="bg-gradient-to-br from-[#1a1a1a] via-[#111111] to-[#050505] border border-white/5 rounded-3xl p-6 shadow-2xl relative overflow-hidden mb-8 group">
-          <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/[0.05] to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite]"></div>
-          <div className="absolute top-0 right-0 w-40 h-40 bg-[#B69D74]/10 rounded-full blur-[50px] translate-x-1/3 -translate-y-1/3"></div>
+        {/* Cartão Estilo Black Card - Vila Náutica Member Card de Alto Padrão */}
+        <div className="bg-gradient-to-br from-[#1c1c22] via-[#0f0f13] to-[#070709] border border-[#B69D74]/35 rounded-[2rem] p-6 sm:p-7 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative overflow-hidden mb-8 group">
+          {/* Textura de reflexo metálico e filigrana */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(182,157,116,0.18),transparent_70%)] pointer-events-none" />
+          <div className="absolute top-0 right-0 w-48 h-48 bg-[#B69D74]/10 rounded-full blur-[60px] translate-x-1/4 -translate-y-1/4 pointer-events-none" />
+          
+          {/* Marca d'água da rosa dos ventos em filigrana */}
+          <div className="absolute right-[-20px] bottom-[-20px] w-44 h-44 opacity-5 pointer-events-none text-[#B69D74]">
+            <Compass className="w-full h-full" />
+          </div>
           
           <div className="relative z-10 flex flex-col h-full justify-between gap-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#B69D74] to-[#e5d3b3] flex items-center justify-center p-[1px]">
-                  <div className="w-full h-full bg-[#111] rounded-full flex items-center justify-center">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#B69D74] to-[#e5d3b3] p-[1px]">
+                  <div className="w-full h-full bg-[#0d0d10] rounded-[11px] flex items-center justify-center">
                     <Wallet className="w-4 h-4 text-[#B69D74]" />
                   </div>
                 </div>
-                <span className="text-xs font-medium text-white/60 tracking-wider">VILA NÁUTICA</span>
+                <div>
+                  <span className="block text-[11px] font-semibold text-white tracking-[0.2em] uppercase font-mono">
+                    VILA NÁUTICA
+                  </span>
+                  <span className="block text-[9px] text-[#B69D74] tracking-widest uppercase font-mono">
+                    Member Black Card
+                  </span>
+                </div>
               </div>
               
-              <div className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border backdrop-blur-sm ${
+              <div className={`px-3 py-1 rounded-full text-[9px] font-mono font-bold uppercase tracking-widest border backdrop-blur-md ${
                 isInadimplente
-                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
               }`}>
-                {isInadimplente ? 'Em Aberto' : 'Em Dia'}
+                {isInadimplente ? 'Pendente' : 'Situação Regular'}
               </div>
             </div>
 
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1">Total Vencido</p>
-              <div className="flex items-baseline gap-1">
-                <span className="text-lg text-white/60 font-light">R$</span>
-                <h2 className="text-4xl font-light text-white tracking-tight">
+              <p className="text-[10px] uppercase font-mono tracking-widest text-white/40 mb-1">
+                {isInadimplente ? 'Total em Aberto / Regularização' : 'Próxima Fatura / Situação'}
+              </p>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-base text-white/50 font-light font-mono">R$</span>
+                <h2 className="text-3xl sm:text-4xl font-light text-white tracking-tight font-mono">
                   {totalAberto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </h2>
               </div>
             </div>
             
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-white/30 font-medium">
-              <span>Status: {isInadimplente ? 'Requer Atenção' : 'Regular'}</span>
-              <span className="text-[#B69D74]">{client.plano === 'completo' ? 'Plano Completo' : 'Cotista Titular'}</span>
+            <div className="flex items-center justify-between pt-3 border-t border-white/[0.06] text-[10px] uppercase font-mono tracking-wider text-white/40">
+              <div className="truncate mr-2">
+                <span className="text-white/70 block truncate">{client.nome}</span>
+                <span className="text-[9px] text-[#B69D74]">{client.plano === 'completo' ? 'Plano Completo · 365 Dias' : 'Cotista Titular'}</span>
+              </div>
+              <span className="shrink-0 text-white/30 font-mono">
+                COTA #{client.id || '01'}
+              </span>
             </div>
           </div>
         </div>
@@ -2431,23 +2548,32 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
 
       {/* Main Content Area (Mobile Container Logic) */}
       <div className="relative z-10 w-full max-w-[480px] mx-auto min-h-max flex flex-col">
-        {/* Shared Header Start */}
+        {/* Shared Header Start - Marina Concierge Header */}
         <div className="flex items-center justify-between px-6 pb-4 pt-[max(env(safe-area-inset-top),1.5rem)]">
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-[#B69D74] font-semibold">Bem-vindo(a)</p>
-            <h1 className="text-xl font-light tracking-wide text-white mt-1">{client.nome.split(' ')[0]}</h1>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#B69D74] animate-pulse" />
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#B69D74] font-mono font-medium">
+                Cotista Titular · Grupo Vila Náutica
+              </p>
+            </div>
+            <h1 className="text-xl font-light tracking-wide text-white mt-0.5">
+              Olá, <span className="text-white font-normal">{client.nome.split(' ')[0]}</span>
+            </h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={handleManualRefresh}
               disabled={isRefreshing}
-              className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md active:bg-white/10 transition-colors cursor-pointer"
+              title="Atualizar painel"
+              className="w-10 h-10 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-center relative backdrop-blur-md active:bg-white/10 hover:border-[#B69D74]/40 transition-colors cursor-pointer"
             >
-              <RefreshCw className={`w-4 h-4 text-white/70 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 text-white/70 ${isRefreshing ? 'animate-spin text-[#B69D74]' : ''}`} />
             </button>
             <button
               onClick={() => setShowProfilePanel(true)}
-              className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative backdrop-blur-md cursor-pointer hover:bg-white/10 transition-colors"
+              title="Meu perfil e cota"
+              className="w-10 h-10 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-center relative backdrop-blur-md cursor-pointer hover:bg-white/10 hover:border-[#B69D74]/40 transition-colors"
             >
               <User className="w-4 h-4 text-white/70" />
             </button>
@@ -2474,25 +2600,29 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
       </div>
 
       {/* Bottom Navigation (iPhone Style Glassmorphism) */}
-      <nav className="fixed bottom-0 left-0 w-full z-50 px-4 pb-6 pt-4 bg-[#050505]/90 backdrop-blur-2xl border-t border-white/[0.04] pwa-safe-bottom">
-        <div className="max-w-[400px] mx-auto flex items-center justify-between px-2 relative">
+      <nav className="fixed bottom-0 left-0 w-full z-50 px-4 pb-6 pt-3 bg-[#070709]/95 backdrop-blur-2xl border-t border-[#B69D74]/20 pwa-safe-bottom shadow-[0_-10px_35px_rgba(0,0,0,0.85)]">
+        <div className="max-w-[420px] mx-auto flex items-center justify-between px-2 relative">
           
           <button
             onClick={() => handleTabChange('home')}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10 cursor-pointer"
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-1 z-10 cursor-pointer group"
           >
-            <Home className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'home' ? 'text-[#B69D74]' : 'text-white/30'}`} />
-            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'home' ? 'text-[#B69D74]' : 'text-transparent'}`}>
+            <div className={`p-1.5 rounded-xl transition-all duration-300 ${activeTab === 'home' ? 'bg-[#B69D74]/15 text-[#B69D74]' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
+              <Home className="w-5 h-5" />
+            </div>
+            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'home' ? 'text-[#B69D74]' : 'text-zinc-500'}`}>
               Início
             </span>
           </button>
 
           <button
             onClick={() => handleTabChange('calendar')}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10 cursor-pointer"
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-1 z-10 cursor-pointer group"
           >
-            <Calendar className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'calendar' ? 'text-[#B69D74]' : 'text-white/30'}`} />
-            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'calendar' ? 'text-[#B69D74]' : 'text-transparent'}`}>
+            <div className={`p-1.5 rounded-xl transition-all duration-300 ${activeTab === 'calendar' ? 'bg-[#B69D74]/15 text-[#B69D74]' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
+              <Calendar className="w-5 h-5" />
+            </div>
+            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'calendar' ? 'text-[#B69D74]' : 'text-zinc-500'}`}>
               Reservas
             </span>
           </button>
@@ -2504,18 +2634,22 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           {isActionMenuOpen && (
             <div 
               onClick={() => setIsActionMenuOpen(false)}
-              className="fixed inset-0 bg-black/75 backdrop-blur-md z-40 animate-in fade-in duration-300"
+              className="fixed inset-0 bg-black/80 backdrop-blur-md z-40 animate-in fade-in duration-300"
             />
           )}
 
           {/* Action Menu Popover Sheet */}
           {isActionMenuOpen && (
             <div className="fixed bottom-24 inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-[400px] z-50 animate-spring-pop">
-              <div className="bg-[#121212]/95 border border-white/10 rounded-[2rem] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.9)] backdrop-blur-2xl space-y-2.5">
-                <div className="text-center pt-1 pb-2 border-b border-white/[0.06]">
-                  <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-[#B69D74]">
-                    Menu de Solicitantes
-                  </span>
+              <div className="bg-[#0f0f13]/98 border border-[#B69D74]/30 rounded-[2rem] p-5 shadow-[0_20px_70px_rgba(0,0,0,0.95)] backdrop-blur-2xl space-y-3">
+                <div className="flex items-center justify-between pb-3 border-b border-white/[0.06] px-1">
+                  <div className="flex items-center gap-2">
+                    <Compass className="w-4 h-4 text-[#B69D74]" />
+                    <span className="text-[11px] uppercase tracking-[0.2em] font-mono font-semibold text-white">
+                      Concierge & Serviços
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-[#B69D74] font-mono">Ações Rápidas</span>
                 </div>
 
                 {/* Option 1: Agendamento */}
@@ -2549,15 +2683,15 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     }
                     setIsReservationModalOpen(true);
                   }}
-                  className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-[#B69D74]/15 border border-white/[0.05] hover:border-[#B69D74]/30 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-1"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] hover:bg-[#B69D74]/15 border border-white/[0.05] hover:border-[#B69D74]/40 transition-all duration-200 group text-left cursor-pointer animate-item-stagger-1"
                 >
                   <div className="flex items-center gap-3.5">
-                    <div className="w-11 h-11 rounded-xl bg-[#B69D74]/10 border border-[#B69D74]/20 flex items-center justify-center text-[#B69D74] group-hover:scale-110 transition-transform duration-300">
+                    <div className="w-11 h-11 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center text-[#B69D74] group-hover:scale-110 transition-transform duration-300">
                       <Calendar className="w-5 h-5" />
                     </div>
                     <div>
                       <h4 className="text-sm font-medium text-white group-hover:text-[#B69D74] transition-colors">
-                        Agendamento
+                        Agendamento de Saída
                       </h4>
                       <p className="text-[11px] text-white/40 font-light">
                         Reserve uma data para sua lancha ou jet
@@ -2581,7 +2715,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     </div>
                     <div>
                       <h4 className="text-sm font-medium text-white group-hover:text-amber-400 transition-colors">
-                        Manutenção
+                        Manutenções & O.S.
                       </h4>
                       <p className="text-[11px] text-white/40 font-light">
                         Reporte reparos ou revisão da embarcação
@@ -2605,10 +2739,10 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                     </div>
                     <div>
                       <h4 className="text-sm font-medium text-white group-hover:text-sky-400 transition-colors">
-                        Ticket para Administração
+                        Atendimento & Concierge
                       </h4>
                       <p className="text-[11px] text-white/40 font-light">
-                        Abra um chamado direto com a equipe
+                        Abra um chamado direto com a equipe náutica
                       </p>
                     </div>
                   </div>
@@ -2620,37 +2754,41 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
           )}
 
           {/* Central Floating Action Button */}
-          <div className="absolute left-1/2 -top-10 -translate-x-1/2 z-50 pointer-events-auto">
+          <div className="absolute left-1/2 -top-9 -translate-x-1/2 z-50 pointer-events-auto">
             <button
               onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
-              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(182,157,116,0.4)] transition-all duration-300 hover:scale-105 active:scale-95 border-[4px] border-[#050505] cursor-pointer ${
+              className={`w-15 h-15 rounded-full flex items-center justify-center shadow-[0_10px_30px_rgba(182,157,116,0.35)] transition-all duration-300 hover:scale-105 active:scale-95 border-[3px] border-[#070709] cursor-pointer ${
                 isActionMenuOpen
-                  ? 'bg-rose-600 shadow-[0_10px_30px_rgba(225,29,72,0.5)] rotate-45'
-                  : 'bg-gradient-to-tr from-[#B69D74] to-[#cbb28b] hover:from-[#a38b65] hover:to-[#B69D74]'
+                  ? 'bg-[#1e1c18] border-[#B69D74] shadow-[0_10px_30px_rgba(182,157,116,0.3)] rotate-45'
+                  : 'bg-gradient-to-tr from-[#B69D74] via-[#cbb28b] to-[#B69D74] hover:brightness-110'
               }`}
-              title={isActionMenuOpen ? "Fechar" : "Menu de Ações"}
+              title={isActionMenuOpen ? "Fechar" : "Concierge & Ações"}
             >
-              <Plus className={`w-7 h-7 transition-colors duration-300 ${isActionMenuOpen ? 'text-white' : 'text-slate-900'}`} />
+              <Plus className={`w-7 h-7 transition-colors duration-300 ${isActionMenuOpen ? 'text-[#B69D74]' : 'text-slate-950'}`} />
             </button>
           </div>
 
           <button
             onClick={() => handleTabChange('finance')}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10 cursor-pointer"
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-1 z-10 cursor-pointer group"
           >
-            <Wallet className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'finance' ? 'text-[#B69D74]' : 'text-white/30'}`} />
-            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'finance' ? 'text-[#B69D74]' : 'text-transparent'}`}>
-              Financeiro
+            <div className={`p-1.5 rounded-xl transition-all duration-300 ${activeTab === 'finance' ? 'bg-[#B69D74]/15 text-[#B69D74]' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
+              <Wallet className="w-5 h-5" />
+            </div>
+            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'finance' ? 'text-[#B69D74]' : 'text-zinc-500'}`}>
+              Finanças
             </span>
           </button>
 
           <button
             onClick={() => handleTabChange('maintenance')}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 px-1 z-10 cursor-pointer"
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-1 z-10 cursor-pointer group"
           >
-            <Wrench className={`w-6 h-6 transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-white/30'}`} />
-            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-transparent'}`}>
-              Manutenções
+            <div className={`p-1.5 rounded-xl transition-all duration-300 ${activeTab === 'maintenance' ? 'bg-[#B69D74]/15 text-[#B69D74]' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
+              <Wrench className="w-5 h-5" />
+            </div>
+            <span className={`text-[9px] uppercase tracking-wider font-semibold transition-colors duration-300 ${activeTab === 'maintenance' ? 'text-[#B69D74]' : 'text-zinc-500'}`}>
+              Serviços
             </span>
           </button>
 
@@ -2786,8 +2924,8 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               </div>
             </div>
 
-            {/* Install App Banner */}
-            {showInstallBanner && !isStandalone && (
+            {/* Install App Banner in Profile Menu */}
+            {pwa.canOfferInstall && (
               <div className="bg-gradient-to-br from-[#1a1815] to-[#0d0b08] border border-[#B69D74]/25 rounded-3xl p-5 relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="absolute top-0 right-0 w-28 h-28 bg-[#B69D74]/15 rounded-full blur-[35px] translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
                 <div className="relative z-10">
@@ -2800,19 +2938,13 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
                       <p className="text-[10px] text-white/40 mt-0.5">Acesso direto da tela inicial</p>
                     </div>
                   </div>
-                  <div className="flex gap-3 mt-4">
+                  <div className="mt-4">
                     <button
-                      onClick={handleInstallApp}
-                      className="flex-1 py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                      onClick={pwa.open}
+                      className="w-full py-2.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
                     >
                       <Download className="w-4 h-4" />
-                      {isIOS ? 'Como Instalar' : 'Instalar'}
-                    </button>
-                    <button
-                      onClick={() => setShowInstallBanner(false)}
-                      className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors border border-white/10 cursor-pointer"
-                    >
-                      X
+                      {pwa.platform.os === 'ios' ? 'Como Instalar no iPhone' : 'Instalar App'}
                     </button>
                   </div>
                 </div>
@@ -3142,72 +3274,15 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         </div>
       )}
 
-      {/* iOS Install Instructions Modal */}
-      {showIOSInstructions && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-[#020202]/90 backdrop-blur-xl transition-all duration-300">
-          <div className="w-full max-w-[400px] bg-[#090909] rounded-t-[2rem] sm:rounded-[2rem] border border-white/[0.06] flex flex-col overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] animate-in slide-in-from-bottom-8 duration-300">
-            
-            {/* Modal Header */}
-            <div className="p-6 pb-4 flex items-center justify-between border-b border-white/[0.04]">
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/30 flex items-center justify-center">
-                  <Smartphone className="w-5 h-5 text-[#B69D74]" />
-                </div>
-                <div>
-                  <h2 className="text-base font-light tracking-wide text-white">Instalar no iPhone</h2>
-                  <p className="text-[10px] uppercase tracking-widest text-[#B69D74] mt-0.5">Adicionar à Tela de Início</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowIOSInstructions(false)} 
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white/30 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Instructions */}
-            <div className="px-6 py-5 space-y-5">
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 rounded-full bg-[#B69D74]/15 flex items-center justify-center shrink-0 text-[#B69D74] font-bold text-sm">1</div>
-                <div>
-                  <p className="text-sm text-white font-medium">Toque no ícone de Compartilhar</p>
-                  <p className="text-xs text-white/40 mt-1 flex items-center gap-1.5">
-                    O ícone <Share className="w-3.5 h-3.5 inline text-[#B69D74]" /> na barra inferior do Safari
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 rounded-full bg-[#B69D74]/15 flex items-center justify-center shrink-0 text-[#B69D74] font-bold text-sm">2</div>
-                <div>
-                  <p className="text-sm text-white font-medium">Selecione "Adicionar à Tela de Início"</p>
-                  <p className="text-xs text-white/40 mt-1">Role para baixo e toque na opção com o ícone de <strong className="text-white/60">+</strong></p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 rounded-full bg-[#B69D74]/15 flex items-center justify-center shrink-0 text-[#B69D74] font-bold text-sm">3</div>
-                <div>
-                  <p className="text-sm text-white font-medium">Confirme tocando em "Adicionar"</p>
-                  <p className="text-xs text-white/40 mt-1">O app aparecerá na sua tela inicial como um app nativo</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 pt-2 border-t border-white/[0.04]">
-              <button
-                onClick={() => setShowIOSInstructions(false)}
-                className="w-full py-3.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-200 cursor-pointer shadow-lg"
-              >
-                Entendi
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
+      {/* PWA Install Sheet Modal */}
+      <InstallAppSheet
+        open={pwa.isOpen}
+        onClose={pwa.dismiss}
+        method={pwa.method}
+        platform={pwa.platform}
+        onNativeInstall={pwa.promptNativeInstall}
+        context="dashboard"
+      />
 
       {/* MODALS */}
       
@@ -3242,6 +3317,7 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
         boats={boats}
         reservations={mergedReservations}
         preselectedBoatId={selectedCalendarBoatId}
+        marinaDatasFechadas={marinaDatasFechadas}
         onSuccess={(newRes) => {
           if (newRes) {
             setOptimisticReservations(prev => [...prev, newRes]);
@@ -3277,15 +3353,23 @@ export default function ClientDashboardPage({ client, boats, reservations, trans
               ...prev.filter(r => r.id !== selectedReservationForCheckin.id),
               updatedResObj
             ]);
+            setSelectedReservationForTicket(updatedResObj);
+            setIsBoardingTicketModalOpen(true);
           }
 
-          showToast('Sucesso', 'Check-in confirmado com sucesso!', 'success');
+          showToast('Sucesso', 'Check-in confirmado! Seu Ticket de Embarque foi gerado.', 'success');
           if (onRefresh) {
             onRefresh();
-          } else {
-            window.location.reload();
           }
         }}
+      />
+
+      <ClientBoardingTicketModal
+        isOpen={isBoardingTicketModalOpen}
+        onClose={() => setIsBoardingTicketModalOpen(false)}
+        reservation={selectedReservationForTicket}
+        boat={boats.find(b => b.id === selectedReservationForTicket?.embarcacaoId)}
+        client={client}
       />
 
       {/* TOAST NOTIFICATIONS */}

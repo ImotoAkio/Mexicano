@@ -451,26 +451,36 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       }
     }
 
-    setIsSubmitting(true);
-
     const litrosNum = parseFloat(liters.replace(',', '.'));
-    if (statusCobranca === 'pago' && !paymentType) {
+    const isAvulso = saleMode === 'avulso';
+    // Abastecimentos avulsos devem ser pagos na hora, não pode deixar pendente.
+    // Para embarcação da marina: deixar pendente e lançar na administradora são a mesma coisa.
+    const isPendente = !isAvulso && statusCobranca === 'pendente';
+    const effectiveStatus = isPendente ? 'pendente' : 'pago';
+    const effectivePaymentType = isPendente ? 'faturado' : paymentType;
+
+    if (effectiveStatus === 'pago' && !effectivePaymentType) {
       alert('Selecione uma forma de pagamento para cobrança imediata.');
       return;
     }
-    const isAvulso = saleMode === 'avulso';
-    const usingAdmin = (paymentType === 'faturado' || statusCobranca === 'pendente') && !isAvulso;
-    const precoPorLitro = usingAdmin ? getFuelPrice('faturado') : getFuelPrice(paymentType || 'pix');
-    const paymentLabel = statusCobranca === 'pendente' ? 'Pendente' : getFuelPaymentLabel(paymentType || 'pix');
+
+    setIsSubmitting(true);
+
+    const precoPorLitro = isPendente ? getFuelPrice('faturado') : getFuelPrice(effectivePaymentType || 'pix');
+    const paymentLabel = isPendente ? 'Lançado na Administradora' : getFuelPaymentLabel(effectivePaymentType || 'pix');
     const valorTotal = litrosNum * precoPorLitro;
 
     const boat = isAvulso ? null : getEmbarcacao(selectedBoatId);
     const clientId = isAvulso ? '' : (selectedClientId || boat?.donos?.[0] || '');
     const identificacao = avulsoIdentificacao.trim() || 'Visitante Externo';
 
+    const todayStr = getTodayStr();
+
     const descricao = isAvulso
-      ? `Abastecimento Avulso (${identificacao}): ${litrosNum}L a R$${precoPorLitro.toFixed(2)}/L (${paymentLabel})`
-      : `Abastecimento Marina (${paymentLabel}): ${litrosNum}L`;
+      ? `Abastecimento Avulso (${identificacao}): ${litrosNum}L a R${precoPorLitro.toFixed(2)}/L (${paymentLabel})`
+      : isPendente
+        ? `Abastecimento Marina (Lançado na Administradora): ${litrosNum}L a R${precoPorLitro.toFixed(2)}/L`
+        : `Abastecimento Marina (${paymentLabel}): ${litrosNum}L a R${precoPorLitro.toFixed(2)}/L`;
 
     const newTransacao = {
       id: `trans_${Date.now()}`,
@@ -478,11 +488,11 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
       categoria: 'combustivel',
       descricao,
       valor: valorTotal,
-      status: statusCobranca === 'pendente' ? 'pendente' : 'pago',
-      metodoPagamento: statusCobranca === 'pendente' ? null : paymentType,
-      data: getTodayStr(),
-      dataVencimento: getTodayStr(),
-      dataPagamento: statusCobranca === 'pendente' ? null : getTodayStr(),
+      status: effectiveStatus,
+      metodoPagamento: effectivePaymentType,
+      data: todayStr,
+      dataVencimento: todayStr, // Validade no dia!
+      dataPagamento: isPendente ? null : todayStr,
       clienteId: clientId,
       embarcacaoId: isAvulso ? '' : selectedBoatId,
       empresa: 'Marina Velho Chico',
@@ -2223,7 +2233,8 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   type="button"
                   onClick={() => {
                     setSaleMode('avulso');
-                    if (paymentType === 'faturado') setPaymentType('pix');
+                    setStatusCobranca('pago');
+                    if (!paymentType || paymentType === 'faturado') setPaymentType('pix');
                   }}
                   className={`py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     saleMode === 'avulso'
@@ -2255,7 +2266,7 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                     <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
                       <strong className="block font-black text-emerald-950">Cliente Externo / Jet sem Cadastro</strong>
-                      Dispensado cadastro de cotista ou barco. O pagamento é realizado e recebido à vista no ato.
+                      Dispensado cadastro de cotista ou barco. O pagamento deve ser realizado à vista no ato (não pode ficar pendente).
                     </div>
                   </div>
 
@@ -2345,92 +2356,141 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
               </div>
 
               
-{/* Status da Cobrança */}
-<div className="space-y-3 mb-4">
-  <label className="font-semibold text-slate-700 text-xs block tracking-tight">Status da Cobrança *</label>
-  <div className="flex gap-4">
-    <label className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-      statusCobranca === 'pago' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
-    }`}>
-      <input type="radio" className="sr-only" checked={statusCobranca === 'pago'} onChange={() => { setStatusCobranca('pago'); if(!paymentType) setPaymentType('pix'); }} />
-      <span className="font-semibold text-sm">Fechado / Imediato</span>
-    </label>
-    <label className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-      statusCobranca === 'pendente' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
-    }`}>
-      <input type="radio" className="sr-only" checked={statusCobranca === 'pendente'} onChange={() => { setStatusCobranca('pendente'); setPaymentType(null); }} />
-      <span className="font-semibold text-sm">Deixar Pendente</span>
-    </label>
+{/* Status da Cobrança / Condição de Pagamento */}
+{saleMode === 'embarcacao' && (
+  <div className="space-y-2 mb-3">
+    <label className="font-semibold text-slate-700 text-xs block tracking-tight">Condição de Cobrança *</label>
+    <div className="grid grid-cols-2 gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          setStatusCobranca('pago');
+          if (!paymentType || paymentType === 'faturado') setPaymentType('pix');
+        }}
+        className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+          statusCobranca === 'pago'
+            ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-1 ring-emerald-500 font-bold shadow-xs'
+            : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 font-medium'
+        }`}
+      >
+        <div className="flex items-center gap-1.5 text-xs font-bold">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <span>Pago no Ato / Imediato</span>
+        </div>
+        <span className="text-[10px] text-slate-500">PIX, Dinheiro ou Cartão</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          setStatusCobranca('pendente');
+          setPaymentType('faturado');
+        }}
+        className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+          statusCobranca === 'pendente'
+            ? 'border-purple-500 bg-purple-50 text-purple-950 ring-1 ring-purple-500 font-bold shadow-xs'
+            : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 font-medium'
+        }`}
+      >
+        <div className="flex items-center gap-1.5 text-xs font-bold">
+          <Building2 className="w-4 h-4 text-purple-600" />
+          <span>Lançar na Administradora</span>
+        </div>
+        <span className="text-[10px] text-purple-700 font-semibold">Pendente (R$ 13,00/L)</span>
+      </button>
+    </div>
   </div>
-</div>
+)}
 
-{/* Formas de Pagamento */}
-<div className="space-y-2">
-  <label className="font-semibold text-slate-700 text-xs block tracking-tight">Forma de Pagamento (Opcional se pendente) *</label>
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-    {[
-      { id: 'dinheiro', icon: Banknote, label: 'Dinheiro', desc: 'Caixa físico', color: 'emerald', price: getFuelPrice('dinheiro') },
-      { id: 'pix', icon: QrCode, label: 'PIX', desc: 'Transferência imediata', color: 'cyan', price: getFuelPrice('pix') },
-      { id: 'cartao_debito', icon: CreditCard, label: 'Débito', desc: 'Maquininha', color: 'blue', price: getFuelPrice('cartao_debito') },
-      { id: 'cartao_credito', icon: CreditCard, label: 'Crédito', desc: 'Maquininha', color: 'indigo', price: getFuelPrice('cartao_credito') },
-      ...(saleMode === 'embarcacao' ? [{ id: 'faturado', icon: Building2, label: 'Administradora', desc: 'Faturamento Mensal', color: 'purple', price: getFuelPrice('faturado') }] : [])
-    ].map(opt => {
-      const Icon = opt.icon;
-      const isSelected = paymentType === opt.id;
+{/* Formas de Pagamento ou Informativo Administradora */}
+{saleMode === 'embarcacao' && statusCobranca === 'pendente' ? (
+  <div className="p-3.5 bg-purple-50 border border-purple-200/80 rounded-2xl flex items-start gap-3 animate-in fade-in">
+    <div className="p-2 bg-purple-100 text-purple-700 rounded-xl shrink-0 mt-0.5">
+      <Building2 className="w-4 h-4" />
+    </div>
+    <div className="space-y-1 text-xs">
+      <div className="flex items-center gap-2">
+        <strong className="font-bold text-purple-950">Faturamento na Administradora</strong>
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-200 text-purple-900">
+          Pendente
+        </span>
+      </div>
+      <p className="text-purple-900 leading-relaxed font-medium">
+        Abastecimento não pago no ato. O valor de <strong>R$ {getFuelPrice('faturado').toFixed(2)}/L</strong> será lançado na Administradora gerando um registro financeiro com validade no dia de hoje.
+      </p>
+    </div>
+  </div>
+) : (
+  <div className="space-y-2">
+    <label className="font-semibold text-slate-700 text-xs block tracking-tight">
+      {saleMode === 'avulso' ? 'Forma de Pagamento (Recebido na Hora) *' : 'Forma de Pagamento Recebida *'}
+    </label>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {[
+        { id: 'dinheiro', icon: Banknote, label: 'Dinheiro', desc: 'Caixa físico', color: 'emerald', price: getFuelPrice('dinheiro') },
+        { id: 'pix', icon: QrCode, label: 'PIX', desc: 'Transferência imediata', color: 'cyan', price: getFuelPrice('pix') },
+        { id: 'cartao_debito', icon: CreditCard, label: 'Débito', desc: 'Maquininha', color: 'blue', price: getFuelPrice('cartao_debito') },
+        { id: 'cartao_credito', icon: CreditCard, label: 'Crédito', desc: 'Maquininha', color: 'indigo', price: getFuelPrice('cartao_credito') },
+      ].map(opt => {
+        const Icon = opt.icon;
+        const isSelected = paymentType === opt.id;
 
-      const colorMap: Record<string, string> = {
-        emerald: isSelected ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
-        cyan: isSelected ? 'border-cyan-500 bg-cyan-50/50 ring-1 ring-cyan-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
-        blue: isSelected ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
-        indigo: isSelected ? 'border-indigo-500 bg-indigo-50/50 ring-1 ring-indigo-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
-        purple: isSelected ? 'border-purple-500 bg-purple-50/50 ring-1 ring-purple-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
-      };
+        const colorMap: Record<string, string> = {
+          emerald: isSelected ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+          cyan: isSelected ? 'border-cyan-500 bg-cyan-50/50 ring-1 ring-cyan-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+          blue: isSelected ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+          indigo: isSelected ? 'border-indigo-500 bg-indigo-50/50 ring-1 ring-indigo-500' : 'border-slate-200/60 bg-white hover:bg-slate-50 active:scale-[0.98]',
+        };
 
-      const textMap: Record<string, string> = {
-        emerald: isSelected ? 'text-emerald-900' : 'text-slate-700',
-        cyan: isSelected ? 'text-cyan-900' : 'text-slate-700',
-        blue: isSelected ? 'text-blue-900' : 'text-slate-700',
-        indigo: isSelected ? 'text-indigo-900' : 'text-slate-700',
-        purple: isSelected ? 'text-purple-900' : 'text-slate-700',
-      };
+        const textMap: Record<string, string> = {
+          emerald: isSelected ? 'text-emerald-900' : 'text-slate-700',
+          cyan: isSelected ? 'text-cyan-900' : 'text-slate-700',
+          blue: isSelected ? 'text-blue-900' : 'text-slate-700',
+          indigo: isSelected ? 'text-indigo-900' : 'text-slate-700',
+        };
 
-      const iconMap: Record<string, string> = {
-        emerald: isSelected ? 'text-emerald-600' : 'text-slate-400',
-        cyan: isSelected ? 'text-cyan-600' : 'text-slate-400',
-        blue: isSelected ? 'text-blue-600' : 'text-slate-400',
-        indigo: isSelected ? 'text-indigo-600' : 'text-slate-400',
-        purple: isSelected ? 'text-purple-600' : 'text-slate-400',
-      };
+        const iconMap: Record<string, string> = {
+          emerald: isSelected ? 'text-emerald-600' : 'text-slate-400',
+          cyan: isSelected ? 'text-cyan-600' : 'text-slate-400',
+          blue: isSelected ? 'text-blue-600' : 'text-slate-400',
+          indigo: isSelected ? 'text-indigo-600' : 'text-slate-400',
+        };
 
-      return (
-        <label key={opt.id} className={`flex items-center p-3 rounded-2xl border transition-all cursor-pointer ${colorMap[opt.color]} ${statusCobranca === 'pendente' ? 'opacity-50 grayscale' : ''}`}>
-          <input type="radio" name="payment" value={opt.id} checked={isSelected} onChange={() => { if(statusCobranca !== 'pendente') { setPaymentType(opt.id as any); } }} className="sr-only" />
-          <div className="flex-1 flex flex-col">
-            <span className={`font-semibold text-[13px] flex items-center gap-1.5 transition-colors ${textMap[opt.color]}`}>
-              <Icon className={`w-4 h-4 ${iconMap[opt.color]}`} />
-              {opt.label}
-            </span>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-[10px] text-slate-500 font-medium">{opt.desc}</span>
-              <span className="text-[11px] font-mono font-semibold text-slate-700">
-                R$ {opt.price.toFixed(2)}/L
+        return (
+          <label key={opt.id} className={`flex items-center p-3 rounded-2xl border transition-all cursor-pointer ${colorMap[opt.color]}`}>
+            <input type="radio" name="payment" value={opt.id} checked={isSelected} onChange={() => setPaymentType(opt.id as any)} className="sr-only" />
+            <div className="flex-1 flex flex-col">
+              <span className={`font-semibold text-[13px] flex items-center gap-1.5 transition-colors ${textMap[opt.color]}`}>
+                <Icon className={`w-4 h-4 ${iconMap[opt.color]}`} />
+                {opt.label}
               </span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[10px] text-slate-500 font-medium">{opt.desc}</span>
+                <span className="text-[11px] font-mono font-semibold text-slate-700">
+                  R$ {opt.price.toFixed(2)}/L
+                </span>
+              </div>
             </div>
-          </div>
-        </label>
-      );
-    })}
+          </label>
+        );
+      })}
+    </div>
   </div>
-</div>
+)}
 
 {/* Total Calculation Display */}
 {(() => {
   const l = parseFloat(liters.replace(',', '.') || '0');
-  const p = ((paymentType === 'faturado' || statusCobranca === 'pendente') && saleMode === 'embarcacao') ? getFuelPrice('faturado') : getFuelPrice(paymentType || 'pix');
+  const isPendenteMode = saleMode === 'embarcacao' && statusCobranca === 'pendente';
+  const p = isPendenteMode ? getFuelPrice('faturado') : getFuelPrice(paymentType || 'pix');
   const tot = l * p;
   return (
     <div className={`p-4 rounded-3xl border flex items-center justify-between transition-all mt-4 mb-4 ${
-      saleMode === 'avulso' ? 'bg-gradient-to-r from-emerald-50/50 to-teal-50/50 border-emerald-200/60' : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-blue-200/60'
+      saleMode === 'avulso'
+        ? 'bg-gradient-to-r from-emerald-50/50 to-teal-50/50 border-emerald-200/60'
+        : isPendenteMode
+          ? 'bg-gradient-to-r from-purple-50/50 to-indigo-50/50 border-purple-200/60'
+          : 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 border-blue-200/60'
     }`}>
       <div className="text-xs">
         <span className="text-slate-500 font-semibold uppercase tracking-widest text-[9px]">Valor Total Estimado</span>
@@ -2438,7 +2498,13 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
           {l > 0 ? `${l.toFixed(1)}L x R$ ${p.toFixed(2)}/L` : 'Informe os litros'}
         </span>
       </div>
-      <span className={`text-xl tracking-tight font-black font-mono shadow-sm ${saleMode === 'avulso' ? 'text-emerald-950' : 'text-blue-950'}`}>
+      <span className={`text-xl tracking-tight font-black font-mono shadow-sm ${
+        saleMode === 'avulso'
+          ? 'text-emerald-950'
+          : isPendenteMode
+            ? 'text-purple-950'
+            : 'text-blue-950'
+      }`}>
         {tot.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
       </span>
     </div>
@@ -2482,17 +2548,29 @@ export default function MarinaFuelView({ data, operadorNome, setData, reloadData
                   type="submit"
                   disabled={isSubmitting || (saleMode === 'embarcacao' ? (!selectedBoatId || !liters) : (!liters || parseFloat(liters.replace(',', '.') || '0') <= 0))}
                   className={`px-5 py-2.5 text-white font-semibold rounded-xl shadow-md text-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
-                    saleMode === 'avulso' ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/20' : 'bg-[#2563EB] hover:bg-[#1d4ed8] active:bg-blue-800 shadow-blue-600/20'
+                    saleMode === 'avulso'
+                      ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/20'
+                      : statusCobranca === 'pendente'
+                        ? 'bg-purple-700 hover:bg-purple-800 active:bg-purple-900 shadow-purple-700/20'
+                        : 'bg-[#2563EB] hover:bg-[#1d4ed8] active:bg-blue-800 shadow-blue-600/20'
                   }`}
                 >
                   {isSubmitting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : saleMode === 'avulso' ? (
                     <Zap className="w-4 h-4 text-emerald-100" />
+                  ) : statusCobranca === 'pendente' ? (
+                    <Building2 className="w-4 h-4 text-purple-100" />
                   ) : (
                     <Save className="w-4 h-4" />
                   )}
-                  <span>{saleMode === 'avulso' ? 'Registrar Abastecimento Avulso' : 'Registrar Venda'}</span>
+                  <span>
+                    {saleMode === 'avulso'
+                      ? 'Registrar Abastecimento Avulso'
+                      : statusCobranca === 'pendente'
+                        ? 'Lançar na Administradora'
+                        : 'Registrar Abastecimento Pago'}
+                  </span>
                 </button>
               </div>
             </form>

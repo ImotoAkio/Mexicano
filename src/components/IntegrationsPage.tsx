@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Compass, CalendarDays, CheckCircle2, X, CreditCard, Key, Shield,
   ShieldCheck, AlertTriangle, RefreshCw, MessageSquare, QrCode, Loader2, Check,
-  Copy, ExternalLink, Wand2, Sparkles, Send
+  Copy, ExternalLink, Wand2, Sparkles, Send, Trash2, Plus, CalendarOff
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { Cliente } from '../types';
@@ -22,7 +22,9 @@ import {
 } from '../googleCalendar';
 import { boatDB, clientDB } from '../db';
 
-export default function IntegrationsPage() {
+interface IntegrationsPageProps { onNavigate?: (tab: any) => void; }
+
+export default function IntegrationsPage({ onNavigate }: IntegrationsPageProps) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -59,6 +61,9 @@ export default function IntegrationsPage() {
 
   // Marina Configs
   const [checkinAntecedencia, setCheckinAntecedencia] = useState('40');
+  const [marinaDatasFechadas, setMarinaDatasFechadas] = useState<Array<{ data: string; motivo: string }>>([]);
+  const [novaDataFechada, setNovaDataFechada] = useState('');
+  const [novoMotivoFechada, setNovoMotivoFechada] = useState('');
 
   // Per-day-of-week schedule: keys 0-6 = Sunday-Saturday (JS Date.getDay())
   const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -78,6 +83,27 @@ export default function IntegrationsPage() {
       ...prev,
       [day]: { ...prev[day], [field]: value }
     }));
+  };
+
+  const handleAddDataFechada = () => {
+    if (!novaDataFechada) {
+      showToast('Selecione uma data para adicionar.', 'error');
+      return;
+    }
+    if (marinaDatasFechadas.some(d => d.data === novaDataFechada)) {
+      showToast('Esta data já consta na lista de bloqueios.', 'error');
+      return;
+    }
+    const novaLista = [...marinaDatasFechadas, { data: novaDataFechada, motivo: novoMotivoFechada.trim() }];
+    novaLista.sort((a, b) => a.data.localeCompare(b.data));
+    setMarinaDatasFechadas(novaLista);
+    setNovaDataFechada('');
+    setNovoMotivoFechada('');
+    showToast('Data adicionada à lista. Clique em "Salvar Configurações da Marina" para aplicar.');
+  };
+
+  const handleRemoveDataFechada = (dataParaRemover: string) => {
+    setMarinaDatasFechadas(prev => prev.filter(d => d.data !== dataParaRemover));
   };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -214,6 +240,9 @@ export default function IntegrationsPage() {
         if (data.marina_horarios_semana) {
           setHorariosSemana(prev => ({ ...prev, ...data.marina_horarios_semana }));
         }
+        if (data.marina_datas_fechadas && Array.isArray(data.marina_datas_fechadas)) {
+          setMarinaDatasFechadas(data.marina_datas_fechadas);
+        }
         if (data.has_asaas_api_key) {
           setAsaasApiKey('__UNCHANGED__');
         }
@@ -249,7 +278,8 @@ export default function IntegrationsPage() {
     // Socket.io real-time listener for updates
     let socket: any;
     try {
-      socket = io('/', { path: '/socket.io' });
+      socket = io("/", {
+      auth: { token: localStorage.getItem("admin_token") }, path: '/socket.io' });
       socket.on('config_updated', (data: any) => {
         if (data && data.pagamentos_online_habilitado !== undefined) {
           const val = !!data.pagamentos_online_habilitado;
@@ -370,7 +400,8 @@ export default function IntegrationsPage() {
         headers,
         body: JSON.stringify({
           marina_checkin_antecedencia: checkinAntecedencia,
-          marina_horarios_semana: horariosSemana
+          marina_horarios_semana: horariosSemana,
+          marina_datas_fechadas: marinaDatasFechadas
         })
       });
       const data = await res.json();
@@ -437,9 +468,39 @@ export default function IntegrationsPage() {
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900">Integrações de Sistema</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Gerencie conexões do Google Calendar e serviços do WhatsApp da plataforma.
+            Gerencie conexões do Google Calendar, automações inteligentes de WhatsApp e serviços da plataforma.
           </p>
         </div>
+      </div>
+
+      {/* NOVO: ROBÔ INTELIGENTE DE NOTIFICAÇÕES WHATSAPP */}
+      <div className="bg-gradient-to-r from-slate-900 via-[#186b77] to-slate-900 rounded-2xl p-5 text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-amber-400" />
+            <h3 className="text-base font-bold">Robô Inteligente de Notificações (WhatsApp)</h3>
+            <span className="bg-emerald-500/20 text-emerald-300 text-[10px] px-2 py-0.5 rounded-full font-bold border border-emerald-500/30">
+              Ativo no Servidor
+            </span>
+          </div>
+          <p className="text-xs text-slate-200 max-w-2xl">
+            Dispara automaticamente a confirmação de passeios nos horários configurados (ex: 08:00, 09:00) e notifica os cotistas instantaneamente sempre que houver novo lançamento financeiro.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (onNavigate) {
+              onNavigate('whatsapp');
+            } else {
+              window.location.hash = '#whatsapp';
+            }
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-white text-slate-900 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
+        >
+          <MessageSquare className="w-4 h-4 text-[#186b77]" />
+          Abrir Robô de Automações
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -881,6 +942,94 @@ export default function IntegrationsPage() {
                 />
               </div>
               <p className="text-[11px] text-slate-400 mt-4">Tempo mínimo de antecedência para o horário de saída no check-in do cliente.</p>
+            </div>
+
+            {/* Datas Fechadas / Feriados / Manutenção Geral */}
+            <div className="mt-8 pt-6 border-t border-slate-200">
+              <div className="flex items-center gap-2 mb-2">
+                <CalendarOff className="w-4 h-4 text-rose-500" />
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  Datas Fechadas & Feriados da Marina (Bloqueio Total)
+                </h4>
+              </div>
+              <p className="text-[11px] text-slate-500 mb-4">
+                Datas específicas do ano em que a marina estará totalmente fechada (ex: Natal, Ano Novo ou manutenção geral). Essas datas ficam bloqueadas para agendamento no calendário do cotista (inclusive para clientes com Plano Completo).
+              </p>
+
+              {/* Formulário de inclusão */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                  <div className="sm:col-span-4">
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Data Fechada</label>
+                    <input
+                      type="date"
+                      value={novaDataFechada}
+                      onChange={(e) => setNovaDataFechada(e.target.value)}
+                      className="w-full bg-white text-slate-800 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-6">
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Motivo / Descrição (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Feriado de Natal, Manutenção da Rampa..."
+                      value={novoMotivoFechada}
+                      onChange={(e) => setNovoMotivoFechada(e.target.value)}
+                      className="w-full bg-white text-slate-800 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <button
+                      type="button"
+                      onClick={handleAddDataFechada}
+                      className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold px-3 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Adicionar
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de datas cadastradas */}
+              {marinaDatasFechadas.length > 0 ? (
+                <div className="max-h-60 overflow-y-auto subtle-scrollbar border border-slate-200 rounded-xl divide-y divide-slate-100">
+                  {marinaDatasFechadas.map((item) => {
+                    const [y, m, d] = item.data.split('-');
+                    const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
+                    const diaSemana = !isNaN(dateObj.getTime()) ? DAY_LABELS[dateObj.getDay()] : '';
+                    return (
+                      <div key={item.data} className="flex items-center justify-between p-2.5 bg-white hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
+                            {`${d}/${m}/${y}`}
+                          </span>
+                          {diaSemana && (
+                            <span className="text-[11px] text-slate-500 font-medium">
+                              ({diaSemana})
+                            </span>
+                          )}
+                          <span className="text-xs text-slate-700">
+                            {item.motivo || <span className="text-slate-400 italic">Fechamento Geral</span>}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDataFechada(item.data)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="Remover data fechada"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center">
+                  <p className="text-xs text-slate-400">Nenhum feriado ou data especial cadastrada no momento.</p>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 flex justify-end">

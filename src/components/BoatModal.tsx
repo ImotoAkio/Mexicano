@@ -777,46 +777,47 @@ export default function BoatModal({
                   {[
                     { id: 'VALE', label: 'Vale Administradora', color: 'text-indigo-700 bg-indigo-50 border-indigo-200', tabIdx: 16 },
                     { id: 'MARINA', label: 'Marina Club', color: 'text-teal-700 bg-teal-50 border-teal-200', tabIdx: 17 },
-                    { id: 'MEXICANO', label: 'Mexicano Lanchas', color: 'text-amber-700 bg-amber-50 border-amber-200', tabIdx: 18 },
                   ].map(item => {
                     const isDisabledForGerente = isMarinaGerente && item.id === 'VALE';
                     const isLockedMarina = isMarinaGerente && item.id === 'MARINA';
                     return (
-                      <label
+                      <div
                         key={item.id}
-                        className={`inline-flex items-center justify-between px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                        onClick={() => {
+                          if (isDisabledForGerente) return;
+                          if (!empresas.includes(item.id)) {
+                            setEmpresas([...empresas, item.id]);
+                          } else {
+                            if (isLockedMarina) {
+                              showToast('A embarcação da Marina deve obrigatoriamente manter o vínculo com Marina Club.', 'error');
+                              return;
+                            }
+                            if (empresas.length > 1) {
+                              setEmpresas(empresas.filter(x => x !== item.id));
+                            } else {
+                              showToast('Selecione pelo menos uma empresa.', 'error');
+                            }
+                          }
+                        }}
+                        className={`inline-flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-bold transition-all select-none ${
                           isDisabledForGerente
                             ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
                             : empresas.includes(item.id)
-                            ? item.color + ' cursor-pointer'
-                            : 'bg-white text-slate-500 border-slate-200 opacity-70 cursor-pointer'
+                            ? item.color + ' cursor-pointer shadow-2xs font-extrabold'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 cursor-pointer'
                         }`}
                         title={isDisabledForGerente ? "O Gerente de Marina gerencia exclusivamente veículos da Marina Club" : undefined}
                       >
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            tabIndex={item.tabIdx}
-                            disabled={isDisabledForGerente || isLockedMarina}
-                            checked={empresas.includes(item.id)}
-                            onChange={(e) => {
-                              if (isDisabledForGerente) return;
-                              if (e.target.checked) {
-                                setEmpresas([...empresas, item.id]);
-                              } else {
-                                if (isLockedMarina) {
-                                  showToast('A embarcação da Marina deve obrigatoriamente manter o vínculo com Marina Club.', 'error');
-                                  return;
-                                }
-                                if (empresas.length > 1) {
-                                  setEmpresas(empresas.filter(x => x !== item.id));
-                                } else {
-                                  showToast('Selecione pelo menos uma empresa.', 'error');
-                                }
-                              }
-                            }}
-                            className="w-3.5 h-3.5 rounded text-slate-900 focus:ring-slate-900 cursor-pointer disabled:cursor-not-allowed"
-                          />
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-4 h-4 rounded-md flex items-center justify-center transition-all border ${
+                              empresas.includes(item.id)
+                                ? 'bg-slate-900 border-slate-900 text-white shadow-2xs'
+                                : 'bg-white border-slate-300'
+                            }`}
+                          >
+                            {empresas.includes(item.id) && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
                           <span>{item.label}</span>
                         </div>
                         {isDisabledForGerente && (
@@ -829,7 +830,7 @@ export default function BoatModal({
                             (Obrigatório)
                           </span>
                         )}
-                      </label>
+                      </div>
                     );
                   })}
                 </div>

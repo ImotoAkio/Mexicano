@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Anchor, Building2, Zap, ChevronDown, Plus, X, Check, Loader2, Package, Sparkles } from 'lucide-react';
+import { User, Ship, Building2, Plus, X, Check, Loader2, FileText, Compass, MapPin, Lock, AlertTriangle, ChevronRight } from 'lucide-react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
 
@@ -9,18 +9,61 @@ interface ClientModalProps {
   onSave: (savedClient: Cliente) => void;
   editingClient?: Cliente | null;
   boats?: Embarcacao[];
+  defaultEmpresas?: string[];
+  lockEmpresa?: string;
+  userRole?: string;
 }
+
+type TabType = 'dados' | 'veiculos' | 'documentos';
 
 export default function ClientModal({
   isOpen,
   onClose,
   onSave,
   editingClient = null,
-  boats: propBoats
+  boats: propBoats,
+  defaultEmpresas,
+  lockEmpresa,
+  userRole
 }: ClientModalProps) {
   const [boats, setBoats] = useState<Embarcacao[]>([]);
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('dados');
+
+  // Identifica se o usuário atual é da Marina
+  const isMarinaUser = lockEmpresa === 'MARINA' || userRole === 'marina_gerente' || userRole === 'marina_operador' || userRole === 'marina' || (() => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      if (!token) return false;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.role === 'marina_gerente' || payload.role === 'marina_operador' || payload.role === 'marina';
+    } catch {
+      return false;
+    }
+  })();
+
+  // Verifica se uma embarcação pertence à Marina
+  const isBoatMarina = (b: Embarcacao): boolean => {
+    const emp = b.empresas && b.empresas.length > 0 ? b.empresas : ['VALE'];
+    return emp.includes('MARINA');
+  };
+
+  // Se o usuário for da Marina, ele só pode vincular embarcações da frota da Marina
+  const selectableBoats = isMarinaUser
+    ? boats.filter(isBoatMarina)
+    : boats;
+
+  // Verifica se o cliente a ser editado pertence exclusivamente à Vale (somente leitura para Marina)
+  const isValeReadOnly = Boolean(
+    isMarinaUser &&
+    editingClient &&
+    (() => {
+      const emps = Array.isArray(editingClient.empresas) && editingClient.empresas.length > 0
+        ? editingClient.empresas.map(e => e.toUpperCase().trim())
+        : ['VALE'];
+      return !emps.includes('MARINA');
+    })()
+  );
   
   // Form States
   const [name, setName] = useState('');
@@ -61,14 +104,117 @@ export default function ClientModal({
   const [statusFinanceiro, setStatusFinanceiro] = useState<'em_dia' | 'inadimplente' | 'pendente'>('em_dia');
   const [status, setStatus] = useState<'ativo' | 'inativo'>('ativo');
   const [observacoesFinanceiras, setObservacoesFinanceiras] = useState('');
-  const [plano, setPlano] = useState<'normal' | 'completo'>('normal');
   const [empresas, setEmpresas] = useState<string[]>(['VALE']);
+
+  const normalizeEmpresas = (raw: any): string[] => {
+    let list: string[] = [];
+    if (Array.isArray(raw)) {
+      list = raw.map(x => String(x).toUpperCase().trim()).filter(Boolean);
+    } else if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          list = parsed.map(x => String(x).toUpperCase().trim()).filter(Boolean);
+        } else {
+          list = [String(raw).toUpperCase().trim()];
+        }
+      } catch {
+        list = raw.split(',').map(x => x.toUpperCase().trim()).filter(Boolean);
+      }
+    }
+    list = list.filter(e => e !== 'MEXICANO');
+    if (list.length === 0) {
+      list = ['VALE'];
+    }
+    return list;
+  };
+
+  // Gestão de autenticação do cliente (Admin)
+  const [authStatus, setAuthStatus] = useState<{ hasAuth: boolean; createdAt?: string } | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+  const [showSetPasswordInput, setShowSetPasswordInput] = useState(false);
+  const [manualPassword, setManualPassword] = useState('');
+  const [authActionLoading, setAuthActionLoading] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  useEffect(() => {
+    if (isOpen && editingClient?.id) {
+      setIsLoadingAuth(true);
+      fetch(`/api/auth/client/admin-status/${editingClient.id}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token') || localStorage.getItem('token') || ''}`
+        }
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.success) setAuthStatus({ hasAuth: d.hasAuth, createdAt: d.createdAt });
+        })
+        .catch(console.error)
+        .finally(() => setIsLoadingAuth(false));
+    } else {
+      setAuthStatus(null);
+      setShowSetPasswordInput(false);
+      setManualPassword('');
+    }
+  }, [isOpen, editingClient]);
+
+  const handleAdminResetPassword = async () => {
+    if (!editingClient?.id) return;
+    if (!confirm(`Deseja resetar o acesso de ${editingClient.nome}? O cliente poderá definir uma nova senha no próximo login digitando seu CPF.`)) return;
+
+    setAuthActionLoading(true);
+    try {
+      const res = await fetch(`/api/auth/client/admin-reset/${editingClient.id}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token') || localStorage.getItem('token') || ''}`
+        }
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) throw new Error(d.message || 'Falha ao resetar acesso.');
+      showToast('Acesso resetado! O cliente fará ativação no próximo acesso.', 'success');
+      setAuthStatus({ hasAuth: false });
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao resetar acesso.', 'error');
+    } finally {
+      setAuthActionLoading(false);
+    }
+  };
+
+  const handleAdminSetManualPassword = async () => {
+    if (!editingClient?.id) return;
+    if (manualPassword.length < 6) {
+      showToast('A senha deve ter no mínimo 6 caracteres.', 'error');
+      return;
+    }
+
+    setAuthActionLoading(true);
+    try {
+      const res = await fetch(`/api/auth/client/admin-set-password/${editingClient.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token') || localStorage.getItem('token') || ''}`
+        },
+        body: JSON.stringify({ password: manualPassword })
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) throw new Error(d.message || 'Falha ao definir senha.');
+      showToast('Nova senha salva com sucesso para o cliente!', 'success');
+      setAuthStatus({ hasAuth: true });
+      setShowSetPasswordInput(false);
+      setManualPassword('');
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao definir senha.', 'error');
+    } finally {
+      setAuthActionLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -81,6 +227,7 @@ export default function ClientModal({
 
   useEffect(() => {
     if (isOpen) {
+      setActiveTab('dados');
       if (editingClient) {
         setEditingId(editingClient.id);
         setName(editingClient.nome || '');
@@ -129,14 +276,27 @@ export default function ClientModal({
         setEstado(editingClient.estado || '');
         setStatusFinanceiro(editingClient.statusFinanceiro || 'em_dia');
         setObservacoesFinanceiras(editingClient.observacoesFinanceiras || '');
-        setPlano(editingClient.plano || 'normal');
-        setEmpresas(editingClient.empresas && editingClient.empresas.length > 0 ? editingClient.empresas : ['VALE']);
+
+        if (isMarinaUser) {
+          setEmpresas(['MARINA']);
+        } else {
+          setEmpresas(normalizeEmpresas(editingClient.empresas));
+        }
       } else {
         setEditingId(null);
         setName('');
         setStatus('ativo');
-        const availableBoats = propBoats && propBoats.length > 0 ? propBoats : boatDB.getAll();
-        setClientBoats([{ embarcacaoId: availableBoats[0]?.id || '', cota: '', plano: 'normal' }]);
+
+        if (isMarinaUser) {
+          const marinaBoats = (propBoats && propBoats.length > 0 ? propBoats : boatDB.getAll()).filter(isBoatMarina);
+          setClientBoats([{ embarcacaoId: marinaBoats[0]?.id || '', cota: '', plano: 'normal' }]);
+          setEmpresas(['MARINA']);
+        } else {
+          const availableBoats = propBoats && propBoats.length > 0 ? propBoats : boatDB.getAll();
+          setClientBoats([{ embarcacaoId: availableBoats[0]?.id || '', cota: '', plano: 'normal' }]);
+          setEmpresas(defaultEmpresas && defaultEmpresas.length > 0 ? defaultEmpresas : ['VALE']);
+        }
+
         setEmail('');
         setPhone('');
         setCpf('');
@@ -158,12 +318,9 @@ export default function ClientModal({
         setEstado('');
         setStatusFinanceiro('em_dia');
         setObservacoesFinanceiras('');
-        setPlano('normal');
-        setEmpresas(['VALE']);
       }
-      setIsAdvancedOpen(false);
     }
-  }, [isOpen, editingClient]);
+  }, [isOpen, editingClient, defaultEmpresas, isMarinaUser]);
 
   const fetchCep = async (cepValue: string) => {
     const cleanCep = cepValue.replace(/\D/g, '');
@@ -213,20 +370,31 @@ export default function ClientModal({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      showToast('O nome é obrigatório.', 'error');
+    if (isMarinaUser && isValeReadOnly) {
+      showToast('Clientes exclusivos da Vale Administradora não podem ser alterados na Marina.', 'error');
       return;
     }
-    // Filter out empty boat entries (no embarcacaoId selected)
+
+    if (!name.trim()) {
+      showToast('O nome é obrigatório.', 'error');
+      setActiveTab('dados');
+      return;
+    }
+    
     const validBoats = clientBoats.filter(cb => cb.embarcacaoId);
-    if (validBoats.some(cb => !cb.cota.trim())) {
-      showToast('O número da cota é obrigatório para todas as embarcações.', 'error');
+    if (validBoats.length > 0 && validBoats.some(cb => !cb.cota.trim())) {
+      showToast('Informe o número da cota para todas as embarcações selecionadas.', 'error');
+      setActiveTab('veiculos');
       return;
     }
 
     try {
       const primaryBoat = validBoats[0];
       let saved: Cliente;
+
+      const finalEmpresas = isMarinaUser
+        ? ['MARINA']
+        : normalizeEmpresas(empresas);
 
       const clientDataPayload = {
         nome: name.toUpperCase(),
@@ -260,8 +428,8 @@ export default function ClientModal({
         estado,
         statusFinanceiro,
         observacoesFinanceiras,
-        plano: validBoats.some(cb => cb.plano === 'completo') ? 'completo' : 'normal',
-        empresas,
+        plano: (validBoats.some(cb => cb.plano === 'completo') ? 'completo' : 'normal') as ('normal' | 'completo'),
+        empresas: finalEmpresas,
         status
       };
 
@@ -282,718 +450,978 @@ export default function ClientModal({
 
   if (!isOpen) return null;
 
+  const validBoatsCount = clientBoats.filter(b => b.embarcacaoId).length;
+
   return (
     <div id="client-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-      {/* Toast Banner */}
+      {/* Toast Notification */}
       {toast && (
-        <div className={`fixed top-[max(1rem,env(safe-area-inset-top))] right-4 z-60 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold animate-in fade-in slide-in-from-top-2 duration-200 ${
-          toast.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+        <div className={`fixed top-[max(1rem,env(safe-area-inset-top))] right-4 z-60 px-4 py-2.5 rounded-lg shadow-lg border text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200 ${
+          toast.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-slate-900 border-slate-800 text-white'
         }`}>
           {toast.message}
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-xl border border-slate-100 max-w-6xl w-full overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-150">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0 bg-slate-50/50">
-          <div className="flex items-center space-x-2">
-            <User className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-lg font-bold text-slate-900">
-              {editingId ? 'Editar Cadastro do Cliente' : 'Cadastrar Novo Cliente'}
-            </h3>
-          </div>
-          <button
-            id="close-client-modal"
-            onClick={onClose}
-            className="p-1.5 hover:bg-slate-200/60 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSave} className="p-6 overflow-y-auto subtle-scrollbar flex-1 space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* COLUNA 1: IDENTIFICAÇÃO E CONTATOS (4 cols) */}
-            <div className="lg:col-span-4 space-y-4 border-b lg:border-b-0 lg:border-r border-slate-100 pb-4 lg:pb-0 lg:pr-6">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center">
-                <User className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Identificação & Contatos
-              </h4>
-
-              {/* Status do Cadastro */}
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
-                  <span>Status do Cadastro</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status === 'ativo' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
-                    {status === 'ativo' ? 'Ativo' : 'Inativo'}
-                  </span>
-                </label>
-                <div className="grid grid-cols-2 gap-1.5 p-0.5 bg-slate-200/60 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => setStatus('ativo')}
-                    className={`py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                      status === 'ativo'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    Ativo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatus('inativo')}
-                    className={`py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                      status === 'inativo'
-                        ? 'bg-slate-800 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    Inativo
-                  </button>
-                </div>
-                {status === 'inativo' && (
-                  <p className="text-[10px] text-amber-700 mt-1.5 leading-tight">
-                    ⚠️ Cliente inativo: bloqueado para novas reservas e login no portal. Todo o histórico é preservado.
-                  </p>
-                )}
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full overflow-hidden max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
+        
+        {/* Header Superior */}
+        <div className="px-6 pt-5 pb-4 border-b border-slate-100 bg-white shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-50/80 border border-blue-100/90 flex items-center justify-center text-blue-600 shadow-2xs">
+                <User className="w-4 h-4" />
               </div>
-
-              {/* Resumo do Plano de Agendamento */}
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                  <span>Plano de Segunda e Terça</span>
-                  {clientBoats.some(cb => cb.plano === 'completo') ? (
-                    <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" /> Completo Ativo
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-medium text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full">
-                      Normal
-                    </span>
-                  )}
-                </label>
-                <p className="text-[10px] text-slate-500 leading-tight">
-                  Configurado individualmente por embarcação na coluna ao lado.
+              <div>
+                <h3 className="text-base font-semibold text-slate-900 leading-tight">
+                  {editingId ? 'Editar Cadastro do Cliente' : 'Novo Cliente'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {isMarinaUser
+                    ? 'Cadastro restrito aos clientes e cotistas com vínculo na Marina Club'
+                    : editingId
+                    ? 'Gerencie as informações pessoais, embarcações e documentação'
+                    : 'Preencha os dados organizados em etapas para registrar o cliente'}
                 </p>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-800 mb-1">Nome Completo *</label>
-                <input
-                  id="input-client-name"
-                  type="text"
-                  tabIndex={1}
-                  required
-                  placeholder="Nome do Cliente"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-medium"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Telefone / Celular (WhatsApp)</label>
-                <input
-                  id="input-client-phone"
-                  type="text"
-                  tabIndex={2}
-                  placeholder="Ex: (11) 99999-9999"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Email</label>
-                <input
-                  id="input-client-email"
-                  type="email"
-                  tabIndex={3}
-                  placeholder="Ex: joao@exemplo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">CPF</label>
-                  <input
-                    id="input-client-cpf"
-                    type="text"
-                    tabIndex={4}
-                    placeholder="Ex: 000.000.000-00"
-                    value={cpf}
-                    onChange={(e) => setCpf(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Data de Nascimento</label>
-                  <input
-                    id="input-client-data-nascimento"
-                    type="date"
-                    tabIndex={5}
-                    value={dataNascimento}
-                    onChange={(e) => setDataNascimento(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-mono text-slate-700"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Estado Civil</label>
-                  <select
-                    tabIndex={5}
-                    value={estadoCivil}
-                    onChange={(e) => setEstadoCivil(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-medium"
-                  >
-                    <option value="Solteiro(a)">Solteiro(a)</option>
-                    <option value="Casado(a)">Casado(a)</option>
-                    <option value="Divorciado(a)">Divorciado(a)</option>
-                    <option value="União Estável">União Estável</option>
-                    <option value="Viúvo(a)">Viúvo(a)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Profissão</label>
-                  <input
-                    type="text"
-                    tabIndex={5}
-                    placeholder="Ex: Empresário"
-                    value={profissao}
-                    onChange={(e) => setProfissao(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white focus:border-transparent font-medium"
-                  />
-                </div>
-              </div>
             </div>
+            <button
+              id="close-client-modal"
+              onClick={onClose}
+              className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+              title="Fechar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-            {/* COLUNA 2: EMBARCAÇÕES & EMPRESAS VINCULADAS (4 cols) */}
-            <div className="lg:col-span-4 space-y-4 border-b lg:border-b-0 lg:border-r border-slate-100 pb-4 lg:pb-0 lg:pr-6">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center">
-                <Anchor className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Veículos & Empresas
-              </h4>
+          {/* Navegação por Abas Estruturais */}
+          <div className="flex items-center gap-1 mt-5 border-b border-slate-100 -mb-4">
+            <button
+              type="button"
+              onClick={() => setActiveTab('dados')}
+              className={`pb-3 px-3 text-xs font-medium transition-all relative cursor-pointer flex items-center gap-2 ${
+                activeTab === 'dados'
+                  ? 'text-blue-600 font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <FileText className={`w-3.5 h-3.5 ${activeTab === 'dados' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>1. Identificação & Contato</span>
+              {activeTab === 'dados' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+              )}
+            </button>
 
-              {/* Seção das Embarcações e Cotas */}
-              <div className="border border-slate-200/80 p-3.5 rounded-xl bg-slate-50/50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-slate-800 uppercase tracking-wider">
-                    Veículos Vinculados / Cotas *
-                  </label>
+            <button
+              type="button"
+              onClick={() => setActiveTab('veiculos')}
+              className={`pb-3 px-3 text-xs font-medium transition-all relative cursor-pointer flex items-center gap-2 ${
+                activeTab === 'veiculos'
+                  ? 'text-blue-600 font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Compass className={`w-3.5 h-3.5 ${activeTab === 'veiculos' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>2. Embarcações & Empresas</span>
+              {validBoatsCount > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold transition-colors ${
+                  activeTab === 'veiculos' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {validBoatsCount}
+                </span>
+              )}
+              {activeTab === 'veiculos' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('documentos')}
+              className={`pb-3 px-3 text-xs font-medium transition-all relative cursor-pointer flex items-center gap-2 ${
+                activeTab === 'documentos'
+                  ? 'text-blue-600 font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <MapPin className={`w-3.5 h-3.5 ${activeTab === 'documentos' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>3. Documentação & Endereço</span>
+              {activeTab === 'documentos' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Banner Informativo se Cotista Exclusivo da Vale */}
+        {isValeReadOnly && (
+          <div className="mx-6 mt-4 p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-xs text-amber-900">
+            <Lock className="w-4 h-4 shrink-0 text-amber-700" />
+            <div>
+              <span className="font-semibold block">Cadastro Exclusivo da Vale Administradora (Somente Leitura)</span>
+              <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                Usuários da Marina Club têm permissão apenas para consulta deste cotista. Modificações ou novos vínculos devem ser solicitados à administração da Vale.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Corpo do Formulário com Scroll Suave */}
+        <form onSubmit={handleSave} className="flex-1 overflow-y-auto subtle-scrollbar flex flex-col justify-between">
+          <div className="p-6 sm:p-8 space-y-6">
+            
+            {/* ============================================================== */}
+            {/* PARTE 1: IDENTIFICAÇÃO E CONTATO                               */}
+            {/* ============================================================== */}
+            {activeTab === 'dados' && (
+              <div className="space-y-6 animate-in fade-in-50 duration-150">
+                {/* Status e Acesso */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Status do Cadastro */}
+                  <div className="p-4 rounded-xl border border-slate-200/90 bg-slate-50/50 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-900">Status do Cadastro</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {status === 'ativo' ? 'Cliente habilitado para agendar e navegar' : 'Acesso bloqueado temporariamente'}
+                      </p>
+                    </div>
+                    <div className="inline-flex p-1 bg-slate-200/70 rounded-xl shrink-0 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setStatus('ativo')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                          status === 'ativo'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/90 shadow-2xs font-semibold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Ativo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatus('inativo')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                          status === 'inativo'
+                            ? 'bg-rose-50 text-rose-800 border border-rose-200/90 shadow-2xs font-semibold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Inativo
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Acesso ao Aplicativo / Portal (Apenas na Edição) */}
+                  {editingId ? (
+                    <div className="p-4 rounded-xl border border-slate-200/90 bg-slate-50/50 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-semibold text-slate-900">Acesso ao Aplicativo</h4>
+                        <span className="text-[11px] text-slate-500">
+                          {isLoadingAuth ? 'Consultando...' : authStatus?.hasAuth ? 'Senha configurada' : 'Primeiro acesso pendente'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        {authStatus?.hasAuth && (
+                          <button
+                            type="button"
+                            onClick={handleAdminResetPassword}
+                            disabled={authActionLoading}
+                            className="flex-1 py-1.5 px-2.5 text-xs font-medium bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            Resetar Senha
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowSetPasswordInput(!showSetPasswordInput)}
+                          className="flex-1 py-1.5 px-2.5 text-xs font-medium bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                        >
+                          {showSetPasswordInput ? 'Cancelar' : 'Definir Senha Manual'}
+                        </button>
+                      </div>
+
+                      {showSetPasswordInput && (
+                        <div className="pt-2 border-t border-slate-200/70 space-y-1.5">
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={manualPassword}
+                              onChange={(e) => setManualPassword(e.target.value)}
+                              placeholder="Nova senha (mínimo 6 dígitos)"
+                              className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAdminSetManualPassword}
+                              disabled={authActionLoading || manualPassword.length < 6}
+                              className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+                            >
+                              Salvar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl border border-slate-200/90 bg-slate-50/50 flex flex-col justify-center">
+                      <h4 className="text-xs font-semibold text-slate-900">Primeiro Acesso</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                        Ao salvar o cadastro com CPF, o cliente poderá ativar a própria senha no portal de agendamentos.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Campos Pessoais Principais */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                      Nome Completo *
+                    </label>
+                    <input
+                      id="input-client-name"
+                      type="text"
+                      required
+                      placeholder="Ex: Carlos Eduardo de Oliveira"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Telefone / Celular (WhatsApp)
+                      </label>
+                      <input
+                        id="input-client-phone"
+                        type="text"
+                        placeholder="(11) 99999-9999"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Endereço de Email
+                      </label>
+                      <input
+                        id="input-client-email"
+                        type="email"
+                        placeholder="cliente@exemplo.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        CPF
+                      </label>
+                      <input
+                        id="input-client-cpf"
+                        type="text"
+                        placeholder="000.000.000-00"
+                        value={cpf}
+                        onChange={(e) => setCpf(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Data de Nascimento
+                      </label>
+                      <input
+                        id="input-client-data-nascimento"
+                        type="date"
+                        value={dataNascimento}
+                        onChange={(e) => setDataNascimento(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Estado Civil
+                      </label>
+                      <select
+                        value={estadoCivil}
+                        onChange={(e) => setEstadoCivil(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                      >
+                        <option value="Solteiro(a)">Solteiro(a)</option>
+                        <option value="Casado(a)">Casado(a)</option>
+                        <option value="Divorciado(a)">Divorciado(a)</option>
+                        <option value="União Estável">União Estável</option>
+                        <option value="Viúvo(a)">Viúvo(a)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Profissão / Ocupação
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Engenheiro, Médico, Empresário"
+                        value={profissao}
+                        onChange={(e) => setProfissao(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ============================================================== */}
+            {/* PARTE 2: EMBARCAÇÕES, COTAS & UNIDADES                         */}
+            {/* ============================================================== */}
+            {activeTab === 'veiculos' && (
+              <div className="space-y-6 animate-in fade-in-50 duration-150">
+                {/* Cabeçalho da Seção de Veículos */}
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Embarcações Vinculadas</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Associe o cliente a uma ou mais embarcações com sua cota e plano de uso semanal.
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    tabIndex={5}
-                    onClick={() => setClientBoats([...clientBoats, { embarcacaoId: boats[0]?.id || '', cota: 'C1', plano: 'normal' }])}
-                    className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+                    onClick={() => setClientBoats([...clientBoats, { embarcacaoId: selectableBoats[0]?.id || '', cota: '', plano: 'normal' }])}
+                    disabled={Boolean(isValeReadOnly)}
+                    className="inline-flex items-center text-xs font-semibold text-blue-700 bg-blue-50/80 hover:bg-blue-100 border border-blue-200/70 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    <Plus className="w-3.5 h-3.5 mr-1.5 text-blue-600" />
                     Adicionar Veículo
                   </button>
                 </div>
 
-                <div className="space-y-3 max-h-[60vh] overflow-y-auto subtle-scrollbar pr-2">
+                {/* Cards de Embarcações */}
+                <div className="space-y-4">
                   {clientBoats.length === 0 && (
-                    <div className="text-center py-4 text-xs text-slate-400">
-                      Nenhum veículo vinculado.
+                    <div className="text-center py-8 text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                      Nenhuma embarcação vinculada a este cliente. Clique em "Adicionar Veículo" acima.
                     </div>
                   )}
-                  {clientBoats.map((cb, idx) => (
-                    <div key={idx} className="flex flex-col bg-white border border-slate-200 p-3 rounded-lg relative shadow-xs gap-3">
-                      <div className="flex-1 w-full min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-0">Embarcação #{idx + 1}</label>
+
+                  {clientBoats.map((cb, idx) => {
+                    const selectedBoat = boats.find(b => b.id === cb.embarcacaoId);
+                    const isLancha = selectedBoat?.tipo === 'lancha';
+
+                    return (
+                      <div key={idx} className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-blue-50 border border-blue-200/70 text-blue-700 text-xs font-semibold flex items-center justify-center">
+                              {idx + 1}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-900">
+                              {selectedBoat?.nome || `Embarcação #${idx + 1}`}
+                            </span>
+                          </div>
+
+                          {clientBoats.length > 1 && !isValeReadOnly && (
                             <button
                               type="button"
                               onClick={() => setClientBoats(clientBoats.filter((_, i) => i !== idx))}
-                              className="text-rose-600 hover:text-rose-800 transition-colors cursor-pointer"
-                              title="Remover veículo"
+                              className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1 rounded-md transition-colors cursor-pointer"
+                              title="Remover esta embarcação"
                             >
-                              <X className="w-3.5 h-3.5" />
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                              Embarcação *
+                            </label>
+                            <select
+                              value={cb.embarcacaoId}
+                              disabled={Boolean(isValeReadOnly)}
+                              onChange={(e) => {
+                                const newList = [...clientBoats];
+                                newList[idx].embarcacaoId = e.target.value;
+                                setClientBoats(newList);
+                              }}
+                              className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+                            >
+                              <option value="">Selecione uma embarcação...</option>
+                              {[...selectableBoats].sort((a, b) => a.nome.localeCompare(b.nome)).map(b => (
+                                <option key={b.id} value={b.id}>
+                                  {b.nome} ({b.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
+                                </option>
+                              ))}
+                            </select>
+                            {selectableBoats.length === 0 && (
+                              <p className="text-[11px] text-amber-700 mt-1">
+                                Nenhuma embarcação vinculada à Marina Club encontrada.
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                              Identificação da Cota *
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Ex: C1, C3"
+                              value={cb.cota}
+                              onChange={(e) => {
+                                const newList = [...clientBoats];
+                                newList[idx].cota = e.target.value;
+                                setClientBoats(newList);
+                              }}
+                              className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-mono uppercase focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Plano de Acesso Semanal */}
+                        <div className="pt-3 border-t border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-800">
+                              Plano Semanal de Acesso
+                            </label>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Define se o cotista tem permissão para navegar nas segundas e terças-feiras
+                            </p>
+                          </div>
+
+                          <div className="inline-flex p-1 bg-slate-200/70 rounded-xl shrink-0 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newList = [...clientBoats];
+                                newList[idx].plano = 'normal';
+                                setClientBoats(newList);
+                              }}
+                              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                                (cb.plano || 'normal') === 'normal'
+                                  ? 'bg-white text-slate-800 shadow-2xs border border-slate-200 font-semibold'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              Padrão (Qua a Dom)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newList = [...clientBoats];
+                                newList[idx].plano = 'completo';
+                                setClientBoats(newList);
+                              }}
+                              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                                cb.plano === 'completo'
+                                  ? 'bg-amber-50 text-amber-900 border border-amber-200/90 shadow-2xs font-semibold'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              Completo (+ Seg/Ter)
                             </button>
                           </div>
-                          <select
-                            tabIndex={6 + (idx * 2)}
-                            value={cb.embarcacaoId}
-                            onChange={(e) => {
-                              const newList = [...clientBoats];
-                              newList[idx].embarcacaoId = e.target.value;
-                              setClientBoats(newList);
-                            }}
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          >
-                            <option value="">Selecione...</option>
-                            {[...boats].sort((a, b) => a.nome.localeCompare(b.nome)).map(b => (
-                              <option key={b.id} value={b.id}>
-                                {b.nome}
-                              </option>
-                            ))}
-                          </select>
                         </div>
 
-                        <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Cota #{idx + 1}</label>
-                          <input
-                            type="text"
-                            tabIndex={7 + (idx * 2)}
-                            placeholder="Ex: C1, C3"
-                            value={cb.cota}
-                            onChange={(e) => {
-                              const newList = [...clientBoats];
-                              newList[idx].cota = e.target.value;
-                              setClientBoats(newList);
-                            }}
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-mono"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Plano Desta Embarcação */}
-                      <div className="pt-2.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-800">Plano Deste Veículo</label>
-                          <p className="text-[10px] text-slate-500">Acesso nos dias de segunda e terça-feira</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newList = [...clientBoats];
-                              newList[idx].plano = 'normal';
-                              setClientBoats(newList);
-                            }}
-                            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
-                              (cb.plano || 'normal') === 'normal'
-                                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            Normal (Qua a Dom)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newList = [...clientBoats];
-                              newList[idx].plano = 'completo';
-                              setClientBoats(newList);
-                            }}
-                            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
-                              cb.plano === 'completo'
-                                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                            Plano Completo (+ Seg/Ter)
-                          </button>
-                        </div>
-                      </div>
-
-                      {boats.find(b => b.id === cb.embarcacaoId)?.tipo === 'lancha' && (
-                        <div className="pt-3 border-t border-slate-100 flex-1 w-full relative z-[1]">
-                          <label className="block text-[10px] font-semibold text-indigo-800 uppercase tracking-wider mb-2 flex items-center">
-                            <Package className="w-3 h-3 mr-1 text-indigo-600" /> Acessórios desta Cota
-                          </label>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-                            <label className="flex items-center space-x-1.5 text-xs text-indigo-900 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={cb.acessorios?.tenda || false}
-                                onChange={(e) => {
-                                  const newList = [...clientBoats];
-                                  if (!newList[idx].acessorios) newList[idx].acessorios = {};
-                                  newList[idx].acessorios!.tenda = e.target.checked;
-                                  setClientBoats(newList);
-                                }}
-                                className="w-3.5 h-3.5 text-indigo-600 bg-white border-indigo-200 rounded focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <span className="font-medium text-[10px]">Tenda</span>
+                        {/* Acessórios da Cota (apenas para lanchas) */}
+                        {isLancha && (
+                          <div className="pt-3 border-t border-slate-200/70 space-y-2.5">
+                            <label className="block text-xs font-medium text-slate-800">
+                              Acessórios Vinculados a esta Cota
                             </label>
-
-                            <label className="flex items-center space-x-1.5 text-xs text-indigo-900 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={cb.acessorios?.mesa || false}
-                                onChange={(e) => {
-                                  const newList = [...clientBoats];
-                                  if (!newList[idx].acessorios) newList[idx].acessorios = {};
-                                  newList[idx].acessorios!.mesa = e.target.checked;
-                                  setClientBoats(newList);
-                                }}
-                                className="w-3.5 h-3.5 text-indigo-600 bg-white border-indigo-200 rounded focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <span className="font-medium text-[10px]">Mesa</span>
-                            </label>
-
-                            <label className="flex items-center space-x-1.5 text-xs text-indigo-900 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={cb.acessorios?.bancosCadeiras || false}
-                                onChange={(e) => {
-                                  const newList = [...clientBoats];
-                                  if (!newList[idx].acessorios) newList[idx].acessorios = {};
-                                  newList[idx].acessorios!.bancosCadeiras = e.target.checked;
-                                  setClientBoats(newList);
-                                }}
-                                className="w-3.5 h-3.5 text-indigo-600 bg-white border-indigo-200 rounded focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <span className="font-medium text-[10px]">Bancos</span>
-                            </label>
-
-                            <label className="flex items-center space-x-1.5 text-xs text-indigo-900 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={cb.acessorios?.churrasqueira || false}
-                                onChange={(e) => {
-                                  const newList = [...clientBoats];
-                                  if (!newList[idx].acessorios) newList[idx].acessorios = {};
-                                  newList[idx].acessorios!.churrasqueira = e.target.checked;
-                                  setClientBoats(newList);
-                                }}
-                                className="w-3.5 h-3.5 text-indigo-600 bg-white border-indigo-200 rounded focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <span className="font-medium text-[10px]">Churrasq.</span>
-                            </label>
-                          </div>
-
-                          <textarea
-                            value={cb.acessorios?.observacoes || ''}
-                            onChange={(e) => {
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              {[
+                                { key: 'tenda', label: 'Tenda' },
+                                { key: 'mesa', label: 'Mesa' },
+                                { key: 'bancosCadeiras', label: 'Bancos' },
+                                { key: 'churrasqueira', label: 'Churrasqueira' }
+                              ].map(item => (
+                                <label key={item.key} className="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={(cb.acessorios as any)?.[item.key] || false}
+                                    onChange={(e) => {
+                                      const newList = [...clientBoats];
+                                      if (!newList[idx].acessorios) newList[idx].acessorios = {};
+                                      (newList[idx].acessorios as any)[item.key] = e.target.checked;
+                                      setClientBoats(newList);
+                                    }}
+                                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                                  />
+                                  <span className="font-normal">{item.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <input
+                              type="text"
+                              value={cb.acessorios?.observacoes || ''}
+                              onChange={(e) => {
                                 const newList = [...clientBoats];
                                 if (!newList[idx].acessorios) newList[idx].acessorios = {};
                                 newList[idx].acessorios!.observacoes = e.target.value;
                                 setClientBoats(newList);
-                            }}
-                            placeholder="Obs. dos acessórios"
-                            className="w-full h-10 px-2 py-1 text-[10px] border border-indigo-100 rounded bg-white text-indigo-900 placeholder-indigo-300 focus:ring-1 focus:ring-indigo-500 resize-none"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                              }}
+                              placeholder="Observações complementares dos acessórios desta cota..."
+                              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
 
-              {/* Empresas Vinculadas */}
-              <div className="border border-slate-200/80 p-3.5 rounded-xl bg-slate-50/50 space-y-2">
-                <label className="block text-xs font-semibold text-slate-800 uppercase tracking-wider flex items-center">
-                  <Building2 className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Empresas Vinculadas *
-                </label>
-                <p className="text-[11px] text-slate-500">Selecione onde este cliente pode ser gerenciado:</p>
-                <div className="space-y-2 pt-1">
-                  {[
-                    { id: 'VALE', label: 'Vale Administradora (Gestão Principal)' },
-                    { id: 'MARINA', label: 'Marina Club (Controle de Garagem & Vagas)' },
-                    { id: 'MEXICANO', label: 'Mexicano Lanchas' }
-                  ].map((emp, empIdx) => (
-                    <label key={emp.id} className="flex items-center space-x-2.5 text-xs text-slate-700 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        tabIndex={10 + empIdx}
-                        checked={empresas.includes(emp.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setEmpresas([...empresas, emp.id]);
+                {/* Empresas Vinculadas */}
+                <div className="pt-4 border-t border-slate-100 space-y-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Empresas e Unidades *</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {isMarinaUser
+                        ? 'O usuário da Marina gerencia exclusivamente clientes vinculados à Marina Club.'
+                        : 'Defina onde este cliente poderá ser visualizado e operado na plataforma.'}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Marina Club */}
+                    <div
+                      onClick={() => {
+                        if (isMarinaUser) {
+                          showToast('O cotista cadastrado na Marina deve obrigatoriamente manter o vínculo com a Marina Club.', 'info');
+                          return;
+                        }
+                        if (!empresas.includes('MARINA')) {
+                          setEmpresas([...empresas, 'MARINA']);
+                        } else {
+                          if (empresas.length === 1) {
+                            showToast('O cliente precisa estar vinculado a pelo menos 1 empresa.', 'error');
+                            return;
+                          }
+                          setEmpresas(empresas.filter(x => x !== 'MARINA'));
+                        }
+                      }}
+                      className="p-4 rounded-xl border border-blue-200/90 bg-blue-50/40 text-blue-950 shadow-2xs flex items-start gap-3 select-none cursor-pointer hover:border-blue-300 transition-colors"
+                    >
+                      <div className="w-4 h-4 mt-0.5 rounded flex items-center justify-center shrink-0 bg-blue-600 border border-blue-600 text-white">
+                        <Check className="w-3 h-3 stroke-[2.5]" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold leading-tight text-blue-950">
+                            <Ship className="w-3.5 h-3.5 shrink-0 text-blue-600" />
+                            <span>Marina Club</span>
+                          </div>
+                          {isMarinaUser && (
+                            <span className="text-[10px] text-blue-700 bg-blue-100/80 border border-blue-200/90 px-2 py-0.5 rounded-full font-bold">
+                              Obrigatório
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-blue-900/70 font-normal mt-1 leading-snug">
+                          Controle de vagas, hangar e serviços de marina
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Vale Administradora */}
+                    {isMarinaUser ? (
+                      <div
+                        onClick={() => {
+                          showToast('Usuários da Marina não têm permissão para vincular ou alterar clientes da Vale Administradora.', 'error');
+                        }}
+                        className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 text-slate-400 opacity-60 flex items-start gap-3 select-none cursor-not-allowed"
+                        title="Vínculo exclusivo para administradores da Vale"
+                      >
+                        <div className="w-4 h-4 mt-0.5 rounded flex items-center justify-center shrink-0 bg-slate-100 border border-slate-300 text-slate-400">
+                          <Lock className="w-2.5 h-2.5" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold leading-tight text-slate-500">
+                              <Building2 className="w-3.5 h-3.5 shrink-0 opacity-50" />
+                              <span>Vale Administradora</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full font-medium">
+                              Bloqueado
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 font-normal mt-1 leading-snug">
+                            Gestão restrita aos administradores da Vale
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => {
+                          const isChecked = empresas.includes('VALE');
+                          if (!isChecked) {
+                            setEmpresas([...empresas, 'VALE']);
                           } else {
                             if (empresas.length === 1) {
                               showToast('O cliente precisa estar vinculado a pelo menos 1 empresa.', 'error');
                               return;
                             }
-                            setEmpresas(empresas.filter(x => x !== emp.id));
+                            setEmpresas(empresas.filter(x => x !== 'VALE'));
                           }
                         }}
-                        className="w-4 h-4 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500"
-                      />
-                      <span className="font-medium">{emp.label}</span>
-                    </label>
-                  ))}
+                        className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3 select-none ${
+                          empresas.includes('VALE')
+                            ? 'border-slate-900 bg-slate-50/70 text-slate-900 shadow-2xs'
+                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 mt-0.5 rounded flex items-center justify-center shrink-0 border transition-all ${
+                            empresas.includes('VALE')
+                              ? 'bg-slate-900 border-slate-900 text-white'
+                              : 'bg-white border-slate-300'
+                          }`}
+                        >
+                          {empresas.includes('VALE') && <Check className="w-3 h-3 stroke-[2.5]" />}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold leading-tight">
+                            <Building2 className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                            <span>Vale Administradora</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 font-normal mt-1 leading-snug">
+                            Gestão náutica principal e controle de cotas
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* COLUNA 3: CAMPOS AVANÇADOS (ACORDEÃO RECOLHÍVEL) (4 cols) */}
-            <div className="lg:col-span-4 space-y-4">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center">
-                <Zap className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Informações Complementares
-              </h4>
-
-              <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
-                <button
-                  type="button"
-                  onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-slate-700 bg-slate-100/70 hover:bg-slate-100 transition-colors cursor-pointer"
-                  tabIndex={13}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-indigo-600" />
-                    Campos Avançados (Doc., Endereço & Fin.)
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {(rg || numeroHabilitacao || cep || logradouro || bairro || cidade || observacoesFinanceiras || plano === 'completo') && (
-                      <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Ativo</span>
-                    )}
-                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isAdvancedOpen ? 'rotate-180' : ''}`} />
+            {/* ============================================================== */}
+            {/* PARTE 3: DOCUMENTAÇÃO NÁUTICA, ENDEREÇO & NOTAS                */}
+            {/* ============================================================== */}
+            {activeTab === 'documentos' && (
+              <div className="space-y-6 animate-in fade-in-50 duration-150">
+                
+                {/* Habilitação Naval e Documento */}
+                <div className="space-y-4">
+                  <div className="pb-1 border-b border-slate-100">
+                    <h4 className="text-sm font-semibold text-slate-900">
+                      Habilitação Náutica & Documentos
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Registro de habilitação amador (CHA) emitido pela Capitania dos Portos e documento civil.
+                    </p>
                   </div>
-                </button>
 
-                {isAdvancedOpen && (
-                  <div className="p-3.5 space-y-4 bg-white border-t border-slate-200 animate-in fade-in duration-150 max-h-[55vh] overflow-y-auto subtle-scrollbar">
-                    {/* Documentação & Habilitação Náutica */}
-                    <div className="space-y-3">
-                      <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-100 pb-1">
-                        Documentação & Habilitação Náutica
-                      </p>
-                      
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">RG</label>
-                          <input
-                            type="text"
-                            tabIndex={14}
-                            placeholder="Ex: 12.345.678-9"
-                            value={rg}
-                            onChange={(e) => setRg(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">Órgão Emissor</label>
-                          <input
-                            type="text"
-                            tabIndex={15}
-                            placeholder="Ex: SSP/SP"
-                            value={orgaoEmissor}
-                            onChange={(e) => setOrgaoEmissor(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">Nº Habilitação (Arrais/CHA)</label>
-                          <input
-                            type="text"
-                            tabIndex={16}
-                            placeholder="Ex: 381M2021005"
-                            value={numeroHabilitacao}
-                            onChange={(e) => setNumeroHabilitacao(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-mono"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">Categoria CHA</label>
-                          <select
-                            tabIndex={17}
-                            value={categoriaHabilitacao}
-                            onChange={(e) => setCategoriaHabilitacao(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          >
-                            <option value="">Selecione...</option>
-                            <option value="Arrais-Amador">Arrais-Amador</option>
-                            <option value="Motonauta">Motonauta</option>
-                            <option value="Arrais e Motonauta">Arrais e Motonauta</option>
-                            <option value="Mestre-Amador">Mestre-Amador</option>
-                            <option value="Capitão-Amador">Capitão-Amador</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Validade CHA</label>
-                          <input
-                            type="date"
-                            tabIndex={18}
-                            value={validadeHabilitacao}
-                            onChange={(e) => setValidadeHabilitacao(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white font-mono"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">Órgão CHA</label>
-                          <input
-                            type="text"
-                            tabIndex={19}
-                            placeholder="Ex: Capitania Fluvial"
-                            value={orgaoEmissorHabilitacao}
-                            onChange={(e) => setOrgaoEmissorHabilitacao(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          />
-                        </div>
-                      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Nº da Habilitação (Arrais / CHA)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: 381M2021005"
+                        value={numeroHabilitacao}
+                        onChange={(e) => setNumeroHabilitacao(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
                     </div>
 
-                    {/* Endereço Residencial */}
-                    <div className="space-y-3 pt-2 border-t border-slate-100">
-                      <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider pb-1">
-                        Endereço Residencial
-                      </p>
-                      
-                      <div className="grid grid-cols-3 gap-2.5">
-                        <div className="col-span-2 relative">
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                            <span>CEP</span>
-                            {isFetchingCep && <Loader2 className="w-3 h-3 text-indigo-600 animate-spin" />}
-                          </label>
-                          <input
-                            id="input-client-cep"
-                            type="text"
-                            tabIndex={20}
-                            placeholder="Ex: 01001-000"
-                            value={cep}
-                            onChange={handleCepChange}
-                            onBlur={handleCepBlur}
-                            maxLength={9}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-white font-mono"
-                          />
-                        </div>
-                        <div className="col-span-1 flex items-end">
-                          <button
-                            type="button"
-                            disabled={isFetchingCep || cep.replace(/\D/g, '').length !== 8}
-                            onClick={() => fetchCep(cep.replace(/\D/g, ''))}
-                            className="w-full py-1.5 text-xs font-bold text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-700 disabled:opacity-50 disabled:bg-slate-50 disabled:text-slate-400 rounded-lg border border-indigo-100 transition-all h-[34px] cursor-pointer"
-                          >
-                            Buscar
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-700 mb-1">Rua / Logradouro</label>
-                        <input
-                          id="input-client-logradouro"
-                          type="text"
-                          tabIndex={21}
-                          placeholder="Ex: Avenida Paulista"
-                          value={logradouro}
-                          onChange={(e) => setLogradouro(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2.5">
-                        <div className="col-span-1">
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">Número</label>
-                          <input
-                            id="input-client-numero-end"
-                            type="text"
-                            tabIndex={22}
-                            placeholder="Ex: 1000"
-                            value={numeroEnd}
-                            onChange={(e) => setNumeroEnd(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">Complemento</label>
-                          <input
-                            id="input-client-complemento"
-                            type="text"
-                            tabIndex={23}
-                            placeholder="Ex: Apto 12"
-                            value={complemento}
-                            onChange={(e) => setComplemento(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-700 mb-1">Bairro</label>
-                        <input
-                          id="input-client-bairro"
-                          type="text"
-                          tabIndex={24}
-                          placeholder="Ex: Centro / Jardins"
-                          value={bairro}
-                          onChange={(e) => setBairro(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2.5">
-                        <div className="col-span-2">
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">Cidade</label>
-                          <input
-                            id="input-client-cidade"
-                            type="text"
-                            tabIndex={25}
-                            placeholder="Ex: São Paulo"
-                            value={cidade}
-                            onChange={(e) => setCidade(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white"
-                          />
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-[11px] font-medium text-slate-700 mb-1">UF</label>
-                          <input
-                            id="input-client-estado"
-                            type="text"
-                            tabIndex={26}
-                            placeholder="Ex: SP"
-                            value={estado}
-                            onChange={(e) => setEstado(e.target.value)}
-                            maxLength={2}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white uppercase"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Situação Financeira & Plano */}
-                    <div className="space-y-3 pt-2 border-t border-slate-100">
-                      <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider pb-1">
-                        Situação Financeira & Plano
-                      </p>
-                      
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Observações Financeiras</label>
-                        <textarea
-                          tabIndex={27}
-                          placeholder="Taxa de janeiro pendente, faróis para pagar..."
-                          value={observacoesFinanceiras}
-                          onChange={(e) => setObservacoesFinanceiras(e.target.value)}
-                          rows={2}
-                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white resize-none"
-                        ></textarea>
-                      </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Categoria da CHA
+                      </label>
+                      <select
+                        value={categoriaHabilitacao}
+                        onChange={(e) => setCategoriaHabilitacao(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">Selecione...</option>
+                        <option value="Arrais-Amador">Arrais-Amador</option>
+                        <option value="Motonauta">Motonauta</option>
+                        <option value="Arrais e Motonauta">Arrais e Motonauta</option>
+                        <option value="Mestre-Amador">Mestre-Amador</option>
+                        <option value="Capitão-Amador">Capitão-Amador</option>
+                      </select>
                     </div>
                   </div>
-                )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Validade da Habilitação
+                      </label>
+                      <input
+                        type="date"
+                        value={validadeHabilitacao}
+                        onChange={(e) => setValidadeHabilitacao(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Capitania / Órgão Emissor CHA
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Capitania Fluvial de Juazeiro"
+                        value={orgaoEmissorHabilitacao}
+                        onChange={(e) => setOrgaoEmissorHabilitacao(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Número do RG
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="12.345.678-9"
+                        value={rg}
+                        onChange={(e) => setRg(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Órgão Emissor do RG
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: SSP/BA"
+                        value={orgaoEmissor}
+                        onChange={(e) => setOrgaoEmissor(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Endereço Residencial */}
+                <div className="space-y-4 pt-3 border-t border-slate-100">
+                  <div className="pb-1">
+                    <h4 className="text-sm font-semibold text-slate-900">
+                      Endereço Residencial
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Endereço cadastrado para envio de correspondências e faturas.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2 relative">
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5 flex items-center justify-between">
+                        <span>CEP</span>
+                        {isFetchingCep && <Loader2 className="w-3 h-3 text-slate-600 animate-spin" />}
+                      </label>
+                      <input
+                        id="input-client-cep"
+                        type="text"
+                        placeholder="00000-000"
+                        value={cep}
+                        onChange={handleCepChange}
+                        onBlur={handleCepBlur}
+                        maxLength={9}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        disabled={isFetchingCep || cep.replace(/\D/g, '').length !== 8}
+                        onClick={() => fetchCep(cep.replace(/\D/g, ''))}
+                        className="w-full py-2 text-xs font-semibold text-center bg-blue-50/80 hover:bg-blue-100 text-blue-700 disabled:opacity-40 disabled:hover:bg-blue-50/80 rounded-xl border border-blue-200/80 transition-colors h-[38px] cursor-pointer shadow-2xs"
+                      >
+                        Buscar CEP
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                      Logradouro (Rua / Avenida)
+                    </label>
+                    <input
+                      id="input-client-logradouro"
+                      type="text"
+                      placeholder="Ex: Avenida Beira Mar"
+                      value={logradouro}
+                      onChange={(e) => setLogradouro(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-1">
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Número
+                      </label>
+                      <input
+                        id="input-client-numero-end"
+                        type="text"
+                        placeholder="100"
+                        value={numeroEnd}
+                        onChange={(e) => setNumeroEnd(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Complemento
+                      </label>
+                      <input
+                        id="input-client-complemento"
+                        type="text"
+                        placeholder="Ex: Apto 302, Bloco B"
+                        value={complemento}
+                        onChange={(e) => setComplemento(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Bairro
+                      </label>
+                      <input
+                        id="input-client-bairro"
+                        type="text"
+                        placeholder="Bairro"
+                        value={bairro}
+                        onChange={(e) => setBairro(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Cidade
+                      </label>
+                      <input
+                        id="input-client-cidade"
+                        type="text"
+                        placeholder="Cidade"
+                        value={cidade}
+                        onChange={(e) => setCidade(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        Estado (UF)
+                      </label>
+                      <input
+                        id="input-client-estado"
+                        type="text"
+                        placeholder="UF"
+                        value={estado}
+                        onChange={(e) => setEstado(e.target.value)}
+                        maxLength={2}
+                        className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 uppercase focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Observações Financeiras & Administrativas */}
+                <div className="space-y-2 pt-3 border-t border-slate-100">
+                  <label className="block text-xs font-medium text-slate-800">
+                    Observações Administrativas & Financeiras
+                  </label>
+                  <textarea
+                    placeholder="Anotações internas sobre acordos, mensalidades ou particularidades do cotista..."
+                    value={observacoesFinanceiras}
+                    onChange={(e) => setObservacoesFinanceiras(e.target.value)}
+                    rows={3}
+                    className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          <div className="flex space-x-3 pt-4 border-t border-slate-100 shrink-0">
+          {/* Rodapé com Ações de Navegação e Salvamento */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50/60 shrink-0">
             <button
               id="cancel-save-client"
               type="button"
-              tabIndex={28}
               onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer"
             >
               Cancelar
             </button>
-            <button
-              id="submit-save-client"
-              type="submit"
-              tabIndex={29}
-              className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-            >
-              <Check className="w-4 h-4 mr-2" />
-              Salvar
-            </button>
+
+            <div className="flex items-center gap-2.5">
+              {activeTab !== 'dados' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeTab === 'documentos') setActiveTab('veiculos');
+                    else if (activeTab === 'veiculos') setActiveTab('dados');
+                  }}
+                  className="px-4 py-2 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                >
+                  Voltar
+                </button>
+              )}
+
+              {activeTab !== 'documentos' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeTab === 'dados') {
+                      if (!name.trim()) {
+                        showToast('Preencha o nome do cliente antes de prosseguir.', 'error');
+                        return;
+                      }
+                      setActiveTab('veiculos');
+                    } else if (activeTab === 'veiculos') {
+                      setActiveTab('documentos');
+                    }
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-blue-700 bg-blue-50/80 hover:bg-blue-100 border border-blue-200/80 rounded-xl transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1.5"
+                >
+                  <span>Próxima Etapa</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-blue-600" />
+                </button>
+              )}
+
+              <button
+                id="submit-save-client"
+                type="submit"
+                disabled={Boolean(isValeReadOnly)}
+                className={`px-5 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5 active:scale-95 ${
+                  isValeReadOnly
+                    ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed opacity-75'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{isValeReadOnly ? 'Somente Leitura' : editingId ? 'Salvar Alterações' : 'Salvar Cadastro'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

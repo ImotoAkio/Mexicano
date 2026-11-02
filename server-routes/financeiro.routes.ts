@@ -27,6 +27,7 @@ import {
   upsertFornecedor,
   deleteFornecedor
 } from "../server-db";
+import { triggerFinancialNotification } from "../server-notifications-scheduler";
 
 import {
   asaasFetch,
@@ -97,10 +98,14 @@ router.post("/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, 
         for (const item of data) {
           if (allowedEmpresa && !item.empresa) item.empresa = allowedEmpresa;
           await upsertTransacao(item);
+          // Dispara notificação financeira automática em background
+          triggerFinancialNotification(item).catch(() => {});
         }
       } else {
         if (allowedEmpresa && !data.empresa) data.empresa = allowedEmpresa;
         await upsertTransacao(data);
+        // Dispara notificação financeira automática em background
+        triggerFinancialNotification(data).catch(() => {});
       }
     } else {
       return res.status(400).json({ error: true, message: `Unsupported action: ${action}` });
@@ -322,6 +327,9 @@ router.post("/transacoes/:id/gerar-asaas", requireAnyAuth, sensitiveLimiter, asy
       [charge.asaasPaymentId, charge.asaasPaymentUrl, tx.id]
     );
     invalidateDbCache();
+
+    // Notifica cliente com o link gerado se configurado
+    triggerFinancialNotification({ ...tx, asaasPaymentUrl: charge.asaasPaymentUrl }).catch(() => {});
 
     let qrCode = null;
     if (billingType === "PIX" || billingType === "UNDEFINED") {
@@ -587,7 +595,7 @@ router.post("/centros-custo/save", requireAdminAuth, async (req, res) => {
 // ----------------------------------------------------------------------
 // CONFIGURAÇÕES GLOBAIS (TAXA DE JUROS + INTEGRAÇÃO ASAAS + LANÇAMENTOS PADRÃO)
 // ----------------------------------------------------------------------
-router.get("/configuracoes", requireAnyAuth, async (req, res) => {
+router.get("/configuracoes", requireAdminAuth, async (req, res) => {
   try {
     const taxaJurosMensal = await getConfigValue('fin_taxa_juros_mensal') || '2.2';
     const taxaMultaAtraso = await getConfigValue('fin_taxa_multa_atraso') || '2.0';
@@ -718,7 +726,10 @@ router.post("/configuracoes", requireAdminAuth, async (req, res) => {
 router.get("/asaas-status/:paymentId", requireAnyAuth, async (req, res) => {
   try {
     const rawId = String(req.params.paymentId || "").trim();
-    const clienteId = String(req.query.clienteId || (req as any).user?.id || "").trim();
+    const user = (req as any).user;
+    const clienteId = user?.role === "client" 
+      ? String(user.id || "").trim() 
+      : String(req.query.clienteId || user?.id || "").trim();
     if (!rawId) {
       return res.status(400).json({ error: true, message: "paymentId ausente" });
     }
@@ -728,11 +739,17 @@ router.get("/asaas-status/:paymentId", requireAnyAuth, async (req, res) => {
 
     if (currentPool) {
       if (resolvedPaymentId) {
-        const [rows] = await currentPool.query(
-          "SELECT status FROM TransacoesFinanceiras WHERE asaasPaymentId = ? AND tipo = 'receita'",
-          [resolvedPaymentId]
-        );
+        let query = "SELECT status, clienteId FROM TransacoesFinanceiras WHERE asaasPaymentId = ? AND tipo = 'receita'";
+        const params: any[] = [resolvedPaymentId];
+        if (user?.role === "client") {
+          query += " AND clienteId = ?";
+          params.push(user.id);
+        }
+        const [rows] = await currentPool.query(query, params);
         const txs = rows as any[];
+        if (user?.role === "client" && txs.length === 0) {
+          return res.status(403).json({ error: true, message: "Acesso negado a este pagamento." });
+        }
         if (txs.length > 0 && txs.every((t) => t.status === "pago")) {
           invalidateDbCache();
           return res.json({ success: true, paid: true, status: "RECEIVED" });
@@ -752,11 +769,14 @@ router.get("/asaas-status/:paymentId", requireAnyAuth, async (req, res) => {
         }
       } else {
         const [rows] = await currentPool.query(
-          "SELECT asaasPaymentId, status FROM TransacoesFinanceiras WHERE id = ? LIMIT 1",
+          "SELECT asaasPaymentId, status, clienteId FROM TransacoesFinanceiras WHERE id = ? LIMIT 1",
           [rawId]
         );
         const tx = (rows as any[])[0];
         if (tx) {
+          if (user?.role === "client" && tx.clienteId !== user.id) {
+            return res.status(403).json({ error: true, message: "Acesso negado a esta transação." });
+          }
           if (tx.status === "pago") {
             invalidateDbCache();
             return res.json({ success: true, paid: true, status: "RECEIVED" });

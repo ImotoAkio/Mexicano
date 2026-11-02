@@ -2,11 +2,16 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
+import { getDbPool } from "../server-db";
 
 // Load environment variables early
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_key_change_in_production";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("FATAL: JWT_SECRET must be defined in environment.");
+  process.exit(1);
+}
 
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -48,7 +53,7 @@ export function requireAdminAuth(req: express.Request, res: express.Response, ne
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as any;
     const userRole = (decoded.role || "").toLowerCase().trim();
     
     // External client tokens are prohibited from admin endpoints
@@ -71,6 +76,18 @@ export function requireAdminAuth(req: express.Request, res: express.Response, ne
     console.error("JWT Verification failed:", err);
     return res.status(401).json({ error: true, message: "Token inválido ou expirado." });
   }
+}
+
+export function requireMarinaStaffOrAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  requireAdminAuth(req, res, () => {
+    const user = (req as any).user;
+    const role = (user?.role || "").toLowerCase().trim();
+    const isAllowed = role === "admin" || role === "marina_gerente" || role === "marina_operador";
+    if (!isAllowed) {
+      return res.status(403).json({ error: true, message: "Acesso restrito à equipe da Marina e Administradores." });
+    }
+    next();
+  });
 }
 
 export function requireMarinaManagerOrAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -96,7 +113,7 @@ export function requireStrictAdminAuth(req: express.Request, res: express.Respon
   });
 }
 
-export function requireClientAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+export async function requireClientAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: true, message: "Token não fornecido." });
@@ -106,10 +123,39 @@ export function requireClientAuth(req: express.Request, res: express.Response, n
     return res.status(401).json({ error: true, message: "Token inválido." });
   }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as any;
     if (decoded.role !== "client") {
       return res.status(403).json({ error: true, message: "Acesso negado." });
     }
+
+    // Validação de tokenVersion e status ativo do cliente
+    const pool = getDbPool();
+    if (pool) {
+      const [authRows] = await pool.query(
+        "SELECT tokenVersion FROM ClienteAuth WHERE clienteId = ?",
+        [decoded.id]
+      );
+      const authRecord = (authRows as any[])[0];
+      if (!authRecord) {
+        return res.status(401).json({ error: true, message: "Sessão revogada ou credenciais resetadas." });
+      }
+
+      const currentTv = authRecord.tokenVersion ?? 1;
+      const tokenTv = decoded.tv ?? 1;
+      if (tokenTv !== currentTv) {
+        return res.status(401).json({ error: true, message: "Sessão expirada devido a alteração de senha ou redefinição de acesso." });
+      }
+
+      const [clientRows] = await pool.query(
+        "SELECT status FROM Clientes WHERE id = ?",
+        [decoded.id]
+      );
+      const client = (clientRows as any[])[0];
+      if (client && client.status === 'inativo') {
+        return res.status(403).json({ error: true, message: "Cadastro inativo. Entre em contato com a administração." });
+      }
+    }
+
     (req as any).user = decoded;
     next();
   } catch {
@@ -127,7 +173,7 @@ export function requireAnyAuth(req: express.Request, res: express.Response, next
     return res.status(401).json({ error: true, message: "Token inválido." });
   }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as any;
     (req as any).user = decoded;
     next();
   } catch {
@@ -135,10 +181,21 @@ export function requireAnyAuth(req: express.Request, res: express.Response, next
   }
 }
 
+function maskSensitiveAudit(val: string): string {
+  if (!val) return val;
+  // Máscara para CPF nos logs (ex: 123.***.***-45 ou 12345678901 -> 123.***.***-01)
+  const clean = val.replace(/\D/g, '');
+  if (clean.length === 11) {
+    return `${clean.slice(0, 3)}.***.***-${clean.slice(-2)}`;
+  }
+  return val;
+}
+
 export function writeAuditLog(userId: string, userRole: string, action: string, ip: string, details?: string) {
   const clientIp = ip || 'unknown';
   const timestamp = new Date().toISOString();
-  const logEntry = `[AUDIT] IP: ${clientIp} | User: ${userId} (${userRole}) | Action: ${action} | Details: ${details || "N/A"}`;
+  const maskedUser = maskSensitiveAudit(userId);
+  const logEntry = `[AUDIT] [${timestamp}] IP: ${clientIp} | User: ${maskedUser} (${userRole}) | Action: ${action} | Details: ${details || "N/A"}`;
   console.log(logEntry);
 }
 

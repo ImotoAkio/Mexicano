@@ -31,7 +31,7 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
     setHistory(getFuelHistory());
   };
 
-  useEffect(() => {
+  const fetchInventory = () => {
     const token = localStorage.getItem('marina_token') || localStorage.getItem('admin_token');
     fetch("/api/fuel/inventory", { headers: { "Authorization": `Bearer ${token}` } })
       .then(res => res.json())
@@ -46,12 +46,15 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
             galaoParcialLitros: Number(data.galaoParcialLitros ?? 0),
             ultimaAtualizacao: data.ultimaAtualizacao || new Date().toLocaleDateString('pt-BR')
           };
-          saveFuelInventory(merged).catch(console.error);
+          localStorage.setItem('marina_fuel_inventory', JSON.stringify(merged));
           setInventory(merged);
         }
       })
       .catch(() => {});
+  };
 
+  const fetchHistory = () => {
+    const token = localStorage.getItem('marina_token') || localStorage.getItem('admin_token');
     fetch("/api/fuel/history", { headers: { "Authorization": `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
@@ -61,6 +64,45 @@ export default function MarinaTanksView({ operadorNome, showToast }: MarinaTanks
         }
       })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchInventory();
+    fetchHistory();
+
+    // Sincronização em tempo real via eventos locais e Socket.io
+    const handleLocalUpdate = (e: any) => {
+      if (e.detail) {
+        setInventory(e.detail);
+        fetchHistory();
+      }
+    };
+    window.addEventListener('marina_fuel_inventory_updated', handleLocalUpdate);
+
+    let socket: any = null;
+    try {
+      const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
+      socket = io(window.location.origin, {
+        path: '/socket.io',
+        auth: { token: token || undefined },
+        transports: ['polling', 'websocket'],
+        reconnection: true
+      });
+      socket.on('fuel_inventory_updated', (novoEstoque: any) => {
+        if (novoEstoque) {
+          setInventory(novoEstoque);
+          localStorage.setItem('marina_fuel_inventory', JSON.stringify(novoEstoque));
+        }
+        fetchHistory();
+      });
+    } catch (err) {
+      console.warn('Erro ao conectar socket em MarinaTanksView:', err);
+    }
+
+    return () => {
+      window.removeEventListener('marina_fuel_inventory_updated', handleLocalUpdate);
+      if (socket) socket.disconnect();
+    };
   }, []);
 
   // Modals state

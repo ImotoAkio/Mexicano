@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { reservationDB, boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente, Reserva, TransacaoFinanceira } from '../types';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
+import WhatsAppAutomationsTab from './WhatsAppAutomationsTab';
 import { toPng } from 'html-to-image';
 // @ts-ignore
 import logoUrl from '../assets/images/vale_nauticos_logo_1780256879963.png';
@@ -95,7 +96,7 @@ const calculateTransactionInterest = (t: TransacaoFinanceira) => {
 };
 
 export default function WhatsAppPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'bloqueio' | 'calendars' | 'custom' | 'extratos' | 'config'>('confirmations');
+  const [activeMainTab, setActiveMainTab] = useState<'confirmations' | 'automacoes' | 'bloqueio' | 'calendars' | 'custom' | 'extratos' | 'config'>('confirmations');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [extratoSearchQuery, setExtratoSearchQuery] = useState('');
   const [extratoSelectedClientId, setExtratoSelectedClientId] = useState<string | null>(null);
@@ -1458,6 +1459,13 @@ const handleToggleSelectClient = (id: string) => {
 
       <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-xs p-6 flex flex-col h-0 overflow-hidden">
         
+        {/* AUTOMAÇÕES ROBÔ TAB */}
+        {activeMainTab === 'automacoes' && (
+          <div className="flex-1 overflow-y-auto subtle-scrollbar -mx-6 px-6 pb-6">
+            <WhatsAppAutomationsTab showToast={showToast} />
+          </div>
+        )}
+
         {/* CONFIRMATIONS TAB */}
         {activeMainTab === 'confirmations' && (
           <div className="flex flex-col h-full space-y-4">

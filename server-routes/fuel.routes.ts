@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { requireMarinaManagerOrAdminAuth } from "./middlewares";
+import { requireMarinaManagerOrAdminAuth, requireMarinaStaffOrAdminAuth } from "./middlewares";
 import {
   getFuelInventoryFromDb, saveFuelInventoryInDb,
   getFuelHistoryFromDb, saveFuelHistoryInDb,
@@ -14,7 +14,7 @@ const router = Router();
 // Fuel Inventory & History Endpoints
 // ==========================================
 
-router.get("/inventory", requireMarinaManagerOrAdminAuth, async (req, res) => {
+router.get("/inventory", requireMarinaStaffOrAdminAuth, async (req, res) => {
   try {
     const inv = await getFuelInventoryFromDb();
     res.json(inv || {
@@ -41,7 +41,7 @@ router.post("/inventory", requireMarinaManagerOrAdminAuth, async (req, res) => {
   }
 });
 
-router.get("/history", requireMarinaManagerOrAdminAuth, async (req, res) => {
+router.get("/history", requireMarinaStaffOrAdminAuth, async (req, res) => {
   try {
     const history = await getFuelHistoryFromDb();
     res.json(history || []);
@@ -60,7 +60,7 @@ router.post("/history", requireMarinaManagerOrAdminAuth, async (req, res) => {
   }
 });
 
-router.post("/consume", requireMarinaManagerOrAdminAuth, async (req: any, res: Response) => {
+router.post("/consume", requireMarinaStaffOrAdminAuth, async (req: any, res: Response) => {
   try {
     const { litros, barcoNome, detalhes } = req.body;
     const operador = req.user?.username || req.user?.nome || 'Operador';
@@ -75,13 +75,13 @@ router.post("/consume", requireMarinaManagerOrAdminAuth, async (req: any, res: R
     const novoEstoque = await getFuelInventoryFromDb();
     io.emit('fuel_inventory_updated', novoEstoque);
     
-    res.json({ success: true, message: 'Combustível consumido com sucesso (atomic)' });
+    res.json({ success: true, message: 'Combustível consumido com sucesso (atomic)', novoEstoque });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message });
   }
 });
 
-router.post("/restore", requireMarinaManagerOrAdminAuth, async (req: any, res: Response) => {
+router.post("/restore", requireMarinaStaffOrAdminAuth, async (req: any, res: Response) => {
   try {
     const { litros, motivo } = req.body;
     const operador = req.user?.username || req.user?.nome || 'Operador';
@@ -95,7 +95,7 @@ router.post("/restore", requireMarinaManagerOrAdminAuth, async (req: any, res: R
     const novoEstoque = await getFuelInventoryFromDb();
     io.emit('fuel_inventory_updated', novoEstoque);
     
-    res.json({ success: true, message: 'Combustível estornado com sucesso (atomic)' });
+    res.json({ success: true, message: 'Combustível estornado com sucesso (atomic)', novoEstoque });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message });
   }

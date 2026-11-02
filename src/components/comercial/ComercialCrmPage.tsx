@@ -522,7 +522,7 @@ export default function ComercialCrmPage({
 
     let socket: any = null;
     try {
-      socket = io();
+      socket = io({ auth: { token: localStorage.getItem("admin_token") } });
       socket.on('lead_created', () => fetchLeads());
       socket.on('lead_updated', () => fetchLeads());
       socket.on('lead_deleted', () => fetchLeads());

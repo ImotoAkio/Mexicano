@@ -1,6 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;605;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap");
 @import "tailwindcss";
+@source "../index.html";
+@source "./**/*.{js,ts,jsx,tsx}";
 @import "./tailgrids.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -351,4 +353,367 @@
   height: 1.75rem !important;
   font-size: 10px !important;
 }
+
+/* ========================================================
+   MODO ESCURO - SISTEMA E PAINEL COMERCIAL (EL MEXICANO)
+   ======================================================== */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0c0a09;
+  color: #f5f5f4;
+}
+
+/* Superfície base de página */
+html.dark .bg-mx-sand {
+  background-color: #0c0a09 !important;
+}
+
+/* Superfícies elevadas (Cards, Topbar, Sidebar, Modais e Drawers) */
+html.dark .bg-white {
+  background-color: #18181b;
+}
+
+/* Superfícies secundárias e áreas internas */
+html.dark .bg-stone-50,
+html.dark .bg-stone-50\/50,
+html.dark .bg-stone-50\/60,
+html.dark .bg-stone-50\/70,
+html.dark .bg-stone-50\/80 {
+  background-color: #121215;
+}
+
+html.dark .bg-stone-100,
+html.dark .bg-stone-100\/50,
+html.dark .bg-stone-100\/60,
+html.dark .bg-stone-100\/80 {
+  background-color: #222226;
+}
+
+html.dark .bg-stone-200,
+html.dark .bg-stone-200\/60,
+html.dark .bg-stone-200\/70,
+html.dark .bg-stone-200\/80 {
+  background-color: #2e2e34;
+}
+
+/* Bordas e linhas divisórias */
+html.dark .border-stone-100,
+html.dark .border-stone-100\/60,
+html.dark .border-stone-200,
+html.dark .border-stone-200\/60,
+html.dark .border-stone-200\/70,
+html.dark .border-stone-200\/80,
+html.dark .border-stone-200\/90 {
+  border-color: #27272a;
+}
+
+html.dark .border-stone-300 {
+  border-color: #38383f;
+}
+
+html.dark .divide-stone-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-stone-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #27272a;
+}
+
+/* Tipografia e textos no modo escuro (Hierarquia com alto contraste) */
+html.dark .text-stone-950,
+html.dark .text-stone-900,
+html.dark .text-stone-800,
+html.dark .text-neutral-900,
+html.dark .text-neutral-800,
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-gray-900,
+html.dark .text-gray-800 {
+  color: #f4f4f5 !important;
+}
+
+html.dark .text-stone-700,
+html.dark .text-neutral-700,
+html.dark .text-slate-700,
+html.dark .text-gray-700 {
+  color: #e4e4e7 !important;
+}
+
+html.dark .text-stone-600,
+html.dark .text-neutral-600,
+html.dark .text-slate-600,
+html.dark .text-gray-600 {
+  color: #d4d4d8 !important;
+}
+
+html.dark .text-stone-500,
+html.dark .text-neutral-500,
+html.dark .text-slate-500,
+html.dark .text-gray-500 {
+  color: #a1a1aa !important;
+}
+
+html.dark .text-stone-400,
+html.dark .text-neutral-400,
+html.dark .text-slate-400,
+html.dark .text-gray-400 {
+  color: #a8a29e !important;
+}
+
+html.dark .text-black,
+html.dark .text-\[\#111113\],
+html.dark .text-\[\#18181b\],
+html.dark .text-\[\#0f172a\],
+html.dark .text-\[\#1e293b\] {
+  color: #f4f4f5 !important;
+}
+
+/* Cores escuras da identidade Mexicano (#2D0A16, #2B1120) */
+html.dark .text-\[\#2D0A16\],
+html.dark .text-\[\#2B1120\],
+html.dark .text-\[\#2b1120\] {
+  color: #f5b8d2 !important;
+}
+
+html.dark .text-mx-ink {
+  color: #f5b8d2 !important;
+}
+
+html.dark .text-mx-green,
+html.dark .text-\[\#4f7d32\] {
+  color: #4ade80 !important;
+}
+
+html.dark .text-mx-red,
+html.dark .text-\[\#b4402f\] {
+  color: #f87171 !important;
+}
+
+/* Hovers em títulos e links escuros */
+html.dark .hover\:text-\[\#2D0A16\]:hover,
+html.dark .hover\:text-\[\#2B1120\]:hover,
+html.dark .group:hover .group-hover\:text-\[\#2D0A16\],
+html.dark .group:hover .group-hover\:text-\[\#2B1120\] {
+  color: #fbcfe8 !important;
+}
+
+html.dark .hover\:text-\[\#111113\]:hover,
+html.dark .group:hover .group-hover\:text-\[\#111113\] {
+  color: #ffffff !important;
+}
+
+/* Pills e fundos com opacidade de tons escuros (#2D0A16 / #2B1120) */
+html.dark .bg-\[\#2D0A16\]\/5,
+html.dark .bg-\[\#2D0A16\]\/10,
+html.dark .bg-\[\#2B1120\]\/5,
+html.dark .bg-\[\#2B1120\]\/10 {
+  background-color: rgba(245, 184, 210, 0.14) !important;
+}
+
+html.dark .border-\[\#2D0A16\],
+html.dark .border-\[\#2D0A16\]\/15,
+html.dark .border-\[\#2D0A16\]\/20,
+html.dark .border-\[\#2B1120\] {
+  border-color: rgba(245, 184, 210, 0.3) !important;
+}
+
+/* Estados de Hover */
+html.dark .hover\:bg-stone-50:hover,
+html.dark .hover\:bg-stone-50\/60:hover {
+  background-color: #1e1e24;
+}
+
+html.dark .hover\:bg-stone-100:hover,
+html.dark .hover\:bg-stone-100\/80:hover {
+  background-color: #27272c;
+}
+
+html.dark .hover\:text-stone-900:hover {
+  color: #ffffff;
+}
+
+html.dark .hover\:text-stone-700:hover {
+  color: #f4f4f5;
+}
+
+html.dark .hover\:text-stone-600:hover {
+  color: #d4d4d8;
+}
+
+/* Inputs, Textareas e Selects */
+html.dark input:not([type="checkbox"]):not([type="radio"]),
+html.dark select,
+html.dark textarea {
+  color: #f4f4f5 !important;
+  background-color: #18181b !important;
+  border-color: #2e2e34 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #71717a !important;
+}
+
+/* Atalhos de teclado kbd */
+html.dark kbd {
+  background-color: #242429;
+  border-color: #323238;
+  color: #a1a1aa;
+}
+
+/* Destaques e Paleta Institucional Mexicano */
+html.dark .bg-mx-ink-100 {
+  background-color: #3b1828 !important;
+  color: #f9dbe8 !important;
+}
+
+html.dark .text-mx-ink {
+  color: #f5b8d2 !important;
+}
+
+/* Badges e Status de Cotas & Leads com alto contraste */
+html.dark .bg-emerald-50,
+html.dark .bg-emerald-50\/80 {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+}
+html.dark .text-emerald-700,
+html.dark .text-emerald-800,
+html.dark .text-emerald-800\/90,
+html.dark .text-emerald-900,
+html.dark .text-emerald-950 {
+  color: #34d399 !important;
+}
+html.dark .border-emerald-200,
+html.dark .border-emerald-200\/60,
+html.dark .border-emerald-200\/70,
+html.dark .border-emerald-300 {
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+
+html.dark .bg-amber-50,
+html.dark .bg-amber-50\/80 {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+}
+html.dark .text-amber-700,
+html.dark .text-amber-800,
+html.dark .text-amber-800\/90,
+html.dark .text-amber-900,
+html.dark .text-amber-950 {
+  color: #fbbf24 !important;
+}
+html.dark .border-amber-200,
+html.dark .border-amber-200\/60,
+html.dark .border-amber-200\/70,
+html.dark .border-amber-300 {
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+html.dark .bg-red-50,
+html.dark .bg-red-50\/80 {
+  background-color: rgba(239, 68, 68, 0.16) !important;
+}
+html.dark .text-red-700,
+html.dark .text-red-800,
+html.dark .text-red-900,
+html.dark .text-red-950 {
+  color: #f87171 !important;
+}
+html.dark .border-red-200,
+html.dark .border-red-200\/60,
+html.dark .border-red-200\/70,
+html.dark .border-red-300 {
+  border-color: rgba(239, 68, 68, 0.35) !important;
+}
+
+html.dark .bg-blue-50,
+html.dark .bg-blue-50\/80 {
+  background-color: rgba(59, 130, 246, 0.16) !important;
+}
+html.dark .text-blue-700,
+html.dark .text-blue-800,
+html.dark .text-blue-900,
+html.dark .text-blue-950 {
+  color: #60a5fa !important;
+}
+html.dark .border-blue-200,
+html.dark .border-blue-200\/60,
+html.dark .border-blue-200\/70,
+html.dark .border-blue-300 {
+  border-color: rgba(59, 130, 246, 0.35) !important;
+}
+
+/* Sky / Azul Náutico */
+html.dark .bg-sky-50,
+html.dark .bg-sky-50\/80 {
+  background-color: rgba(56, 189, 248, 0.16) !important;
+}
+html.dark .text-sky-700,
+html.dark .text-sky-800,
+html.dark .text-sky-900,
+html.dark .text-sky-950 {
+  color: #38bdf8 !important;
+}
+html.dark .border-sky-200,
+html.dark .border-sky-200\/60,
+html.dark .border-sky-200\/70,
+html.dark .border-sky-300 {
+  border-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+/* Cyan / Turquesa */
+html.dark .bg-cyan-50,
+html.dark .bg-cyan-50\/80 {
+  background-color: rgba(6, 182, 212, 0.16) !important;
+}
+html.dark .text-cyan-700,
+html.dark .text-cyan-800 {
+  color: #22d3ee !important;
+}
+html.dark .border-cyan-200,
+html.dark .border-cyan-300 {
+  border-color: rgba(6, 182, 212, 0.35) !important;
+}
+
+/* Indigo & Purple */
+html.dark .text-indigo-700,
+html.dark .text-indigo-800,
+html.dark .text-indigo-900,
+html.dark .text-indigo-950 {
+  color: #818cf8 !important;
+}
+html.dark .text-purple-700,
+html.dark .text-purple-800,
+html.dark .text-purple-950 {
+  color: #c084fc !important;
+}
+
+/* Cabeçalhos de tabelas no modo escuro */
+html.dark table thead th {
+  color: #a1a1aa !important;
+}
+
+/* Modais e Painéis Laterais */
+html.dark [role="dialog"],
+html.dark .modal-card {
+  background-color: #141416;
+  border-color: #27272a;
+}
+
+/* Scrollbars refinados no modo escuro */
+html.dark ::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+html.dark ::-webkit-scrollbar-track {
+  background: #0f0f11;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 9999px;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+
 

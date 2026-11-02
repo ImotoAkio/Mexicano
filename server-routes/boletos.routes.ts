@@ -15,7 +15,7 @@ function normalizeString(str: string) {
   return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
 }
 
-router.post("/boletos/upload", upload.array('boletos', 50), async (req, res) => {
+router.post("/boletos/upload", requireAdminAuth, upload.array('boletos', 50), async (req, res) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {

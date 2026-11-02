@@ -1,7 +1,22 @@
 import { Router } from "express";
-import { getDbPool, pullDatabase, upsertReservation, deleteReservation, cancelReservation, getConfigValue } from "../server-db";
-import { requireClientAuth, sensitiveLimiter } from "./middlewares";
+import bcrypt from "bcryptjs";
+import { getDbPool, pullDatabase, upsertReservation, deleteReservation, cancelReservation, getConfigValue, getClientAuth, upsertClientAuth } from "../server-db";
+import { requireClientAuth, sensitiveLimiter, whatsappLimiter } from "./middlewares";
 import { writeAuditLog } from "./middlewares";
+import https from "https";
+import http from "http";
+
+const evolutionHttpsAgent = new https.Agent({ rejectUnauthorized: false });
+
+/** Helper: Retorna a data atual no fuso horário oficial de Brasília (YYYY-MM-DD) */
+function getTodayBrasilia(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+
+/** Helper: Retorna o timestamp em ms correspondente a uma data YYYY-MM-DD às 00:00 no fuso de Brasília */
+function getBrasiliaDateMs(dateStr: string): number {
+  return new Date(`${dateStr}T00:00:00-03:00`).getTime();
+}
 
 /** Helper: check if a date string (YYYY-MM-DD) falls on a configured holiday */
 function isHoliday(dateStr: string, holidays: string[]): boolean {
@@ -32,8 +47,7 @@ function calcTipoReserva(
 /** Helper: check if a client has overdue unpaid revenue transactions */
 function hasClientOverdueDebt(client: any, transacoes: any[]): boolean {
   if (client?.statusFinanceiro === 'inadimplente') return true;
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = getTodayBrasilia();
   return (transacoes || []).some((t: any) =>
     t.clienteId === client?.id &&
     t.tipo === 'receita' &&
@@ -106,7 +120,7 @@ clientRoutes.get("/me", requireClientAuth, async (req, res) => {
     const boats = dbData.boats.filter((b: any) => clientBoatsList.includes(b.id));
     const rawReservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
     const rawTransacoes = dbData.transacoes.filter((t: any) => t.clienteId === client.id && t.tipo === 'receita');
-    const chamados = dbData.chamados ? dbData.chamados.filter((c: any) => c.clienteId === client.id || clientBoatsList.includes(c.embarcacaoId)) : [];
+    const chamados = dbData.chamados ? dbData.chamados.filter((c: any) => c.clienteId === client.id) : [];
     const rawManutencoes = dbData.manutencoes ? dbData.manutencoes.filter((m: any) => clientBoatsList.includes(m.embarcacaoId)) : [];
 
     const { safeClient, safeReservations, safeTransacoes, safeManutencoes } = sanitizeClientPayload(
@@ -122,13 +136,21 @@ clientRoutes.get("/me", requireClientAuth, async (req, res) => {
     }
 
     writeAuditLog(client.nome, "client", "FETCH_DATA", req.ip, `ID: ${client.id}`);
+
+    const datasFechadasStr = await getConfigValue("marina_datas_fechadas");
+    let marinaDatasFechadas = [];
+    if (datasFechadasStr) {
+      try { marinaDatasFechadas = JSON.parse(datasFechadasStr); } catch {}
+    }
+
     res.json({
       client: safeClient,
       boats,
       reservations: safeReservations,
       transacoes: safeTransacoes,
       chamados,
-      manutencoes: safeManutencoes
+      manutencoes: safeManutencoes,
+      marinaDatasFechadas
     });
   } catch (err: any) {
     console.error("Client data fetch error:", err);
@@ -141,6 +163,23 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
   try {
     const userId = (req as any).user.id;
     const { embarcacaoId, date, periodo = 'dia_inteiro', observacoes = '' } = req.body;
+
+    if (!embarcacaoId || typeof embarcacaoId !== 'string') {
+      return res.status(400).json({ error: true, message: "Embarcação inválida." });
+    }
+
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: true, message: "Data inválida. Formato esperado: YYYY-MM-DD." });
+    }
+
+    const validPeriodos = ['dia_inteiro', 'manha', 'tarde'];
+    if (!validPeriodos.includes(periodo)) {
+      return res.status(400).json({ error: true, message: "Período inválido." });
+    }
+
+    if (observacoes && typeof observacoes === 'string' && observacoes.length > 500) {
+      return res.status(400).json({ error: true, message: "Observações não podem exceder 500 caracteres." });
+    }
 
     const dbData = await pullDatabase();
     const client = dbData.clients.find((c: any) => c.id === userId);
@@ -166,9 +205,27 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
       return res.status(400).json({ error: true, message: "Esta embarcação está em manutenção. Não é possível realizar reservas no momento." });
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayBrasilia();
     if (date < todayStr) {
       return res.status(400).json({ error: true, message: "Não é possível reservar datas passadas." });
+    }
+
+    // Check marina global closed dates defined by administrator
+    const datasFechadasRaw = await getConfigValue("marina_datas_fechadas");
+    if (datasFechadasRaw) {
+      try {
+        const datasFechadas: Array<{ data: string; motivo?: string }> = JSON.parse(datasFechadasRaw);
+        const fechamento = datasFechadas.find(item => item.data === date);
+        if (fechamento) {
+          const motivoStr = fechamento.motivo ? ` (${fechamento.motivo})` : '';
+          return res.status(400).json({
+            error: true,
+            message: `A Marina estará fechada nesta data${motivoStr}. Agendamentos não permitidos.`
+          });
+        }
+      } catch (errParse) {
+        console.warn("Aviso ao ler marina_datas_fechadas:", errParse);
+      }
     }
 
     // Check overlaps
@@ -226,33 +283,75 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
     }
 
     const currentPool = getDbPool();
-    let nextPos = 1;
-    if (currentPool) {
-      const [maxRows] = await currentPool.query(
+    if (!currentPool) {
+      return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
+    }
+
+    // Validação concorrente com lock de transação
+    const conn = await currentPool.getConnection();
+    let newRes: any;
+    try {
+      await conn.beginTransaction();
+
+      const [existingActive] = await conn.query(
+        "SELECT id FROM Reservas WHERE embarcacaoId = ? AND data = ? AND status != 'cancelado' FOR UPDATE",
+        [embarcacaoId, date]
+      );
+      if ((existingActive as any[]).length > 0) {
+        await conn.rollback();
+        conn.release();
+        return res.status(400).json({ error: true, message: "A embarcação já possui reserva para esta data." });
+      }
+
+      if (!isMarinaOnlyBoat) {
+        const [clientActiveRows] = await conn.query(
+          "SELECT id FROM Reservas WHERE clienteId = ? AND embarcacaoId = ? AND status != 'cancelado' AND data >= ?",
+          [userId, embarcacaoId, todayStr]
+        );
+        if ((clientActiveRows as any[]).length >= 2) {
+          await conn.rollback();
+          conn.release();
+          return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas para esta embarcação." });
+        }
+      }
+
+      const [maxRows] = await conn.query(
         "SELECT MAX(posicaoFila) as maxPos FROM Reservas WHERE data = ? AND status != 'cancelado'",
         [date]
       );
-      nextPos = ((maxRows as any[])[0]?.maxPos || 0) + 1;
+      const nextPos = ((maxRows as any[])[0]?.maxPos || 0) + 1;
+
+      newRes = {
+        id: `res_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
+        embarcacaoId,
+        clienteId: userId,
+        data: date,
+        periodo,
+        previsaoSaida: req.body.previsaoSaida || null,
+        previsaoChegada: req.body.previsaoChegada || null,
+        observacoes: observacoes,
+        observações: observacoes,
+        status: 'agendado',
+        statusMarina: 'agendado',
+        tipoReserva,
+        origem: isMarinaOnlyBoat ? 'marina' : 'cota',
+        posicaoFila: nextPos,
+        createdAt: new Date().toISOString()
+      };
+
+      await conn.query(
+        `INSERT INTO Reservas (id, embarcacaoId, clienteId, data, periodo, previsaoSaida, previsaoChegada, observacoes, status, statusMarina, tipoReserva, origem, posicaoFila, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newRes.id, newRes.embarcacaoId, newRes.clienteId, newRes.data, newRes.periodo, newRes.previsaoSaida, newRes.previsaoChegada, newRes.observacoes, newRes.status, newRes.statusMarina, newRes.tipoReserva, newRes.origem, newRes.posicaoFila, newRes.createdAt]
+      );
+
+      await conn.commit();
+      conn.release();
+    } catch (txErr) {
+      await conn.rollback();
+      conn.release();
+      throw txErr;
     }
-
-    const newRes = {
-      id: `res_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
-      embarcacaoId,
-      clienteId: userId,
-      data: date,
-      periodo,
-      previsaoSaida: req.body.previsaoSaida || null,
-      previsaoChegada: req.body.previsaoChegada || null,
-      observações: observacoes,
-      status: 'agendado',
-      statusMarina: 'agendado',
-      tipoReserva,
-      origem: isMarinaOnlyBoat ? 'marina' : 'cota',
-      posicaoFila: nextPos,
-      createdAt: new Date().toISOString()
-    };
-
-    await upsertReservation(newRes);
 
     // Enrich the socket payload with boat name and client name for admin notifications
     const fetchedBoat = dbData.boats.find((b: any) => b.id === embarcacaoId);
@@ -282,10 +381,14 @@ clientRoutes.post("/update-reservation", requireClientAuth, async (req, res) => 
       return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
     }
 
-    await currentPool.query(
+    const [updateResult]: any = await currentPool.query(
       "UPDATE Reservas SET googleEventId = ? WHERE id = ? AND clienteId = ?",
       [googleEventId, id, userId]
     );
+
+    if (updateResult.affectedRows === 0) {
+      return res.status(404).json({ error: true, message: "Reserva não encontrada para atualização." });
+    }
 
     // Emit event to update Marina/Admin panels automatically
     req.app.locals.io?.emit("marina_update", { action: 'upsert', reservation: { id, googleEventId } });
@@ -298,16 +401,41 @@ clientRoutes.post("/update-reservation", requireClientAuth, async (req, res) => 
 });
 
 // Route: Register data deletion request under LGPD (Art. 18)
-clientRoutes.post("/request-deletion", requireClientAuth, async (req, res) => {
+clientRoutes.post("/request-deletion", requireClientAuth, sensitiveLimiter, async (req, res) => {
   try {
     const userId = (req as any).user.id;
     const userName = (req as any).user.nome;
+    const protocol = `LGPD-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     
-    writeAuditLog(userName, "client", "REQUEST_DATA_DELETION", req.ip, `Solicitação de exclusão recebida para ID: ${userId}`);
+    const pool = getDbPool();
+    if (pool) {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS SolicitacoesLGPD (
+            id VARCHAR(50) PRIMARY KEY,
+            clienteId VARCHAR(50) NOT NULL,
+            protocolo VARCHAR(50) NOT NULL,
+            tipo VARCHAR(50) DEFAULT 'exclusao_dados',
+            status VARCHAR(30) DEFAULT 'pendente',
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        await pool.query(
+          "INSERT INTO SolicitacoesLGPD (id, clienteId, protocolo, tipo, status) VALUES (?, ?, ?, 'exclusao_dados', 'pendente')",
+          [`req_${Date.now()}`, userId, protocol]
+        );
+      } catch (dbErr) {
+        console.warn("Could not persist LGPD request to DB:", dbErr);
+      }
+    }
+
+    writeAuditLog(userName, "client", "REQUEST_DATA_DELETION", req.ip, `Protocolo: ${protocol} | ID: ${userId}`);
 
     res.json({
       success: true,
-      message: "Sua solicitação de exclusão de dados pessoais foi registrada com sucesso sob protocolo LGPD. O Encarregado de Dados (DPO) entrará em contato em até 15 dias."
+      protocol,
+      message: `Sua solicitação de exclusão de dados pessoais foi registrada com sucesso sob protocolo ${protocol}. O Encarregado de Dados (DPO) entrará em contato em até 15 dias.`
     });
   } catch (err: any) {
     console.error("Data deletion request error:", err);
@@ -330,10 +458,22 @@ clientRoutes.post("/checkin", requireClientAuth, async (req, res) => {
       return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
     }
 
-    const [resRows] = await currentPool.query("SELECT embarcacaoId, clienteId FROM Reservas WHERE id = ? AND clienteId = ?", [id, userId]);
+    const [resRows] = await currentPool.query(
+      "SELECT id, embarcacaoId, clienteId, status, data FROM Reservas WHERE id = ? AND clienteId = ?",
+      [id, userId]
+    );
     const reserva = (resRows as any[])[0];
     if (!reserva) {
       return res.status(404).json({ error: true, message: "Reserva não encontrada ou acesso não autorizado." });
+    }
+
+    if (reserva.status === 'cancelado') {
+      return res.status(400).json({ error: true, message: "Esta reserva foi cancelada e não pode receber check-in." });
+    }
+
+    const todayStr = getTodayBrasilia();
+    if (reserva.data !== todayStr) {
+      return res.status(400).json({ error: true, message: "O check-in só pode ser realizado na data agendada do passeio." });
     }
 
     const dbData = await pullDatabase();
@@ -399,10 +539,37 @@ clientRoutes.post("/cancel-reservation", requireClientAuth, async (req, res) => 
       return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
     }
 
-    await currentPool.query(
-      "UPDATE Reservas SET status = 'cancelado' WHERE id = ? AND clienteId = ?",
+    const [checkRows] = await currentPool.query(
+      "SELECT id, status, data, statusMarina FROM Reservas WHERE id = ? AND clienteId = ?",
       [id, userId]
     );
+    const existingRes = (checkRows as any[])[0];
+    if (!existingRes) {
+      return res.status(404).json({ error: true, message: "Reserva não encontrada." });
+    }
+
+    if (existingRes.status === 'cancelado') {
+      return res.status(400).json({ error: true, message: "Esta reserva já se encontra cancelada." });
+    }
+
+    const uncancelableStatuses = ['em_uso', 'concluido', 'finalizado'];
+    if (uncancelableStatuses.includes(existingRes.status) || uncancelableStatuses.includes(existingRes.statusMarina)) {
+      return res.status(400).json({ error: true, message: "Não é possível cancelar uma reserva que já está em andamento ou foi finalizada." });
+    }
+
+    const todayStr = getTodayBrasilia();
+    if (existingRes.data < todayStr) {
+      return res.status(400).json({ error: true, message: "Não é possível cancelar reservas de datas passadas." });
+    }
+
+    const [updateResult]: any = await currentPool.query(
+      "UPDATE Reservas SET status = 'cancelado' WHERE id = ? AND clienteId = ? AND status != 'cancelado'",
+      [id, userId]
+    );
+
+    if (updateResult.affectedRows === 0) {
+      return res.status(400).json({ error: true, message: "Não foi possível cancelar o agendamento." });
+    }
 
     req.app.locals.io?.emit("marina_update", { action: 'cancel', reservation: { id, status: 'cancelado' } });
 
@@ -522,9 +689,9 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
     if (targetRes.embarcacaoId !== embarcacaoId) return res.status(400).json({ error: true, message: "Embarcação não confere." });
 
     // 48-hour deadline check
-    const now = new Date();
-    const resDate = new Date(targetRes.data + "T00:00:00");
-    const hoursUntil = (resDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const nowMs = Date.now();
+    const resDateMs = getBrasiliaDateMs(targetRes.data);
+    const hoursUntil = (resDateMs - nowMs) / (1000 * 60 * 60);
     if (hoursUntil <= 48) {
       return res.status(400).json({ error: true, message: "Esta reserva não pode mais ser contestada pois está a menos de 48 horas da data." });
     }
@@ -541,49 +708,82 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
       return res.status(400).json({ error: true, message: `Você já utilizou seu ${dayName} garantido neste mês. Não é possível contestar.` });
     }
 
-    // All checks passed — proceed with contestation
+    // All checks passed — proceed with contestation in atomic transaction
     const currentPool = getDbPool();
     if (!currentPool) return res.status(500).json({ error: true, message: "Banco de dados indisponível." });
 
-    // 1. Cancel the extra reservation (mark as cancelled + who contested)
-    await currentPool.query(
-      "UPDATE Reservas SET status = 'cancelado', contestadaPor = ?, contestadaEm = ? WHERE id = ?",
-      [userId, new Date().toISOString(), reservaId]
-    );
+    const conn = await currentPool.getConnection();
+    let newRes: any;
+    try {
+      await conn.beginTransaction();
 
-    // 2. Check overlaps for the contesting client on the same boat+date
-    const overlapCheck = dbData.reservations.filter((r: any) =>
-      r.embarcacaoId === embarcacaoId && r.data === targetRes.data && r.status !== 'cancelado' && r.id !== reservaId
-    );
-    if (overlapCheck.length > 0) {
-      return res.status(400).json({ error: true, message: "Essa data já possui outra reserva ativa para esta embarcação." });
+      // Lock target reservation
+      const [targetLockRows]: any = await conn.query(
+        "SELECT id, status, tipoReserva, data, clienteId, embarcacaoId FROM Reservas WHERE id = ? FOR UPDATE",
+        [reservaId]
+      );
+      const lockedTarget = targetLockRows[0];
+      if (!lockedTarget || lockedTarget.status === 'cancelado' || lockedTarget.tipoReserva !== 'extra') {
+        await conn.rollback();
+        conn.release();
+        return res.status(400).json({ error: true, message: "A reserva alvo foi cancelada ou não está mais disponível para contestação." });
+      }
+
+      // Check overlap for other reservations on the same date/boat
+      const [overlapRows]: any = await conn.query(
+        "SELECT id FROM Reservas WHERE embarcacaoId = ? AND data = ? AND status != 'cancelado' AND id != ? FOR UPDATE",
+        [embarcacaoId, targetRes.data, reservaId]
+      );
+      if (overlapRows.length > 0) {
+        await conn.rollback();
+        conn.release();
+        return res.status(400).json({ error: true, message: "Essa data já possui outra reserva ativa para esta embarcação." });
+      }
+
+      // 1. Cancel the extra reservation
+      await conn.query(
+        "UPDATE Reservas SET status = 'cancelado', contestadaPor = ?, contestadaEm = ? WHERE id = ?",
+        [userId, new Date().toISOString(), reservaId]
+      );
+
+      // 2. Determine position
+      const [maxRows]: any = await conn.query(
+        "SELECT MAX(posicaoFila) as maxPos FROM Reservas WHERE data = ? AND status != 'cancelado'",
+        [targetRes.data]
+      );
+      const nextPos = ((maxRows as any[])[0]?.maxPos || 0) + 1;
+      const isMarinaOnlyBoat = boat?.empresas && boat.empresas.includes('MARINA') && !boat.empresas.includes('VALE');
+
+      // 3. Create the new guaranteed reservation
+      newRes = {
+        id: `res_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
+        embarcacaoId,
+        clienteId: userId,
+        data: targetRes.data,
+        periodo: 'dia_inteiro',
+        observacoes: `Reserva garantida via contestação (substituiu reserva ${reservaId})`,
+        observações: `Reserva garantida via contestação (substituiu reserva ${reservaId})`,
+        status: 'agendado',
+        statusMarina: 'agendado',
+        tipoReserva: 'garantida' as const,
+        origem: isMarinaOnlyBoat ? 'marina' : 'cota',
+        posicaoFila: nextPos,
+        createdAt: new Date().toISOString()
+      };
+
+      await conn.query(
+        `INSERT INTO Reservas (id, embarcacaoId, clienteId, data, periodo, observacoes, status, statusMarina, tipoReserva, origem, posicaoFila, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newRes.id, newRes.embarcacaoId, newRes.clienteId, newRes.data, newRes.periodo, newRes.observacoes, newRes.status, newRes.statusMarina, newRes.tipoReserva, newRes.origem, newRes.posicaoFila, newRes.createdAt]
+      );
+
+      await conn.commit();
+      conn.release();
+    } catch (txErr) {
+      await conn.rollback();
+      conn.release();
+      throw txErr;
     }
-
-    let nextPos = 1;
-    const [maxRows] = await currentPool.query(
-      "SELECT MAX(posicaoFila) as maxPos FROM Reservas WHERE data = ? AND status != 'cancelado'",
-      [targetRes.data]
-    );
-    nextPos = ((maxRows as any[])[0]?.maxPos || 0) + 1;
-    const isMarinaOnlyBoat = boat?.empresas && boat.empresas.includes('MARINA') && !boat.empresas.includes('VALE');
-
-    // 3. Create the new guaranteed reservation for the contesting client
-    const newRes = {
-      id: `res_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
-      embarcacaoId,
-      clienteId: userId,
-      data: targetRes.data,
-      periodo: 'dia_inteiro',
-      observações: `Reserva garantida via contestação (substituiu reserva ${reservaId})`,
-      status: 'agendado',
-      statusMarina: 'agendado',
-      tipoReserva: 'garantida' as const,
-      origem: isMarinaOnlyBoat ? 'marina' : 'cota',
-      posicaoFila: nextPos,
-      createdAt: new Date().toISOString()
-    };
-
-    await upsertReservation(newRes);
 
     // 4. Emit socket events
     const io = req.app.locals.io;
@@ -634,6 +834,158 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
   }
 });
 
+// Route: Get financial parameters for client UI
+clientRoutes.get("/financeiro-config", requireClientAuth, async (req, res) => {
+  try {
+    const taxaJurosMensal = await getConfigValue('fin_taxa_juros_mensal') || '2.2';
+    const taxaMultaAtraso = await getConfigValue('fin_taxa_multa_atraso') || '2.0';
+    const diasFaturaAtual = await getConfigValue('fin_asaas_dias_fatura_atual') || '30';
 
+    res.json({
+      success: true,
+      configuracoes: {
+        taxaJurosMensal,
+        taxaMultaAtraso,
+        diasFaturaAtual
+      }
+    });
+  } catch (err: any) {
+    console.error("Error fetching client financial config:", err);
+    res.status(500).json({ error: true, message: "Erro ao obter configurações financeiras." });
+  }
+});
+
+// Route: Client send reservation calendar image to boat WhatsApp group
+clientRoutes.post("/send-calendar", requireClientAuth, whatsappLimiter, async (req, res) => {
+  try {
+    const userId = (req as any).user.id;
+    const { base64Image, embarcacaoId, dates, caption } = req.body;
+
+    if (!base64Image || !embarcacaoId) {
+      return res.status(400).json({ error: true, message: "Imagem e ID da embarcação são obrigatórios." });
+    }
+
+    const dbData = await pullDatabase();
+    const client = dbData.clients.find((c: any) => c.id === userId);
+    if (!client) {
+      return res.status(404).json({ error: true, message: "Cliente não encontrado." });
+    }
+
+    const clientBoatsList = client.embarcacoes && client.embarcacoes.length > 0
+      ? client.embarcacoes.map((eb: any) => eb.embarcacaoId)
+      : [client.embarcacaoId];
+
+    if (!clientBoatsList.includes(embarcacaoId)) {
+      return res.status(403).json({ error: true, message: "Acesso não autorizado a esta embarcação." });
+    }
+
+    const boat = dbData.boats.find((b: any) => b.id === embarcacaoId);
+    if (!boat || !boat.whatsappGroupId) {
+      return res.status(400).json({ error: true, message: "Embarcação não possui grupo de WhatsApp configurado." });
+    }
+
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+
+    if (!apiUrl || !apiKey) {
+      return res.status(500).json({ error: true, message: "Serviço de WhatsApp não configurado no servidor." });
+    }
+
+    const base64Data = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
+
+    const payload = {
+      number: boat.whatsappGroupId,
+      mediatype: "image",
+      mimetype: "image/png",
+      caption: caption || `📅 *Agendamento Confirmado*\n🚤 ${boat.nome || 'Embarcação'}\n👤 Cotista: ${client.nome}\n🗓️ Data: ${dates || ''}`,
+      media: base64Data
+    };
+
+    const targetUrl = new URL(`${apiUrl}/message/sendMedia/${instance}`);
+    const isHttps = targetUrl.protocol === 'https:';
+
+    const sendPromise = new Promise<{ ok: boolean; status: number; text: string }>((resolve, reject) => {
+      const postData = JSON.stringify(payload);
+      const reqOpts = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(postData),
+          "apikey": apiKey
+        },
+        agent: isHttps ? evolutionHttpsAgent : undefined
+      };
+
+      const reqSender = (isHttps ? https : http).request(targetUrl, reqOpts, (evoRes) => {
+        const chunks: Buffer[] = [];
+        evoRes.on("data", (chunk) => chunks.push(chunk));
+        evoRes.on("end", () => {
+          resolve({
+            ok: !!(evoRes.statusCode && evoRes.statusCode >= 200 && evoRes.statusCode < 300),
+            status: evoRes.statusCode || 500,
+            text: Buffer.concat(chunks).toString("utf-8")
+          });
+        });
+      });
+
+      reqSender.on("error", reject);
+      reqSender.write(postData);
+      reqSender.end();
+    });
+
+    const evoResult = await sendPromise;
+
+    if (!evoResult.ok) {
+      console.error("Evolution API calendar send failure:", evoResult.status, evoResult.text);
+      return res.status(502).json({ error: true, message: "Falha ao enviar imagem da agenda para o WhatsApp." });
+    }
+
+    writeAuditLog(client.nome, "client", "SEND_CALENDAR_WHATSAPP", req.ip, `Embarcação: ${boat.nome || embarcacaoId}`);
+    res.json({ success: true, message: "Agenda enviada com sucesso ao grupo da embarcação." });
+  } catch (err: any) {
+    console.error("Error sending client calendar via WhatsApp:", err);
+    res.status(500).json({ error: true, message: "Erro interno ao enviar para o WhatsApp." });
+  }
+});
+
+// Route: Client change own password
+clientRoutes.post("/change-password", requireClientAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    const userId = (req as any).user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: true, message: "Senha atual e nova senha são obrigatórias." });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: true, message: "A nova senha deve ter no mínimo 6 caracteres." });
+    }
+
+    const clientAuth = await getClientAuth(userId);
+    if (!clientAuth) {
+      return res.status(404).json({ error: true, message: "Credenciais não encontradas." });
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, clientAuth.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({ error: true, message: "Senha atual incorreta." });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    // upsertClientAuth automaticamente incrementa o tokenVersion, invalidando sessões antigas
+    await upsertClientAuth(userId, newHash);
+
+    const dbData = await pullDatabase();
+    const client = dbData.clients.find((c: any) => c.id === userId);
+    writeAuditLog(client?.nome || userId, "client", "CHANGE_PASSWORD_SUCCESS", req.ip);
+
+    res.json({ success: true, message: "Senha alterada com sucesso! Faça login novamente com a nova senha." });
+  } catch (err: any) {
+    console.error("Client change password error:", err);
+    res.status(500).json({ error: true, message: "Erro interno ao alterar a senha." });
+  }
+});
 
 export default clientRoutes;

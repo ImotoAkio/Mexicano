@@ -1235,6 +1235,7 @@ export default function ClientPage() {
         onSave={handleClientSavedFromModal}
         editingClient={editingClient}
         boats={boats}
+        userRole={adminRole}
       />
 
       {/* State-Based Custom Confirmation Modal (Deactivation with history preservation) */}

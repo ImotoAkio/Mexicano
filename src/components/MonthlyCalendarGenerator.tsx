@@ -33,6 +33,7 @@ interface MonthlyCalendarGeneratorProps {
   providedBoats?: Embarcacao[];
   providedReservations?: any[];
   providedClients?: Cliente[];
+  marinaDatasFechadas?: Array<{ data: string; motivo: string }>;
 }
 
 // Utility to get 1st and 2nd word from name
@@ -69,7 +70,8 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
-export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, onClose, autoExport, onExport, providedBoats, providedReservations, providedClients }: MonthlyCalendarGeneratorProps) {
+export default function MonthlyCalendarGenerator({
+  marinaDatasFechadas = [], initialBoatId, initialDate, onClose, autoExport, onExport, providedBoats, providedReservations, providedClients }: MonthlyCalendarGeneratorProps) {
   const [boats] = useState<Embarcacao[]>(() => {
     if (providedBoats) return [...providedBoats].sort((a, b) => a.nome.localeCompare(b.nome));
     return [...boatDB.getAll()].sort((a, b) => a.nome.localeCompare(b.nome));
@@ -320,6 +322,13 @@ export default function MonthlyCalendarGenerator({ initialBoatId, initialDate, o
           : ('active' as const);
 
       return { type: statusType, label: `${boatCode} - ${label.toUpperCase()}` };
+    }
+
+    // Special closed dates / holidays defined by administrator
+    const specialClosed = (marinaDatasFechadas || []).find(d => d.data === dateStr);
+    if (specialClosed) {
+      const lbl = specialClosed.motivo ? specialClosed.motivo.toUpperCase().substring(0, 15) : 'FECHADO';
+      return { type: 'closed' as const, label: `${boatCode} - ${lbl}` };
     }
 
     // Monday (1) and Tuesday (2) are FECHADO (closed) if there's no booking

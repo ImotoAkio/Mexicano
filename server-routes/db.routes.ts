@@ -56,10 +56,13 @@ router.post("/save", requireAdminAuth, async (req, res) => {
 
   try {
     if (type === "clients") {
+      const socketIo = (req.app?.locals?.io || io);
       if (action === "delete") {
         await deleteClient(data.id || data);
+        socketIo?.emit("marina_update", { action: 'delete_client', client: data });
       } else {
         await upsertClient(data);
+        socketIo?.emit("marina_update", { action: 'upsert_client', client: data });
       }
     } else if (type === "boats") {
       const user = (req as any).user;
@@ -99,20 +102,22 @@ router.post("/save", requireAdminAuth, async (req, res) => {
         }
       }
 
+      const socketIo = (req.app?.locals?.io || io);
       if (action === "delete") {
         await deleteBoat(data.id || data);
-        io.emit("marina_update", { action: 'delete', boat: data });
+        socketIo?.emit("marina_update", { action: 'delete', boat: data });
       } else {
         await upsertBoat(data);
-        io.emit("marina_update", { action: 'upsert', boat: data });
+        socketIo?.emit("marina_update", { action: 'upsert', boat: data });
       }
     } else if (type === "reservations") {
+      const socketIo = (req.app?.locals?.io || io);
       if (action === "delete") {
         await deleteReservation(data.id || data);
-        io.emit("marina_update", { action: 'delete', reservation: data });
+        socketIo?.emit("marina_update", { action: 'delete', reservation: data });
       } else {
         await upsertReservation(data);
-        io.emit("marina_update", { action: 'upsert', reservation: data });
+        socketIo?.emit("marina_update", { action: action === 'create' ? 'new' : 'upsert', reservation: data });
       }
     } else if (type === "controles_som") {
       if (action === "upsert") {
@@ -150,7 +155,7 @@ router.post("/bulk-save", requireAdminAuth, async (req, res) => {
 // /logs/action -> needs to also have /api/logs handled from main server
 const logsRouter = Router();
 
-logsRouter.post("/action", requireAnyAuth, async (req, res) => {
+logsRouter.post("/action", requireAdminAuth, async (req, res) => {
   const { operadorNome, acao, detalhes, embarcacaoId } = req.body;
   
   if (!acao) {

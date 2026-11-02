@@ -38,7 +38,8 @@ export default function MarinaAgendamentosView() {
   // Day Drawer in Calendar view
   const [selectedDayInfo, setSelectedDayInfo] = useState<{ dayStr: string; reservas: any[] } | null>(null);
 
-  const fetchAgendamentos = async () => {
+  const fetchAgendamentos = async (showLoadingAnimation = true) => {
+    if (showLoadingAnimation) setLoading(true);
     try {
       const token = localStorage.getItem('admin_token');
       const res = await fetch('/api/marina/agendamentos', {
@@ -54,7 +55,13 @@ export default function MarinaAgendamentosView() {
     } catch (e) {
       setReservas(reservationDB.getAll() || []);
     } finally {
-      setLoading(false);
+      if (showLoadingAnimation) {
+        setTimeout(() => {
+          setLoading(false);
+        }, 400);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -70,7 +77,7 @@ export default function MarinaAgendamentosView() {
     });
 
     socket.on('marina_update', () => {
-      fetchAgendamentos();
+      fetchAgendamentos(false);
     });
 
     return () => {
@@ -208,9 +215,16 @@ export default function MarinaAgendamentosView() {
             <h1 className="text-lg font-black text-slate-900 tracking-tight">
               Agendamentos da Marina & Descidas
             </h1>
-            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              {filteredReservas.length} {filteredReservas.length === 1 ? 'registro' : 'registros'}
-            </span>
+            {loading ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1.5 animate-pulse">
+                <RefreshCw className="w-2.5 h-2.5 animate-spin text-blue-600" />
+                <span>Carregando...</span>
+              </span>
+            ) : (
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                {filteredReservas.length} {filteredReservas.length === 1 ? 'registro' : 'registros'}
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Gestão de descidas programadas para embarcações da marina e visitantes
@@ -218,6 +232,17 @@ export default function MarinaAgendamentosView() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Refresh Button */}
+          <button
+            onClick={() => fetchAgendamentos(true)}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 active:scale-95 border border-slate-200/60"
+            title="Atualizar agendamentos"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
+            <span className="hidden sm:inline">Sincronizar</span>
+          </button>
+
           {/* View Mode Toggle */}
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/60">
             <button
@@ -317,8 +342,138 @@ export default function MarinaAgendamentosView() {
         )}
       </div>
 
-      {/* CALENDAR VIEW */}
-      {viewMode === 'calendar' ? (
+      {/* MAIN CONTENT: SKELETON / LOADING ANIMATION OR ACTUAL CONTENT */}
+      {loading ? (
+        viewMode === 'calendar' ? (
+          /* CALENDAR SKELETON WITH FLOATING NAUTICAL LOADER */
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden relative">
+            {/* Calendar Month Navigation Skeleton */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-white">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-blue-100/80 animate-pulse flex items-center justify-center">
+                  <CalendarDays className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+                </div>
+                <div className="h-4 w-36 bg-slate-200 rounded-md animate-pulse" />
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="h-7 w-7 rounded-lg bg-slate-100 animate-pulse" />
+                <div className="h-7 w-12 rounded-lg bg-slate-100 animate-pulse" />
+                <div className="h-7 w-7 rounded-lg bg-slate-100 animate-pulse" />
+              </div>
+            </div>
+
+            {/* Weekday headers */}
+            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50 text-center py-2.5">
+              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, idx) => (
+                <div
+                  key={day}
+                  className={`text-[11px] font-extrabold uppercase tracking-wider ${
+                    idx === 0 || idx === 6 ? 'text-blue-500/60' : 'text-slate-400'
+                  }`}
+                >
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar Days Matrix Skeleton */}
+            <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 relative min-h-[500px]">
+              {Array.from({ length: 35 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="min-h-[95px] p-2 bg-white flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between">
+                    <div
+                      className="w-5 h-5 rounded-full bg-slate-100 animate-pulse"
+                      style={{ animationDelay: `${(idx % 7) * 50}ms` }}
+                    />
+                    {idx % 4 === 1 && (
+                      <div
+                        className="w-12 h-3.5 rounded-full bg-blue-50 animate-pulse"
+                        style={{ animationDelay: `${(idx % 5) * 70}ms` }}
+                      />
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 mt-2">
+                    {idx % 3 === 0 ? (
+                      <>
+                        <div
+                          className="h-3.5 w-full rounded-md bg-blue-50/80 animate-pulse"
+                          style={{ animationDelay: `${(idx % 7) * 60}ms` }}
+                        />
+                        <div
+                          className="h-3.5 w-3/4 rounded-md bg-slate-100 animate-pulse"
+                          style={{ animationDelay: `${(idx % 7) * 80}ms` }}
+                        />
+                      </>
+                    ) : idx % 2 === 0 ? (
+                      <div
+                        className="h-3.5 w-4/5 rounded-md bg-slate-100 animate-pulse"
+                        style={{ animationDelay: `${(idx % 7) * 70}ms` }}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+
+              {/* Central Floating Animated Glass Card */}
+              <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+                <div className="bg-white/95 border border-slate-200/90 shadow-2xl shadow-blue-950/10 rounded-3xl p-6 sm:p-8 flex flex-col items-center text-center max-w-sm mx-auto">
+                  {/* Glowing Animated Nautical Badge */}
+                  <div className="relative mb-4 flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-2xl bg-blue-500/20 animate-ping absolute" />
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-sky-500 p-0.5 shadow-xl shadow-blue-600/30 flex items-center justify-center">
+                      <div className="w-full h-full bg-white/10 rounded-[14px] flex items-center justify-center backdrop-blur-xs">
+                        <Ship className="w-8 h-8 text-white animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center">
+                      <RefreshCw className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                    </div>
+                  </div>
+
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">
+                    Carregando Agendamentos da Marina
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">
+                    Sincronizando descidas programadas, planos de navegação e posições no píer...
+                  </p>
+
+                  {/* Shimmering Progress Bar */}
+                  <div className="w-48 h-1.5 bg-slate-100 rounded-full overflow-hidden mt-4 relative">
+                    <div className="h-full bg-gradient-to-r from-blue-600 to-sky-400 rounded-full w-2/5 animate-pulse" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* LIST SKELETON */
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="h-4 w-40 bg-slate-200 rounded animate-pulse" />
+              <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+            </div>
+            <div className="divide-y divide-slate-100">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="p-4 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 animate-pulse shrink-0" />
+                    <div className="space-y-1.5">
+                      <div className="h-3.5 w-36 bg-slate-200 rounded animate-pulse" />
+                      <div className="h-3 w-24 bg-slate-100 rounded animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="h-3.5 w-28 bg-slate-100 rounded animate-pulse hidden sm:block" />
+                  <div className="h-5 w-16 bg-blue-50 rounded-full animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      ) : viewMode === 'calendar' ? (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
           {/* Calendar Month Navigation */}
           <div className="flex items-center justify-between p-4 border-b border-slate-100">

@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getBoatCode, matchesBoatSearch } from '../utils/boatUtils';
-import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet, Plus, Users, Compass, MapPin } from 'lucide-react';
+import { LogOut, Ship, Clock, CheckCircle2, Droplets, ArrowRight, Loader2, Save, Camera, Navigation, Anchor, Image as ImageIcon, Check, ChevronLeft, ChevronRight, User as UserIcon, ClipboardList, Zap, Bell, Search, X, SortAsc, Layers, Truck, Shield, Home, Menu, LayoutGrid, Kanban, ArrowUpCircle, ArrowDownCircle, TrendingUp, CalendarDays, Settings, Volume2, VolumeX, LifeBuoy, Flame, Calendar, Banknote, QrCode, CreditCard, Building2, Wrench, Printer, Wallet, Plus, Users, Compass, MapPin } from 'lucide-react';
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction, chamadoDB } from '../db';
+import { initAudioUnlock, playMarinaBeep, isSoundEnabled, setSoundEnabled } from '../utils/marinaNotifications';
 import MarinaChecklistsView from './MarinaChecklistsView';
 import MarinaFuelView from './MarinaFuelView';
 import MarinaTanksView from './MarinaTanksView';
 import MarinaChamadosView from './MarinaChamadosView';
 import MarinaCaixaView from './MarinaCaixaView';
-import MarinaEmbarcacoesClientesView from './MarinaEmbarcacoesClientesView';
-import ComercialEmbarcacoesPage from './comercial/ComercialEmbarcacoesPage';
-import ComercialClientesPage from './comercial/ComercialClientesPage';
+import MarinaEmbarcacoesPage from './MarinaEmbarcacoesPage';
+import MarinaClientesPage from './MarinaClientesPage';
 import FinanceSchedulesPage from './FinanceSchedulesPage';
 import MarinaAgendamentosView from './MarinaAgendamentosView';
 import AdicionarFilaModal from './AdicionarFilaModal';
@@ -88,13 +88,30 @@ function ZoomableImage({ src, alt, className }: { src: string; alt: string; clas
 }
 
 export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashboardProps) {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('marina_data_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem('marina_data_cache');
+    } catch {
+      return true;
+    }
+  });
   const [error, setError] = useState('');
   
   const [selectedDate, setSelectedDate] = useState<string>(getFormattedDate(new Date()));
   const dataRef = useRef(data);
   dataRef.current = data;
+
+  // Rastreamento para suprimir eco e evitar recarregamentos no cliente que originou a ação
+  const recentLocalUpdates = useRef<Map<string, number>>(new Map());
+  const lastFetchTimeRef = useRef<number>(Date.now());
 
   const [toast, setToast] = useState<{ msg: string; type: 'info' | 'success' | 'warning' } | null>(null);
   const showToast = (msg: string, type: 'info' | 'success' | 'warning' = 'info') => {
@@ -102,8 +119,38 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     setTimeout(() => setToast(null), 4000);
   };
 
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [isSoundActive, setIsSoundActive] = useState<boolean>(() => isSoundEnabled());
+
+  const handleToggleSound = () => {
+    const next = !isSoundActive;
+    setIsSoundActive(next);
+    setSoundEnabled(next);
+    if (next) {
+      playMarinaBeep('reserva');
+      showToast('Alertas sonoros ativados', 'success');
+    } else {
+      showToast('Alertas sonoros desativados', 'info');
+    }
+  };
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<'home' | 'operacao' | 'chamados' | 'embarcacoes-clientes' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes' | 'caixa'>('home');
+  type MarinaTabType = 'home' | 'operacao' | 'chamados' | 'embarcacoes-clientes' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes' | 'caixa';
+  const [activeTab, setActiveTab] = useState<MarinaTabType>(() => {
+    try {
+      const saved = localStorage.getItem('marina_active_tab') as MarinaTabType;
+      const validTabs: MarinaTabType[] = ['home', 'operacao', 'chamados', 'embarcacoes-clientes', 'clientes', 'embarcacoes', 'checklists', 'agendamentos', 'folgas', 'aviso-saida', 'combustivel', 'tanques', 'configuracoes', 'caixa'];
+      return saved && validTabs.includes(saved) ? saved : 'home';
+    } catch {
+      return 'home';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('marina_active_tab', activeTab);
+    } catch {}
+  }, [activeTab]);
   const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
   const [filterType, setFilterType] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
@@ -148,59 +195,133 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   };
 
   useEffect(() => {
+    initAudioUnlock();
     fetchData(true);
-    const socket = io();
-    socket.on('marina_update', (payload: any) => {
-      if (!payload || !payload.reservation) return;
-      const reservationData = payload.reservation;
-      if (!reservationData || !reservationData.id) return;
 
-      const reservation = reservationData;
-      const { action } = payload;
+    // Prevenir comportamento padrão do HTML5 Drag and Drop em toda a janela
+    // Se o usuário soltar um cartão acidentalmente fora da coluna, o navegador NÃO navega/recarrega
+    const handleGlobalDragOver = (e: DragEvent) => e.preventDefault();
+    const handleGlobalDrop = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('dragover', handleGlobalDragOver);
+    window.addEventListener('drop', handleGlobalDrop);
 
-      setData((prev: any) => {
-        if (!prev) return prev;
-
-        let updatedReservations = [...(prev.reservations || [])];
-
-        if (action === 'delete') {
-          updatedReservations = updatedReservations.filter((r: any) => r.id !== reservation.id);
-        } else if (action === 'new') {
-          // Nova reserva — adiciona se não existir
-          const exists = updatedReservations.some((r: any) => r.id === reservation.id);
-          if (!exists) {
-            updatedReservations.push(reservation);
-          }
-        } else {
-          // upsert / checkin / cancel — merge parcial nos dados existentes
-          const idx = updatedReservations.findIndex((r: any) => r.id === reservation.id);
-          if (idx >= 0) {
-            updatedReservations[idx] = { ...updatedReservations[idx], ...reservation };
-          } else {
-            updatedReservations.push(reservation);
-          }
-        }
-
-        return { ...prev, reservations: updatedReservations };
-      });
-
-      // Gerar mensagem de notificação
-      const boat = dataRef.current?.boats?.find((b: any) => b.id === reservation.embarcacaoId);
-      const boatLabel = boat?.nome || reservation.embarcacaoId || 'Embarcação';
-
-      const messages: Record<string, { msg: string; type: 'info' | 'success' | 'warning' }> = {
-        new:     { msg: `Nova reserva: ${boatLabel}`, type: 'info' },
-        checkin: { msg: `Check-in confirmado: ${boatLabel}`, type: 'success' },
-        cancel:  { msg: `Reserva cancelada: ${boatLabel}`, type: 'warning' },
-        upsert:  { msg: `Reserva atualizada: ${boatLabel}`, type: 'info' },
-        delete:  { msg: `Reserva removida`, type: 'warning' },
-      };
-
-      const info = messages[action] || { msg: 'Atualização recebida', type: 'info' as const };
-      showToast(info.msg, info.type);
+    const token = localStorage.getItem('admin_token');
+    const socket = io(window.location.origin, {
+      path: '/socket.io',
+      auth: { token: token || undefined },
+      transports: ['polling', 'websocket'],
+      reconnection: true,
+      reconnectionAttempts: 25,
+      reconnectionDelay: 1000
     });
-    
+
+    socket.on('connect', () => {
+      setIsSocketConnected(true);
+    });
+
+    socket.on('disconnect', () => {
+      setIsSocketConnected(false);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.warn('[MarinaDashboard] Socket connection error:', err.message);
+      setIsSocketConnected(false);
+    });
+
+    socket.on('marina_update', (payload: any) => {
+      console.log('[MarinaDashboard] Socket marina_update recebido:', payload);
+      const { action } = payload || {};
+      const reservationData = payload?.reservation || payload?.data;
+
+      // Se esta atualização foi gerada pelo próprio usuário há menos de 5 segundos, suprimir o eco
+      if (reservationData?.id && recentLocalUpdates.current.has(reservationData.id)) {
+        const time = recentLocalUpdates.current.get(reservationData.id)!;
+        if (Date.now() - time < 5000) {
+          recentLocalUpdates.current.delete(reservationData.id);
+          return;
+        }
+        recentLocalUpdates.current.delete(reservationData.id);
+      }
+
+      // 1. Tocar bip sonoro apenas para eventos externos reais
+      try {
+        if (action === 'cancel') {
+          playMarinaBeep('alerta');
+        } else if (action === 'new') {
+          playMarinaBeep('reserva');
+        }
+      } catch (err) {
+        console.warn('[MarinaDashboard] Falha ao reproduzir áudio:', err);
+      }
+
+      // 2. Atualização otimista imediata na memória para renderização fluida sem recarregar
+      if (reservationData && reservationData.id) {
+        const reservation = reservationData;
+        setData((prev: any) => {
+          if (!prev) return prev;
+          let updatedReservations = [...(prev.reservations || [])];
+
+          if (action === 'delete') {
+            updatedReservations = updatedReservations.filter((r: any) => r.id !== reservation.id);
+          } else if (action === 'new') {
+            const exists = updatedReservations.some((r: any) => r.id === reservation.id);
+            if (!exists) {
+              updatedReservations.push(reservation);
+            }
+          } else {
+            const idx = updatedReservations.findIndex((r: any) => r.id === reservation.id);
+            if (idx >= 0) {
+              updatedReservations[idx] = { ...updatedReservations[idx], ...reservation };
+            } else {
+              updatedReservations.push(reservation);
+            }
+          }
+
+          return { ...prev, reservations: updatedReservations };
+        });
+
+        // 3. Notificação visual via Toast
+        const boat = dataRef.current?.boats?.find((b: any) => b.id === reservation.embarcacaoId);
+        const boatLabel = reservation.embarcacaoNome || (boat ? getBoatCode(boat) : null) || boat?.nome || reservation.modeloAvulso || reservation.embarcacaoId || 'Embarcação';
+        const clientLabel = reservation.clienteNome || reservation.nomeAvulso || '';
+        const clientSuffix = clientLabel ? ` (${clientLabel})` : '';
+
+        const messages: Record<string, { msg: string; type: 'info' | 'success' | 'warning' }> = {
+          new:     { msg: `Nova reserva na fila: ${boatLabel}${clientSuffix}`, type: 'info' },
+          checkin: { msg: `Check-in confirmado: ${boatLabel}${clientSuffix}`, type: 'success' },
+          cancel:  { msg: `Reserva cancelada: ${boatLabel}${clientSuffix}`, type: 'warning' },
+          upsert:  { msg: `Reserva atualizada: ${boatLabel}${clientSuffix}`, type: 'info' },
+          status:  { msg: `Status atualizado: ${boatLabel}`, type: 'info' },
+          update:  { msg: `Reserva atualizada: ${boatLabel}`, type: 'info' },
+          delete:  { msg: `Reserva removida da fila`, type: 'warning' },
+        };
+
+        const info = messages[action] || { msg: `Atualização: ${boatLabel}`, type: 'info' as const };
+        showToast(info.msg, info.type);
+      } else {
+        showToast('Fila do Píer atualizada em tempo real', 'info');
+      }
+    });
+
+    // Atualizações adicionais relevantes para o painel da marina (chamados, combustivel, caixa)
+    socket.on('chamado_update', () => fetchData());
+    socket.on('fuel_inventory_updated', () => fetchData());
+    socket.on('marina_caixa_update', () => fetchData());
+
+    // Sincronização ao alternar abas do navegador (sync silencioso em background apenas se ficou inativo por mais de 10 min)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        if (Date.now() - lastFetchTimeRef.current > 10 * 60 * 1000) {
+          fetchData(false, true);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      window.removeEventListener('dragover', handleGlobalDragOver);
+      window.removeEventListener('drop', handleGlobalDrop);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       socket.disconnect();
     };
   }, []);
@@ -296,17 +417,21 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
     };
   }, [data?.reservations, selectedDate]);
 
-  const fetchData = async (isInitial = false) => {
-    if (isInitial || !data) setLoading(true);
+  const fetchData = async (isInitial = false, isSilent = false) => {
+    if (isInitial && !dataRef.current && !isSilent) setLoading(true);
     try {
       const res = await fetch('/api/db/pull', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
       });
       if (!res.ok) throw new Error('Falha ao obter dados.');
       const json = await res.json();
+      lastFetchTimeRef.current = Date.now();
       setData(json);
+      try {
+        localStorage.setItem('marina_data_cache', JSON.stringify(json));
+      } catch {}
     } catch (err: any) {
-      if (isInitial || !data) setError(err.message);
+      if (!dataRef.current) setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -417,12 +542,14 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
   // --- Drag and Drop Handlers ---
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, reserva: any, originCol: string) => {
+    e.stopPropagation();
     e.dataTransfer.setData('application/json', JSON.stringify({ reservaId: reserva.id, originCol }));
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
   };
 
@@ -462,6 +589,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       updatedReserva.operadorChegada = null;
     }
 
+    recentLocalUpdates.current.set(reserva.id, Date.now());
+
     try {
       await fetch('/api/db/save', {
         method: 'POST',
@@ -485,6 +614,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetCol: string) => {
     e.preventDefault();
+    e.stopPropagation();
     const dataStr = e.dataTransfer.getData('application/json');
     if (!dataStr) return;
 
@@ -526,6 +656,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       statusMarina: 'pier',
       operadorDescida: currentOperator
     };
+
+    recentLocalUpdates.current.set(alvo.id, Date.now());
     
     try {
       await fetch('/api/db/save', {
@@ -559,6 +691,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       statusMarina: 'saida',
       operadorSaida: currentOperator
     };
+
+    recentLocalUpdates.current.set(reserva.id, Date.now());
     
     try {
       await fetch('/api/db/save', {
@@ -608,6 +742,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       abastecimentoDataHora: selectedReserva.abastecimentoDataHora || new Date().toISOString()
     };
 
+    recentLocalUpdates.current.set(selectedReserva.id, Date.now());
+
     try {
       await fetch('/api/db/save', {
         method: 'POST',
@@ -618,10 +754,16 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
       });
 
-      if (litersNum > 0) {
+      const previousLiters = Number(selectedReserva.abastecimentoLitros || 0);
+      const diff = litersNum - previousLiters;
+      const boatName = selectedReserva.barcoNome || getEmbarcacao(selectedReserva.embarcacaoId)?.nome || 'Embarcação';
+
+      if (diff > 0) {
         const { consumeFuelForEmbarcacao } = await import('../utils/fuelInventory');
-        const boatName = selectedReserva.barcoNome || getEmbarcacao(selectedReserva.embarcacaoId)?.nome || 'Embarcação';
-        await consumeFuelForEmbarcacao(litersNum, boatName, currentOperator);
+        await consumeFuelForEmbarcacao(diff, boatName, currentOperator);
+      } else if (diff < 0) {
+        const { restoreFuelForEmbarcacao } = await import('../utils/fuelInventory');
+        await restoreFuelForEmbarcacao(Math.abs(diff), `Ajuste de abastecimento: ${boatName}`, currentOperator);
       }
 
       setData((prev: any) => ({
@@ -662,6 +804,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
       statusMarina: 'guardada',
       operadorSubida: currentOperator
     };
+
+    recentLocalUpdates.current.set(alvo.id, Date.now());
     
     try {
       await fetch('/api/db/save', {
@@ -1697,6 +1841,37 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   <span>Alfabética</span>
                 </button>
               </div>
+
+              {/* Status Socket Real-time & Controle de Som */}
+              <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
+                <button
+                  type="button"
+                  onClick={() => fetchData()}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-xs ${
+                    isSocketConnected 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 active:scale-95' 
+                      : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 active:scale-95'
+                  }`}
+                  title={isSocketConnected ? 'Socket em tempo real conectado. Clique para forçar sincronização imediata.' : 'Socket desconectado. Clique para sincronizar e tentar reconectar.'}
+                >
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${isSocketConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                  <span className="hidden md:inline">{isSocketConnected ? 'Ao Vivo' : 'Reconectar'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleToggleSound}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-xs active:scale-95 ${
+                    isSoundActive 
+                      ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' 
+                      : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                  }`}
+                  title={isSoundActive ? 'Alertas sonoros ativados. Clique para silenciar ou testar o som.' : 'Alertas sonoros desligados. Clique para ativar som.'}
+                >
+                  {isSoundActive ? <Volume2 className="w-3.5 h-3.5 text-blue-600" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
+                  <span className="hidden md:inline">{isSoundActive ? 'Som Ativo' : 'Mudo'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Status Filter Tabs with Badge Counts (Only visible in Lista view) */}
@@ -1846,7 +2021,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                                 </button>
                               </div>
                               <button
-                                onClick={() => executeRegistrarDescida([], reserva)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  executeRegistrarDescida([], reserva);
+                                }}
                                 className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer shadow-2xs"
                               >
                                 Baixar Barco
@@ -1919,13 +2098,21 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             )}
                             <div className="flex items-center justify-between gap-1 text-[11px] pt-1 border-t border-slate-100">
                               <button
-                                onClick={() => executeMarcarSaida(reserva)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  executeMarcarSaida(reserva);
+                                }}
                                 className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                               >
                                 Saída / Navegar
                               </button>
                               <button
-                                onClick={() => openFuelForChegada(reserva)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openFuelForChegada(reserva);
+                                }}
                                 className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                               >
                                 Abastecer / Chegada
@@ -1999,7 +2186,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
                               <span className="text-sky-700 font-bold">Em Navegação</span>
                               <button
-                                onClick={() => openFuelForChegada(reserva)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openFuelForChegada(reserva);
+                                }}
                                 className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                               >
                                 Abastecer / Chegada
@@ -2074,7 +2265,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                             <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
                               <span className="text-emerald-700 font-bold">{litros ? `${litros}L Abastecido` : 'Retornado'}</span>
                               <button
-                                onClick={() => executeRegistrarSubida([], reserva)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  executeRegistrarSubida([], reserva);
+                                }}
                                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
                               >
                                 Subir Barco
@@ -2403,13 +2598,19 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
         {(activeTab === 'embarcacoes-clientes' || activeTab === 'embarcacoes') && (
           <div className="max-w-7xl mx-auto">
-            <ComercialEmbarcacoesPage userRole="marina_gerente" />
+            <MarinaEmbarcacoesPage 
+              operadorNome={operadorNome}
+              showToast={showToast}
+            />
           </div>
         )}
 
         {activeTab === 'clientes' && (
           <div className="max-w-7xl mx-auto">
-            <ComercialClientesPage userRole="marina_gerente" />
+            <MarinaClientesPage
+              operadorNome={operadorNome}
+              showToast={showToast}
+            />
           </div>
         )}
 
@@ -2784,7 +2985,9 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
                         {['pix', 'cartao_credito', 'cartao_debito'].includes(paymentType) && (
                           <div className="mt-4 p-4 border border-slate-200 rounded-2xl bg-white space-y-3">
-                            <label className="text-sm font-bold text-slate-700 block">Comprovante de Pagamento *</label>
+                            <label className="text-sm font-bold text-slate-700 block">
+                              Comprovante de Pagamento <span className="text-xs font-normal text-slate-400">(Opcional)</span>
+                            </label>
 
                             {comprovanteUrl ? (
                               <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
@@ -2859,7 +3062,7 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
                   ) : (
                     <button
                       type="submit"
-                      disabled={isSubmitting || (['pix', 'cartao_credito', 'cartao_debito'].includes(paymentType) && (!comprovanteUrl && !selectedReserva?.abastecimentoComprovanteUrl))}
+                      disabled={isSubmitting}
                       className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-base uppercase tracking-wide flex items-center justify-center gap-2 hover:bg-emerald-700 disabled:opacity-70 transition-colors shadow-md cursor-pointer"
                     >
                       <Check className="w-5 h-5" />

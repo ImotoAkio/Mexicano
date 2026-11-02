@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, ArrowRight, ArrowLeft, ShieldCheck, Lock, Eye, EyeOff, FileText, Database, Info, X } from 'lucide-react';
+import { ShieldAlert, ArrowRight, ArrowLeft, ShieldCheck, Lock, Eye, EyeOff, FileText, Database, Info, X, MessageSquare, KeyRound, CheckCircle2, Download, Smartphone } from 'lucide-react';
 import Logo from './Logo';
+import InstallAppSheet from './pwa/InstallAppSheet';
+import { usePWAInstall } from '../lib/pwaInstall';
 
 interface ClientLoginPageProps {
   onLoginSuccess: (token: string) => void;
 }
 
-type ViewState = 'splash' | 'welcome' | 'identifier' | 'password' | 'setup_password';
+type ViewState = 'splash' | 'welcome' | 'identifier' | 'password' | 'setup_password' | 'forgot_otp' | 'forgot_new_password';
 
 export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps) {
+  const pwa = usePWAInstall({ autoShow: true, autoShowDelayMs: 3000 });
+
   const [identifier, setIdentifier] = useState(() => localStorage.getItem('client_last_cpf') || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,6 +28,12 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
   const [consent, setConsent] = useState(false);
   const [privacyTab, setPrivacyTab] = useState<'general' | 'data' | 'rights' | 'dpo'>('general');
 
+  // Estados de recuperação de senha via WhatsApp OTP
+  const [otpCode, setOtpCode] = useState('');
+  const [maskedPhone, setMaskedPhone] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resendTimer, setResendTimer] = useState(0);
+
   useEffect(() => {
     if (view === 'splash') {
       const timer = setTimeout(() => {
@@ -32,6 +42,148 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
       return () => clearTimeout(timer);
     }
   }, [view]);
+
+  // Contagem regressiva para reenvio do código OTP
+  useEffect(() => {
+    let interval: any;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer(prev => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
+
+  const handleStartForgotPassword = async () => {
+    setError('');
+    setSuccess('');
+    const cleanCpf = identifier.replace(/\D/g, '');
+    if (cleanCpf.length !== 11) {
+      setError('Informe um CPF válido com 11 dígitos.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/client/forgot-password/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanCpf }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao solicitar código de recuperação.');
+      }
+
+      setMaskedPhone(data.maskedPhone || 'WhatsApp');
+      setResendTimer(45);
+      setOtpCode('');
+      setView('forgot_otp');
+    } catch (err: any) {
+      setError(err.message || 'Erro ao solicitar código de recuperação.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0 || isLoading) return;
+    await handleStartForgotPassword();
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const cleanCode = otpCode.trim();
+    if (cleanCode.length !== 6) {
+      setError('Digite o código de 6 dígitos enviado ao seu WhatsApp.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const cleanCpf = identifier.replace(/\D/g, '');
+      const response = await fetch('/api/auth/client/forgot-password/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanCpf, code: cleanCode }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Código inválido ou expirado.');
+      }
+
+      setResetToken(data.resetToken);
+      setPassword('');
+      setConfirmPassword('');
+      setView('forgot_new_password');
+    } catch (err: any) {
+      setError(err.message || 'Código incorreto.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (password.length < 6) {
+      setError('A nova senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const cleanCpf = identifier.replace(/\D/g, '');
+      const response = await fetch('/api/auth/client/forgot-password/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: cleanCpf,
+          resetToken,
+          newPassword: password,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Erro ao redefinir senha.');
+      }
+
+      // Auto-login com a nova senha
+      const cleanId = identifier.replace(/\D/g, '');
+      const loginResponse = await fetch('/api/auth/client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: cleanId, password }),
+      });
+
+      const loginData = await loginResponse.json();
+      if (loginResponse.ok && loginData.token) {
+        try {
+          localStorage.setItem('client_token', loginData.token);
+          localStorage.setItem('last_user_type', 'client');
+          localStorage.setItem('client_last_cpf', identifier);
+        } catch (err) {}
+        onLoginSuccess(loginData.token);
+      } else {
+        setView('password');
+        setSuccess('Senha alterada com sucesso! Faça login.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Erro ao atualizar senha.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const onlyNumbers = e.target.value.replace(/\D/g, '').substring(0, 11);
@@ -228,7 +380,18 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
             </div>
 
             {/* Action & Legal */}
-            <div className="mt-auto pb-6 flex flex-col items-center">
+            <div className="mt-auto pb-6 flex flex-col items-center w-full">
+              {pwa.canOfferInstall && (
+                <button
+                  type="button"
+                  onClick={pwa.open}
+                  className="mb-5 flex items-center gap-2 px-4 py-2 rounded-full bg-[#B69D74]/10 hover:bg-[#B69D74]/20 border border-[#B69D74]/30 text-[#E2CDA8] text-xs font-medium tracking-wide transition-all active:scale-95 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#B69D74]" />
+                  <span>Instalar App Vila Náutica</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setView('identifier')}
@@ -239,7 +402,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
                 <ArrowRight className="w-5 h-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
               </button>
 
-              <div className="mt-12 text-center text-[10px] text-white/30 uppercase tracking-widest leading-loose font-light">
+              <div className="mt-8 text-center text-[10px] text-white/30 uppercase tracking-widest leading-loose font-light">
                 Ao prosseguir, você aceita nossos <br />
                 <button
                   type="button"
@@ -364,15 +527,181 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
                 </div>
               )}
 
+              {success && (
+                <div className="p-4 bg-emerald-950/20 border border-emerald-900/30 rounded-xl text-emerald-400 text-xs font-light flex items-center space-x-3">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{success}</span>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={isLoading || !password}
-                className="w-full mt-4 py-4 bg-white hover:bg-white/90 text-black rounded-xl font-medium transition-all disabled:opacity-50 text-sm h-[54px] flex justify-center items-center"
+                className="w-full mt-4 py-4 bg-white hover:bg-white/90 text-black rounded-xl font-medium transition-all disabled:opacity-50 text-sm h-[54px] flex justify-center items-center cursor-pointer"
               >
                 {isLoading ? (
                   <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
                 ) : (
                   'Entrar no Portal'
+                )}
+              </button>
+
+              <div className="pt-2 flex flex-col items-center space-y-2">
+                <button
+                  type="button"
+                  onClick={handleStartForgotPassword}
+                  disabled={isLoading}
+                  className="text-xs text-white/50 hover:text-white transition-colors cursor-pointer py-2"
+                >
+                  Esqueceu sua senha?
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* === FORGOT PASSWORD OTP VIEW === */}
+        {view === 'forgot_otp' && (
+          <div className="flex-1 flex flex-col animate-in slide-in-from-right-8 fade-in duration-500">
+            <div className="pt-2 pb-6">
+              <button 
+                onClick={() => { setView('password'); setError(''); setOtpCode(''); }}
+                className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-5 text-[#B69D74]">
+              <MessageSquare className="w-6 h-6" />
+            </div>
+
+            <h2 className="text-2xl font-light text-white tracking-wide mb-1">
+              Código de Acesso
+            </h2>
+            <p className="text-white/50 text-xs font-light leading-relaxed mb-6">
+              Enviamos um código de segurança de 6 dígitos via WhatsApp para o telefone cadastrado <span className="text-white font-medium">{maskedPhone}</span>.
+            </p>
+
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">Código de 6 dígitos</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => {
+                    setOtpCode(e.target.value.replace(/\D/g, '').substring(0, 6));
+                    if (error) setError('');
+                  }}
+                  className="w-full bg-[#111] border border-white/10 rounded-xl px-5 py-4 text-white text-center tracking-[0.4em] font-mono text-xl placeholder-white/20 focus:outline-none focus:border-[#B69D74]/50 focus:bg-[#151515] transition-all shadow-inner"
+                  placeholder="000000"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {error && (
+                <div className="p-4 bg-red-950/20 border border-red-900/30 rounded-xl text-red-400/90 text-xs font-light flex items-center space-x-3">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading || otpCode.trim().length !== 6}
+                className="w-full mt-2 py-4 bg-white hover:bg-white/90 text-black rounded-xl font-medium transition-all disabled:opacity-50 text-sm h-[54px] flex justify-center items-center cursor-pointer"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                ) : (
+                  'Confirmar Código'
+                )}
+              </button>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={resendTimer > 0 || isLoading}
+                  className="text-xs text-white/40 hover:text-white transition-colors cursor-pointer disabled:text-white/20"
+                >
+                  {resendTimer > 0 ? `Reenviar código em ${resendTimer}s` : 'Não recebeu? Reenviar código'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* === FORGOT NEW PASSWORD VIEW === */}
+        {view === 'forgot_new_password' && (
+          <div className="flex-1 flex flex-col animate-in slide-in-from-right-8 fade-in duration-500">
+            <div className="pt-2 pb-6">
+              <button 
+                onClick={() => { setView('forgot_otp'); setError(''); setPassword(''); setConfirmPassword(''); }}
+                className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-5 text-[#B69D74]">
+              <KeyRound className="w-6 h-6" />
+            </div>
+
+            <h2 className="text-2xl font-light text-white tracking-wide mb-1">
+              Nova Senha
+            </h2>
+            <p className="text-white/50 text-xs font-light leading-relaxed mb-6">
+              Identidade confirmada! Defina sua nova senha de acesso ao portal.
+            </p>
+
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">Nova senha</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-[#111] border border-white/5 rounded-xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-[#B69D74]/50 focus:bg-[#151515] transition-all text-sm shadow-inner"
+                  placeholder="Mínimo 6 caracteres"
+                  required
+                  minLength={6}
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-[0.15em] text-white/40 ml-1">Repetir nova senha</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full bg-[#111] border border-white/5 rounded-xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-[#B69D74]/50 focus:bg-[#151515] transition-all text-sm shadow-inner"
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                />
+              </div>
+
+              {error && (
+                <div className="p-4 bg-red-950/20 border border-red-900/30 rounded-xl text-red-400/90 text-xs font-light flex items-center space-x-3">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading || !password || !confirmPassword}
+                className="w-full mt-2 py-4 bg-white hover:bg-white/90 text-black rounded-xl font-medium transition-all disabled:opacity-50 text-sm h-[54px] flex justify-center items-center cursor-pointer"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                ) : (
+                  'Salvar Nova Senha e Entrar'
                 )}
               </button>
             </form>
@@ -663,6 +992,16 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
           </div>
         </div>
       )}
+
+      {/* PWA Install Sheet Modal */}
+      <InstallAppSheet
+        open={pwa.isOpen}
+        onClose={pwa.dismiss}
+        method={pwa.method}
+        platform={pwa.platform}
+        onNativeInstall={pwa.promptNativeInstall}
+        context="login"
+      />
 
     </div>
   );

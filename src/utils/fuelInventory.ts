@@ -163,15 +163,101 @@ export async function consumeFuelForEmbarcacao(litros: number, barcoNome: string
       body: JSON.stringify({ litros, barcoNome, operador, detalhes: `Abastecimento de ${litros}L na embarcação ${barcoNome}` })
     });
     
-    if (!res.ok) {
-      const err = await res.json();
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data && data.novoEstoque) {
+        localStorage.setItem('marina_fuel_inventory', JSON.stringify(data.novoEstoque));
+        window.dispatchEvent(new CustomEvent('marina_fuel_inventory_updated', { detail: data.novoEstoque }));
+      }
+      return true;
+    } else {
+      const err = await res.json().catch(() => ({}));
       console.error("Erro na API de combustivel:", err);
-      return false;
     }
-    
-    return true;
   } catch (e) {
     console.error("Erro ao chamar API de combustivel:", e);
+  }
+
+  // Fallback offline caso API falhe
+  try {
+    const current = getFuelInventory();
+    let remaining = litros;
+    let parcial = Number(current.galaoParcialLitros || 0);
+    let galoes = Number(current.galoesPierQuantidade || 0);
+    const cap = Number(current.galoesCapacidadeLitros || 20);
+
+    if (parcial > 0) {
+      if (parcial >= remaining) {
+        parcial -= remaining;
+        remaining = 0;
+      } else {
+        remaining -= parcial;
+        parcial = 0;
+      }
+    }
+
+    if (remaining > 0) {
+      const needed = Math.ceil(remaining / cap);
+      galoes -= needed;
+      parcial = (needed * cap) - remaining;
+      remaining = 0;
+    }
+
+    current.galaoParcialLitros = Math.round(parcial * 100) / 100;
+    current.galoesPierQuantidade = galoes;
+    current.ultimaAtualizacao = new Date().toLocaleDateString('pt-BR');
+
+    localStorage.setItem('marina_fuel_inventory', JSON.stringify(current));
+    window.dispatchEvent(new CustomEvent('marina_fuel_inventory_updated', { detail: current }));
+    return true;
+  } catch (localErr) {
+    console.error("Erro no fallback de combustível:", localErr);
+    return false;
+  }
+}
+
+/**
+ * Restore liters to pier galões (e.g. cancellation or reduction)
+ */
+export async function restoreFuelForEmbarcacao(litros: number, motivo: string, operador?: string): Promise<boolean> {
+  if (litros <= 0) return false;
+
+  try {
+    const token = localStorage.getItem('marina_token') || localStorage.getItem('admin_token');
+    const res = await fetch('/api/fuel/restore', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ litros, motivo, operador })
+    });
+
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data && data.novoEstoque) {
+        localStorage.setItem('marina_fuel_inventory', JSON.stringify(data.novoEstoque));
+        window.dispatchEvent(new CustomEvent('marina_fuel_inventory_updated', { detail: data.novoEstoque }));
+      }
+      return true;
+    }
+  } catch (e) {
+    console.error("Erro ao estornar combustível:", e);
+  }
+
+  // Fallback offline
+  try {
+    const current = getFuelInventory();
+    const cap = Number(current.galoesCapacidadeLitros || 20);
+    const total = (Number(current.galoesPierQuantidade || 0) * cap) + Number(current.galaoParcialLitros || 0) + litros;
+    current.galoesPierQuantidade = Math.floor(total / cap);
+    current.galaoParcialLitros = Math.round((total % cap) * 100) / 100;
+    current.ultimaAtualizacao = new Date().toLocaleDateString('pt-BR');
+    localStorage.setItem('marina_fuel_inventory', JSON.stringify(current));
+    window.dispatchEvent(new CustomEvent('marina_fuel_inventory_updated', { detail: current }));
+    return true;
+  } catch (localErr) {
+    console.error("Erro no fallback de estorno de combustível:", localErr);
     return false;
   }
 }

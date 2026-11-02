@@ -12,6 +12,7 @@ interface ClientReservationModalProps {
   boats: any[];
   reservations?: any[];
   preselectedBoatId?: any;
+  marinaDatasFechadas?: Array<{ data: string; motivo: string }>;
   onSuccess: (newRes?: any) => void;
 }
 
@@ -30,6 +31,7 @@ export default function ClientReservationModal({
   boats,
   reservations = [],
   preselectedBoatId,
+  marinaDatasFechadas = [],
   onSuccess 
 }: ClientReservationModalProps) {
   const [selectedBoatId, setSelectedBoatId] = useState(() => {
@@ -92,7 +94,7 @@ export default function ClientReservationModal({
       const datesFormatted = formatDateBR(dateValue);
 
       const token = localStorage.getItem('client_token');
-      const res = await fetch('/api/whatsapp/send-calendar', {
+      const res = await fetch('/api/client/send-calendar', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -100,9 +102,7 @@ export default function ClientReservationModal({
         },
         body: JSON.stringify({ 
           base64Image: base64, 
-          groupId: boat.whatsappGroupId,
-          boatName: boat.nome,
-          clientName: clientName,
+          embarcacaoId: boat.id,
           dates: datesFormatted
         })
       });
@@ -292,6 +292,7 @@ export default function ClientReservationModal({
                 providedBoats={boats}
                 providedReservations={[...reservations, createdReservation].filter(Boolean)}
                 providedClients={[client]}
+                marinaDatasFechadas={marinaDatasFechadas}
                 onExport={(base64) => {
                   if (whatsappStatus === 'idle') {
                     handleWhatsAppExport(base64, b);
@@ -323,8 +324,13 @@ export default function ClientReservationModal({
     : (client?.embarcacaoId === selectedBoatId ? client : null);
   const isPlanoCompleto = clientBoatEntry?.plano === 'completo' || (!clientBoatEntry?.plano && client?.plano === 'completo');
   const chosenDayOfWeek = dateValue ? new Date(dateValue + 'T12:00:00Z').getUTCDay() : -1;
-  const isClosedDay = (chosenDayOfWeek === 1 || chosenDayOfWeek === 2) && !isPlanoCompleto;
-  const isDateOccupied = !!(selectedBoatId && dateValue && reservations.some((r: any) =>
+  const isWeeklyClosed = (chosenDayOfWeek === 1 || chosenDayOfWeek === 2) && !isPlanoCompleto;
+  
+  const specialClosedEntry = (marinaDatasFechadas || []).find(d => d.data === dateValue);
+  const isSpecialClosed = !!specialClosedEntry;
+  const isClosedDay = isSpecialClosed || isWeeklyClosed;
+
+  const isDateOccupied = !isClosedDay && !!(selectedBoatId && dateValue && reservations.some((r: any) =>
     r.embarcacaoId === selectedBoatId && r.data === dateValue && r.status !== 'cancelado'
   ));
   const isPastDate = !!(dateValue && dateValue < minDateStr);
@@ -387,12 +393,17 @@ export default function ClientReservationModal({
                 className="w-full px-4 py-3 bg-[#111] border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74] focus:outline-none"
                 required
               />
-              {isClosedDay && (
+              {isSpecialClosed ? (
+                <p className="mt-2 text-xs text-rose-400 flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  A marina estará fechada nesta data{specialClosedEntry?.motivo ? ` (${specialClosedEntry.motivo})` : ''}.
+                </p>
+              ) : isWeeklyClosed ? (
                 <p className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   A marina não funciona às segundas e terças-feiras para o plano desta embarcação.
                 </p>
-              )}
+              ) : null}
               {!isClosedDay && isDateOccupied && (
                 <p className="mt-2 text-xs text-rose-400 flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />

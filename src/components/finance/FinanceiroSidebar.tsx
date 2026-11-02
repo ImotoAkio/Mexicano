@@ -121,7 +121,8 @@ export default function FinanceiroSidebar({
     window.addEventListener('db_updated', handleUpdate);
     window.addEventListener('db_synced', handleUpdate);
 
-    const socket = io('/', {
+    const socket = io("/", {
+      auth: { token: localStorage.getItem("admin_token") },
       path: '/socket.io',
       transports: ['polling', 'websocket'],
       reconnectionAttempts: 5,

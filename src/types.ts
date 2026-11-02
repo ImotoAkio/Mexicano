@@ -223,6 +223,8 @@ export interface Embarcacao {
   descricaoComercial?: string; // Texto de apresentação comercial para a página de venda no catálogo
   documentoUrl?: string; // URL for the boat document PDF
   seguroUrl?: string; // URL for the boat insurance PDF
+  validadeDocumento?: string; // Data de validade do documento da Marinha (YYYY-MM-DD)
+  validadeSeguro?: string; // Data de validade da apólice de seguro náutico (YYYY-MM-DD)
   temSom?: boolean; // Indicates if the boat requires sound control checks
   horasMotor?: number; // Track current engine hours
   ultimaAtualizacaoHoras?: string;

@@ -7,6 +7,20 @@ const router = Router();
 
 const evolutionHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
+/**
+ * Valida e sanitiza o nome da instância da Evolution API para prevenir SSRF / Path Traversal
+ */
+function resolveEvolutionInstance(customInstance?: any): string {
+  const fallback = process.env.EVOLUTION_INSTANCE || "mexicano";
+  if (!customInstance || typeof customInstance !== 'string') return fallback;
+  const cleaned = customInstance.trim();
+  // Permite apenas caracteres alfanuméricos, hífen e underscore
+  if (!/^[a-zA-Z0-9_\-]+$/.test(cleaned)) {
+    return fallback;
+  }
+  return cleaned;
+}
+
 // Helper: fetch com tolerância a certificados SSL autoassinados para a Evolution API (Usando https nativo para evitar bugs do undici/vite-node)
 async function evolutionFetch(urlStr: string, options: RequestInit = {}): Promise<Response> {
   return new Promise((resolve, reject) => {
@@ -75,12 +89,56 @@ function parseEvolutionError(errorText: string, fallbackText: string, recipient:
   return { isClientError: false, message: errorText || fallbackText };
 }
 
+// Helper exportado para envio programático de mensagens via WhatsApp (Evolution API)
+export async function sendEvolutionText(number: string, text: string): Promise<{ success: boolean; message?: string }> {
+  try {
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+    const instance = process.env.EVOLUTION_INSTANCE || "mexicano";
+
+    if (!apiUrl || !apiKey) {
+      return { success: false, message: "Evolution API não configurada no servidor." };
+    }
+
+    let cleanedNumber = String(number || '').trim();
+    if (!cleanedNumber.includes('@g.us')) {
+      cleanedNumber = cleanedNumber.replace(/\D/g, "");
+      if (cleanedNumber.length >= 10 && cleanedNumber.length <= 11 && !cleanedNumber.startsWith("55")) {
+        cleanedNumber = `55${cleanedNumber}`;
+      }
+    }
+
+    if (!cleanedNumber) {
+      return { success: false, message: "Número de telefone inválido." };
+    }
+
+    const response = await evolutionFetch(`${apiUrl}/message/sendText/${instance}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": apiKey
+      },
+      body: JSON.stringify({ number: cleanedNumber, text })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      const parsedErr = parseEvolutionError(errorText, response.statusText, cleanedNumber);
+      return { success: false, message: parsedErr.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: err.message || "Falha na conexão com WhatsApp" };
+  }
+}
+
 // Route: Get WhatsApp Connection Status (Evolution API)
 router.get("/whatsapp/status", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance);
 
     if (!apiUrl || !apiKey) {
       return res.json({ instance: { state: "not_configured" }, message: "Evolution API (EVOLUTION_API_URL / EVOLUTION_API_KEY) não configurada nas variáveis de ambiente." });
@@ -112,7 +170,7 @@ router.get("/whatsapp/connect", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = (req.query.instance as string) || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance);
 
     if (!apiUrl || !apiKey) {
       return res.json({ base64: null, count: 0, message: "Evolution API não configurada nas variáveis de ambiente." });
@@ -187,7 +245,7 @@ router.get("/whatsapp/debug", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = (req.query.instance as string) || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance);
 
     const report: any = {
       timestamp: new Date().toISOString(),
@@ -269,7 +327,7 @@ router.delete("/whatsapp/logout", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance);
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured" });
@@ -351,11 +409,11 @@ router.delete("/whatsapp/instance/delete/:instanceName", requireAdminAuth, async
 });
 
 // Route: Get WhatsApp Groups (Evolution API)
-router.get("/whatsapp/groups", requireAnyAuth, async (req, res) => {
+router.get("/whatsapp/groups", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance ?? req.body?.instance);
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
@@ -391,11 +449,11 @@ router.get("/whatsapp/groups", requireAnyAuth, async (req, res) => {
 });
 
 // Route: Get WhatsApp Contacts (Evolution API)
-router.get("/whatsapp/contacts", requireAnyAuth, async (req, res) => {
+router.get("/whatsapp/contacts", requireAdminAuth, async (req, res) => {
   try {
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance ?? req.body?.instance);
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
@@ -434,7 +492,7 @@ router.get("/whatsapp/contacts", requireAnyAuth, async (req, res) => {
 });
 
 // Route: Evolution Direct Send Message (Text or Media, individual or group)
-router.post("/evolution/send-message", requireAnyAuth, whatsappLimiter, async (req, res) => {
+router.post("/evolution/send-message", requireAdminAuth, whatsappLimiter, async (req, res) => {
   try {
     const { number, text, media, mimetype, fileName, caption } = req.body;
     const messageText = text || caption || "";
@@ -445,7 +503,7 @@ router.post("/evolution/send-message", requireAnyAuth, whatsappLimiter, async (r
 
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance ?? req.body?.instance);
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });
@@ -522,7 +580,7 @@ router.post("/whatsapp/send-text", requireAdminAuth, whatsappLimiter, async (req
 
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance ?? req.body?.instance);
 
     // Clean number unless it's a group JID (@g.us)
     let cleanedNumber = number.trim();
@@ -572,7 +630,7 @@ router.post("/whatsapp/send-custom", requireAdminAuth, whatsappLimiter, async (r
 
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance ?? req.body?.instance);
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API não configurada na VPS." });
@@ -716,7 +774,7 @@ router.post("/whatsapp/finance/send-message", requireAdminAuth, whatsappLimiter,
 });
 
 // Endpoint para gerar a foto e notificar no grupo de whatsapp da lancha/jet
-router.post("/whatsapp/send-calendar", requireAnyAuth, whatsappLimiter, async (req, res) => {
+router.post("/whatsapp/send-calendar", requireAdminAuth, whatsappLimiter, async (req, res) => {
   try {
     const { base64Image, groupId, boatName, clientName, dates, caption } = req.body;
     
@@ -726,7 +784,7 @@ router.post("/whatsapp/send-calendar", requireAnyAuth, whatsappLimiter, async (r
 
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
-    const instance = req.query.instance || req.body.instance || process.env.EVOLUTION_INSTANCE || "mexicano";
+    const instance = resolveEvolutionInstance(req.query.instance ?? req.body?.instance);
 
     if (!apiUrl || !apiKey) {
       return res.status(500).json({ error: true, message: "Evolution API not configured on VPS" });

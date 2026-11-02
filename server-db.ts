@@ -506,6 +506,12 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN observacoesDescida TEXT;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN tentativasConfirmacao INT DEFAULT 0;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN ultimaTentativaConfirmacao VARCHAR(50);`);
+    } catch (e) {}
 
     // 4. ControlesSom Table
     await connection.query(`
@@ -555,9 +561,15 @@ export async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS ClienteAuth (
         clienteId VARCHAR(50) PRIMARY KEY,
         passwordHash VARCHAR(255) NOT NULL,
+        tokenVersion INT DEFAULT 1,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Add tokenVersion column if table already exists without it
+    try {
+      await connection.query("ALTER TABLE ClienteAuth ADD COLUMN tokenVersion INT DEFAULT 1;");
+    } catch {}
 
     // 7b. UserPreferences Table
     await connection.query(`
@@ -655,6 +667,9 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN totalParcelas INT DEFAULT 1;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN notificacaoEnviada TINYINT(1) DEFAULT 0;`);
     } catch (e) {}
 
     // 8a. ContasBancarias Table
@@ -1389,7 +1404,7 @@ export async function initializeDatabase() {
     await connection.query(`
       CREATE TABLE IF NOT EXISTS CombustivelMovimentacoes (
         id VARCHAR(50) PRIMARY KEY,
-        tipo VARCHAR(20) NOT NULL,
+        tipo VARCHAR(50) NOT NULL,
         litros DECIMAL(10,2) DEFAULT 0,
         galoes INT DEFAULT 0,
         fornecedor VARCHAR(100),
@@ -1402,6 +1417,11 @@ export async function initializeDatabase() {
         diferenca_litros DECIMAL(10,2) DEFAULT 0
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Ensure tipo column supports full length types (e.g. 'abastecimento_embarcacao')
+    try {
+      await connection.query(`ALTER TABLE CombustivelMovimentacoes MODIFY COLUMN tipo VARCHAR(50) NOT NULL;`);
+    } catch (_) {}
 
     await connection.query(`
       CREATE TABLE IF NOT EXISTS CombustivelHistorico (
@@ -1610,6 +1630,45 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
     console.log("✅ ComissoesFechamentos table ready.");
+
+    // 25. NotificacoesLogs Table (Auditoria e Controle de Disparos Automáticos de WhatsApp)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS NotificacoesLogs (
+        id VARCHAR(60) PRIMARY KEY,
+        tipo VARCHAR(50) NOT NULL,
+        referenciaId VARCHAR(60) NOT NULL,
+        clienteId VARCHAR(60) NOT NULL,
+        clienteNome VARCHAR(255) NULL,
+        telefone VARCHAR(50) NOT NULL,
+        horarioSlot VARCHAR(20) NULL,
+        mensagem TEXT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'sucesso',
+        erro TEXT NULL,
+        createdAt VARCHAR(50) NOT NULL,
+        INDEX idx_notif_ref (referenciaId),
+        INDEX idx_notif_cliente (clienteId),
+        INDEX idx_notif_created (createdAt)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ NotificacoesLogs table ready.");
+
+    // 26. MagicLinks Table (Encurtador seguro de links de confirmação e acesso cotista)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS MagicLinks (
+        id VARCHAR(60) PRIMARY KEY,
+        code VARCHAR(20) UNIQUE NOT NULL,
+        clienteId VARCHAR(60) NOT NULL,
+        reservaId VARCHAR(60) NULL,
+        token TEXT NOT NULL,
+        accessCount INT DEFAULT 0,
+        lastAccessedAt VARCHAR(50) NULL,
+        expiresAt VARCHAR(50) NOT NULL,
+        createdAt VARCHAR(50) NOT NULL,
+        INDEX idx_magic_code (code),
+        INDEX idx_magic_cliente (clienteId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ MagicLinks table ready.");
 
     connection.release();
     isInitialized = true;
@@ -1858,6 +1917,8 @@ export async function pullDatabase(forceFresh = false) {
       comprimento: b.comprimento || b.tamanho || (parsedAcessorios && (parsedAcessorios as any).comprimento) || (parsedAcessorios && (parsedAcessorios as any).tamanho) || '',
       chassi: b.chassi || '',
       inscricao: b.inscricao || '',
+      validadeDocumento: b.validadeDocumento || (parsedAcessorios && (parsedAcessorios as any).validadeDocumento) || undefined,
+      validadeSeguro: b.validadeSeguro || (parsedAcessorios && (parsedAcessorios as any).validadeSeguro) || undefined,
       tipo_propulsao: b.tipo_propulsao || '',
       potencia: b.potencia || '',
       donos: donosList,
@@ -2387,6 +2448,12 @@ export async function upsertBoat(boat: any) {
   if (rawComprimento !== null) {
     acessoriosObj.comprimento = rawComprimento;
     acessoriosObj.tamanho = rawComprimento;
+  }
+  if (boat.validadeDocumento) {
+    acessoriosObj.validadeDocumento = boat.validadeDocumento;
+  }
+  if (boat.validadeSeguro) {
+    acessoriosObj.validadeSeguro = boat.validadeSeguro;
   }
   const acessoriosJson = Object.keys(acessoriosObj).length > 0 ? JSON.stringify(acessoriosObj) : null;
 
@@ -3069,9 +3136,31 @@ export async function upsertClientAuth(clienteId: string, passwordHash: string) 
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
   await currentPool.query(
-     `INSERT INTO ClienteAuth (clienteId, passwordHash) VALUES (?, ?)
-      ON DUPLICATE KEY UPDATE passwordHash = VALUES(passwordHash)`,
+     `INSERT INTO ClienteAuth (clienteId, passwordHash, tokenVersion) VALUES (?, ?, 1)
+      ON DUPLICATE KEY UPDATE passwordHash = VALUES(passwordHash), tokenVersion = COALESCE(tokenVersion, 1) + 1`,
     [clienteId, passwordHash]
+  );
+}
+
+// Invalidate all active sessions for a client by bumping tokenVersion
+export async function incrementClientTokenVersion(clienteId: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) return;
+
+  await currentPool.query(
+    "UPDATE ClienteAuth SET tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE clienteId = ?",
+    [clienteId]
+  );
+}
+
+// Delete client auth credentials by clienteId (reset to first access)
+export async function deleteClientAuth(clienteId: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  await currentPool.query(
+    "DELETE FROM ClienteAuth WHERE clienteId = ?",
+    [clienteId]
   );
 }
 
@@ -3785,7 +3874,20 @@ export async function saveFuelHistoryInDb(history: any[]): Promise<void> {
   try {
     await connection.beginTransaction();
     
-    const parseDate = (dStr) => {
+    if (!history || history.length === 0) {
+      await connection.query('TRUNCATE TABLE CombustivelMovimentacoes');
+      await connection.query('TRUNCATE TABLE CombustivelHistorico');
+      await connection.commit();
+      await setConfigValue("marina_fuel_history", "[]");
+      return;
+    }
+
+    const ids = history.map((h: any) => h.id ? h.id.toString() : null).filter(Boolean);
+    if (ids.length > 0) {
+      await connection.query('DELETE FROM CombustivelMovimentacoes WHERE id NOT IN (?)', [ids]);
+    }
+
+    const parseDate = (dStr: any) => {
       if (!dStr) return new Date();
       if (typeof dStr === 'string' && dStr.includes('/')) {
         const parts = dStr.split(' ');
@@ -4431,6 +4533,7 @@ export async function consumeFuelAtomicDb(litros: number, barcoNome: string, ope
 
     let remainingToDeduct = litros;
   
+    // 1. Abate primeiro do galão aberto em uso
     if (galaoParcialLitros > 0) {
       if (galaoParcialLitros >= remainingToDeduct) {
         galaoParcialLitros -= remainingToDeduct;
@@ -4441,32 +4544,27 @@ export async function consumeFuelAtomicDb(litros: number, barcoNome: string, ope
       }
     }
     
+    // 2. Abate dos galões cheios no píer (20L cada)
     if (remainingToDeduct > 0) {
       const galoesNecessarios = Math.ceil(remainingToDeduct / galoesCapacidade);
-      if (galoesPierQuantidade >= galoesNecessarios) {
-        galoesPierQuantidade -= galoesNecessarios;
-        const litrosExtraidos = galoesNecessarios * galoesCapacidade;
-        galaoParcialLitros = litrosExtraidos - remainingToDeduct;
-        remainingToDeduct = 0;
-      } else {
-        const litrosDisponiveisNosGaloes = galoesPierQuantidade * galoesCapacidade;
-        remainingToDeduct -= litrosDisponiveisNosGaloes;
-        galoesPierQuantidade = 0;
-        galaoParcialLitros = 0;
-        tanquePrincipal = Math.max(0, tanquePrincipal - remainingToDeduct);
-      }
+      galoesPierQuantidade -= galoesNecessarios;
+      const litrosExtraidos = galoesNecessarios * galoesCapacidade;
+      galaoParcialLitros = litrosExtraidos - remainingToDeduct;
+      remainingToDeduct = 0;
     }
+
+    galaoParcialLitros = Math.round(galaoParcialLitros * 100) / 100;
 
     await connection.query(`
       UPDATE CombustivelEstoque SET 
         tanque_principal = ?, 
         galoes_qtd = ?, 
-        galao_parcial = ?
+        galao_parcial = ?,
+        ultima_atualizacao = ?
       WHERE id = 1
-    `, [tanquePrincipal, galoesPierQuantidade, galaoParcialLitros]);
+    `, [tanquePrincipal, galoesPierQuantidade, galaoParcialLitros, new Date().toLocaleDateString('pt-BR')]);
 
     const idHist = "hist_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
-    const dataHoraStr = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const computedDetalhes = detalhes || `Abastecimento de ${litros}L na embarcação ${barcoNome}`;
     
     await connection.query(`
@@ -4479,10 +4577,9 @@ export async function consumeFuelAtomicDb(litros: number, barcoNome: string, ope
        litros,
        barcoNome || "",
        operador || "",
-       dataHoraStr,
+       new Date(),
        computedDetalhes
     ]);
-
 
     await connection.commit();
     return true;
@@ -4511,19 +4608,24 @@ export async function restoreFuelAtomicDb(litros: number, motivo: string, operad
     }
     
     const row = rows[0];
-    let tanquePrincipal = Number(row.tanque_principal || 0);
+    let galoesPierQuantidade = Number(row.galoes_qtd || 0);
+    const galoesCapacidade = Number(row.galoes_capacidade || 20);
+    let galaoParcialLitros = Number(row.galao_parcial || 0);
 
-    // Devolve direto para o tanque principal para simplificar
-    tanquePrincipal += litros;
+    // Devolve para os galões no píer
+    const totalPierLitros = (galoesPierQuantidade * galoesCapacidade) + galaoParcialLitros + litros;
+    galoesPierQuantidade = Math.floor(totalPierLitros / galoesCapacidade);
+    galaoParcialLitros = Math.round((totalPierLitros % galoesCapacidade) * 100) / 100;
 
     await connection.query(`
       UPDATE CombustivelEstoque SET 
-        tanque_principal = ?
+        galoes_qtd = ?,
+        galao_parcial = ?,
+        ultima_atualizacao = ?
       WHERE id = 1
-    `, [tanquePrincipal]);
+    `, [galoesPierQuantidade, galaoParcialLitros, new Date().toLocaleDateString('pt-BR')]);
 
     const idHist = "hist_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
-    const dataHoraStr = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     
     await connection.query(`
       INSERT INTO CombustivelMovimentacoes (
@@ -4534,10 +4636,9 @@ export async function restoreFuelAtomicDb(litros: number, motivo: string, operad
        'ajuste_manual',
        litros,
        operador || "",
-       dataHoraStr,
-       `Estorno de combustivel: ${motivo} (${litros}L devolvidos ao tanque principal)`
+       new Date(),
+       `Estorno de combustível: ${motivo} (+${litros}L devolvidos aos galões do píer)`
     ]);
-
 
     await connection.commit();
     return true;
@@ -7407,5 +7508,86 @@ export async function createCheckinVisita(data: any): Promise<any> {
   const all = await getAllCheckinsVisita();
   return all.find(c => c.id === id);
 }
+
+// ----------------------------------------------------
+// Notificações Logs (Robô Inteligente de WhatsApp)
+// ----------------------------------------------------
+export async function logNotificacao(data: {
+  tipo: 'reserva_confirmacao' | 'financeiro_lancamento';
+  referenciaId: string;
+  clienteId: string;
+  clienteNome?: string;
+  telefone: string;
+  horarioSlot?: string;
+  mensagem?: string;
+  status?: 'sucesso' | 'erro';
+  erro?: string;
+}) {
+  const currentPool = getDbPool();
+  if (!currentPool) return null;
+
+  const id = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const createdAt = new Date().toISOString();
+
+  await currentPool.query(
+    `INSERT INTO NotificacoesLogs (id, tipo, referenciaId, clienteId, clienteNome, telefone, horarioSlot, mensagem, status, erro, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      data.tipo,
+      data.referenciaId,
+      data.clienteId,
+      data.clienteNome || null,
+      data.telefone,
+      data.horarioSlot || null,
+      data.mensagem || null,
+      data.status || 'sucesso',
+      data.erro || null,
+      createdAt
+    ]
+  );
+
+  return { id, createdAt, ...data };
+}
+
+export async function getNotificacoesLogs(limit = 100): Promise<any[]> {
+  const currentPool = getDbPool();
+  if (!currentPool) return [];
+
+  const [rows] = await currentPool.query(
+    `SELECT * FROM NotificacoesLogs ORDER BY createdAt DESC LIMIT ?`,
+    [Number(limit) || 100]
+  );
+  return rows as any[];
+}
+
+export async function hasNotificacaoLog(
+  tipo: string,
+  referenciaId: string,
+  horarioSlot?: string,
+  datePrefix?: string
+): Promise<boolean> {
+  const currentPool = getDbPool();
+  if (!currentPool) return false;
+
+  let query = `SELECT id FROM NotificacoesLogs WHERE tipo = ? AND referenciaId = ? AND status = 'sucesso'`;
+  const params: any[] = [tipo, referenciaId];
+
+  if (horarioSlot) {
+    query += ` AND horarioSlot = ?`;
+    params.push(horarioSlot);
+  }
+
+  if (datePrefix) {
+    query += ` AND createdAt LIKE ?`;
+    params.push(`${datePrefix}%`);
+  }
+
+  query += ` LIMIT 1`;
+
+  const [rows] = await currentPool.query(query, params);
+  return (rows as any[]).length > 0;
+}
+
 
 

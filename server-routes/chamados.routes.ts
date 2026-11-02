@@ -1,12 +1,12 @@
 import { Router } from "express";
-import { requireAnyAuth, requireClientAuth, apiLimiter, sensitiveLimiter, whatsappLimiter, writeAuditLog } from "./middlewares";
+import { requireAdminAuth } from "./middlewares";
 import {
   getNextChamadoCode, upsertChamado, deleteChamado
 } from "../server-db";
 
 const router = Router();
 
-router.get("/next-code", requireAnyAuth, async (req, res) => {
+router.get("/next-code", requireAdminAuth, async (req, res) => {
   try {
     const code = await getNextChamadoCode();
     res.json({ code });
@@ -15,11 +15,7 @@ router.get("/next-code", requireAnyAuth, async (req, res) => {
   }
 });
 
-
-
-
-
-router.post("/save", requireAnyAuth, async (req, res) => {
+router.post("/save", requireAdminAuth, async (req, res) => {
   try {
     const { action, data } = req.body;
     if (action === "upsert") {
@@ -35,10 +31,12 @@ router.post("/save", requireAnyAuth, async (req, res) => {
         req.app.locals.io.emit("chamado_update", { action: "delete", chamado: { id: data.id } });
       }
       res.json({ success: true });
+    } else {
+      res.status(400).json({ error: true, message: "Ação inválida" });
     }
   } catch(err: any) {
     console.error("[CHAMADOS SAVE ERROR]", err);
-    res.status(500).json({ error: true, message: err.message, stack: err.stack });
+    res.status(500).json({ error: true, message: "Erro ao salvar chamado" });
   }
 });
 

@@ -350,7 +350,7 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
 
           {step === 3 && (
             <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
-              <div className="text-center mb-8">
+              <div className="text-center mb-6">
                 <div className="w-16 h-16 rounded-full bg-[#B69D74]/10 border border-[#B69D74]/20 flex items-center justify-center mx-auto mb-4">
                   <Navigation className="w-8 h-8 text-[#B69D74]" />
                 </div>
@@ -359,13 +359,29 @@ export default function ClientCheckinModal({ isOpen, onClose, reservation, boat,
               </div>
 
               <div>
+                <div className="flex flex-wrap gap-2 justify-center mb-4">
+                  {['Ilha Anchieta', 'Praia do Prumirim', 'Ilha das Couves', 'Saco da Ribeira', 'Costeira'].map((sugestao) => (
+                    <button
+                      key={sugestao}
+                      type="button"
+                      onClick={() => setDestino(sugestao)}
+                      className={`px-3 py-1.5 rounded-full text-xs transition-all border cursor-pointer ${
+                        destino === sugestao
+                          ? 'bg-[#B69D74]/20 border-[#B69D74] text-[#B69D74]'
+                          : 'bg-white/[0.03] border-white/10 text-white/60 hover:text-white hover:border-white/20'
+                      }`}
+                    >
+                      {sugestao}
+                    </button>
+                  ))}
+                </div>
                 <textarea
                   required
                   value={destino}
                   onChange={(e) => setDestino(e.target.value)}
-                  rows={4}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white text-lg focus:border-[#B69D74]/50 focus:ring-1 focus:ring-[#B69D74]/50 outline-none transition-all resize-none text-center placeholder:text-white/20"
-                  placeholder="Ex: Ilha Grande, Praia do Dentista..."
+                  rows={3}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white text-base focus:border-[#B69D74]/50 focus:ring-1 focus:ring-[#B69D74]/50 outline-none transition-all resize-none text-center placeholder:text-white/20"
+                  placeholder="Ex: Ilha Anchieta, Costeira..."
                 />
               </div>
             </div>

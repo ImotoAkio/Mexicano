@@ -46,7 +46,7 @@ import {
 import Logo from './Logo';
 import { io } from 'socket.io-client';
 import { logAction } from '../db';
-import { consumeFuelForEmbarcacao, getFuelInventory } from '../utils/fuelInventory';
+import { consumeFuelForEmbarcacao, restoreFuelForEmbarcacao, getFuelInventory } from '../utils/fuelInventory';
 import { getFuelPrice } from '../utils/constants';
 import { OperationsTab } from './MarinaOperador/OperationsTab';
 import { ChecklistsTab } from './MarinaOperador/ChecklistsTab';
@@ -879,6 +879,18 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
               body: JSON.stringify({ action: 'upsert', data: transacao })
           }).catch(() => null);
         }
+
+        // Dedução automática de combustível dos galões no píer
+        const previousLiters = Number(fuelReservaTarget.abastecimentoLitros || 0);
+        const currentLiters = Number(fuelData.liters || 0);
+        const diff = currentLiters - previousLiters;
+        const boatName = boat?.nome || fuelReservaTarget.barcoNome || 'Embarcação';
+
+        if (diff > 0) {
+          await consumeFuelForEmbarcacao(diff, boatName, currentUser.nome);
+        } else if (diff < 0) {
+          await restoreFuelForEmbarcacao(Math.abs(diff), `Ajuste de abastecimento: ${boatName}`, currentUser.nome);
+        }
       } else {
         // Modo Avulso ou Embarcação (Standalone)
         const boat = fuelTargetMode === 'embarcacao' ? fuelEmbarcacaoTarget : null;
@@ -926,9 +938,8 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
               body: JSON.stringify({ action: 'upsert', data: transacao })
           });
 
-          if (boat) {
-            await consumeFuelForEmbarcacao(fuelData.liters, boat.nome || 'Embarcação', currentUser.nome);
-          }
+          const effectiveBoatName = boat ? (boat.nome || getBoatCode(boat)) : (targetName || 'Venda Avulsa');
+          await consumeFuelForEmbarcacao(fuelData.liters, effectiveBoatName, currentUser.nome);
         } else {
           setIsFuelModalOpen(false);
         }

@@ -2,6 +2,10 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initPWAInstallCapture } from './lib/pwaInstall';
+
+// Capture PWA install prompt globally as early as possible
+initPWAInstallCapture();
 
 // Suppress benign sandboxed Vite WebSocket warning events so they do not trigger unhandled rejection overlays
 if (typeof window !== 'undefined') {
@@ -75,20 +79,12 @@ if (typeof window !== 'undefined') {
         const adminToken = localStorage.getItem('admin_token');
         const clientToken = localStorage.getItem('client_token');
 
-        const isAdminRoute = url.startsWith('/api/db/') || 
-                             url.startsWith('/api/admin/') || 
-                             url.startsWith('/api/financeiro/') || 
-                             url.startsWith('/api/funcionarios') ||
-                             url.startsWith('/api/folgas') ||
-                             url.startsWith('/api/manutencoes') ||
-                             url.startsWith('/api/mecanicos') ||
-                             url.startsWith('/api/catalogo-epis') ||
-                             url.startsWith('/api/epis') ||
-                             url.startsWith('/api/whatsapp/') ||
-                             url.startsWith('/api/config') ||
-                             url.startsWith('/api/comercial/');
+        const isClientAllowedRoute = url.startsWith('/api/client/') || 
+                                     url.startsWith('/api/financeiro/asaas-status/') ||
+                                     url.startsWith('/api/financeiro/transacoes/') ||
+                                     url.startsWith('/api/financeiro/fatura/');
 
-        const token = isAdminRoute ? adminToken : (adminToken || clientToken);
+        const token = isClientAllowedRoute ? (clientToken || adminToken) : adminToken;
         if (token && token !== 'null' && token !== 'undefined') {
           headers['Authorization'] = `Bearer ${token}`;
         }

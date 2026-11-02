@@ -40,6 +40,7 @@ const PortalInterno = lazy(() => import('./components/finance/PortalInterno'));
 const AdminChecklistsPage = lazy(() => import('./components/AdminChecklistsPage'));
 const AdminFuelPage = lazy(() => import('./components/MarinaFuelView'));
 const WhatsAppPage = lazy(() => import('./components/WhatsAppPage'));
+const NotificationsRobotPage = lazy(() => import('./components/NotificationsRobotPage'));
 const FinanceWhatsAppPage = lazy(() => import('./components/FinanceWhatsAppPage'));
 const FinanceSchedulesPage = lazy(() => import('./components/FinanceSchedulesPage'));
 const AvisosSaidaPage = lazy(() => import('./components/AvisosSaidaPage'));
@@ -55,6 +56,7 @@ const SimuladoPage = lazy(() => import('./components/SimuladoPage'));
 const UtvPage = lazy(() => import('./components/utv/UtvPage'));
 const MarinaAgendamentosView = lazy(() => import('./components/MarinaAgendamentosView'));
 const CatalogoPublicoPage = lazy(() => import('./components/comercial/CatalogoPublicoPage'));
+const ValidarEmbarquePage = lazy(() => import('./components/ValidarEmbarquePage'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
 import {
   Compass,
@@ -78,7 +80,7 @@ import {
   CheckCircle,
   Wrench,
   Droplet, Droplets, Clock, CalendarClock, Upload, Trash2, Edit2, Play, Download, Printer, Receipt, History, Package, PieChart, CalendarDays,
-  Truck, Calculator
+  Truck, Calculator, Bot
 } from 'lucide-react';
 
 // Wrappers para reuso dos componentes da Marina no Admin
@@ -134,13 +136,34 @@ const AdminFuelWrapper = () => {
   return <AdminFuelPage data={data} setData={setData} reloadData={loadData} operadorNome="Admin" isAdmin={true} />;
 };
 
-type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio';
+type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   
   // Client session: JWT-based with local cache for instant PWA loading
-  const [clientToken, setClientToken] = useState<string | null>(() => localStorage.getItem('client_token'));
+  const [clientToken, setClientToken] = useState<string | null>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlToken = searchParams.get('token') || searchParams.get('auth_token');
+      const urlReservaId = searchParams.get('reserva') || searchParams.get('reservaId');
+      if (urlToken) {
+        const prevToken = localStorage.getItem('client_token');
+        if (prevToken !== urlToken) {
+          localStorage.removeItem('client_data_cache');
+        }
+        localStorage.setItem('client_token', urlToken);
+        localStorage.setItem('last_user_type', 'client');
+        if (urlReservaId) {
+          localStorage.setItem('auto_checkin_reserva_id', urlReservaId);
+        }
+        return urlToken;
+      }
+    } catch (e) {
+      console.warn("Erro ao ler token da URL na inicialização:", e);
+    }
+    return localStorage.getItem('client_token');
+  });
   const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[]; chamados?: any[]; manutencoes?: any[] } | null>(() => {
     try {
       const cached = localStorage.getItem('client_data_cache');
@@ -184,6 +207,60 @@ export default function App() {
     };
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
+  // Processamento de Magic Link de acesso direto do cliente via WhatsApp
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlToken = searchParams.get('token') || searchParams.get('auth_token');
+      const urlReservaId = searchParams.get('reserva') || searchParams.get('reservaId');
+
+      if (urlToken) {
+        localStorage.setItem('client_token', urlToken);
+        localStorage.setItem('last_user_type', 'client');
+        setClientToken(urlToken);
+        if (urlReservaId) {
+          localStorage.setItem('auto_checkin_reserva_id', urlReservaId);
+        }
+        // Limpa os parâmetros da URL mantendo a rota do portal
+        window.history.replaceState(null, '', '/portal');
+        setCurrentPath('/portal');
+      }
+    } catch (e) {
+      console.warn("Erro ao processar magic link:", e);
+    }
+  }, []);
+
+  // Processamento de Short Magic Link seguro (/m/:code)
+  useEffect(() => {
+    if (window.location.pathname.startsWith('/m/')) {
+      const code = window.location.pathname.replace(/^\/m\//, '').trim();
+      if (code) {
+        fetch(`/api/m/${code}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.success && data.token) {
+              localStorage.removeItem('client_data_cache');
+              localStorage.setItem('client_token', data.token);
+              localStorage.setItem('last_user_type', 'client');
+              setClientToken(data.token);
+              if (data.reservaId) {
+                localStorage.setItem('auto_checkin_reserva_id', data.reservaId);
+              }
+              window.history.replaceState(null, '', '/portal');
+              setCurrentPath('/portal');
+            } else {
+              window.history.replaceState(null, '', '/portal?expirado=1');
+              setCurrentPath('/portal');
+            }
+          })
+          .catch(() => {
+            window.history.replaceState(null, '', '/portal');
+            setCurrentPath('/portal');
+          });
+      }
+    }
   }, []);
 
 
@@ -261,7 +338,8 @@ export default function App() {
   // Real-time synchronization for Admin/Marina/Peças dashboard
   useEffect(() => {
     if (isAuthenticated) {
-      const socket = io('/', { path: '/socket.io' });
+      const token = localStorage.getItem('admin_token');
+      const socket = io('/', { path: '/socket.io', auth: { token } });
 
       const handleGlobalAdminSync = () => {
         // Silently reload the DB into memory to update internal arrays
@@ -332,6 +410,7 @@ export default function App() {
         { id: 'marina-agendamentos' as TabType, label: 'Agendamentos Marina', icon: Anchor },
         { id: 'finance-schedules' as TabType, label: 'Consulta de Agendamentos', icon: CalendarDays },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
+        { id: 'notificacoes-robot' as TabType, label: 'Robô de Notificações', icon: Bot },
       ]
     },
     {
@@ -398,6 +477,7 @@ export default function App() {
       items: [
         { id: 'portal-interno' as TabType, label: 'Portal Interno', icon: MessageSquare },
         { id: 'users' as TabType, label: 'Gestão de Usuários', icon: Shield },
+        { id: 'notificacoes-robot' as TabType, label: 'Robô de Notificações', icon: Bot },
         { id: 'integrations' as TabType, label: 'Configurações & Integrações', icon: Settings },
         { id: 'feedback' as TabType, label: 'Central de Feedback', icon: MessageSquare },
         { id: 'audit-logs' as TabType, label: 'Registro de Atividades', icon: History },
@@ -444,6 +524,8 @@ export default function App() {
     localStorage.removeItem('admin_name');
     localStorage.removeItem('admin_role');
     localStorage.removeItem(STORAGE_KEYS.ADMIN_ACTIVE_TAB);
+    localStorage.removeItem('marina_active_tab');
+    localStorage.removeItem('marina_data_cache');
     setIsAuthenticated(false);
     setAdminRole(null);
     setAdminName('');
@@ -467,7 +549,17 @@ export default function App() {
   const isSharedChecklistRoute = currentPath.startsWith('/checklist/share/');
   const isPierTvRoute = currentPath === '/tv-pier' || currentPath.startsWith('/tv-pier');
   const isCatalogoRoute = currentPath === '/catalogo' || currentPath.startsWith('/catalogo');
-  const isClientRoute = !isAdminRoute && !isCatalogoRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute && !isPierTvRoute && !isQuizRoute;
+  const isValidarEmbarqueRoute = currentPath === '/validar-embarque' || currentPath.startsWith('/validar-embarque') || currentPath.startsWith('/validar-ticket');
+  const isClientRoute = !isAdminRoute && !isCatalogoRoute && !isFeedbackRoute && !isSimuladorRoute && !isSharedChecklistRoute && !isPierTvRoute && !isQuizRoute && !isValidarEmbarqueRoute;
+
+  // ═══════════ VALIDADOR DE EMBARQUE PÚBLICO (/validar-embarque) ═══════════
+  if (isValidarEmbarqueRoute) {
+    return (
+      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-[#07080c]"><div className="w-8 h-8 border-4 border-[#B69D74] border-t-transparent rounded-full animate-spin"></div></div>}>
+        <ValidarEmbarquePage />
+      </Suspense>
+    );
+  }
 
   // ═══════════ CATÁLOGO DIGITAL PÚBLICO (/catalogo) ═══════════
   if (isCatalogoRoute) {
@@ -503,6 +595,16 @@ export default function App() {
       <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div></div>}>
         <SharedChecklistPage checklistId={sharedChecklistId} />
       </Suspense>
+    );
+  }
+
+  // ═══════════ RESOLUÇÃO DO SHORT MAGIC LINK (/m/:code) ═══════════
+  if (currentPath.startsWith('/m/')) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
+        <div className="w-10 h-10 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-xs text-slate-300 font-medium animate-pulse">Acessando embarcação com link seguro...</span>
+      </div>
     );
   }
 
@@ -549,6 +651,7 @@ export default function App() {
                   transacoes={clientData.transacoes || []}
                   chamados={clientData.chamados || []}
                   manutencoes={clientData.manutencoes || []}
+                  marinaDatasFechadas={clientData.marinaDatasFechadas || []}
                   onLogout={() => {
                     localStorage.removeItem('client_token');
                     localStorage.removeItem('client_data_cache');
@@ -792,6 +895,7 @@ export default function App() {
                 {activeTab === 'marina-agendamentos' && <MarinaAgendamentosView />}
                 {activeTab === 'finance-schedules' && <FinanceSchedulesPage />}
                 {activeTab === 'whatsapp' && <WhatsAppPage />}
+                {activeTab === 'notificacoes-robot' && <NotificationsRobotPage />}
                 {activeTab === 'checklists' && <AdminChecklistsWrapper />}
                 {(activeTab === 'fuel' || activeTab === 'finance-fuel') && <AdminFuelWrapper />}
                 {activeTab === 'reports' && <SchedulesReportPage />}
@@ -815,7 +919,7 @@ export default function App() {
                 {activeTab === 'finance-whatsapp' && <FinanceWhatsAppPage />}
                 {activeTab === 'users' && <UsersPage />}
                 {activeTab === 'feedback' && <FeedbackAdmin />}
-                {activeTab === 'integrations' && <IntegrationsPage />}
+                {activeTab === 'integrations' && <IntegrationsPage onNavigate={handleTabChange} />}
                 {activeTab === 'portal-interno' && <PortalInterno />}
                 {activeTab === 'aviso-saida' && <AvisosSaidaPage />}
                 {activeTab === 'dp-dashboard' && <DPPage />}
