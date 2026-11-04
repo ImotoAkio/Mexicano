@@ -6,38 +6,158 @@ import { sendEvolutionText } from "./server-routes/whatsapp.routes";
 /**
  * 10 Modelos Padrões de Mensagens de Confirmação Progressivas
  * Cada envio sucessivo utiliza uma abordagem diferente, evitando repetição robótica e spam.
+ * A partir do 6º envio, inclui a dica amigável de cancelamento caso o cliente não vá utilizar.
  */
 export const DEFAULT_10_CONFIRMATION_TEMPLATES: string[] = [
   // 1º Envio: Boas-vindas matinal e acolhimento
-  "Bom dia, *{cliente}*! ☀️ Tudo bem?\n\nSua embarcação *{barco}* está agendada para *{quando}*! 🚤\n\nNossa equipe de marinharia já está preparando tudo. Para adiantarmos a descida da embarcação e seu plano de navegação, por favor confirme sua saída pelo link direto no app:\n\n👉 {link}\n\nTenha um excelente passeio!",
+  "Bom dia, *{cliente}*! ☀️ Tudo bem?\n\nSua embarcação *{barco}* está agendada para *{quando}*! 🚤\n\nNossa equipe de marinharia já está preparando tudo. Para adiantarmos a descida {do_seu_barco} e seu plano de navegação, por favor confirme sua saída pelo link direto no app:\n\n👉 {link}\n\nTenha um excelente passeio!",
 
   // 2º Envio: Lembrete amigável e foco em agilidade
-  "Olá, *{cliente}*! Passando para checar os detalhes do seu passeio de *{quando}* com a *{barco}*. ⚓\n\nVocê consegue nos confirmar rapidinho? Leva menos de 1 minuto pelo seu link de acesso rápido:\n\n👉 {link}\n\nAssim garantimos sua embarcação pronta e revisada para a sua chegada!",
+  "Olá, *{cliente}*! Passando para checar os detalhes do seu passeio de *{quando}* com {seu_barco} *{barco}*. ⚓\n\nVocê consegue nos confirmar rapidinho? Leva menos de 1 minuto pelo seu link de acesso rápido:\n\n👉 {link}\n\nAssim garantimos {seu_barco} pronta e revisada para a sua chegada!",
 
   // 3º Envio: Logística da marina e prioridade na fila de descida
-  "Oi, *{cliente}*! 🚤 A equipe do pátio está organizando a fila de descida das embarcações desta manhã. Para mantermos a prioridade da sua lancha *{barco}*, confirme seus horários de saída pelo link:\n\n👉 {link}\n\nEstamos aguardando sua resposta para colocar seu barco na água a tempo!",
+  "Oi, *{cliente}*! 🚤 A equipe do pátio está organizando a fila de descida das embarcações desta manhã. Para mantermos a prioridade {do_seu_barco} *{barco}*, confirme seus horários de saída pelo link:\n\n👉 {link}\n\nEstamos aguardando sua resposta para colocar {seu_barco} na água a tempo!",
 
   // 4º Envio: Segurança e normas da Capitania dos Portos
-  "Olá, *{cliente}*! ⚠️ Lembrando que a Capitania dos Portos exige o Plano de Navegação prévio (destino e quantidade de passageiros a bordo). Agilize sua liberação no píer confirmando os dados pelo app:\n\n👉 {link}\n\nSua segurança e conforto são nossas prioridades!",
+  "Olá, *{cliente}*! ⚠️ Lembrando que a Capitania dos Portos exige o Plano de Navegação prévio (destino e quantidade de passageiros a bordo). Agilize sua liberação no píer confirmando os dados {do_seu_barco} pelo app:\n\n👉 {link}\n\nSua segurança e conforto são nossas prioridades!",
 
   // 5º Envio: Apoio ao marinheiro e pontualidade
-  "Oi, *{cliente}*! Tudo certo para navegar *{quando}* com a *{barco}*? 🌊\n\nPara que nossa equipe organize os marinheiros de apoio e você não pegue fila no píer, confirme sua saída agora pelo link:\n\n👉 {link}\n\nQualquer dúvida, estamos à disposição aqui no WhatsApp!",
+  "Oi, *{cliente}*! Tudo certo para navegar *{quando}* com {seu_barco} *{barco}*? 🌊\n\nPara que nossa equipe organize os marinheiros de apoio e você não pegue fila no píer, confirme sua saída agora pelo link:\n\n👉 {link}\n\nQualquer dúvida, estamos à disposição aqui no WhatsApp!",
 
-  // 6º Envio: Alinhamento operacional de uso
-  "Olá, *{cliente}*! Ainda não identificamos sua confirmação para o agendamento de *{quando}* na embarcação *{barco}*.\n\nCaso vá utilizar a embarcação hoje, por favor valide sua presença pelo link abaixo:\n\n👉 {link}\n\nAssim mantemos os marinheiros escalados para recebê-lo!",
+  // 6º Envio: Alinhamento operacional + Dica de cancelamento no portal
+  "Olá, *{cliente}*! Ainda não identificamos sua confirmação para o agendamento de *{quando}* em {seu_barco} *{barco}*.\n\nPara validar sua presença, acesse o link rápido:\n👉 {link}\n\n💡 *Dica de cancelamento:* Se teve algum imprevisto e não for mais utilizar hoje, você pode cancelar a reserva direto pelo portal no link acima para liberar a marinharia.",
 
-  // 7º Envio: Movimentação intensa no píer
-  "Oi, *{cliente}*! ⚓ Como as movimentações no píer e no trator de descida estão intensas, precisamos da sua confirmação para mantermos a *{barco}* escalada. Acesse o link rápido para confirmar:\n\n👉 {link}\n\nAgradecemos a sua cooperação!",
+  // 7º Envio: Movimentação intensa no píer + Opção de liberar vaga
+  "Oi, *{cliente}*! ⚓ Como as movimentações no píer e nos tratores de descida estão intensas, precisamos da sua confirmação para manter {seu_barco} *{barco}* escalado.\n\nAcesse o link rápido para confirmar:\n👉 {link}\n\n💡 *Não vai navegar?* Cancele sua reserva pelo link para liberar a vaga no pátio e evitar desencontros operacionais.",
 
-  // 8º Envio: Urgência moderada
-  "Olá, *{cliente}*! 😊 Queremos garantir que sua navegação ocorra sem qualquer atraso ou fila de espera! Caso ainda vá sair hoje com a *{barco}*, clique aqui para confirmar agora:\n\n👉 {link}\n\nNossa equipe aguarda sua resposta!",
+  // 8º Envio: Urgência moderada + Cancelamento no portal
+  "Olá, *{cliente}*! 😊 Queremos garantir que sua navegação ocorra sem qualquer atraso ou fila de espera! Se ainda for sair hoje com {seu_barco} *{barco}*, clique abaixo para confirmar:\n\n👉 {link}\n\n⚠️ *Mudança de planos?* Caso não vá utilizar hoje, você pode efetuar o cancelamento em 1 clique pelo portal no link acima, liberando a vaga para outro cotista.",
 
-  // 9º Envio: Penúltimo aviso de liberação de vaga
-  "Oi, *{cliente}*! ⚠️ Nossa marinharia precisa confirmar se a embarcação *{barco}* vai para a água hoje. Caso o passeio esteja mantido, confirme pelo link:\n\n👉 {link}\n\nSe tiver ocorrido algum imprevisto e não for utilizar, nos avise por favor para liberarmos o espaço.",
+  // 9º Envio: Penúltimo aviso + Cancelamento para liberação
+  "Oi, *{cliente}*! ⚠️ Nossa marinharia precisa confirmar se {seu_barco} *{barco}* vai para a água hoje. Caso o passeio esteja mantido, confirme pelo link:\n\n👉 {link}\n\nCaso tenha ocorrido algum imprevisto e não vá utilizar, por favor acesse o link e cancele a reserva para liberarmos o espaço na marina.",
 
   // 10º Envio: Última chamada antes do cancelamento operacional
-  "Olá, *{cliente}*! Última verificação da marina: sua reserva da *{barco}* para *{quando}* continua pendente de confirmação. Para evitarmos o cancelamento do agendamento por ausência de check-in, confirme no link abaixo:\n\n👉 {link}\n\nContamos com sua compreensão!"
+  "Olá, *{cliente}*! Última verificação da marina: sua reserva {do_seu_barco} *{barco}* para *{quando}* continua pendente de confirmação.\n\nPara confirmar sua saída ou cancelar a reserva sem penalidades, acesse o link abaixo:\n👉 {link}\n\nContamos com sua compreensão para mantermos o pátio e as descidas organizadas!"
 ];
+
+/**
+ * Detecta se a embarcação é Jet Ski ou Lancha e retorna as variações linguísticas em português
+ */
+export function detectBoatTerms(boat?: {
+  tipo?: string;
+  nome?: string;
+  modelo?: string;
+  fabricante?: string;
+} | null) {
+  if (!boat) {
+    return {
+      isJet: false,
+      tipo: 'lancha',
+      tipo_barco: 'lancha',
+      seu_barco: 'sua lancha',
+      do_seu_barco: 'da sua lancha',
+      o_barco: 'a lancha',
+      no_barco: 'na lancha',
+      termo: 'lancha'
+    };
+  }
+
+  const tipoRaw = String(boat.tipo || '').toLowerCase();
+  const text = `${boat.nome || ''} ${boat.modelo || ''} ${boat.fabricante || ''} ${tipoRaw}`.toUpperCase();
+
+  const isJet =
+    tipoRaw === 'jet' ||
+    tipoRaw === 'jetski' ||
+    tipoRaw === 'jet-ski' ||
+    text.includes('JET') ||
+    text.includes('SEA DOO') ||
+    text.includes('SEADOO') ||
+    text.includes('SEA-DOO') ||
+    text.includes('RXT') ||
+    text.includes('GTI') ||
+    text.includes('WAKE') ||
+    text.includes('GTX') ||
+    text.includes('GTR') ||
+    text.includes('SPARK') ||
+    text.includes('MOTO AQUÁTICA') ||
+    text.includes('MOTO AQUATICA') ||
+    text.includes('WATERCRAFT');
+
+  if (isJet) {
+    return {
+      isJet: true,
+      tipo: 'jet',
+      tipo_barco: 'jet',
+      seu_barco: 'seu jet',
+      do_seu_barco: 'do seu jet',
+      o_barco: 'o jet',
+      no_barco: 'no jet',
+      termo: 'jet'
+    };
+  }
+
+  return {
+    isJet: false,
+    tipo: 'lancha',
+    tipo_barco: 'lancha',
+    seu_barco: 'sua lancha',
+    do_seu_barco: 'da sua lancha',
+    o_barco: 'a lancha',
+    no_barco: 'na lancha',
+    termo: 'lancha'
+  };
+}
+
+/**
+ * Aplica a substituição inteligente de variáveis no template da mensagem
+ */
+export function formatConfirmationMessage(
+  templateText: string,
+  params: {
+    clienteNome: string;
+    boatCode: string;
+    quando?: string;
+    dataIso?: string;
+    magicLink: string;
+    boatInfo?: {
+      tipo?: string;
+      nome?: string;
+      modelo?: string;
+      fabricante?: string;
+    } | null;
+  }
+): string {
+  const terms = detectBoatTerms(params.boatInfo);
+  const clientFirstName = formatFirstName(params.clienteNome);
+  const quando = params.quando || "hoje";
+  const dataBr = params.dataIso ? formatDateBr(params.dataIso) : "hoje";
+
+  let msg = templateText
+    .replace(/\{\s*cliente\s*\}/gi, clientFirstName)
+    .replace(/\{\s*barco\s*\}/gi, params.boatCode)
+    .replace(/\{\s*quando\s*\}/gi, quando)
+    .replace(/\{\s*data\s*\}/gi, dataBr)
+    .replace(/\{\s*link\s*\}/gi, params.magicLink)
+    .replace(/\{\s*tipo\s*\}/gi, terms.tipo)
+    .replace(/\{\s*tipo_barco\s*\}/gi, terms.tipo_barco)
+    .replace(/\{\s*seu_barco\s*\}/gi, terms.seu_barco)
+    .replace(/\{\s*do_seu_barco\s*\}/gi, terms.do_seu_barco)
+    .replace(/\{\s*o_barco\s*\}/gi, terms.o_barco)
+    .replace(/\{\s*no_barco\s*\}/gi, terms.no_barco);
+
+  // Inteligência contextual: se a embarcação for Jet Ski e o texto ainda tiver 'lancha' hardcoded
+  if (terms.isJet) {
+    msg = msg
+      .replace(/da\s+sua\s+lancha/gi, 'do seu jet')
+      .replace(/da\s+lancha/gi, 'do jet')
+      .replace(/sua\s+lancha/gi, 'seu jet')
+      .replace(/na\s+lancha/gi, 'no jet')
+      .replace(/a\s+lancha/gi, 'o jet')
+      .replace(/\blancha\b/gi, 'jet');
+  }
+
+  return msg;
+}
 
 /**
  * Retorna os 10 modelos configurados no banco ou a lista padrão
@@ -258,7 +378,8 @@ export async function processReservasConfirmationCycle(options?: {
     // 3. Busca reservas do dia cuja confirmação ainda NÃO foi realizada
     const [reservasRows] = await pool.query(
       `SELECT r.*, c.nome as clienteNome, c.telefone as clienteTelefone, c.statusFinanceiro as clienteStatusFin,
-              e.nome as embarcacaoNome, e.numero as embarcacaoNumero
+              e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
+              e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
        FROM Reservas r
        LEFT JOIN Clientes c ON r.clienteId = c.id
        LEFT JOIN Embarcacoes e ON r.embarcacaoId = e.id
@@ -312,12 +433,19 @@ export async function processReservasConfirmationCycle(options?: {
       const templateIndex = Math.min(Math.max(tentativaAtual - 1, 0), templates10.length - 1);
       const chosenTemplate = templates10[templateIndex] || templates10[0];
 
-      const messageText = chosenTemplate
-        .replace(/\{\s*cliente\s*\}/gi, clientFirstName)
-        .replace(/\{\s*barco\s*\}/gi, boatCode)
-        .replace(/\{\s*quando\s*\}/gi, quando)
-        .replace(/\{\s*data\s*\}/gi, formatDateBr(effectiveDate))
-        .replace(/\{\s*link\s*\}/gi, magicLink);
+      const messageText = formatConfirmationMessage(chosenTemplate, {
+        clienteNome,
+        boatCode,
+        quando,
+        dataIso: effectiveDate,
+        magicLink,
+        boatInfo: {
+          tipo: res.embarcacaoTipo,
+          nome: res.embarcacaoNome,
+          modelo: res.embarcacaoModelo,
+          fabricante: res.embarcacaoFabricante
+        }
+      });
 
       try {
         const sendResult = await sendEvolutionText(telefone, messageText);

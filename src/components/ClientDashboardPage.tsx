@@ -579,37 +579,87 @@ export default function ClientDashboardPage({
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{title: string, msg: string, type: 'error'|'success'|'warning'} | null>(null);
 
-  // Auto-abertura de modal de check-in quando o cliente acessa via Magic Link do WhatsApp
-  useEffect(() => {
+  const todayStrLocal = (() => {
     try {
-      const autoResId = localStorage.getItem('auto_checkin_reserva_id');
-      if (autoResId && reservations && reservations.length > 0) {
-        // Busca a reserva exata ou fallback para qualquer reserva ativa
-        let target = reservations.find((r: any) => String(r.id) === String(autoResId));
-        if (!target) {
-          target = reservations.find((r: any) => r.status !== 'cancelado') || reservations[0];
-        }
-        if (target) {
-          setSelectedReservationForCheckin(target);
-          setIsCheckinModalOpen(true);
-          localStorage.removeItem('auto_checkin_reserva_id');
-        }
-      }
-    } catch (e) {
-      console.warn("Erro ao carregar auto checkin:", e);
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    } catch {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
-  }, [reservations]);
+  })();
+
+  const todayReservations = myReservations.filter(
+    r => r.data === todayStrLocal && r.status !== 'cancelado' && !cancelledIds.includes(r.id)
+  );
+  const pendingTodayReservations = todayReservations.filter(r => r.status !== 'confirmado');
 
   const rawTransacoesList = (client as any)?.transacoes || transacoes || [];
   const transacoesList = rawTransacoesList.filter((t: any) => !t.tipo || t.tipo === 'receita');
-  const _now = new Date();
-  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
-  
+  const todayStr = todayStrLocal;
+
   const totalAberto = transacoesList
     .filter((t: any) => t.status !== 'pago' && t.status !== 'cancelado' && (t.status === 'vencido' || (t.dataVencimento && t.dataVencimento < todayStr)))
     .reduce((acc: number, t: any) => acc + getClientTxUpdatedValue(t).final, 0);
 
   const isInadimplente = totalAberto > 0 || client?.statusFinanceiro === 'inadimplente';
+
+  const handleOpenSmartCheckin = (targetRes?: any) => {
+    const candidate =
+      targetRes && targetRes.data === todayStrLocal && targetRes.status !== 'cancelado'
+        ? targetRes
+        : pendingTodayReservations[0];
+    if (!candidate) return;
+    if (candidate.status === 'confirmado') {
+      setSelectedReservationForTicket(candidate);
+      setIsBoardingTicketModalOpen(true);
+      return;
+    }
+    setSelectedReservationForCheckin(candidate);
+    setIsCheckinModalOpen(true);
+  };
+
+  // Direcionamento inteligente de Magic Link (WhatsApp -> Confirmação da Reserva do Dia)
+  useEffect(() => {
+    try {
+      const autoResId = localStorage.getItem('auto_checkin_reserva_id');
+      if (!autoResId || !reservations) return;
+
+      // Consome a chave imediatamente para não reabrir o modal ao navegar
+      localStorage.removeItem('auto_checkin_reserva_id');
+
+      // 1. Verifica estritamente as reservas do cliente para HOJE (não canceladas)
+      const todaysActive = myReservations.filter(
+        (r: any) => r.data === todayStrLocal && r.status !== 'cancelado' && !cancelledIds.includes(r.id)
+      );
+
+      // Se não houver nenhuma reserva para hoje, mostra apenas a tela inicial do app
+      if (todaysActive.length === 0) {
+        setActiveTab('home');
+        return;
+      }
+
+      // 2. Verifica o status das reservas de hoje: se já estiver(em) confirmada(s)/reservada(s), mostra apenas a tela inicial do app
+      const pendingToday = todaysActive.filter((r: any) => r.status !== 'confirmado');
+      if (pendingToday.length === 0) {
+        setActiveTab('home');
+        return;
+      }
+
+      // 3. Inteligência para 1 ou 2+ embarcações no mesmo dia:
+      // Se a reserva do link for de hoje e estiver pendente, abre ela;
+      // se a reserva do link já tiver sido confirmada mas existir uma 2ª embarcação pendente hoje, direciona para a 2ª embarcação.
+      const exactPendingToday = pendingToday.find((r: any) => String(r.id) === String(autoResId));
+      const targetToday = exactPendingToday || pendingToday[0];
+
+      if (targetToday) {
+        setActiveTab('home');
+        setSelectedReservationForCheckin(targetToday);
+        setIsCheckinModalOpen(true);
+      }
+    } catch (e) {
+      console.warn("Erro ao carregar direcionamento inteligente de check-in:", e);
+    }
+  }, [reservations, todayStrLocal]);
 
   const formatClientTxDescription = (t: any): string => {
     if (!t) return '';
@@ -764,13 +814,7 @@ export default function ClientDashboardPage({
   // TAB VIEWS
   // --------------------------
 
-  const _localNow = new Date();
-  const todayStrLocal = [
-    _localNow.getFullYear(),
-    String(_localNow.getMonth() + 1).padStart(2, '0'),
-    String(_localNow.getDate()).padStart(2, '0')
-  ].join('-');
-  const todayReservations = myReservations.filter(r => r.data === todayStrLocal && r.status !== 'cancelado');
+
 
 
   const handleCancelReservation = async (reservationId?: string) => {
@@ -937,14 +981,7 @@ export default function ClientDashboardPage({
                       ) : (
                         <>
                           <button 
-                            onClick={() => {
-                              if (totalAberto > 0) {
-                                showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para confirmar.', 'warning');
-                                return;
-                              }
-                              setSelectedReservationForCheckin(reservation);
-                              setIsCheckinModalOpen(true);
-                            }}
+                            onClick={() => handleOpenSmartCheckin(reservation)}
                             className="flex-1 py-3 bg-gradient-to-r from-[#B69D74] to-[#cbb28b] hover:brightness-110 active:scale-[0.99] text-slate-950 text-xs font-semibold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
                           >
                             <CheckCircle2 className="w-4 h-4" />
@@ -1186,8 +1223,15 @@ export default function ClientDashboardPage({
           return (
             <div 
               onClick={() => {
-                setSelectedReservationForCheckin(nextRes);
-                setIsCheckinModalOpen(true);
+                if (nextRes.status === 'confirmado') {
+                  setSelectedReservationForTicket(nextRes);
+                  setIsBoardingTicketModalOpen(true);
+                } else if (nextRes.data === todayStrLocal) {
+                  handleOpenSmartCheckin(nextRes);
+                } else {
+                  setSelectedDate(nextRes.data);
+                  handleTabChange('calendar');
+                }
               }}
               className="bg-[#0e0e12]/90 border border-white/10 hover:border-[#B69D74]/40 rounded-2xl p-4 backdrop-blur-xl flex items-center gap-4 transition-all duration-300 cursor-pointer group shadow-lg"
             >
@@ -1207,7 +1251,13 @@ export default function ClientDashboardPage({
                   </span>
                 </div>
                 <p className="text-xs text-white/50 mt-1 font-mono">{getBoatCode(b)}</p>
-                <p className="text-[10px] text-white/30 mt-0.5">Toque para preencher o plano de navegação</p>
+                <p className="text-[10px] text-white/30 mt-0.5">
+                  {nextRes.status === 'confirmado'
+                    ? 'Toque para visualizar o Ticket de Embarque'
+                    : nextRes.data === todayStrLocal
+                    ? 'Toque para confirmar o plano de navegação de hoje'
+                    : 'Toque para visualizar detalhes no calendário'}
+                </p>
               </div>
               <ChevronRight className="w-4 h-4 text-white/30 group-hover:text-[#B69D74] group-hover:translate-x-1 transition-all" />
             </div>
@@ -1790,12 +1840,7 @@ export default function ClientDashboardPage({
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (totalAberto > 0) {
-                            showToast('Aviso', 'Você possui valores em aberto. Regularize sua situação para confirmar.', 'warning');
-                            return;
-                          }
-                          setSelectedReservationForCheckin(res);
-                          setIsCheckinModalOpen(true);
+                          handleOpenSmartCheckin(res);
                         }}
                         className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-[#B69D74]/10 hover:bg-[#B69D74]/20 border border-[#B69D74]/20 rounded-xl text-[10px] font-medium text-[#B69D74] transition-colors cursor-pointer"
                       >
@@ -3338,11 +3383,22 @@ export default function ClientDashboardPage({
         onClose={() => setIsCheckinModalOpen(false)}
         reservation={selectedReservationForCheckin}
         boat={boats.find(b => b.id === selectedReservationForCheckin?.embarcacaoId)}
+        boats={boats}
+        allTodayReservations={todayReservations}
+        allTodayPendingReservations={pendingTodayReservations}
+        onSelectReservation={(res) => setSelectedReservationForCheckin(res)}
+        isInadimplente={isInadimplente}
+        totalAberto={totalAberto}
+        onGoToPayments={() => {
+          setIsCheckinModalOpen(false);
+          setFinanceTab('fatura');
+          handleTabChange('finance');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
         client={client}
         onSuccess={(checkinData) => {
-          setIsCheckinModalOpen(false);
-          
           if (selectedReservationForCheckin) {
+            const confirmedId = selectedReservationForCheckin.id;
             const updatedResObj = { 
               ...selectedReservationForCheckin, 
               ...(checkinData || {}),
@@ -3350,16 +3406,35 @@ export default function ClientDashboardPage({
               status: 'confirmado' 
             };
             setOptimisticReservations(prev => [
-              ...prev.filter(r => r.id !== selectedReservationForCheckin.id),
+              ...prev.filter(r => r.id !== confirmedId),
               updatedResObj
             ]);
-            setSelectedReservationForTicket(updatedResObj);
-            setIsBoardingTicketModalOpen(true);
+
+            const remainingPendingToday = pendingTodayReservations.filter(
+              r => String(r.id) !== String(confirmedId)
+            );
+
+            if (remainingPendingToday.length > 0) {
+              const nextPendingRes = remainingPendingToday[0];
+              const nextBoat = boats.find(b => b.id === nextPendingRes.embarcacaoId);
+              setSelectedReservationForCheckin(nextPendingRes);
+              showToast(
+                '1ª Embarcação Confirmada!',
+                `Agora confirme o plano de navegação de ${nextBoat ? getBoatCode(nextBoat) : 'sua 2ª embarcação'} agendada para hoje.`,
+                'success'
+              );
+            } else {
+              setIsCheckinModalOpen(false);
+              setSelectedReservationForTicket(updatedResObj);
+              setIsBoardingTicketModalOpen(true);
+              showToast('Sucesso', 'Check-in confirmado! Seu Ticket de Embarque foi gerado.', 'success');
+            }
+          } else {
+            setIsCheckinModalOpen(false);
           }
 
-          showToast('Sucesso', 'Check-in confirmado! Seu Ticket de Embarque foi gerado.', 'success');
           if (onRefresh) {
-            onRefresh();
+            onRefresh(true);
           }
         }}
       />

@@ -149,7 +149,7 @@ export default function App() {
       const urlReservaId = searchParams.get('reserva') || searchParams.get('reservaId');
       if (urlToken) {
         const prevToken = localStorage.getItem('client_token');
-        if (prevToken !== urlToken) {
+        if (prevToken !== urlToken || urlReservaId) {
           localStorage.removeItem('client_data_cache');
         }
         localStorage.setItem('client_token', urlToken);
@@ -164,7 +164,7 @@ export default function App() {
     }
     return localStorage.getItem('client_token');
   });
-  const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[]; chamados?: any[]; manutencoes?: any[] } | null>(() => {
+  const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[]; chamados?: any[]; manutencoes?: any[]; marinaDatasFechadas?: any[] } | null>(() => {
     try {
       const cached = localStorage.getItem('client_data_cache');
       return cached ? JSON.parse(cached) : null;
@@ -242,6 +242,7 @@ export default function App() {
           .then(data => {
             if (data.success && data.token) {
               localStorage.removeItem('client_data_cache');
+              setClientData(null);
               localStorage.setItem('client_token', data.token);
               localStorage.setItem('last_user_type', 'client');
               setClientToken(data.token);
@@ -384,7 +385,8 @@ export default function App() {
 
   useEffect(() => {
     if (clientToken) {
-      fetchClientData(true);
+      const hasAutoCheckin = !!localStorage.getItem('auto_checkin_reserva_id');
+      fetchClientData(true, hasAutoCheckin);
       const interval = setInterval(() => {
         if (document.visibilityState === 'visible') {
           fetchClientData(false);
@@ -658,7 +660,7 @@ export default function App() {
                     setClientToken(null);
                     setClientData(null);
                   }}
-                  onRefresh={() => fetchClientData(false)}
+                  onRefresh={(force) => fetchClientData(false, force)}
                 />
               ) : (
                 <div className="h-screen w-full flex items-center justify-center bg-slate-900"><div className="w-8 h-8 border-4 border-[#186b77] border-t-transparent rounded-full animate-spin"></div></div>

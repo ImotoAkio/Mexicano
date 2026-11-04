@@ -5,7 +5,8 @@ import {
   processReservasConfirmationCycle,
   getConfirmationTemplates,
   DEFAULT_10_CONFIRMATION_TEMPLATES,
-  generateClientMagicLink
+  generateClientMagicLink,
+  formatConfirmationMessage
 } from "../server-notifications-scheduler";
 import { sendEvolutionText } from "./whatsapp.routes";
 
@@ -142,7 +143,8 @@ router.get("/notifications/reservas-pendentes", requireAdminAuth, async (req, re
       `SELECT r.id, r.data, r.periodo, r.status, r.statusMarina, r.confirmacaoEnviada,
               r.tentativasConfirmacao, r.ultimaTentativaConfirmacao,
               c.id as clienteId, c.nome as clienteNome, c.telefone as clienteTelefone,
-              e.id as embarcacaoId, e.nome as embarcacaoNome, e.numero as embarcacaoNumero
+              e.id as embarcacaoId, e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
+              e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
        FROM Reservas r
        LEFT JOIN Clientes c ON r.clienteId = c.id
        LEFT JOIN Embarcacoes e ON r.embarcacaoId = e.id
@@ -192,7 +194,8 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
       const [rows] = await currentPool.query(
         `SELECT r.id, r.data, r.periodo, r.embarcacaoId, r.clienteId, 
                 c.nome as clienteNome, c.telefone as clienteTelefone,
-                e.nome as embarcacaoNome, e.numero as embarcacaoNumero
+                e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
+                e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
          FROM Reservas r
          JOIN Clientes c ON r.clienteId = c.id
          LEFT JOIN Embarcacoes e ON r.embarcacaoId = e.id
@@ -207,7 +210,8 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
       const [vitorRows] = await currentPool.query(
         `SELECT r.id, r.data, r.periodo, r.embarcacaoId, r.clienteId, 
                 c.nome as clienteNome, c.telefone as clienteTelefone,
-                e.nome as embarcacaoNome, e.numero as embarcacaoNumero
+                e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
+                e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
          FROM Clientes c
          JOIN Reservas r ON r.clienteId = c.id
          LEFT JOIN Embarcacoes e ON r.embarcacaoId = e.id
@@ -221,7 +225,8 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
         // Se Vitor Akio não tiver reserva pendente futura, utiliza seu cadastro direto com sua embarcação EL MEXICANO 99
         const [vitorClientRows] = await currentPool.query(
           `SELECT c.id as clienteId, c.nome as clienteNome, c.telefone as clienteTelefone,
-                  e.id as embarcacaoId, e.nome as embarcacaoNome, e.numero as embarcacaoNumero
+                  e.id as embarcacaoId, e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
+              e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
            FROM Clientes c
            LEFT JOIN Embarcacoes e ON e.id = 'boat_1780767211388'
            WHERE c.cpf LIKE '%07833944467%' OR c.cpf LIKE '%078.339.444-67%' OR c.id = 'cli_1780767128264'
@@ -249,7 +254,8 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
       const [rows] = await currentPool.query(
         `SELECT r.id, r.data, r.periodo, r.embarcacaoId, r.clienteId, 
                 c.nome as clienteNome, c.telefone as clienteTelefone,
-                e.nome as embarcacaoNome, e.numero as embarcacaoNumero
+                e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
+                e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
          FROM Reservas r
          JOIN Clientes c ON r.clienteId = c.id
          LEFT JOIN Embarcacoes e ON r.embarcacaoId = e.id
@@ -307,12 +313,25 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
           : (targetReserva.embarcacaoNumero ? `M${targetReserva.embarcacaoNumero} (${targetReserva.embarcacaoNome})` : targetReserva.embarcacaoNome))
       : "sua embarcação";
 
-    const finalMessage = templateText
-      .replace(/\{\s*cliente\s*\}/gi, clientePrimeiroNome)
-      .replace(/\{\s*barco\s*\}/gi, nomeBarco)
-      .replace(/\{\s*quando\s*\}/gi, "hoje")
-      .replace(/\{\s*data\s*\}/gi, targetReserva.data ? targetReserva.data.split('-').reverse().join('/') : "hoje")
-      .replace(/\{\s*link\s*\}/gi, magicLink);
+    const finalMessage = formatConfirmationMessage(templateText, {
+      clienteNome: targetReserva.clienteNome,
+      boatCode: nomeBarco,
+      quando: "hoje",
+      dataIso: targetReserva.data,
+      magicLink,
+      boatInfo: {
+        tipo: targetReserva.embarcacaoTipo,
+        nome: targetReserva.embarcacaoNome,
+        modelo: targetReserva.embarcacaoModelo,
+        fabricante: targetReserva.embarcacaoFabricante
+      }
+    });
+
+
+
+
+
+
 
     console.log(`[Robô Teste WhatsApp] Destino: ${number} | Mensagem:\n${finalMessage}`);
 
