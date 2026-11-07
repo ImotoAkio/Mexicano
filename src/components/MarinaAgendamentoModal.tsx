@@ -5,6 +5,7 @@ import {
   CheckCircle2, Search, Sparkles, Plus, Save
 } from 'lucide-react';
 import { boatDB, clientDB } from '../db';
+import { isInternalMexicano } from '../utils/constants';
 import { Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
 
@@ -118,8 +119,15 @@ export default function MarinaAgendamentoModal({
     setSelectedBoatId(boat.id);
     setIsBoatSelectOpen(false);
     if (boat.donos && boat.donos.length > 0) {
-      setSelectedClientId(boat.donos[0]);
-    } else if (boat.clienteId) {
+      const validDono = boat.donos.find(id => !isInternalMexicano(id));
+      if (validDono) {
+        setSelectedClientId(validDono);
+      } else if (boat.clienteId && !isInternalMexicano(boat.clienteId)) {
+        setSelectedClientId(boat.clienteId);
+      } else {
+        setSelectedClientId('');
+      }
+    } else if (boat.clienteId && !isInternalMexicano(boat.clienteId)) {
       setSelectedClientId(boat.clienteId);
     } else {
       setSelectedClientId('');
@@ -130,6 +138,7 @@ export default function MarinaAgendamentoModal({
     const bEmpresas = b.empresas || ['VALE'];
     if (bEmpresas.includes('MARINA')) return true;
     return clients.some(c => 
+      !isInternalMexicano(c.id) && !isInternalMexicano(c.nome) &&
       (c.embarcacaoId === b.id || (Array.isArray(c.embarcacoes) && c.embarcacoes.some(eb => eb.embarcacaoId === b.id)) || (Array.isArray(b.donos) && b.donos.includes(c.id))) &&
       (c.empresas || ['VALE']).includes('MARINA')
     );

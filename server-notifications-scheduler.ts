@@ -2,6 +2,7 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { getDbPool, getConfigValue, logNotificacao, hasNotificacaoLog } from "./server-db";
 import { sendEvolutionText } from "./server-routes/whatsapp.routes";
+import { sendPushToClient } from "./server-push";
 
 /**
  * 10 Modelos Padrões de Mensagens de Confirmação Progressivas
@@ -240,12 +241,12 @@ export async function generateClientMagicLink(clienteId: string, clienteNome: st
         [clienteId]
       );
       const authRecord = (authRows as any[])[0];
-      if (authRecord && authRecord.tokenVersion !== undefined) {
-        tokenVersion = authRecord.tokenVersion;
+      if (authRecord && authRecord.tokenVersion != null) {
+        tokenVersion = Number(authRecord.tokenVersion) || 1;
       } else {
         // Assegura registro inicial para o cliente
         await pool.query(
-          "INSERT INTO ClienteAuth (clienteId, passwordHash, tokenVersion) VALUES (?, '', 1) ON DUPLICATE KEY UPDATE tokenVersion = tokenVersion",
+          "INSERT INTO ClienteAuth (clienteId, passwordHash, tokenVersion) VALUES (?, '', 1) ON DUPLICATE KEY UPDATE tokenVersion = COALESCE(tokenVersion, 1)",
           [clienteId]
         );
       }
@@ -298,6 +299,68 @@ export async function generateClientMagicLink(clienteId: string, clienteNome: st
   }
 
   return `${appUrl}/portal?token=${token}&reserva=${reservaId}`;
+}
+
+/**
+ * Garante que o token de um MagicLink esteja sincronizado com o ClienteAuth atual
+ * e não falhe caso o cliente tenha redefinido senha ou o registro ClienteAuth tenha sido recriado.
+ */
+export async function ensureValidMagicLinkToken(linkRecord: any): Promise<string> {
+  const pool = getDbPool();
+  const jwtSecret = process.env.JWT_SECRET || "fallback_secret";
+  const clienteId = linkRecord.clienteId;
+  const reservaId = linkRecord.reservaId || "";
+  let tokenVersion = 1;
+  let clienteNome = "Cliente";
+
+  if (pool && clienteId) {
+    try {
+      const [authRows] = await pool.query(
+        "SELECT tokenVersion FROM ClienteAuth WHERE clienteId = ?",
+        [clienteId]
+      );
+      const authRecord = (authRows as any[])[0];
+      if (authRecord && authRecord.tokenVersion != null) {
+        tokenVersion = Number(authRecord.tokenVersion) || 1;
+      } else {
+        await pool.query(
+          "INSERT INTO ClienteAuth (clienteId, passwordHash, tokenVersion) VALUES (?, '', 1) ON DUPLICATE KEY UPDATE tokenVersion = COALESCE(tokenVersion, 1)",
+          [clienteId]
+        );
+      }
+    } catch (e) {
+      console.warn("[MagicLink] Aviso ao sincronizar ClienteAuth no redirecionamento:", e);
+    }
+  }
+
+  try {
+    const decoded = jwt.verify(linkRecord.token, jwtSecret, { algorithms: ["HS256"] }) as any;
+    if (decoded?.nome) clienteNome = decoded.nome;
+    if ((decoded?.tv ?? 1) === tokenVersion && decoded?.role === "client") {
+      return linkRecord.token;
+    }
+  } catch {}
+
+  const freshToken = jwt.sign(
+    {
+      id: clienteId,
+      nome: clienteNome,
+      role: "client",
+      tv: tokenVersion,
+      reservaId
+    },
+    jwtSecret,
+    { expiresIn: "7d" }
+  );
+
+  if (pool && linkRecord.id) {
+    await pool.query(
+      "UPDATE MagicLinks SET token = ? WHERE id = ?",
+      [freshToken, linkRecord.id]
+    ).catch(() => {});
+  }
+
+  return freshToken;
 }
 
 /**
@@ -448,9 +511,31 @@ export async function processReservasConfirmationCycle(options?: {
       });
 
       try {
-        const sendResult = await sendEvolutionText(telefone, messageText);
-        if (!sendResult.success) {
-          throw new Error(sendResult.message || "Falha no envio da mensagem de confirmação");
+        // 7a. Notificação Push nativa do app (abre direto o PWA instalado, já logado e com o check-in aberto)
+        let pushEntregues = 0;
+        if (res.clienteId) {
+          let pushUrl = "/portal";
+          try {
+            const parsedLink = new URL(magicLink);
+            pushUrl = `${parsedLink.pathname}${parsedLink.search}`;
+          } catch {}
+          pushEntregues = await sendPushToClient(res.clienteId, {
+            title: tentativaAtual <= 1 ? "Seu passeio é hoje ⚓" : "Confirme sua saída de hoje",
+            body: `${clientFirstName}, confirme a saída de ${boatCode} em um toque.`,
+            url: pushUrl,
+            tag: `checkin_${res.id}`,
+            requireInteraction: true
+          });
+        }
+
+        const pushSubstituiWhatsapp = (await getConfigValue("notif_push_substitui_whatsapp")) === "1";
+        const canalUsado = pushEntregues > 0 && pushSubstituiWhatsapp ? "push" : (pushEntregues > 0 ? "push+whatsapp" : "whatsapp");
+
+        if (canalUsado !== "push") {
+          const sendResult = await sendEvolutionText(telefone, messageText);
+          if (!sendResult.success) {
+            throw new Error(sendResult.message || "Falha no envio da mensagem de confirmação");
+          }
         }
 
         // Registra log com sucesso
@@ -461,7 +546,7 @@ export async function processReservasConfirmationCycle(options?: {
           clienteNome: clienteNome,
           telefone: telefone,
           horarioSlot: currentSlot,
-          mensagem: messageText,
+          mensagem: canalUsado === "whatsapp" ? messageText : `[${canalUsado}] ${messageText}`,
           status: "sucesso"
         });
 
@@ -483,6 +568,7 @@ export async function processReservasConfirmationCycle(options?: {
           telefone,
           tentativa: tentativaAtual,
           modeloUsado: templateIndex + 1,
+          canal: canalUsado,
           status: "sucesso"
         });
 

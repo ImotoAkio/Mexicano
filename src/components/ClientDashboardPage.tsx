@@ -19,6 +19,7 @@ import { Chamado } from '../types';
 import { chamadoDB } from '../db';
 import InstallAppSheet from './pwa/InstallAppSheet';
 import { usePWAInstall } from '../lib/pwaInstall';
+import { getClientPushState, enableClientPush, syncClientPushSubscription, ClientPushState } from '../lib/clientPush';
 
 const TAB_ORDER = ['home', 'calendar', 'finance', 'maintenance'] as const;
 type TabKey = typeof TAB_ORDER[number];
@@ -57,6 +58,7 @@ const subTabVariants = {
 
 interface ClientDashboardPageProps {
   client: any;
+  clientToken?: string | null;
   boats: any[];
   reservations: any[];
   transacoes?: any[];
@@ -69,6 +71,7 @@ interface ClientDashboardPageProps {
 
 export default function ClientDashboardPage({
   client,
+  clientToken,
   boats,
   reservations,
   transacoes = [],
@@ -208,7 +211,7 @@ export default function ClientDashboardPage({
   }, [activePixPaymentId, selectedTransactionForPix]);
 
   useEffect(() => {
-    const token = localStorage.getItem('client_token');
+    const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
     const socket = io('/', {
       path: '/socket.io',
       transports: ['polling', 'websocket'],
@@ -265,7 +268,7 @@ export default function ClientDashboardPage({
   useEffect(() => {
     const targetId = activePixPaymentId || selectedTransactionForPix?.id;
     if (!selectedTransactionForPix || !targetId || !pixQrCode || pixPaymentConfirmed) return;
-    const token = localStorage.getItem('client_token');
+    const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
     if (!token) return;
 
     const markConfirmed = () => {
@@ -386,7 +389,7 @@ export default function ClientDashboardPage({
         })
         .catch(() => {});
 
-      const token = localStorage.getItem('client_token');
+      const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
       if (token) {
         fetch('/api/client/financeiro-config', {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -435,7 +438,7 @@ export default function ClientDashboardPage({
     setActivePixPaymentId(t.asaasPaymentId || null);
 
     try {
-      const token = localStorage.getItem('client_token');
+      const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
       const response = await fetch(`/api/financeiro/transacoes/${t.id}/gerar-asaas`, {
         method: 'POST',
         headers: {
@@ -484,7 +487,7 @@ export default function ClientDashboardPage({
     });
 
     try {
-      const token = localStorage.getItem('client_token');
+      const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
       const response = await fetch('/api/financeiro/fatura/gerar-asaas', {
         method: 'POST',
         headers: {
@@ -621,11 +624,12 @@ export default function ClientDashboardPage({
   // Direcionamento inteligente de Magic Link (WhatsApp -> Confirmação da Reserva do Dia)
   useEffect(() => {
     try {
-      const autoResId = localStorage.getItem('auto_checkin_reserva_id');
+      const autoResId = localStorage.getItem('auto_checkin_reserva_id') || (window as any).__AUTO_CHECKIN_RESERVA_ID__;
       if (!autoResId || !reservations) return;
 
       // Consome a chave imediatamente para não reabrir o modal ao navegar
-      localStorage.removeItem('auto_checkin_reserva_id');
+      try { localStorage.removeItem('auto_checkin_reserva_id'); } catch {}
+      delete (window as any).__AUTO_CHECKIN_RESERVA_ID__;
 
       // 1. Verifica estritamente as reservas do cliente para HOJE (não canceladas)
       const todaysActive = myReservations.filter(
@@ -709,6 +713,34 @@ export default function ClientDashboardPage({
 
   // PWA Install hook (dismissal management, OS detection, beforeinstallprompt, auto-prompt)
   const pwa = usePWAInstall({ autoShow: true, autoShowDelayMs: 4000 });
+
+  // Web Push State
+  const [pushState, setPushState] = useState<ClientPushState>(() => getClientPushState());
+  const [isActivatingPush, setIsActivatingPush] = useState(false);
+  const [pushBannerDismissed, setPushBannerDismissed] = useState(() => {
+    try {
+      return localStorage.getItem('push_banner_dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    syncClientPushSubscription(clientToken);
+    setPushState(getClientPushState());
+  }, [clientToken]);
+
+  const handleEnablePush = async () => {
+    setIsActivatingPush(true);
+    const result = await enableClientPush(clientToken);
+    setIsActivatingPush(false);
+    setPushState(getClientPushState());
+    if (result.ok) {
+      showToast('Notificações Ativadas', 'Você receberá avisos diretos no app sobre suas saídas.', 'success');
+    } else if (result.message) {
+      showToast('Aviso', result.message, 'warning');
+    }
+  };
 
   const showToast = (title: string, msg: string, type: 'error'|'success'|'warning' = 'error') => {
     setToastMsg({ title, msg, type });
@@ -1003,6 +1035,50 @@ export default function ClientDashboardPage({
           </div>
         );
       })}
+
+      {/* Banner de Notificações Nativas do App */}
+      {pushState === 'default' && !pushBannerDismissed && (
+        <div className="px-6 mb-4 animate-in fade-in slide-in-from-top-3 duration-500">
+          <div className="bg-gradient-to-r from-[#121216] via-[#1a1714] to-[#121216] border border-[#B69D74]/30 rounded-2xl p-4 relative overflow-hidden shadow-lg backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-[#B69D74]/15 border border-[#B69D74]/25 flex items-center justify-center shrink-0 text-[#B69D74]">
+                  <Bell className="w-5 h-5 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-xs font-semibold text-white tracking-wide truncate">
+                    Ativar avisos de saída no app
+                  </h4>
+                  <p className="text-[11px] text-white/50 leading-tight mt-0.5 truncate">
+                    Abra seu check-in e status da embarcação em 1 toque
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleEnablePush}
+                  disabled={isActivatingPush}
+                  className="px-3.5 py-2 bg-gradient-to-r from-[#B69D74] to-[#dfcaaa] hover:brightness-110 text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {isActivatingPush ? 'Ativando...' : 'Ativar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPushBannerDismissed(true);
+                    try { localStorage.setItem('push_banner_dismissed', '1'); } catch {}
+                  }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white/30 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Central Vehicle Display Carousel */}
       <div className="flex-1 w-full relative mt-2">
@@ -2596,13 +2672,7 @@ export default function ClientDashboardPage({
         {/* Shared Header Start - Marina Concierge Header */}
         <div className="flex items-center justify-between px-6 pb-4 pt-[max(env(safe-area-inset-top),1.5rem)]">
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#B69D74] animate-pulse" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#B69D74] font-mono font-medium">
-                Cotista Titular · Grupo Vila Náutica
-              </p>
-            </div>
-            <h1 className="text-xl font-light tracking-wide text-white mt-0.5">
+            <h1 className="text-xl font-light tracking-wide text-white">
               Olá, <span className="text-white font-normal">{client.nome.split(' ')[0]}</span>
             </h1>
           </div>
@@ -3359,6 +3429,7 @@ export default function ClientDashboardPage({
         onClose={() => setIsReservationModalOpen(false)}
         selectedDate={selectedDate}
         client={client}
+        clientToken={clientToken}
         boats={boats}
         reservations={mergedReservations}
         preselectedBoatId={selectedCalendarBoatId}
@@ -3396,6 +3467,7 @@ export default function ClientDashboardPage({
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         client={client}
+        clientToken={clientToken}
         onSuccess={(checkinData) => {
           if (selectedReservationForCheckin) {
             const confirmedId = selectedReservationForCheckin.id;

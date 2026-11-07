@@ -24,6 +24,8 @@ export default defineConfig(() => {
           maximumFileSizeToCacheInBytes: 5000000,
           navigateFallback: '/index.html',
           navigateFallbackAllowlist: [/^\/portal/, /^\/feedback/, /^\/admin/, /^\/quiz/],
+          navigateFallbackDenylist: [/^\/m\//, /^\/api\//],
+          importScripts: ['/push-sw.js'],
           runtimeCaching: [
             {
               // Cache Google Fonts
@@ -73,6 +75,7 @@ export default defineConfig(() => {
       }),
     ],
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: [
         { find: /^@(?=\/)/, replacement: path.resolve(process.cwd(), '.') },
       ],
@@ -86,7 +89,7 @@ export default defineConfig(() => {
       allowedHosts: true as true
     },
     optimizeDeps: {
-      include: ['lucide-react', 'react', 'react-dom']
+      include: ['lucide-react', 'react', 'react-dom', 'motion/react']
     }
   };
 });

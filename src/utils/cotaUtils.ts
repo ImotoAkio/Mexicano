@@ -78,6 +78,16 @@ export function getBoatCotasList(
   return Array.from({ length: total }, (_, idx) => `C${idx + 1}`);
 }
 
+/**
+ * Retorna se a embarcação é administrada pela Vale Administradora.
+ * Se tiver empresas definidas e NÃO incluir 'VALE' (ex: apenas 'MARINA'), retorna false.
+ */
+export function isBoatVale(boat?: Partial<Embarcacao> | null): boolean {
+  if (!boat) return true;
+  const emp = boat.empresas && boat.empresas.length > 0 ? boat.empresas : ['VALE'];
+  return emp.includes('VALE');
+}
+
 export interface CotaOccupantInfo {
   isMexicano?: boolean;
   cota: string;
@@ -164,8 +174,10 @@ export function getBoatCotaOccupancyMap(
   });
 
   // Passada 3: Registrar cotas em estoque pertencentes à entidade interna El Mexicano
-  // O estoque interno NUNCA sobrescreve clientes reais nem bloqueia cotas necessárias aos clientes reais
-  mexClients.forEach(c => {
+  // Aplica-se EXCLUSIVAMENTE a embarcações geridas pela Vale Administradora.
+  // Embarcações da Marina não devem ter suas cotas vinculadas ao Mexicano.
+  if (isBoatVale(boat)) {
+    mexClients.forEach(c => {
     const entriesForBoat = Array.isArray(c.embarcacoes)
       ? c.embarcacoes.filter(eb => eb && eb.embarcacaoId === boatId)
       : [];
@@ -196,13 +208,14 @@ export function getBoatCotaOccupancyMap(
       }
     }
   });
+  }
 
   return map;
 }
 
 export interface CotaStatusInfo {
   cota: string;
-  status: 'disponivel_mexicano' | 'reservada' | 'em_repasse' | 'vendida';
+  status: 'disponivel_mexicano' | 'reservada' | 'em_repasse' | 'vendida' | 'disponivel';
   clienteId: string;
   clienteNome: string;
   isDisponivelParaVenda: boolean;
@@ -282,15 +295,30 @@ export function getBoatCotasStatusList(
 
     // Se não há ocupante ou o ocupante é a entidade El Mexicano -> Estoque Disponível para Venda
     if (!occupant || isMex) {
-      return {
-        cota: code,
-        status: 'disponivel_mexicano',
-        clienteId: occupant?.clienteId || MEXICANO_INTERNAL_CLIENT_ID,
-        clienteNome: MEXICANO_INTERNAL_DISPLAY_NAME,
-        isDisponivelParaVenda: true,
-        isMexicano: true,
-        cliente: occupant?.cliente
-      };
+      const isVale = isBoatVale(boat);
+      if (isVale) {
+        return {
+          cota: code,
+          status: 'disponivel_mexicano',
+          clienteId: occupant?.clienteId || MEXICANO_INTERNAL_CLIENT_ID,
+          clienteNome: MEXICANO_INTERNAL_DISPLAY_NAME,
+          isDisponivelParaVenda: true,
+          isMexicano: true,
+          cliente: occupant?.cliente
+        };
+      } else {
+        // Embarcação exclusiva da Marina (não gerida pela Vale):
+        // Cota livre desocupada, NÃO vinculada à El Mexicano
+        return {
+          cota: code,
+          status: 'disponivel',
+          clienteId: '',
+          clienteNome: 'Disponível',
+          isDisponivelParaVenda: false,
+          isMexicano: false,
+          cliente: undefined
+        };
+      }
     }
 
     // Verificar se o cotista colocou a fração em repasse (revenda)
@@ -372,7 +400,7 @@ export function getFirstAvailableCota(
 ): string {
   if (!boatId) return 'C1';
   const statusList = getBoatCotasStatusList(boatId, clients, boat);
-  const firstAvailable = statusList.find(s => s.isDisponivelParaVenda);
+  const firstAvailable = statusList.find(s => s.isDisponivelParaVenda || s.status === 'disponivel');
   if (firstAvailable) return firstAvailable.cota;
   return `C${statusList.length + 1}`;
 }
@@ -536,6 +564,9 @@ export function calculateEstoqueCotasConsolidado(
   });
 
   boats.forEach(boat => {
+    // Apenas embarcações administradas pela Vale entram na contagem de estoque da Mexicano
+    if (!isBoatVale(boat)) return;
+
     const boatId = boat.id;
     const statusList = getBoatCotasStatusList(boatId, clients, boat);
     totalCotasFrota += statusList.length;

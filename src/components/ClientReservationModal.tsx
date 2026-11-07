@@ -13,6 +13,7 @@ interface ClientReservationModalProps {
   reservations?: any[];
   preselectedBoatId?: any;
   marinaDatasFechadas?: Array<{ data: string; motivo: string }>;
+  clientToken?: string | null;
   onSuccess: (newRes?: any) => void;
 }
 
@@ -32,6 +33,7 @@ export default function ClientReservationModal({
   reservations = [],
   preselectedBoatId,
   marinaDatasFechadas = [],
+  clientToken,
   onSuccess 
 }: ClientReservationModalProps) {
   const [selectedBoatId, setSelectedBoatId] = useState(() => {
@@ -93,7 +95,7 @@ export default function ClientReservationModal({
       const clientName = getFirstTwoNames(client.nome);
       const datesFormatted = formatDateBR(dateValue);
 
-      const token = localStorage.getItem('client_token');
+      const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
       const res = await fetch('/api/client/send-calendar', {
         method: 'POST',
         headers: { 
@@ -136,7 +138,7 @@ export default function ClientReservationModal({
 
     try {
       // 1. Salvar localmente no BD da VPS através da API Segura do Cliente
-      const token = localStorage.getItem('client_token');
+      const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
       const dbRes = await fetch('/api/client/reserve', {
         method: 'POST',
         headers: {

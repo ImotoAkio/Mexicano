@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { getDbPool, pullDatabase, upsertReservation, deleteReservation, cancelReservation, getConfigValue, getClientAuth, upsertClientAuth } from "../server-db";
 import { requireClientAuth, sensitiveLimiter, whatsappLimiter } from "./middlewares";
 import { writeAuditLog } from "./middlewares";
+import { getVapidKeys, saveClientPushSubscription, removeClientPushSubscription } from "../server-push";
 import https from "https";
 import http from "http";
 
@@ -985,6 +986,54 @@ clientRoutes.post("/change-password", requireClientAuth, sensitiveLimiter, async
   } catch (err: any) {
     console.error("Client change password error:", err);
     res.status(500).json({ error: true, message: "Erro interno ao alterar a senha." });
+  }
+});
+
+// ---------------- Notificações Push nativas do PWA ----------------
+
+// Route: Chave pública VAPID para inscrição do dispositivo
+clientRoutes.get("/push/public-key", requireClientAuth, async (_req, res) => {
+  const keys = await getVapidKeys();
+  if (!keys) {
+    return res.status(503).json({ error: true, message: "Notificações indisponíveis no momento." });
+  }
+  res.json({ success: true, publicKey: keys.publicKey });
+});
+
+// Route: Registra o dispositivo do cliente para receber notificações
+clientRoutes.post("/push/subscribe", requireClientAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.id;
+    const subscription = req.body?.subscription;
+    if (
+      !subscription ||
+      typeof subscription.endpoint !== "string" ||
+      !subscription.endpoint.startsWith("https://") ||
+      typeof subscription.keys?.p256dh !== "string" ||
+      typeof subscription.keys?.auth !== "string"
+    ) {
+      return res.status(400).json({ error: true, message: "Inscrição de notificação inválida." });
+    }
+    await saveClientPushSubscription(userId, subscription, req.headers["user-agent"] as string);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Client push subscribe error:", err);
+    res.status(500).json({ error: true, message: "Erro ao ativar notificações." });
+  }
+});
+
+// Route: Remove o dispositivo do cliente das notificações
+clientRoutes.post("/push/unsubscribe", requireClientAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.id;
+    const endpoint = req.body?.endpoint;
+    if (typeof endpoint === "string" && endpoint) {
+      await removeClientPushSubscription(endpoint, userId);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Client push unsubscribe error:", err);
+    res.status(500).json({ error: true, message: "Erro ao desativar notificações." });
   }
 });
 

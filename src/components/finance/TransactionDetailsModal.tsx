@@ -1,7 +1,7 @@
 import React from 'react';
 import { TransacaoFinanceira, Cliente, Embarcacao } from '../../types';
 import { XCircle, Edit, Trash2, CheckCircle, Upload, AlertCircle, Calendar, FileText, Check, ExternalLink, Copy, Download } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface TransactionDetailsModalProps {
   transacao: TransacaoFinanceira;

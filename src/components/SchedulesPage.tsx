@@ -1472,16 +1472,22 @@ function NewBookingModal({ defaultDate, boats, onClose, onSuccess }: NewBookingM
 
     const ownersMap = new Map<string, Cliente>();
 
+    const isValeBoat = (boat.empresas && boat.empresas.length > 0 ? boat.empresas : ['VALE']).includes('VALE');
+
     if (Array.isArray(boat.donos)) {
       boat.donos.forEach(id => {
+        if (!isValeBoat && isInternalMexicano(id)) return;
         const c = clientDB.getById(id);
-        if (c) ownersMap.set(c.id, c);
+        if (c) {
+          if (!isValeBoat && (isInternalMexicano(c.id) || isInternalMexicano(c.nome))) return;
+          ownersMap.set(c.id, c);
+        }
       });
     }
 
-    // Se houver cotas disponíveis em estoque do grupo Mexicano, garante a presença da entidade interna
+    // Se houver cotas disponíveis em estoque do grupo Mexicano em embarcações da Vale Administradora, garante a presença da entidade interna
     const hasStock = boatStockResumo ? boatStockResumo.cotasDisponiveis > 0 : true;
-    if (hasStock && !ownersMap.has(MEXICANO_INTERNAL_CLIENT_ID)) {
+    if (isValeBoat && hasStock && !ownersMap.has(MEXICANO_INTERNAL_CLIENT_ID)) {
       const mexClient = clientDB.getById(MEXICANO_INTERNAL_CLIENT_ID) || {
         id: MEXICANO_INTERNAL_CLIENT_ID,
         nome: MEXICANO_INTERNAL_DISPLAY_NAME,

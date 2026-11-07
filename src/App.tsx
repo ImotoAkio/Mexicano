@@ -138,31 +138,63 @@ const AdminFuelWrapper = () => {
 
 type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot';
 
+function persistClientSessionToken(token: string, reservaId?: string | null) {
+  if (!token || token === 'null' || token === 'undefined') return;
+  (window as any).__CLIENT_TOKEN__ = token;
+  if (reservaId) {
+    (window as any).__AUTO_CHECKIN_RESERVA_ID__ = reservaId;
+  }
+  const writeToStorage = () => {
+    localStorage.setItem('client_token', token);
+    localStorage.setItem('last_user_type', 'client');
+    if (reservaId) {
+      localStorage.setItem('auto_checkin_reserva_id', reservaId);
+    }
+  };
+  try {
+    writeToStorage();
+  } catch {
+    try {
+      localStorage.removeItem('client_data_cache');
+      localStorage.removeItem('marina_data_cache');
+      writeToStorage();
+    } catch {}
+  }
+}
+
 export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   
   // Client session: JWT-based with local cache for instant PWA loading
   const [clientToken, setClientToken] = useState<string | null>(() => {
     try {
+      // Se estiver na rota curta de Magic Link (/m/:code), aguarda a resolução da API (/api/m/:code)
+      // sem disparar requisições concorrentes com um token antigo do localStorage
+      if (window.location.pathname.startsWith('/m/')) {
+        return null;
+      }
       const searchParams = new URLSearchParams(window.location.search);
       const urlToken = searchParams.get('token') || searchParams.get('auth_token');
       const urlReservaId = searchParams.get('reserva') || searchParams.get('reservaId');
-      if (urlToken) {
+      if (urlToken && urlToken !== 'null' && urlToken !== 'undefined') {
         const prevToken = localStorage.getItem('client_token');
         if (prevToken !== urlToken || urlReservaId) {
-          localStorage.removeItem('client_data_cache');
+          try { localStorage.removeItem('client_data_cache'); } catch {}
         }
-        localStorage.setItem('client_token', urlToken);
-        localStorage.setItem('last_user_type', 'client');
-        if (urlReservaId) {
-          localStorage.setItem('auto_checkin_reserva_id', urlReservaId);
-        }
+        persistClientSessionToken(urlToken, urlReservaId);
         return urlToken;
       }
     } catch (e) {
       console.warn("Erro ao ler token da URL na inicialização:", e);
     }
-    return localStorage.getItem('client_token');
+    try {
+      const stored = localStorage.getItem('client_token');
+      if (stored && stored !== 'null' && stored !== 'undefined') {
+        (window as any).__CLIENT_TOKEN__ = stored;
+        return stored;
+      }
+    } catch {}
+    return (window as any).__CLIENT_TOKEN__ || null;
   });
   const [clientData, setClientData] = useState<{ client: any; boats: any[]; reservations: any[]; transacoes?: any[]; chamados?: any[]; manutencoes?: any[]; marinaDatasFechadas?: any[] } | null>(() => {
     try {
@@ -216,13 +248,9 @@ export default function App() {
       const urlToken = searchParams.get('token') || searchParams.get('auth_token');
       const urlReservaId = searchParams.get('reserva') || searchParams.get('reservaId');
 
-      if (urlToken) {
-        localStorage.setItem('client_token', urlToken);
-        localStorage.setItem('last_user_type', 'client');
+      if (urlToken && urlToken !== 'null' && urlToken !== 'undefined') {
+        persistClientSessionToken(urlToken, urlReservaId);
         setClientToken(urlToken);
-        if (urlReservaId) {
-          localStorage.setItem('auto_checkin_reserva_id', urlReservaId);
-        }
         // Limpa os parâmetros da URL mantendo a rota do portal
         window.history.replaceState(null, '', '/portal');
         setCurrentPath('/portal');
@@ -235,20 +263,16 @@ export default function App() {
   // Processamento de Short Magic Link seguro (/m/:code)
   useEffect(() => {
     if (window.location.pathname.startsWith('/m/')) {
-      const code = window.location.pathname.replace(/^\/m\//, '').trim();
+      const code = window.location.pathname.replace(/^\/m\//, '').replace(/\/+$/, '').trim();
       if (code) {
         fetch(`/api/m/${code}`)
           .then(res => res.json())
           .then(data => {
             if (data.success && data.token) {
-              localStorage.removeItem('client_data_cache');
+              try { localStorage.removeItem('client_data_cache'); } catch {}
               setClientData(null);
-              localStorage.setItem('client_token', data.token);
-              localStorage.setItem('last_user_type', 'client');
+              persistClientSessionToken(data.token, data.reservaId);
               setClientToken(data.token);
-              if (data.reservaId) {
-                localStorage.setItem('auto_checkin_reserva_id', data.reservaId);
-              }
               window.history.replaceState(null, '', '/portal');
               setCurrentPath('/portal');
             } else {
@@ -289,7 +313,7 @@ export default function App() {
 
   // Fetch admin role
   useEffect(() => {
-    if (isAuthenticated && (!adminRole || !adminName) && !isRoleLoading) {
+    if (isAuthenticated && currentPath.startsWith('/admin') && (!adminRole || !adminName) && !isRoleLoading) {
       setIsRoleLoading(true);
       fetch('/api/auth/validate', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
@@ -318,12 +342,12 @@ export default function App() {
       .catch(() => handleLogout())
       .finally(() => setIsRoleLoading(false));
     }
-  }, [isAuthenticated, adminRole, isRoleLoading]);
+  }, [isAuthenticated, currentPath, adminRole, isRoleLoading]);
 
   // Load DB into memory
   useEffect(() => {
     let isMounted = true;
-    if (isAuthenticated && !isAdminDbLoaded) {
+    if (isAuthenticated && currentPath.startsWith('/admin') && !isAdminDbLoaded) {
       loadFromRemote().then((data) => {
         if (isMounted) {
           setDbData(data);
@@ -334,11 +358,11 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, isAdminDbLoaded]);
+  }, [isAuthenticated, currentPath, isAdminDbLoaded]);
 
   // Real-time synchronization for Admin/Marina/Peças dashboard
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && currentPath.startsWith('/admin')) {
       const token = localStorage.getItem('admin_token');
       const socket = io('/', { path: '/socket.io', auth: { token } });
 
@@ -356,25 +380,33 @@ export default function App() {
         socket.disconnect();
       };
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentPath]);
 
   const fetchClientData = async (showLoading = false, forceRefresh = false) => {
-    if (!clientToken) return;
+    const activeToken = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
+    if (!activeToken || activeToken === 'null' || activeToken === 'undefined') return;
     if (showLoading && !clientData) setClientLoading(true);
     try {
       const url = forceRefresh ? '/api/client/me?forceRefresh=true' : '/api/client/me';
       const res = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${clientToken}` }
+        headers: { 'Authorization': `Bearer ${activeToken}` }
       });
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem('client_token');
-        localStorage.removeItem('client_data_cache');
-        setClientToken(null);
-        setClientData(null);
+        const currentStored = localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
+        if (!currentStored || currentStored === activeToken) {
+          localStorage.removeItem('client_token');
+          localStorage.removeItem('client_data_cache');
+          delete (window as any).__CLIENT_TOKEN__;
+          setClientToken(null);
+          setClientData(null);
+        }
       } else if (res.ok) {
         const data = await res.json();
+        persistClientSessionToken(activeToken);
         setClientData(data);
-        localStorage.setItem('client_data_cache', JSON.stringify(data));
+        try {
+          localStorage.setItem('client_data_cache', JSON.stringify(data));
+        } catch {}
       }
     } catch (e) {
       console.warn('Erro ao carregar dados do cliente:', e);
@@ -385,7 +417,8 @@ export default function App() {
 
   useEffect(() => {
     if (clientToken) {
-      const hasAutoCheckin = !!localStorage.getItem('auto_checkin_reserva_id');
+      persistClientSessionToken(clientToken);
+      const hasAutoCheckin = !!(localStorage.getItem('auto_checkin_reserva_id') || (window as any).__AUTO_CHECKIN_RESERVA_ID__);
       fetchClientData(true, hasAutoCheckin);
       const interval = setInterval(() => {
         if (document.visibilityState === 'visible') {
@@ -540,8 +573,19 @@ export default function App() {
     const handler = () => {
       handleLogout();
     };
+    const clientExpiredHandler = () => {
+      localStorage.removeItem('client_token');
+      localStorage.removeItem('client_data_cache');
+      delete (window as any).__CLIENT_TOKEN__;
+      setClientToken(null);
+      setClientData(null);
+    };
     window.addEventListener('auth-expired', handler);
-    return () => window.removeEventListener('auth-expired', handler);
+    window.addEventListener('client-auth-expired', clientExpiredHandler);
+    return () => {
+      window.removeEventListener('auth-expired', handler);
+      window.removeEventListener('client-auth-expired', clientExpiredHandler);
+    };
   }, []);
 
   const isFeedbackRoute = currentPath === '/feedback' || currentPath.startsWith('/feedback');
@@ -625,6 +669,7 @@ export default function App() {
           >
             <ClientLoginPage 
               onLoginSuccess={(token) => {
+                persistClientSessionToken(token);
                 setClientToken(token);
                 // fetchClientData runs automatically in useEffect when clientToken changes
               }} 
@@ -648,6 +693,7 @@ export default function App() {
               {clientData ? (
                 <ClientDashboardPage
                   client={clientData.client}
+                  clientToken={clientToken}
                   boats={clientData.boats || []}
                   reservations={clientData.reservations || []}
                   transacoes={clientData.transacoes || []}
@@ -657,6 +703,7 @@ export default function App() {
                   onLogout={() => {
                     localStorage.removeItem('client_token');
                     localStorage.removeItem('client_data_cache');
+                    delete (window as any).__CLIENT_TOKEN__;
                     setClientToken(null);
                     setClientData(null);
                   }}

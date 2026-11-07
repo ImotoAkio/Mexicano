@@ -12,6 +12,7 @@ export function ZoomableImage({ src, alt, className = '', maxZoom = 5 }: Zoomabl
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [imgSrc, setImgSrc] = useState(src);
   const dragStart = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -19,6 +20,7 @@ export function ZoomableImage({ src, alt, className = '', maxZoom = 5 }: Zoomabl
   useEffect(() => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
+    setImgSrc(src);
   }, [src]);
 
   const handleWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
@@ -147,9 +149,14 @@ export function ZoomableImage({ src, alt, className = '', maxZoom = 5 }: Zoomabl
         onTouchEnd={handleMouseUp}
       >
         <img
-          src={src}
+          src={imgSrc}
           alt={alt}
           draggable={false}
+          onError={() => {
+            if (imgSrc && imgSrc.startsWith('/uploads/')) {
+              setImgSrc(`https://mexicano.echo.dev.br${imgSrc}`);
+            }
+          }}
           className={`transition-transform duration-200 ease-out origin-center select-none pointer-events-none ${className}`}
           style={{
             transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale})`,

@@ -38,14 +38,28 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
 
   const formatAngleLabel = (key: string) => {
     const labels: Record<string, string> = {
+      // Novos ângulos de Jet Ski (13 itens)
+      'frente_superior': 'Frente Parte Superior',
+      'frente_inferior': 'Frente Parte Inferior (Casco)',
+      'diagonal_esquerda_superior': 'Diagonal Esquerda Superior',
+      'lateral_esquerda_superior': 'Lateral Esquerda Superior',
+      'lateral_esquerda_inferior': 'Lateral Esquerda Inferior (Casco)',
+      'diagonal_direita_superior': 'Diagonal Direita Superior',
+      'lateral_direita_superior': 'Lateral Direita Superior',
+      'lateral_direita_inferior': 'Lateral Direita Inferior',
+      'traseira_superior': 'Traseira Superior',
+      'traseira_inferior': 'Traseira Inferior',
+      'painel': 'Painel',
+      'porta_objetos': 'Porta-Objetos',
+      'bau': 'Baú',
+      // Legado Jet Ski
       'frente': 'Frente',
       'traseira': 'Traseira',
       'lat_esquerda': 'Lat. Esquerda',
       'lat_direita': 'Lat. Direita',
-      'painel': 'Painel',
       'casco_inferior': 'Casco Inferior',
       'casco_traseiro': 'Casco Traseiro',
-      'porta_objetos': 'Porta Objetos',
+      // Lancha
       'frente_proa': 'Frente - Proa',
       'frente_conves': 'Frente - Convés',
       'traseira_popa': 'Traseira - Popa',
@@ -58,6 +72,32 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
     return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
+  const ANGLE_ORDER = [
+    'frente_superior',
+    'frente_inferior',
+    'diagonal_esquerda_superior',
+    'lateral_esquerda_superior',
+    'lateral_esquerda_inferior',
+    'diagonal_direita_superior',
+    'lateral_direita_superior',
+    'lateral_direita_inferior',
+    'traseira_superior',
+    'traseira_inferior',
+    'painel',
+    'porta_objetos',
+    'bau',
+    'frente_proa',
+    'frente_conves',
+    'traseira_popa',
+    'traseira_plataforma',
+    'lat_esq_proa',
+    'lat_esq_popa',
+    'lat_dir_proa',
+    'lat_dir_popa',
+    'casco_inferior',
+    'casco_traseiro',
+  ];
+
   const parseFotos = (fotos: any, extras: any = []) => {
     let arr: { label: string, url: string }[] = [];
     if (Array.isArray(fotos)) {
@@ -65,6 +105,11 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
     } else if (fotos && typeof fotos === 'object') {
       arr = Object.entries(fotos)
         .filter(([_, v]) => typeof v === 'string')
+        .sort(([a], [b]) => {
+          const idxA = ANGLE_ORDER.indexOf(a);
+          const idxB = ANGLE_ORDER.indexOf(b);
+          return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+        })
         .map(([k, v]) => ({ label: formatAngleLabel(k), url: v as string }));
     }
     if (Array.isArray(extras)) {
@@ -134,7 +179,18 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
                 <div className="grid grid-cols-3 gap-2">
                   {fotosDescida.map((foto, idx) => (
                     <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer" onClick={() => setZoomedPhoto(foto.url)}>
-                      <img src={foto.url} alt={`Descida ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <img
+                        src={foto.url}
+                        alt={`Descida ${idx}`}
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (foto.url.startsWith('/uploads/') && !target.dataset.fallbackApplied) {
+                            target.dataset.fallbackApplied = 'true';
+                            target.src = `https://mexicano.echo.dev.br${foto.url}`;
+                          }
+                        }}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
                       <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] p-1 truncate text-center backdrop-blur-sm">
                         {foto.label}
                       </div>
@@ -160,7 +216,18 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
                 <div className="grid grid-cols-3 gap-2">
                   {fotosSubida.map((foto, idx) => (
                     <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer" onClick={() => setZoomedPhoto(foto.url)}>
-                      <img src={foto.url} alt={`Subida ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <img
+                        src={foto.url}
+                        alt={`Subida ${idx}`}
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (foto.url.startsWith('/uploads/') && !target.dataset.fallbackApplied) {
+                            target.dataset.fallbackApplied = 'true';
+                            target.src = `https://mexicano.echo.dev.br${foto.url}`;
+                          }
+                        }}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
                       <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] p-1 truncate text-center backdrop-blur-sm">
                         {foto.label}
                       </div>

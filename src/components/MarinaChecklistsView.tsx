@@ -77,16 +77,130 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const parseFotos = (fotosStr: any): string[] => {
-    if (!fotosStr) return [];
-    if (Array.isArray(fotosStr)) return fotosStr;
-    if (typeof fotosStr !== 'string') return [];
-    try {
-      const parsed = JSON.parse(fotosStr);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return fotosStr.split(',').filter((f: string) => f.trim().length > 0);
+  const ANGLE_LABELS: Record<string, string> = {
+    'frente_superior': 'Frente Parte Superior',
+    'frente_inferior': 'Frente Parte Inferior (Casco)',
+    'diagonal_esquerda_superior': 'Diagonal Esquerda Superior',
+    'lateral_esquerda_superior': 'Lateral Esquerda Superior',
+    'lateral_esquerda_inferior': 'Lateral Esquerda Inferior (Casco)',
+    'diagonal_direita_superior': 'Diagonal Direita Superior',
+    'lateral_direita_superior': 'Lateral Direita Superior',
+    'lateral_direita_inferior': 'Lateral Direita Inferior',
+    'traseira_superior': 'Traseira Superior',
+    'traseira_inferior': 'Traseira Inferior',
+    'painel': 'Painel',
+    'porta_objetos': 'Porta-Objetos',
+    'bau': 'Baú',
+    'frente': 'Frente',
+    'traseira': 'Traseira',
+    'lat_esquerda': 'Lat. Esquerda',
+    'lat_direita': 'Lat. Direita',
+    'casco_inferior': 'Casco Inferior',
+    'casco_traseiro': 'Casco Traseiro',
+    'frente_proa': 'Frente - Proa',
+    'frente_conves': 'Frente - Convés',
+    'traseira_popa': 'Traseira - Popa',
+    'traseira_plataforma': 'Traseira - Plataforma',
+    'lat_esq_proa': 'Lat. Esq - Proa',
+    'lat_esq_popa': 'Lat. Esq - Popa',
+    'lat_dir_proa': 'Lat. Dir - Proa',
+    'lat_dir_popa': 'Lat. Dir - Popa',
+  };
+
+  const ANGLE_ORDER = [
+    'frente_superior',
+    'frente_inferior',
+    'diagonal_esquerda_superior',
+    'lateral_esquerda_superior',
+    'lateral_esquerda_inferior',
+    'diagonal_direita_superior',
+    'lateral_direita_superior',
+    'lateral_direita_inferior',
+    'traseira_superior',
+    'traseira_inferior',
+    'painel',
+    'porta_objetos',
+    'bau',
+    'frente',
+    'traseira',
+    'lat_esquerda',
+    'lat_direita',
+    'frente_proa',
+    'frente_conves',
+    'traseira_popa',
+    'traseira_plataforma',
+    'lat_esq_proa',
+    'lat_esq_popa',
+    'lat_dir_proa',
+    'lat_dir_popa',
+    'casco_inferior',
+    'casco_traseiro',
+  ];
+
+  const formatAngleLabel = (key: string) =>
+    ANGLE_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+  const parseFotosWithLabels = (fotosStr: any, extras?: any): { url: string; label: string }[] => {
+    let arr: { url: string; label: string }[] = [];
+    const extractFromValue = (val: any) => {
+      if (!val) return;
+      if (Array.isArray(val)) {
+        val.forEach((u, i) => {
+          if (typeof u === 'string' && u.trim().length > 0 && !u.startsWith('blob:')) {
+            arr.push({ url: u, label: `Foto ${i + 1}` });
+          }
+        });
+      } else if (typeof val === 'object') {
+        Object.entries(val)
+          .filter(([_, v]) => typeof v === 'string' && (v as string).trim().length > 0 && !(v as string).startsWith('blob:'))
+          .sort(([a], [b]) => {
+            const idxA = ANGLE_ORDER.indexOf(a);
+            const idxB = ANGLE_ORDER.indexOf(b);
+            return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+          })
+          .forEach(([k, v]) => {
+            arr.push({ url: v as string, label: formatAngleLabel(k) });
+          });
+      } else if (typeof val === 'string') {
+        try {
+          const parsed = JSON.parse(val);
+          extractFromValue(parsed);
+        } catch {
+          val.split(',').filter((f: string) => f.trim().length > 0 && !f.startsWith('blob:')).forEach((u: string, i: number) => {
+            arr.push({ url: u.trim(), label: `Foto ${i + 1}` });
+          });
+        }
+      }
+    };
+
+    extractFromValue(fotosStr);
+
+    if (Array.isArray(extras)) {
+      extras.forEach((u, i) => {
+        if (typeof u === 'string' && u.trim().length > 0 && !u.startsWith('blob:')) {
+          arr.push({ url: u, label: `Extra ${i + 1}` });
+        }
+      });
     }
+    return arr;
+  };
+
+  const parseFotos = (fotosStr: any, fallbackStr?: any): string[] => {
+    const primary = parseFotosWithLabels(fotosStr).map(f => f.url);
+    if (primary.length > 0 || !fallbackStr) return primary;
+    return parseFotosWithLabels(fallbackStr).map(f => f.url);
+  };
+
+  const getPhaseFotosDetailed = (r: Reserva, phase: string): { url: string; label: string }[] => {
+    if (phase === 'descida') {
+      const desc = parseFotosWithLabels(r.fotosChecklistDescida, (r as any).fotosExtrasDescida);
+      if (desc.length > 0) return desc;
+      return parseFotosWithLabels(r.fotosChecklistSaida, (r as any).fotosExtrasSaida);
+    }
+    if (phase === 'chegada') {
+      return parseFotosWithLabels(r.fotosChecklistChegada, (r as any).fotosExtrasChegada);
+    }
+    return parseFotosWithLabels(r.fotosChecklistSubida, (r as any).fotosExtrasSubida);
   };
 
   const getEmbarcacao = (id: string) => data?.boats?.find(b => b.id === id);
@@ -96,17 +210,13 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
     if (!inspectionReserva) return;
     const allPhotos: any[] = [];
     ['descida', 'chegada', 'subida'].forEach(p => {
-      const pFotos = parseFotos(
-        p === 'descida' ? (inspectionReserva.fotosChecklistDescida || inspectionReserva.fotosChecklistSaida) :
-        p === 'chegada' ? inspectionReserva.fotosChecklistChegada :
-        inspectionReserva.fotosChecklistSubida
-      );
+      const pFotos = getPhaseFotosDetailed(inspectionReserva, p);
       const time = p === 'descida' ? inspectionReserva.horaDescida : p === 'chegada' ? inspectionReserva.horaChegada : inspectionReserva.horaSubida;
       const operador = p === 'descida' ? (inspectionReserva.operadorDescida || inspectionReserva.operadorSaida || 'Desconhecido') : p === 'chegada' ? (inspectionReserva.operadorChegada || 'Desconhecido') : (inspectionReserva.operadorSubida || 'Desconhecido');
-      pFotos.forEach((url: string) => {
+      pFotos.forEach((item) => {
         allPhotos.push({
-          url,
-          title: `Checklist de ${p.charAt(0).toUpperCase() + p.slice(1)}`,
+          url: item.url,
+          title: `Checklist de ${p.charAt(0).toUpperCase() + p.slice(1)} • ${item.label}`,
           time: time || '--:--',
           operador: operador,
           phase: p
@@ -171,12 +281,15 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
     if (!matchesSearch) return false;
 
     // Photo filter match
-    const descidaFotos = parseFotos(r.fotosChecklistDescida || r.fotosChecklistSaida);
+    const descidaFotos = parseFotos(r.fotosChecklistDescida, r.fotosChecklistSaida);
     const subidaFotos = parseFotos(r.fotosChecklistSubida);
     const totalFotos = descidaFotos.concat(subidaFotos);
 
     if (photoFilter === 'casco') {
-      return totalFotos.some(url => url.toLowerCase().includes('casco'));
+      const hasCascoKey = typeof r.fotosChecklistDescida === 'object' && r.fotosChecklistDescida !== null && !Array.isArray(r.fotosChecklistDescida)
+        ? Object.keys(r.fotosChecklistDescida).some(k => k.toLowerCase().includes('casco'))
+        : false;
+      return hasCascoKey || totalFotos.some(url => url.toLowerCase().includes('casco'));
     } else if (photoFilter === 'completos') {
       return descidaFotos.length >= 4 || subidaFotos.length >= 4;
     } else if (photoFilter === 'pendentes') {
@@ -189,10 +302,10 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
   // Calculate Metrics for Biosynthesia KPI Cards
   const totalCount = filteredChecklists.length;
   const cascoCount = filteredChecklists.filter(r => {
-    const fotos = parseFotos(r.fotosChecklistDescida || r.fotosChecklistSaida).concat(parseFotos(r.fotosChecklistSubida));
-    return fotos.some(u => u.toLowerCase().includes('casco'));
+    const fotos = getPhaseFotosDetailed(r, 'descida').concat(getPhaseFotosDetailed(r, 'subida'));
+    return fotos.some(u => u.url.toLowerCase().includes('casco') || u.label.toLowerCase().includes('casco'));
   }).length;
-  const completosCount = filteredChecklists.filter(r => parseFotos(r.fotosChecklistDescida).length > 0 && parseFotos(r.fotosChecklistSubida).length > 0).length;
+  const completosCount = filteredChecklists.filter(r => parseFotos(r.fotosChecklistDescida, r.fotosChecklistSaida).length > 0 && parseFotos(r.fotosChecklistSubida).length > 0).length;
   const naAguaCount = filteredChecklists.filter(r => r.horaDescida && !r.horaSubida).length;
 
   const toggleSelectAll = () => {
@@ -216,7 +329,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
       const formData = new FormData();
       formData.append('image', file);
 
-      const res = await fetch('/api/upload', {
+      const res = await fetch('/api/upload/checklist-image', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
@@ -226,10 +339,12 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
       if (!res.ok) throw new Error('Falha no upload');
       const dataRes = await res.json();
+      const uploadedUrl = dataRes.imageUrl || dataRes.url;
+      if (!uploadedUrl) throw new Error('URL ausente');
       
       setChecklistFotos(prev => ({
         ...prev,
-        [angleId]: [...(prev[angleId] || []), dataRes.url]
+        [angleId]: [...(prev[angleId] || []), uploadedUrl]
       }));
     } catch (err) {
       alert('Erro ao enviar foto.');
@@ -543,11 +658,11 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                     const client = getCliente(reserva.clienteId);
                     const isSelected = selectedIds.includes(reserva.id);
                     
-                    const descidaFotos = parseFotos(reserva.fotosChecklistDescida || reserva.fotosChecklistSaida);
-                    const subidaFotos = parseFotos(reserva.fotosChecklistSubida);
+                    const descidaFotos = getPhaseFotosDetailed(reserva, 'descida');
+                    const subidaFotos = getPhaseFotosDetailed(reserva, 'subida');
                     const totalFotos = descidaFotos.concat(subidaFotos);
 
-                    const hasCasco = totalFotos.some(f => f.toLowerCase().includes('casco'));
+                    const hasCasco = totalFotos.some(f => f.url.toLowerCase().includes('casco') || f.label.toLowerCase().includes('casco'));
 
                     return (
                       <tr 
@@ -724,11 +839,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 subtle-scrollbar">
               {['descida', 'chegada', 'subida'].map(phase => {
-                const photos = parseFotos(
-                  phase === 'descida' ? (inspectionReserva.fotosChecklistDescida || inspectionReserva.fotosChecklistSaida) :
-                  phase === 'chegada' ? inspectionReserva.fotosChecklistChegada :
-                  inspectionReserva.fotosChecklistSubida
-                );
+                const photos = getPhaseFotosDetailed(inspectionReserva, phase);
 
                 if (photos.length === 0) return null;
 
@@ -745,9 +856,25 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {photos.map((url, i) => (
+                      {photos.map((photo, i) => (
                         <div key={i} className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video shadow-2xs hover:shadow-md transition-all cursor-pointer" onClick={() => openLightboxForPhase(phase, i)}>
-                          <img src={url} alt={`Foto ${i + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          <img
+                            src={photo.url}
+                            alt={photo.label || `Foto ${i + 1}`}
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              if (photo.url.startsWith('/uploads/') && !target.dataset.fallbackApplied) {
+                                target.dataset.fallbackApplied = 'true';
+                                target.src = `https://mexicano.echo.dev.br${photo.url}`;
+                              }
+                            }}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          {photo.label && (
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/80 via-slate-950/40 to-transparent px-2.5 py-1.5 text-[10px] font-bold text-white truncate pointer-events-none">
+                              {photo.label}
+                            </div>
+                          )}
                           <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-1.5">
                             <Eye className="w-3.5 h-3.5" /> Ampliar
                           </div>
@@ -892,6 +1019,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
                       <input
                         type="file"
                         accept="image/*"
+                        capture="environment"
                         className="hidden"
                         onChange={(e) => handleUploadPhoto(e, angle.id)}
                       />

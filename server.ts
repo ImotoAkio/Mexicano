@@ -232,6 +232,35 @@ app.use('/uploads', express.static(uploadsDir, {
   }
 }));
 
+// Fallback para arquivos de /uploads que foram enviados no servidor de produção (mexicano.echo.dev.br)
+// quando o ambiente local compartilha o banco de dados remoto, evitando cair no fallback HTML do SPA.
+app.use('/uploads', async (req, res) => {
+  try {
+    const host = (req.hostname || '').toLowerCase();
+    if (host !== 'mexicano.echo.dev.br') {
+      const safeRelPath = path.normalize(decodeURIComponent(req.path)).replace(/^(\.\.(\/|\\|$))+/, '');
+      const localFilePath = path.join(uploadsDir, safeRelPath);
+      if (localFilePath.startsWith(uploadsDir)) {
+        const remoteUrl = `https://mexicano.echo.dev.br/uploads${req.path}`;
+        const remoteRes = await fetch(remoteUrl);
+        const contentType = remoteRes.headers.get('content-type') || '';
+        if (remoteRes.ok && !contentType.includes('text/html')) {
+          const buf = Buffer.from(await remoteRes.arrayBuffer());
+          try {
+            fs.mkdirSync(path.dirname(localFilePath), { recursive: true });
+            fs.writeFileSync(localFilePath, buf);
+          } catch {}
+          if (contentType) res.set('Content-Type', contentType);
+          res.set('Cache-Control', 'public, max-age=14400');
+          res.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline';");
+          return res.status(200).send(buf);
+        }
+      }
+    }
+  } catch {}
+  return res.status(404).end();
+});
+
 
 app.use('/api/', apiLimiter);
 
@@ -296,8 +325,11 @@ app.get("/m/:code", async (req, res) => {
       [nowIso, linkRecord.id]
     ).catch(() => {});
 
+    const { ensureValidMagicLinkToken } = await import("./server-notifications-scheduler");
+    const validToken = await ensureValidMagicLinkToken(linkRecord);
+
     // Redireciona com 302 para o portal carregando o token do cliente e a reserva alvo
-    return res.redirect(`/portal?token=${encodeURIComponent(linkRecord.token)}&reserva=${encodeURIComponent(linkRecord.reservaId || '')}`);
+    return res.redirect(`/portal?token=${encodeURIComponent(validToken)}&reserva=${encodeURIComponent(linkRecord.reservaId || '')}`);
   } catch (err) {
     console.error("Erro no redirecionamento do short link /m/:code:", err);
     return res.redirect("/portal");

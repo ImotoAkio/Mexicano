@@ -3,12 +3,13 @@ import {
   Ship, Anchor, Gauge, Plus, RefreshCw, Search, Filter, 
   MapPin, CheckCircle2, Wrench, AlertTriangle, User, Phone, 
   LayoutGrid, List, Lock, Check, X, ShieldCheck, Eye, Edit2, 
-  Trash2, MessageSquare, ExternalLink, Users, Shield, Calendar, FileText,
+  Trash2, MessageSquare, ExternalLink, Users, Shield, Calendar, FileText, Flame,
   Building2
 } from 'lucide-react';
 import { boatDB, clientDB, syncWithRemote, onDbUpdate, isDbLoaded } from '../db';
 import { Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
+import { isInternalMexicano } from '../utils/constants';
 import { formatBoatName } from '../utils/constants';
 import MarinaBoatModal from './MarinaBoatModal';
 
@@ -37,7 +38,7 @@ export default function MarinaEmbarcacoesPage({
   // Filtros rápidos adicionais
   const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState<'all' | 'lancha' | 'jet'>('all');
-  const [filterDoc, setFilterDoc] = useState<'all' | 'com_seguro' | 'com_tie'>('all');
+  const [filterDoc, setFilterDoc] = useState<'all' | 'com_seguro' | 'com_tie' | 'com_extintor' | 'vencidos'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   // Modais de Criação e Edição
@@ -115,11 +116,15 @@ export default function MarinaEmbarcacoesPage({
     boats.forEach(b => {
       const list: Array<{ client: Cliente; cota?: string }> = [];
 
+      const isVale = (b.empresas && b.empresas.length > 0 ? b.empresas : ['VALE']).includes('VALE');
+
       // 1. Donos listados no array do barco
       if (Array.isArray(b.donos) && b.donos.length > 0) {
         b.donos.forEach(id => {
+          if (!isVale && isInternalMexicano(id)) return;
           const c = clientMap.get(id);
           if (c && !list.some(x => x.client.id === c.id)) {
+            if (!isVale && (isInternalMexicano(c.id) || isInternalMexicano(c.nome))) return;
             let cota = c.cota;
             if (c.embarcacoes && c.embarcacoes.length > 0) {
               const eb = c.embarcacoes.find(x => x.embarcacaoId === b.id);
@@ -132,6 +137,7 @@ export default function MarinaEmbarcacoesPage({
 
       // 2. Clientes com vínculo direto
       clients.forEach(c => {
+        if (!isVale && (isInternalMexicano(c.id) || isInternalMexicano(c.nome))) return;
         const isPrimary = c.embarcacaoId === b.id;
         const matchingEb = Array.isArray(c.embarcacoes) ? c.embarcacoes.find(eb => eb.embarcacaoId === b.id) : null;
         if ((isPrimary || matchingEb) && !list.some(x => x.client.id === c.id)) {
@@ -182,7 +188,13 @@ export default function MarinaEmbarcacoesPage({
       if (filterTipo !== 'all' && b.tipo !== filterTipo) return false;
 
       // 3. Documentação / Regularidade
-      if (filterDoc === 'com_tie' && (!b.inscricao || !b.inscricao.trim())) return false;
+      if (filterDoc === 'com_tie' && (!b.inscricao || !b.inscricao.trim()) && (!b.validadeDocumento || !b.validadeDocumento.trim())) return false;
+      if (filterDoc === 'com_extintor' && (!b.validadeExtintor || !b.validadeExtintor.trim())) return false;
+      if (filterDoc === 'vencidos') {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const isExpired = (d?: string) => Boolean(d && new Date(d).setHours(0,0,0,0) < today.getTime());
+        if (!isExpired(b.validadeSeguro) && !isExpired(b.validadeDocumento) && !isExpired(b.validadeExtintor)) return false;
+      }
       if (filterDoc === 'com_seguro' && (!b.validadeSeguro || !b.validadeSeguro.trim())) return false;
 
       // 4. Busca Textual
@@ -223,8 +235,9 @@ export default function MarinaEmbarcacoesPage({
     const jets = baseList.filter(b => b.tipo === 'jet').length;
     const comInscricao = baseList.filter(b => b.inscricao && b.inscricao.trim() !== '').length;
     const comSeguro = baseList.filter(b => b.validadeSeguro && b.validadeSeguro.trim() !== '').length;
+    const comExtintor = baseList.filter(b => b.validadeExtintor && b.validadeExtintor.trim() !== '').length;
 
-    return { total, lanchas, jets, comInscricao, comSeguro };
+    return { total, lanchas, jets, comInscricao, comSeguro, comExtintor };
   }, [boats, fleetTab]);
 
   const handleOpenCreate = () => {
@@ -319,6 +332,33 @@ export default function MarinaEmbarcacoesPage({
         >
           <FileText className="w-2.5 h-2.5 shrink-0" />
           <span>TIE: {formatted}</span>
+        </span>
+      );
+    }
+
+    if (boat.validadeExtintor) {
+      const today = new Date(); today.setHours(0,0,0,0);
+      const target = new Date(boat.validadeExtintor); target.setHours(0,0,0,0);
+      const diff = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const parts = boat.validadeExtintor.split('-');
+      const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0].slice(2)}` : boat.validadeExtintor;
+      const isExpired = diff < 0;
+      const isExpiring = diff >= 0 && diff <= 30;
+
+      badges.push(
+        <span 
+          key="extintor" 
+          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border flex items-center gap-1 ${
+            isExpired 
+              ? 'bg-rose-50 text-rose-800 border-rose-200' 
+              : isExpiring 
+              ? 'bg-amber-50 text-amber-800 border-amber-200' 
+              : 'bg-orange-50 text-orange-800 border-orange-200'
+          }`}
+          title={`Extintor de Incêndio válido até ${boat.validadeExtintor}`}
+        >
+          <Flame className="w-2.5 h-2.5 shrink-0 text-orange-600" />
+          <span>Extintor: {formatted}</span>
         </span>
       );
     }
@@ -574,6 +614,8 @@ export default function MarinaEmbarcacoesPage({
               <option value="all">Toda regularidade</option>
               <option value="com_tie">Com Inscrição Marinha</option>
               <option value="com_seguro">Com Seguro Náutico</option>
+              <option value="com_extintor">Com Extintor</option>
+              <option value="vencidos">⚠️ Documentos Vencidos</option>
             </select>
 
             {/* Alternador Cards vs Tabela */}
@@ -619,7 +661,7 @@ export default function MarinaEmbarcacoesPage({
               )}
               {filterDoc !== 'all' && (
                 <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[11px]">
-                  {filterDoc === 'com_tie' ? 'Com Inscrição Marinha' : 'Com Seguro Náutico'}
+                  {filterDoc === 'com_tie' ? 'Com Inscrição / TIE' : filterDoc === 'com_seguro' ? 'Com Seguro' : filterDoc === 'com_extintor' ? 'Com Extintor' : 'Doc. Vencidos'}
                 </span>
               )}
             </div>

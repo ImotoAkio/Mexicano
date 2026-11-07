@@ -6,7 +6,8 @@ import {
   getConfirmationTemplates,
   DEFAULT_10_CONFIRMATION_TEMPLATES,
   generateClientMagicLink,
-  formatConfirmationMessage
+  formatConfirmationMessage,
+  ensureValidMagicLinkToken
 } from "../server-notifications-scheduler";
 import { sendEvolutionText } from "./whatsapp.routes";
 
@@ -382,9 +383,11 @@ router.get("/m/:code", async (req, res) => {
       [nowIso, linkRecord.id]
     ).catch(() => {});
 
+    const validToken = await ensureValidMagicLinkToken(linkRecord);
+
     res.json({
       success: true,
-      token: linkRecord.token,
+      token: validToken,
       reservaId: linkRecord.reservaId,
       clienteId: linkRecord.clienteId
     });

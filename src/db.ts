@@ -355,8 +355,20 @@ export const boatDB = {
     }
 
     // Reconciliar cotas do Mexicano em memória caso totalCotas tenha mudado
+    // Apenas para embarcações da Vale Administradora. Barcos da Marina são isolados.
+    const isValeBoat = (updatedBoat.empresas && updatedBoat.empresas.length > 0)
+      ? updatedBoat.empresas.includes('VALE')
+      : true;
+
     const mexClient = memoryClients.find(c => c.id === 'cli_112' || c.nome === 'MEXICANO LANCHAS LTDA');
-    if (mexClient && Array.isArray(mexClient.embarcacoes)) {
+    if (!isValeBoat) {
+      if (mexClient && Array.isArray(mexClient.embarcacoes)) {
+        mexClient.embarcacoes = mexClient.embarcacoes.filter(eb => eb.embarcacaoId !== id);
+      }
+      if (Array.isArray(updatedBoat.donos) && updatedBoat.donos.includes('cli_112')) {
+        updatedBoat.donos = updatedBoat.donos.filter(d => d !== 'cli_112');
+      }
+    } else if (mexClient && Array.isArray(mexClient.embarcacoes)) {
       const realOccupied = new Set<string>();
       memoryClients.forEach(c => {
         if (c.id !== mexClient.id && c.status !== 'inativo') {

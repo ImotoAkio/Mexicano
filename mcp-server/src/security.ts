@@ -82,6 +82,10 @@ export function sanitizeBoat(boat: any) {
     horasUltimaManutencao: boat.horasUltimaManutencao ? Number(boat.horasUltimaManutencao) : 0,
     donos: safeJsonParse(boat.donos, []),
     acessorios: safeJsonParse(boat.acessorios, []),
+    validadeSeguro: boat.validadeSeguro || undefined,
+    validadeExtintor: boat.validadeExtintor || undefined,
+    validadeTie: boat.validadeTie || boat.validadeDocumento || undefined,
+    validadeDocumento: boat.validadeDocumento || boat.validadeTie || undefined,
     empresas: boat.empresas || undefined,
   };
 }

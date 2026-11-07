@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { boatDB, clientDB, isDbLoaded } from '../db';
 import { Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
-import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid, ChevronDown, Filter } from 'lucide-react';
+import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid, ChevronDown, Filter, Shield, Calendar, FileText, Flame } from 'lucide-react';
 import BoatModal from './BoatModal';
 
 import defaultJetImg from '../assets/images/jet.webp';
@@ -218,6 +218,91 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
       return null;
     }
   }, []);
+
+  const renderValidityBadges = (boat: Embarcacao) => {
+    const badges = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const checkValidity = (dateStr?: string) => {
+      if (!dateStr) return null;
+      const target = new Date(dateStr);
+      target.setHours(0, 0, 0, 0);
+      const diff = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const parts = dateStr.split('-');
+      const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0].slice(2)}` : dateStr;
+      return { diff, formatted, isExpired: diff < 0, isExpiring: diff >= 0 && diff <= 30 };
+    };
+
+    if (boat.validadeSeguro) {
+      const v = checkValidity(boat.validadeSeguro);
+      if (v) {
+        badges.push(
+          <span
+            key="seguro"
+            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex items-center gap-1 ${
+              v.isExpired
+                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                : v.isExpiring
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}
+            title={`Seguro Náutico válido até ${boat.validadeSeguro}`}
+          >
+            <Shield className="w-2.5 h-2.5 shrink-0" />
+            <span>Seg: {v.formatted}</span>
+          </span>
+        );
+      }
+    }
+
+    if (boat.validadeExtintor) {
+      const v = checkValidity(boat.validadeExtintor);
+      if (v) {
+        badges.push(
+          <span
+            key="extintor"
+            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex items-center gap-1 ${
+              v.isExpired
+                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                : v.isExpiring
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : 'bg-orange-50 text-orange-700 border-orange-200'
+            }`}
+            title={`Extintor de Incêndio válido até ${boat.validadeExtintor}`}
+          >
+            <Flame className="w-2.5 h-2.5 shrink-0 text-orange-600" />
+            <span>Ext: {v.formatted}</span>
+          </span>
+        );
+      }
+    }
+
+    const tieVal = boat.validadeTie || boat.validadeDocumento;
+    if (tieVal) {
+      const v = checkValidity(tieVal);
+      if (v) {
+        badges.push(
+          <span
+            key="tie"
+            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex items-center gap-1 ${
+              v.isExpired
+                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                : v.isExpiring
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : 'bg-blue-50 text-blue-700 border-blue-200'
+            }`}
+            title={`Documento da Marinha (TIE) válido até ${tieVal}`}
+          >
+            <FileText className="w-2.5 h-2.5 shrink-0" />
+            <span>TIE: {v.formatted}</span>
+          </span>
+        );
+      }
+    }
+
+    return badges;
+  };
 
   // Custom Confirm State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string; name: string } | null>(null);
@@ -609,6 +694,11 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                                   {boat.tipo === 'jet' ? 'Jet Ski' : 'Lancha'}
                                 </span>
                               </div>
+                              {renderValidityBadges(boat).length > 0 && (
+                                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                  {renderValidityBadges(boat)}
+                                </div>
+                              )}
                               <span className="text-[11px] text-slate-500 mt-0.5 block font-medium">
                                 Doc: {boat.nome}
                               </span>
@@ -799,6 +889,13 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                        )}
                     </div>
                   </div>
+
+                  {/* Validades e Regularidade */}
+                  {renderValidityBadges(boat).length > 0 && (
+                    <div className="mb-3 p-2 bg-slate-50/80 rounded-xl border border-slate-100 flex items-center gap-1.5 flex-wrap">
+                      {renderValidityBadges(boat)}
+                    </div>
+                  )}
 
                   {/* Cotistas Footer */}
                   <div

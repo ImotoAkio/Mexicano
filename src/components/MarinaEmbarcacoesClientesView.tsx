@@ -9,6 +9,7 @@ import {
 import { io } from 'socket.io-client';
 import { Embarcacao, Cliente } from '../types';
 import { boatDB, clientDB } from '../db';
+import { isInternalMexicano } from '../utils/constants';
 import { getBoatCode } from '../utils/boatUtils';
 import { formatBoatName } from '../utils/constants';
 import ClientProfileModal from './ClientProfileModal';
@@ -110,7 +111,9 @@ export default function MarinaEmbarcacoesClientesView({
     boats.forEach(b => {
       const list: Array<{ client: Cliente; cota: string }> = [];
 
+      const isVale = (b.empresas && b.empresas.length > 0 ? b.empresas : ['VALE']).includes('VALE');
       clients.forEach(c => {
+        if (!isVale && (isInternalMexicano(c.id) || isInternalMexicano(c.nome))) return;
         let isOwner = false;
         let cota = c.cota || 'Cota';
 

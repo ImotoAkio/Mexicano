@@ -4,7 +4,12 @@
   "description": "Painel do Cliente - Marina Club & Vila Náutica",
   "start_url": "/portal",
   "scope": "/",
+  "id": "/portal",
   "display": "standalone",
+  "display_override": ["standalone"],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
   "orientation": "portrait",
   "theme_color": "#020202",
   "background_color": "#020202",

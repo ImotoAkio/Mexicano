@@ -107,7 +107,7 @@ authRoutes.post("/client/check", authLimiter, async (req, res) => {
 
     return res.json({
       success: true,
-      needsRegistration: !clientAuth,
+      needsRegistration: !clientAuth || !clientAuth.passwordHash,
       clientName: client.nome,
     });
   } catch (err: any) {
@@ -138,7 +138,7 @@ authRoutes.post("/client", authLimiter, async (req, res) => {
     // Check if client has registered a password
     const clientAuth = await getClientAuth(client.id);
 
-    if (!clientAuth) {
+    if (!clientAuth || !clientAuth.passwordHash) {
       // Client needs to register a password first
       writeAuditLog(client.nome, "client", "LOGIN_NEEDS_REGISTRATION", req.ip, `ID: ${client.id}`);
       return res.json({
@@ -219,7 +219,7 @@ authRoutes.post("/client/register", authLimiter, async (req, res) => {
 
     // Check if already has a password
     const existingAuth = await getClientAuth(client.id);
-    if (existingAuth) {
+    if (existingAuth && existingAuth.passwordHash) {
       writeAuditLog(client.nome, "client", "REGISTRATION_FAILED", req.ip, "Senha já existente");
       return res.status(409).json({ error: true, message: "Este CPF já possui uma senha cadastrada. Use o login normal." });
     }

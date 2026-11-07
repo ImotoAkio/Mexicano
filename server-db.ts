@@ -316,6 +316,18 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN seguroUrl VARCHAR(255);`);
     } catch (e) {}
     try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN validadeDocumento VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN validadeTie VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN validadeSeguro VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN validadeExtintor VARCHAR(50);`);
+    } catch (e) {}
+    try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN chassi VARCHAR(100);`);
     } catch (e) {}
     try {
@@ -1917,8 +1929,10 @@ export async function pullDatabase(forceFresh = false) {
       comprimento: b.comprimento || b.tamanho || (parsedAcessorios && (parsedAcessorios as any).comprimento) || (parsedAcessorios && (parsedAcessorios as any).tamanho) || '',
       chassi: b.chassi || '',
       inscricao: b.inscricao || '',
-      validadeDocumento: b.validadeDocumento || (parsedAcessorios && (parsedAcessorios as any).validadeDocumento) || undefined,
+      validadeDocumento: b.validadeDocumento || b.validadeTie || (parsedAcessorios && ((parsedAcessorios as any).validadeDocumento || (parsedAcessorios as any).validadeTie)) || undefined,
+      validadeTie: b.validadeTie || b.validadeDocumento || (parsedAcessorios && ((parsedAcessorios as any).validadeTie || (parsedAcessorios as any).validadeDocumento)) || undefined,
       validadeSeguro: b.validadeSeguro || (parsedAcessorios && (parsedAcessorios as any).validadeSeguro) || undefined,
+      validadeExtintor: b.validadeExtintor || (parsedAcessorios && (parsedAcessorios as any).validadeExtintor) || undefined,
       tipo_propulsao: b.tipo_propulsao || '',
       potencia: b.potencia || '',
       donos: donosList,
@@ -2279,6 +2293,18 @@ export async function reconcileBoatCotasWithMexicano(connectionOrPool: any, spec
       : "SELECT id, totalCotas, donos FROM Embarcacoes";
     const [boatRows] = await connectionOrPool.query(boatQuery, specificBoatId ? [specificBoatId] : []);
 
+    const [empRows] = await connectionOrPool.query(
+      specificBoatId
+        ? "SELECT embarcacaoId, empresa FROM EmbarcacaoEmpresas WHERE embarcacaoId = ?"
+        : "SELECT embarcacaoId, empresa FROM EmbarcacaoEmpresas",
+      specificBoatId ? [specificBoatId] : []
+    );
+    const boatEmpresasMap = new Map<string, string[]>();
+    (empRows as any[]).forEach((r: any) => {
+      if (!boatEmpresasMap.has(r.embarcacaoId)) boatEmpresasMap.set(r.embarcacaoId, []);
+      boatEmpresasMap.get(r.embarcacaoId)!.push(r.empresa);
+    });
+
     const [clientRows] = await connectionOrPool.query(
       "SELECT id, nome, embarcacaoId, cota, embarcacoes FROM Clientes WHERE (status IS NULL OR status != 'inativo') AND id != ?",
       [MEXICANO_INTERNAL_CLIENT_ID]
@@ -2301,6 +2327,35 @@ export async function reconcileBoatCotasWithMexicano(connectionOrPool: any, spec
 
     for (const b of boatRows as any[]) {
       const bId = b.id;
+      const empresas = boatEmpresasMap.get(bId) || ['VALE'];
+      const isValeBoat = empresas.includes('VALE') || empresas.length === 0;
+
+      let currentDonos: string[] = [];
+      if (b.donos) {
+        try {
+          currentDonos = typeof b.donos === 'string' ? JSON.parse(b.donos) : b.donos;
+          if (!Array.isArray(currentDonos)) currentDonos = [];
+        } catch {
+          currentDonos = [];
+        }
+      }
+
+      // Se a embarcação NÃO pertence à Vale Administradora (ex: cadastrada exclusivamente pela Marina):
+      if (!isValeBoat) {
+        // 1. Remover qualquer cota desta embarcação do estoque da entidade El Mexicano
+        mexEmbarcacoes = mexEmbarcacoes.filter(eb => eb.embarcacaoId !== bId);
+
+        // 2. Garantir que a entidade interna Mexicano NÃO conste nos donos desta embarcação
+        if (currentDonos.includes(MEXICANO_INTERNAL_CLIENT_ID)) {
+          currentDonos = currentDonos.filter(id => id !== MEXICANO_INTERNAL_CLIENT_ID);
+          await connectionOrPool.query(
+            "UPDATE Embarcacoes SET donos = ? WHERE id = ?",
+            [JSON.stringify(currentDonos), bId]
+          );
+        }
+        continue;
+      }
+
       const totalCotas = Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4);
 
       const occupiedByRealClients = new Set<string>();
@@ -2344,7 +2399,7 @@ export async function reconcileBoatCotasWithMexicano(connectionOrPool: any, spec
         });
       });
 
-      let currentDonos: string[] = [];
+      currentDonos = [];
       if (b.donos) {
         try {
           currentDonos = typeof b.donos === 'string' ? JSON.parse(b.donos) : b.donos;
@@ -2449,6 +2504,14 @@ export async function upsertBoat(boat: any) {
     acessoriosObj.comprimento = rawComprimento;
     acessoriosObj.tamanho = rawComprimento;
   }
+  const vTieVal = boat.validadeDocumento || boat.validadeTie;
+  if (vTieVal) {
+    acessoriosObj.validadeDocumento = vTieVal;
+    acessoriosObj.validadeTie = vTieVal;
+  }
+  if (boat.validadeExtintor) {
+    acessoriosObj.validadeExtintor = boat.validadeExtintor;
+  }
   if (boat.validadeDocumento) {
     acessoriosObj.validadeDocumento = boat.validadeDocumento;
   }
@@ -2543,6 +2606,19 @@ export async function upsertBoat(boat: any) {
     if (rawComprimento !== null) {
       await currentPool.query("UPDATE Embarcacoes SET comprimento = ? WHERE id = ?", [rawComprimento, boat.id]);
     }
+  } catch (e) {}
+
+  try {
+    await currentPool.query(
+      "UPDATE Embarcacoes SET validadeSeguro = ?, validadeExtintor = ?, validadeDocumento = ?, validadeTie = ? WHERE id = ?",
+      [
+        boat.validadeSeguro || null,
+        boat.validadeExtintor || null,
+        vTieVal || null,
+        vTieVal || null,
+        boat.id
+      ]
+    );
   } catch (e) {}
 
   if (boat.empresas && Array.isArray(boat.empresas)) {
@@ -7231,28 +7307,42 @@ export async function getFrotaConsolidadaComCotas(): Promise<any> {
           });
         }
       } else {
-        // Cota em Estoque El Mexicano
-        barcoDisponiveis++;
-        slots.push({
-          cota: code,
-          status: 'disponivel_mexicano',
-          titularNome: 'El Mexicano (Estoque Próprio)',
-          titularId: MEXICANO_INTERNAL_CLIENT_ID
-        });
+        const isValeBoat = empresas.includes('VALE') || empresas.length === 0;
+        if (isValeBoat) {
+          // Cota em Estoque El Mexicano (Vale Administradora)
+          barcoDisponiveis++;
+          slots.push({
+            cota: code,
+            status: 'disponivel_mexicano',
+            titularNome: 'El Mexicano (Estoque Próprio)',
+            titularId: MEXICANO_INTERNAL_CLIENT_ID
+          });
+        } else {
+          // Marina: cota livre / desocupada, não vinculada à Mexicano
+          slots.push({
+            cota: code,
+            status: 'disponivel',
+            titularNome: 'Disponível',
+            titularId: ''
+          });
+        }
       }
     }
 
+    const isValeBoat = empresas.includes('VALE') || empresas.length === 0;
     const taxaOcupacaoPercent = totalCotas > 0
       ? Math.round(((barcoVendidas + barcoReservadas) / totalCotas) * 100)
       : 0;
 
     totalEmbarcacoes++;
     totalCotasFrota += totalCotas;
-    cotasDisponiveisEstoqueTotal += barcoDisponiveis;
+    if (isValeBoat) {
+      cotasDisponiveisEstoqueTotal += barcoDisponiveis;
+      vgvEstoqueDisponivelTotal += barcoDisponiveis * valorCota;
+    }
     cotasEmRepasseTotal += barcoRepasse;
     cotasReservadas48hTotal += barcoReservadas;
     cotasVendidasTotal += barcoVendidas;
-    vgvEstoqueDisponivelTotal += barcoDisponiveis * valorCota;
 
     let parsedAcessorios = undefined;
     if (b.acessorios) {

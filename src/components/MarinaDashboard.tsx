@@ -174,24 +174,28 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   const [isAddFilaOpen, setIsAddFilaOpen] = useState(false);
   const [lightbox, setLightbox] = useState<{ urls: string[]; currentIndex: number; title: string } | null>(null);
 
-  const parseFotos = (fotos: any): string[] => {
-    let result: any[] = [];
-    if (!fotos) return [];
-    if (Array.isArray(fotos)) {
-      result = fotos;
-    } else {
-      try {
-        result = JSON.parse(fotos);
-        if (!Array.isArray(result) && typeof result === 'object') {
-           result = Object.values(result);
+  const parseFotos = (fotos: any, fallbackFotos?: any): string[] => {
+    const extract = (val: any): string[] => {
+      if (!val) return [];
+      let result: any[] = [];
+      if (Array.isArray(val)) {
+        result = val;
+      } else if (typeof val === 'object') {
+        result = Object.values(val);
+      } else if (typeof val === 'string') {
+        try {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) result = parsed;
+          else if (parsed && typeof parsed === 'object') result = Object.values(parsed);
+        } catch {
+          result = val.split(',').map((s: string) => s.trim()).filter(Boolean);
         }
-      } catch {
-        if (typeof fotos === 'string') result = [fotos];
       }
-    }
-
-    // Filter out invalid or corrupted local blob strings saved by mistake
-    return result.filter(url => typeof url === 'string' && !url.startsWith('blob:'));
+      return result.filter(url => typeof url === 'string' && url.trim().length > 0 && !url.startsWith('blob:'));
+    };
+    const primary = extract(fotos);
+    if (primary.length > 0 || !fallbackFotos) return primary;
+    return extract(fallbackFotos);
   };
 
   useEffect(() => {
@@ -3255,12 +3259,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
               {((parseFotos(detailsReserva.fotosChecklistDescida).concat(parseFotos(detailsReserva.fotosChecklistSaida))).length > 0 || parseFotos(detailsReserva.fotosChecklistChegada).length > 0 || parseFotos(detailsReserva.fotosChecklistSubida).length > 0) && (
                 <div>
                   <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Galeria de Fotos</h4>
-                  {parseFotos(detailsReserva.fotosChecklistDescida || detailsReserva.fotosChecklistSaida).length > 0 && (
+                  {parseFotos(detailsReserva.fotosChecklistDescida, detailsReserva.fotosChecklistSaida).length > 0 && (
                     <div className="mb-4">
                       <p className="text-xs font-semibold text-slate-600 mb-2">Checklist de Descida</p>
                       <div className="flex gap-2 overflow-x-auto subtle-scrollbar pb-2">
-                        {parseFotos(detailsReserva.fotosChecklistDescida || detailsReserva.fotosChecklistSaida).map((url: string, i: number) => (
-                          <img key={`d_${i}`} src={url} alt="Descida" className="h-20 w-20 object-cover rounded-lg border border-slate-200 cursor-pointer transition-transform hover:scale-105" onClick={() => setLightbox({ currentIndex: i, urls: parseFotos(detailsReserva.fotosChecklistDescida || detailsReserva.fotosChecklistSaida), title: 'Checklist de Descida' })}/>
+                        {parseFotos(detailsReserva.fotosChecklistDescida, detailsReserva.fotosChecklistSaida).map((url: string, i: number) => (
+                          <img key={`d_${i}`} src={url} alt="Descida" className="h-20 w-20 object-cover rounded-lg border border-slate-200 cursor-pointer transition-transform hover:scale-105" onClick={() => setLightbox({ currentIndex: i, urls: parseFotos(detailsReserva.fotosChecklistDescida, detailsReserva.fotosChecklistSaida), title: 'Checklist de Descida' })}/>
                         ))}
                       </div>
                     </div>

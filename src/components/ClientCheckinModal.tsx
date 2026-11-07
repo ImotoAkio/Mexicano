@@ -31,6 +31,7 @@ interface ClientCheckinModalProps {
   totalAberto?: number; // Total em aberto (vencido)
   onGoToPayments?: () => void; // Direciona para a pagina de pagamentos
   client?: any; // Pega informacoes do cliente para checar acesso aos acessorios
+  clientToken?: string | null;
   onSuccess: (checkinData?: any) => void;
 }
 
@@ -61,6 +62,7 @@ export default function ClientCheckinModal({
   totalAberto = 0,
   onGoToPayments,
   client,
+  clientToken,
   onSuccess
 }: ClientCheckinModalProps) {
   const [step, setStep] = useState(1);
@@ -257,12 +259,12 @@ export default function ClientCheckinModal({
 
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem('client_token');
+      const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
       const res = await fetch('/api/client/checkin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           id: reservation.id,

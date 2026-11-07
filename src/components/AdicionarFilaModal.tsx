@@ -8,6 +8,7 @@ import { boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente } from '../types';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
 import { getBoatCode } from '../utils/boatUtils';
+import { isInternalMexicano } from '../utils/constants';
 import logoMarinaSrc from '../../logos/logo_marina.svg';
 
 interface AdicionarFilaModalProps {
@@ -113,16 +114,19 @@ export default function AdicionarFilaModal({
 
   const selectedBoat = boats.find(b => b.id === selectedBoatId);
 
-  // Identify owners/cotistas for the selected boat
+  // Identify owners/cotistas for the selected boat (ignoring internal Mexicano entity)
   const boatOwners = useMemo(() => {
     if (!selectedBoat) return [];
-    const directOwners: string[] = Array.isArray(selectedBoat.donos) ? [...selectedBoat.donos] : [];
-    if (selectedBoat.clienteId && !directOwners.includes(selectedBoat.clienteId)) {
+    const directOwners: string[] = Array.isArray(selectedBoat.donos) 
+      ? selectedBoat.donos.filter(id => !isInternalMexicano(id)) 
+      : [];
+    if (selectedBoat.clienteId && !directOwners.includes(selectedBoat.clienteId) && !isInternalMexicano(selectedBoat.clienteId)) {
       directOwners.push(selectedBoat.clienteId);
     }
     const matched = clients.filter(c => 
-      directOwners.includes(c.id) ||
-      (Array.isArray(c.embarcacoes) && c.embarcacoes.some(eb => eb.embarcacaoId === selectedBoat.id))
+      !isInternalMexicano(c.id) && !isInternalMexicano(c.nome) &&
+      (directOwners.includes(c.id) ||
+      (Array.isArray(c.embarcacoes) && c.embarcacoes.some(eb => eb.embarcacaoId === selectedBoat.id)))
     );
     return matched;
   }, [selectedBoat, clients]);
@@ -132,10 +136,17 @@ export default function AdicionarFilaModal({
     setSelectedBoatId(boat.id);
     setIsSelectOpen(false);
 
-    // Auto-select first owner
-    const owners: string[] = Array.isArray(boat.donos) ? [...boat.donos] : [];
-    if (boat.clienteId && !owners.includes(boat.clienteId)) owners.push(boat.clienteId);
-    const firstClient = clients.find(c => owners.includes(c.id) || (Array.isArray(c.embarcacoes) && c.embarcacoes.some(eb => eb.embarcacaoId === boat.id)));
+    // Auto-select first owner (ignoring internal Mexicano)
+    const owners: string[] = Array.isArray(boat.donos) 
+      ? boat.donos.filter(id => !isInternalMexicano(id)) 
+      : [];
+    if (boat.clienteId && !owners.includes(boat.clienteId) && !isInternalMexicano(boat.clienteId)) {
+      owners.push(boat.clienteId);
+    }
+    const firstClient = clients.find(c => 
+      !isInternalMexicano(c.id) && !isInternalMexicano(c.nome) &&
+      (owners.includes(c.id) || (Array.isArray(c.embarcacoes) && c.embarcacoes.some(eb => eb.embarcacaoId === boat.id)))
+    );
     if (firstClient) {
       setSelectedClienteId(firstClient.id);
       setMarinheiroPiloto(firstClient.nome);
@@ -175,7 +186,7 @@ export default function AdicionarFilaModal({
 
     const payload = {
       embarcacaoId: tipo === 'marina' ? selectedBoatId : 'embarcacao_avulsa',
-      clienteId: tipo === 'marina' ? (selectedClienteId || selectedBoat?.donos?.[0] || selectedBoat?.clienteId || 'cliente_marina') : 'cliente_avulso',
+      clienteId: tipo === 'marina' ? (selectedClienteId || (selectedBoat?.donos?.find(id => !isInternalMexicano(id))) || (!isInternalMexicano(selectedBoat?.clienteId) ? selectedBoat?.clienteId : null) || 'cliente_marina') : 'cliente_avulso',
       origem: tipo,
       nomeAvulso: tipo === 'avulso' ? nomeAvulso.trim() : null,
       telefoneAvulso: tipo === 'avulso' ? telefoneAvulso.trim() : null,
@@ -399,6 +410,42 @@ export default function AdicionarFilaModal({
                   </div>
                 )}
               </div>
+
+              {/* Seletor de Cotista / Responsável se a embarcação ainda não tem donos cadastrados */}
+              {selectedBoat && boatOwners.length === 0 && (
+                <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Responsável / Condutor na Descida:</span>
+                    </label>
+                    <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded">
+                      Sem dono vinculado
+                    </span>
+                  </div>
+                  <select
+                    value={selectedClienteId}
+                    onChange={e => {
+                      const cId = e.target.value;
+                      setSelectedClienteId(cId);
+                      const cli = clients.find(c => c.id === cId);
+                      if (cli) setMarinheiroPiloto(cli.nome);
+                    }}
+                    className="w-full h-9 px-3 rounded-lg bg-white border border-amber-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+                  >
+                    <option value="">Selecione o cliente responsável para este passeio...</option>
+                    {clients
+                      .filter(c => !isInternalMexicano(c.id) && !isInternalMexicano(c.nome))
+                      .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+                      .map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome} {c.telefone ? `(${c.telefone})` : ''}
+                        </option>
+                      ))
+                    }
+                  </select>
+                </div>
+              )}
 
               {/* Seletor de Cotista / Responsável se houver cotistas */}
               {selectedBoat && boatOwners.length > 0 && (

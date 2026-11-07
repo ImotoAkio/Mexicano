@@ -72,17 +72,17 @@ if (typeof window !== 'undefined') {
         }
       }
 
+      const isClientAllowedRoute = url.startsWith('/api/client/') || 
+                                   url.startsWith('/api/financeiro/asaas-status/') ||
+                                   url.startsWith('/api/financeiro/transacoes/') ||
+                                   url.startsWith('/api/financeiro/fatura/');
+
       const hasAuth = Object.keys(headers).some(k => k.toLowerCase() === 'authorization');
       const isProxyWithServiceAccount = url.startsWith('/api/calendar-proxy/') && headers['Authorization'] === 'Bearer service_account_active';
 
       if (!hasAuth || isProxyWithServiceAccount) {
         const adminToken = localStorage.getItem('admin_token');
-        const clientToken = localStorage.getItem('client_token');
-
-        const isClientAllowedRoute = url.startsWith('/api/client/') || 
-                                     url.startsWith('/api/financeiro/asaas-status/') ||
-                                     url.startsWith('/api/financeiro/transacoes/') ||
-                                     url.startsWith('/api/financeiro/fatura/');
+        const clientToken = localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
 
         const token = isClientAllowedRoute ? (clientToken || adminToken) : adminToken;
         if (token && token !== 'null' && token !== 'undefined') {
@@ -90,27 +90,33 @@ if (typeof window !== 'undefined') {
         }
       }
       newConfig.headers = headers;
+      const authHeaderKey = Object.keys(headers).find(k => k.toLowerCase() === 'authorization');
+      const usedToken = authHeaderKey ? headers[authHeaderKey]?.replace(/^Bearer\s+/i, '') : null;
+
       const response = await originalFetch(resource, newConfig);
       if (response.status === 401) {
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_username');
-        localStorage.removeItem('client_token');
-        localStorage.removeItem('client_data');
-        localStorage.removeItem('client_data_cache');
-        window.dispatchEvent(new CustomEvent('auth-expired'));
+        if (isClientAllowedRoute) {
+          // Apenas invalida a sessão do cliente se a rota principal (/api/client/me) rejeitar o token ATUALMENTE ativo
+          if (url.startsWith('/api/client/me')) {
+            const currentClientToken = localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
+            if (usedToken && (!currentClientToken || usedToken === currentClientToken)) {
+              localStorage.removeItem('client_token');
+              localStorage.removeItem('client_data');
+              localStorage.removeItem('client_data_cache');
+              delete (window as any).__CLIENT_TOKEN__;
+              window.dispatchEvent(new CustomEvent('client-auth-expired'));
+            }
+          }
+        } else {
+          localStorage.removeItem('admin_token');
+          localStorage.removeItem('admin_username');
+          window.dispatchEvent(new CustomEvent('auth-expired'));
+        }
       }
       return response;
     }
 
     const response = await originalFetch(resource, config);
-    if (response.status === 401 && !url.includes('/api/auth/')) {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_username');
-      localStorage.removeItem('client_token');
-      localStorage.removeItem('client_data');
-      localStorage.removeItem('client_data_cache');
-      window.dispatchEvent(new CustomEvent('auth-expired'));
-    }
     return response;
   };
 }

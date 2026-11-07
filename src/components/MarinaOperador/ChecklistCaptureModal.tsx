@@ -20,12 +20,19 @@ import {
 import { uploadPhotoToStorage } from '../../utils/checklistStorage';
 import { getBoatCode } from '../../utils/boatUtils';
 
-import frenteJet from '../../assets/images/checklist/jet/frente.png';
-import trasJet from '../../assets/images/checklist/jet/tras.png';
-import esquerdaJet from '../../assets/images/checklist/jet/esquerda.png';
-import direitaJet from '../../assets/images/checklist/jet/direita.png';
-import painelJet from '../../assets/images/checklist/jet/painel.png';
-import cascoJet from '../../assets/images/checklist/jet/casco.png';
+import frenteSuperiorJet from '../../assets/images/checklist/jet/frente-superior.webp';
+import frenteInferiorJet from '../../assets/images/checklist/jet/frente-inferior.webp';
+import diagonalEsquerdaSuperiorJet from '../../assets/images/checklist/jet/diagonal-esquerda-superior.webp';
+import lateralEsquerdaSuperiorJet from '../../assets/images/checklist/jet/lateral-esquerda-superior.webp';
+import lateralEsquerdaInferiorJet from '../../assets/images/checklist/jet/lateral-esquerda-inferior.webp';
+import diagonalDireitaSuperiorJet from '../../assets/images/checklist/jet/diagonal-direita-superior.webp';
+import lateralDireitaSuperiorJet from '../../assets/images/checklist/jet/lateral-direita-superior.webp';
+import lateralDireitaInferiorJet from '../../assets/images/checklist/jet/lateral-direita-inferior.webp';
+import traseiraSuperiorJet from '../../assets/images/checklist/jet/traseira-superior.webp';
+import traseiraInferiorJet from '../../assets/images/checklist/jet/traseira-inferior.webp';
+import painelJet from '../../assets/images/checklist/jet/painel.webp';
+import portaObjetosJet from '../../assets/images/checklist/jet/porta-objetos.webp';
+import bauJet from '../../assets/images/checklist/jet/bau.webp';
 
 import proaLancha from '../../assets/images/checklist/lancha/proa.png';
 import popaLancha from '../../assets/images/checklist/lancha/popa.png';
@@ -76,15 +83,20 @@ interface ChecklistCaptureModalProps {
    ANGLE DEFINITIONS
    ────────────────────────────────────────────── */
 
-const ANGLES_JET: ChecklistAngle[] = [
-  { id: 'frente',         angleKey: 'frente',         name: 'Frente',                   description: 'Vista frontal do bico e casco',                 required: true,  svgPath: frenteJet },
-  { id: 'traseira',       angleKey: 'traseira',       name: 'Traseira',                 description: 'Bocal de turbina, grade e traseira',             required: true,  svgPath: trasJet },
-  { id: 'lat_esquerda',   angleKey: 'lat_esquerda',   name: 'Lateral Esquerda',         description: 'Costado esquerdo completo (bombordo)',            required: true,  svgPath: esquerdaJet },
-  { id: 'lat_direita',    angleKey: 'lat_direita',    name: 'Lateral Direita',          description: 'Costado direito completo (boreste)',              required: true,  svgPath: direitaJet },
-  { id: 'painel',         angleKey: 'painel',         name: 'Painel / Guidão',          description: 'Display, botões e guidão',                       required: true,  svgPath: painelJet },
-  { id: 'casco_inferior', angleKey: 'casco_inferior', name: 'Casco Inferior',           description: 'Fundo do casco e linha d\'água',                 required: true,  svgPath: cascoJet },
-  { id: 'casco_traseiro', angleKey: 'casco_traseiro', name: 'Casco Traseiro',           description: 'Parte traseira inferior do casco e turbina',     required: true,  svgPath: cascoJet },
-  { id: 'porta_objetos',  angleKey: 'porta_objetos',  name: 'Porta-Objetos',            description: 'Compartimento de armazenamento aberto',          required: true,  svgPath: painelJet },
+export const ANGLES_JET: ChecklistAngle[] = [
+  { id: 'frente_superior',            angleKey: 'frente_superior',            name: 'Frente Parte Superior',              description: 'Vista frontal superior do bico, capô e guidão',          required: true,  svgPath: frenteSuperiorJet },
+  { id: 'frente_inferior',            angleKey: 'frente_inferior',            name: 'Frente Parte Inferior (Casco)',      description: 'Vista frontal inferior da quilha, olhal e casco',        required: true,  svgPath: frenteInferiorJet },
+  { id: 'diagonal_esquerda_superior', angleKey: 'diagonal_esquerda_superior', name: 'Diagonal Esquerda Superior',         description: 'Vista diagonal superior esquerda da embarcação',         required: true,  svgPath: diagonalEsquerdaSuperiorJet },
+  { id: 'lateral_esquerda_superior',  angleKey: 'lateral_esquerda_superior',  name: 'Lateral Esquerda Superior',          description: 'Costado superior esquerdo completo (bombordo)',          required: true,  svgPath: lateralEsquerdaSuperiorJet },
+  { id: 'lateral_esquerda_inferior',  angleKey: 'lateral_esquerda_inferior',  name: 'Lateral Esquerda Inferior (Casco)',  description: 'Casco inferior lateral esquerdo e linha d\'água',        required: true,  svgPath: lateralEsquerdaInferiorJet },
+  { id: 'diagonal_direita_superior',  angleKey: 'diagonal_direita_superior',  name: 'Diagonal Direita Superior',          description: 'Vista diagonal superior direita da embarcação',          required: true,  svgPath: diagonalDireitaSuperiorJet },
+  { id: 'lateral_direita_superior',   angleKey: 'lateral_direita_superior',   name: 'Lateral Direita Superior',           description: 'Costado superior direito completo (boreste)',            required: true,  svgPath: lateralDireitaSuperiorJet },
+  { id: 'lateral_direita_inferior',   angleKey: 'lateral_direita_inferior',   name: 'Lateral Direita Inferior',           description: 'Casco inferior lateral direito e linha d\'água',         required: true,  svgPath: lateralDireitaInferiorJet },
+  { id: 'traseira_superior',          angleKey: 'traseira_superior',          name: 'Traseira Superior',                  description: 'Plataforma de popa, banco e alça traseira',              required: true,  svgPath: traseiraSuperiorJet },
+  { id: 'traseira_inferior',          angleKey: 'traseira_inferior',          name: 'Traseira Inferior',                  description: 'Bocal de turbina, grade, ré e casco traseiro',           required: true,  svgPath: traseiraInferiorJet },
+  { id: 'painel',                     angleKey: 'painel',                     name: 'Painel',                             description: 'Display, instrumentos, botões e guidão',                 required: true,  svgPath: painelJet },
+  { id: 'porta_objetos',              angleKey: 'porta_objetos',              name: 'Porta-Objetos',                      description: 'Compartimento porta-objetos aberto',                     required: true,  svgPath: portaObjetosJet },
+  { id: 'bau',                        angleKey: 'bau',                        name: 'Baú',                                description: 'Compartimento dianteiro (baú) aberto',                   required: true,  svgPath: bauJet },
 ];
 
 const ANGLES_LANCHA: ChecklistAngle[] = [
@@ -178,9 +190,36 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
   const [observacoes, setObservacoes] = useState('');
 
   const cameraInputRefs = useRef<{ [angleKey: string]: HTMLInputElement | null }>({});
-  const galleryInputRefs = useRef<{ [angleKey: string]: HTMLInputElement | null }>({});
+  const thumbnailRefs = useRef<{ [idx: number]: HTMLButtonElement | null }>({});
   const extraCameraInputRef = useRef<HTMLInputElement | null>(null);
-  const extraGalleryInputRef = useRef<HTMLInputElement | null>(null);
+
+  const embarcacao = embarcacaoTarget || reservaTarget?.embarcacao || {};
+  const isJetSki = /jet/i.test(embarcacao.tipo || embarcacao.nome || '');
+  const angles = isJetSki ? ANGLES_JET : ANGLES_LANCHA;
+
+  // Preload reference images for instant angle switching
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      angles.forEach((angle) => {
+        if (angle.svgPath) {
+          const img = new Image();
+          img.decoding = 'async';
+          img.src = angle.svgPath;
+        }
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [isOpen, isJetSki]);
+
+  // Auto-scroll active thumbnail into view
+  useEffect(() => {
+    if (!isOpen || step !== 0) return;
+    const el = thumbnailRefs.current[activeAngleIdx];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [activeAngleIdx, isOpen, step]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -261,10 +300,6 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
 
   if (!isOpen) return null;
 
-  const embarcacao = embarcacaoTarget || reservaTarget?.embarcacao || {};
-  const isJetSki = /jet/i.test(embarcacao.tipo || embarcacao.nome || '');
-  const angles = isJetSki ? ANGLES_JET : ANGLES_LANCHA;
-
   const totalRequired = angles.filter(a => a.required).length;
   const filledRequired = angles.filter(a => a.required && fotos[a.angleKey]).length;
   const isComplete = filledRequired >= totalRequired;
@@ -294,14 +329,11 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
       setFotos(prev => ({ ...prev, [angleKey]: url }));
     } catch (err: any) {
       console.error('Erro ao enviar foto:', err);
-      alert('Falha ao processar foto. Se o celular estiver com pouca memória, utilize o botão "Galeria" ou feche outras abas.');
+      alert('Falha ao processar foto da câmera. Tente novamente.');
     } finally {
       setUploadingAngle(null);
       if (cameraInputRefs.current[angleKey]) {
         cameraInputRefs.current[angleKey]!.value = '';
-      }
-      if (galleryInputRefs.current[angleKey]) {
-        galleryInputRefs.current[angleKey]!.value = '';
       }
     }
   };
@@ -321,9 +353,6 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
       setUploadingExtra(false);
       if (extraCameraInputRef.current) {
         extraCameraInputRef.current.value = '';
-      }
-      if (extraGalleryInputRef.current) {
-        extraGalleryInputRef.current.value = '';
       }
     }
   };
@@ -481,21 +510,12 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                       : 'border-dashed border-slate-300 bg-slate-50'
                   }`}
                 >
-                  {/* Câmera Direta (capture="environment" para abrir a câmera no celular) */}
+                  {/* Câmera Direta (capture="environment" para abrir exclusivamente a câmera) */}
                   <input
                     type="file"
                     accept="image/*"
                     capture="environment"
                     ref={(el) => { cameraInputRefs.current[activeAngle.angleKey] = el; }}
-                    className="hidden"
-                    onChange={(e) => handleCaptureAngle(activeAngle.angleKey, e)}
-                  />
-
-                  {/* Galeria / Arquivos (sem capture — não suspende o Chrome, evitando erro de memória) */}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    ref={(el) => { galleryInputRefs.current[activeAngle.angleKey] = el; }}
                     className="hidden"
                     onChange={(e) => handleCaptureAngle(activeAngle.angleKey, e)}
                   />
@@ -534,15 +554,6 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                         >
                           <Camera className="w-4 h-4" />
                           <span>Nova Foto</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => galleryInputRefs.current[activeAngle.angleKey]?.click()}
-                          className="py-2.5 px-2.5 bg-white/95 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1 shadow-md active:scale-[0.97] transition backdrop-blur-sm cursor-pointer"
-                          title="Escolher foto da Galeria (evita travamento de memória)"
-                        >
-                          <ImageIcon className="w-4 h-4 text-slate-600" />
-                          <span>Galeria</span>
                         </button>
                         <button
                           type="button"
@@ -594,10 +605,13 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                       <div className="flex-1 w-full flex items-center justify-center p-2 relative my-1">
                         {activeAngle.svgPath ? (
                           <img
+                            key={activeAngle.angleKey}
                             src={activeAngle.svgPath}
                             alt={`Referência ${activeAngle.name}`}
-                            className="max-h-[190px] w-auto max-w-full object-contain drop-shadow-sm transition-transform duration-200"
+                            className="max-h-[210px] w-auto max-w-full object-contain mix-blend-multiply drop-shadow-xs transition-transform duration-200"
                             loading="eager"
+                            decoding="async"
+                            fetchPriority="high"
                           />
                         ) : (
                           <div className="w-20 h-20 rounded-full bg-blue-50 border-2 border-blue-200 flex items-center justify-center shadow-inner">
@@ -606,7 +620,7 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                         )}
                       </div>
 
-                      {/* Bottom action banner — Câmera Direta e Galeria Anti-travamento */}
+                      {/* Bottom action banner — Câmera Direta */}
                       <div
                         className="w-full bg-white/95 backdrop-blur-xs border border-slate-200 rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-1.5"
                         onClick={(e) => e.stopPropagation()}
@@ -615,19 +629,10 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                           <button
                             type="button"
                             onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
-                            className="flex-1 py-3 px-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
+                            className="w-full py-3 px-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
                           >
                             <Camera className="w-4 h-4 shrink-0" />
                             <span>Tirar Foto</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => galleryInputRefs.current[activeAngle.angleKey]?.click()}
-                            title="Escolher da Galeria (evita travamento de memória no celular)"
-                            className="py-3 px-3.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 border border-slate-200 transition cursor-pointer"
-                          >
-                            <ImageIcon className="w-4 h-4 text-slate-500 shrink-0" />
-                            <span>Galeria</span>
                           </button>
                         </div>
                         <p className="text-[11px] text-slate-500 font-medium text-center">
@@ -665,6 +670,7 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                   return (
                     <button
                       key={angle.id}
+                      ref={(el) => { thumbnailRefs.current[idx] = el; }}
                       onClick={() => setActiveAngleIdx(idx)}
                       className={`shrink-0 snap-center w-16 h-16 rounded-xl overflow-hidden border-2 transition-all active:scale-95 relative ${
                         isActive
@@ -676,15 +682,15 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                     >
                       {hasPhoto ? (
                         <>
-                          <img src={fotos[angle.angleKey]} alt="" className="w-full h-full object-cover" />
+                          <img src={fotos[angle.angleKey]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                           <div className="absolute top-0.5 right-0.5">
                             <CheckCircle2 className="w-4 h-4 text-emerald-500 drop-shadow" />
                           </div>
                         </>
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 p-1">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-white p-1">
                           {angle.svgPath ? (
-                            <img src={angle.svgPath} alt="" className="w-full h-full object-contain" />
+                            <img src={angle.svgPath} alt="" className="w-full h-full object-contain mix-blend-multiply" loading="lazy" decoding="async" />
                           ) : (
                             <Camera className="w-5 h-5 text-slate-300" />
                           )}
@@ -712,38 +718,21 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                     ) : (
                       <>
                         <Camera className="w-4 h-4 text-amber-600" />
-                        <span className="text-[8px] font-bold text-amber-700 uppercase">+ Câmera</span>
+                        <span className="text-[8px] font-bold text-amber-700 uppercase">+ Foto Extra</span>
                         {fotosExtras.length > 0 && (
                           <span className="text-[8px] font-bold text-amber-800">{fotosExtras.length}</span>
                         )}
                       </>
                     )}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => extraGalleryInputRef.current?.click()}
-                    disabled={uploadingExtra}
-                    title="Adicionar foto extra da galeria (anti-travamento)"
-                    className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 flex flex-col items-center justify-center gap-0.5 active:scale-95 transition cursor-pointer"
-                  >
-                    <ImageIcon className="w-4 h-4 text-slate-500" />
-                    <span className="text-[8px] font-bold text-slate-600 uppercase">+ Galeria</span>
-                  </button>
                 </div>
 
-                {/* Hidden inputs para fotos extras */}
+                {/* Hidden input para fotos extras (apenas câmera) */}
                 <input
                   type="file"
                   accept="image/*"
                   capture="environment"
                   ref={extraCameraInputRef}
-                  className="hidden"
-                  onChange={handleCaptureExtra}
-                />
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={extraGalleryInputRef}
                   className="hidden"
                   onChange={handleCaptureExtra}
                 />
@@ -761,27 +750,16 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
               </button>
 
               {!fotos[activeAngle.angleKey] ? (
-                /* SEM FOTO NO ÂNGULO ATUAL: Botão inteligente com atalho de galeria */
-                <div className="flex-1 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
-                    disabled={uploadingAngle === activeAngle.angleKey}
-                    className="flex-1 h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer disabled:opacity-50"
-                  >
-                    <Camera className="w-5 h-5" />
-                    <span>Tirar Foto</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => galleryInputRefs.current[activeAngle.angleKey]?.click()}
-                    disabled={uploadingAngle === activeAngle.angleKey}
-                    title="Escolher da Galeria (evita erro de memória no celular)"
-                    className="w-14 h-14 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center active:scale-95 transition border border-slate-200 cursor-pointer shrink-0 disabled:opacity-50"
-                  >
-                    <ImageIcon className="w-6 h-6 text-slate-600" />
-                  </button>
-                </div>
+                /* SEM FOTO NO ÂNGULO ATUAL: Botão direto para câmera */
+                <button
+                  type="button"
+                  onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
+                  disabled={uploadingAngle === activeAngle.angleKey}
+                  className="flex-1 h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  <Camera className="w-5 h-5" />
+                  <span>Tirar Foto</span>
+                </button>
               ) : activeAngleIdx < angles.length - 1 ? (
                 /* COM FOTO NO ÂNGULO ATUAL: Botão inteligente passa para o próximo ângulo */
                 <button
@@ -1192,22 +1170,10 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                     setRefGuideAngle(null);
                     cameraInputRefs.current[key]?.click();
                   }}
-                  className="flex-1 sm:flex-initial py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition cursor-pointer"
+                  className="w-full sm:w-auto py-3 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition cursor-pointer"
                 >
                   <Camera className="w-4 h-4" />
                   <span>Fotografar</span>
-                </button>
-                <button
-                  onClick={() => {
-                    const key = refGuideAngle.angleKey;
-                    setRefGuideAngle(null);
-                    galleryInputRefs.current[key]?.click();
-                  }}
-                  className="py-3 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-200 active:scale-95 transition cursor-pointer"
-                  title="Escolher da Galeria"
-                >
-                  <ImageIcon className="w-4 h-4 text-slate-500" />
-                  <span>Galeria</span>
                 </button>
               </div>
             </div>

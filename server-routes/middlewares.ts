@@ -137,13 +137,21 @@ export async function requireClientAuth(req: express.Request, res: express.Respo
       );
       const authRecord = (authRows as any[])[0];
       if (!authRecord) {
-        return res.status(401).json({ error: true, message: "Sessão revogada ou credenciais resetadas." });
-      }
-
-      const currentTv = authRecord.tokenVersion ?? 1;
-      const tokenTv = decoded.tv ?? 1;
-      if (tokenTv !== currentTv) {
-        return res.status(401).json({ error: true, message: "Sessão expirada devido a alteração de senha ou redefinição de acesso." });
+        if (decoded.reservaId) {
+          // Token originado de Magic Link: assegura registro inicial em ClienteAuth sem derrubar a sessão
+          await pool.query(
+            "INSERT INTO ClienteAuth (clienteId, passwordHash, tokenVersion) VALUES (?, '', 1) ON DUPLICATE KEY UPDATE tokenVersion = COALESCE(tokenVersion, 1)",
+            [decoded.id]
+          ).catch(() => {});
+        } else {
+          return res.status(401).json({ error: true, message: "Sessão revogada ou credenciais resetadas." });
+        }
+      } else {
+        const currentTv = authRecord.tokenVersion ?? 1;
+        const tokenTv = decoded.tv ?? 1;
+        if (tokenTv !== currentTv && !decoded.reservaId) {
+          return res.status(401).json({ error: true, message: "Sessão expirada devido a alteração de senha ou redefinição de acesso." });
+        }
       }
 
       const [clientRows] = await pool.query(

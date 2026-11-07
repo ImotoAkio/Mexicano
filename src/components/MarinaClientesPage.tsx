@@ -31,7 +31,7 @@ import {
 import { clientDB, boatDB, syncWithRemote, onDbUpdate, isDbLoaded } from '../db';
 import { Cliente, Embarcacao } from '../types';
 import { getBoatCode, matchClientBoat } from '../utils/boatUtils';
-import { formatBoatName } from '../utils/constants';
+import { formatBoatName, isInternalMexicano } from '../utils/constants';
 import ClientProfileModal from './ClientProfileModal';
 import ClientModal from './ClientModal';
 
@@ -209,15 +209,16 @@ export default function MarinaClientesPage({
     return emps.has('VALE');
   };
 
-  // Contagens para as abas
-  const countMarina = useMemo(() => clients.filter(c => isClientMarina(c)).length, [clients, clientBoatsMap]);
-  const countVale = useMemo(() => clients.filter(c => isClientVale(c)).length, [clients, clientBoatsMap]);
+  // Contagens para as abas (ignorando a entidade interna El Mexicano)
+  const countMarina = useMemo(() => clients.filter(c => !isInternalMexicano(c.id) && !isInternalMexicano(c.nome) && isClientMarina(c)).length, [clients, clientBoatsMap]);
+  const countVale = useMemo(() => clients.filter(c => !isInternalMexicano(c.id) && !isInternalMexicano(c.nome) && isClientVale(c)).length, [clients, clientBoatsMap]);
 
   // ─── FILTRAGEM DE CLIENTES ───
   const filteredClients = useMemo(() => {
     const term = search.toLowerCase().trim();
 
     return clients.filter(c => {
+      if (isInternalMexicano(c.id) || isInternalMexicano(c.nome)) return false;
       const linked = clientBoatsMap.get(c.id) || [];
 
       // 1. Aba de Empresa: Marina vs Vale vs Todas

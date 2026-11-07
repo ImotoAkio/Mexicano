@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { TransacaoFinanceira, Cliente, Embarcacao } from '../../types';
 import Select from 'react-select';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 // ─────────────────────────────────────────────────────────────────────
 // Types

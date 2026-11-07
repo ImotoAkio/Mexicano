@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
 import { 
   Anchor, X, Ship, User, Zap, ChevronDown, RefreshCw, 
-  ImageIcon, Edit2, Upload, Check, Trash2 } from 'lucide-react';
+  ImageIcon, Edit2, Upload, Check, Trash2,
+  ShieldCheck, ShieldAlert, Calendar, AlertCircle, Clock, Flame } from 'lucide-react';
 import { boatDB, clientDB } from '../db';
 import { Embarcacao, Cliente } from '../types';
 
@@ -59,10 +60,42 @@ export default function BoatModal({
   const [seguroUrl, setSeguroUrl] = useState('');
   const [isUploadingSeguro, setIsUploadingSeguro] = useState(false);
   const [empresas, setEmpresas] = useState<string[]>(['VALE']);
+  const [validadeSeguro, setValidadeSeguro] = useState('');
+  const [validadeExtintor, setValidadeExtintor] = useState('');
+  const [validadeTie, setValidadeTie] = useState('');
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const isMarinaGerente = userRole === 'marina_gerente' || lockEmpresa === 'MARINA';
+
+  const getValidityBadge = (dateStr?: string) => {
+    if (!dateStr) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dateStr);
+    target.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+          <AlertCircle className="w-2.5 h-2.5" /> VENCIDO
+        </span>
+      );
+    }
+    if (diffDays <= 30) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+          <Clock className="w-2.5 h-2.5" /> EM {diffDays}d
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+        <Check className="w-2.5 h-2.5" /> EM DIA
+      </span>
+    );
+  };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -122,6 +155,9 @@ export default function BoatModal({
         setImagemUrl(loadedFotos[0] || editingBoat.imagemUrl || '');
         setDocumentoUrl(editingBoat.documentoUrl || '');
         setSeguroUrl(editingBoat.seguroUrl || '');
+        setValidadeTie(editingBoat.validadeTie || editingBoat.validadeDocumento || (editingBoat.acessorios as any)?.validadeTie || (editingBoat.acessorios as any)?.validadeDocumento || '');
+        setValidadeSeguro(editingBoat.validadeSeguro || (editingBoat.acessorios as any)?.validadeSeguro || '');
+        setValidadeExtintor(editingBoat.validadeExtintor || (editingBoat.acessorios as any)?.validadeExtintor || '');
         setEmpresas(editingBoat.empresas && editingBoat.empresas.length > 0 ? editingBoat.empresas : defaultEmps);
         setIsAdvancedOpen(Boolean(mappedId || editingBoat.whatsappGroupId));
       } else {
@@ -148,6 +184,9 @@ export default function BoatModal({
         setFotos([]);
         setDocumentoUrl('');
         setSeguroUrl('');
+        setValidadeTie('');
+        setValidadeSeguro('');
+        setValidadeExtintor('');
         setEmpresas(defaultEmps);
         setIsAdvancedOpen(false);
       }
@@ -310,6 +349,10 @@ export default function BoatModal({
         fotos: fotos.length > 0 ? fotos : (imagemUrl ? [imagemUrl] : undefined),
         documentoUrl: documentoUrl || undefined,
         seguroUrl: seguroUrl || undefined,
+        validadeDocumento: validadeTie || undefined,
+        validadeTie: validadeTie || undefined,
+        validadeSeguro: validadeSeguro || undefined,
+        validadeExtintor: validadeExtintor || undefined,
         empresas: finalEmpresas
       };
 
@@ -595,6 +638,85 @@ export default function BoatModal({
                       onChange={(e) => setCapacidadePassageiros(e.target.value ? Number(e.target.value) : '')}
                       className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Documentação & Validades */}
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    Validades & Regularidade
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium">Controle de vencimentos</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {/* Validade do Seguro */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-semibold text-slate-600">
+                        Validade Seguro
+                      </label>
+                      {getValidityBadge(validadeSeguro)}
+                    </div>
+                    <div className="relative">
+                      <ShieldAlert className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        id="input-boat-validade-seguro"
+                        type="date"
+                        tabIndex={12}
+                        value={validadeSeguro}
+                        onChange={(e) => setValidadeSeguro(e.target.value)}
+                        className="w-full pl-8 pr-2 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-800"
+                      />
+                    </div>
+                    <span className="text-[9px] text-slate-400 mt-0.5 block">Apólice náutica / DPEM</span>
+                  </div>
+
+                  {/* Validade do Extintor */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-semibold text-slate-600">
+                        Validade Extintor
+                      </label>
+                      {getValidityBadge(validadeExtintor)}
+                    </div>
+                    <div className="relative">
+                      <Flame className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-orange-500" />
+                      <input
+                        id="input-boat-validade-extintor"
+                        type="date"
+                        tabIndex={13}
+                        value={validadeExtintor}
+                        onChange={(e) => setValidadeExtintor(e.target.value)}
+                        className="w-full pl-8 pr-2 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-800"
+                      />
+                    </div>
+                    <span className="text-[9px] text-slate-400 mt-0.5 block">Carga do extintor</span>
+                  </div>
+
+                  {/* Validade do TIE */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-semibold text-slate-600">
+                        Validade do TIE
+                      </label>
+                      {getValidityBadge(validadeTie)}
+                    </div>
+                    <div className="relative">
+                      <Calendar className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        id="input-boat-validade-tie"
+                        type="date"
+                        tabIndex={14}
+                        value={validadeTie}
+                        onChange={(e) => setValidadeTie(e.target.value)}
+                        className="w-full pl-8 pr-2 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-slate-800"
+                      />
+                    </div>
+                    <span className="text-[9px] text-slate-400 mt-0.5 block">Doc. Capitania dos Portos</span>
                   </div>
                 </div>
               </div>
