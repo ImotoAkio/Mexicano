@@ -70,6 +70,8 @@ import {
   Menu,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Kanban,
   Database,
   Wallet,
   FileSearch,
@@ -136,7 +138,7 @@ const AdminFuelWrapper = () => {
   return <AdminFuelPage data={data} setData={setData} reloadData={loadData} operadorNome="Admin" isAdmin={true} />;
 };
 
-type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot';
+type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot' | 'comercial-hub' | 'marina-hub';
 
 function persistClientSessionToken(token: string, reservaId?: string | null) {
   if (!token || token === 'null' || token === 'undefined') return;
@@ -228,6 +230,26 @@ export default function App() {
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Controle de grupos recolhiveis (accordions) na Sidebar do Admin
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('admin_sidebar_collapsed_groups');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleGroupCollapse = (groupName: string) => {
+    setCollapsedGroups(prev => {
+      const updated = { ...prev, [groupName]: !prev[groupName] };
+      try {
+        localStorage.setItem('admin_sidebar_collapsed_groups', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.ADMIN_ACTIVE_TAB, activeTab);
@@ -434,7 +456,7 @@ export default function App() {
   const isPecasServicos = effectiveRole === 'pecas_servicos';
   const isFinanceiro = effectiveRole === 'financeiro';
   const isComercial = effectiveRole === 'comercial';
-  const isFullWidthPage = ['manutencoes', 'pecas-atividades', 'pecas-acessorios', 'pecas-horimetros', 'pecas-whatsapp'].includes(activeTab);
+  const isFullWidthPage = ['manutencoes', 'pecas-atividades', 'pecas-acessorios', 'pecas-horimetros', 'pecas-whatsapp', 'comercial-hub', 'marina-hub'].includes(activeTab);
 
   const menuGroups = [
     {
@@ -443,26 +465,25 @@ export default function App() {
         { id: 'dashboard' as TabType, label: 'Painel Geral', icon: Compass },
         { id: 'schedules' as TabType, label: 'Agendamentos Cotas', icon: CalendarIcon },
         { id: 'marina-agendamentos' as TabType, label: 'Agendamentos Marina', icon: Anchor },
-        { id: 'finance-schedules' as TabType, label: 'Consulta de Agendamentos', icon: CalendarDays },
-        { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
-        { id: 'notificacoes-robot' as TabType, label: 'Robô de Notificações', icon: Bot },
       ]
     },
     {
-      group: 'UTV Trilha (Off-Road)',
+      group: 'Marina & Operação',
       items: [
-        { id: 'utv-operacao' as TabType, label: 'Operação & Agenda UTV', icon: Truck },
-        { id: 'utv-controle-anual' as TabType, label: 'Controle Anual (30 Dias)', icon: CalendarDays },
-        { id: 'utv-rateio' as TabType, label: 'Rateio de Manutenção', icon: Calculator },
-      ]
-    },
-    {
-      group: 'Operação de Pátio',
-      items: [
+        { id: 'marina-hub' as TabType, label: 'Painel da Marina (Fila)', icon: Anchor },
         { id: 'checklists' as TabType, label: 'Checklists Diários', icon: ClipboardList },
-        { id: 'fuel' as TabType, label: 'Abastecimento', icon: Droplets },
-        { id: 'sound' as TabType, label: 'Vistoria de Som', icon: Speaker },
         { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
+        { id: 'fuel' as TabType, label: 'Abastecimento', icon: Droplets },
+      ]
+    },
+    {
+      group: 'Comercial & Cotistas',
+      items: [
+        { id: 'comercial-hub' as TabType, label: 'Hub Comercial (CRM & Vendas)', icon: Kanban },
+        { id: 'clients' as TabType, label: 'Cadastro de Clientes', icon: Users },
+        { id: 'boats' as TabType, label: 'Cadastro de Embarcações', icon: Ship },
+        { id: 'contratos' as TabType, label: 'Gerador de Contratos', icon: FileText },
+        { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
       ]
     },
     {
@@ -471,32 +492,22 @@ export default function App() {
         { id: 'manutencoes' as TabType, label: 'Painel de Manutenções', icon: Wrench },
         { id: 'chamados' as TabType, label: 'Chamados', icon: ClipboardList },
         { id: 'pecas-horimetros' as TabType, label: 'Controle de Horímetros', icon: Clock },
-        { id: 'pecas-acessorios' as TabType, label: 'Checklist de Acessórios', icon: Package },
         { id: 'pecas-atividades' as TabType, label: 'Quadro de Atividades', icon: ClipboardList },
-        { id: 'pecas-whatsapp' as TabType, label: 'WhatsApp (Peças/Serviços)', icon: MessageSquare },
-      ]
-    },
-    {
-      group: 'Comercial & Cadastros',
-      items: [
-        { id: 'contratos' as TabType, label: 'Gerador de Contratos', icon: FileText },
-        { id: 'clients' as TabType, label: 'Cadastro de Clientes', icon: Users },
-        { id: 'boats' as TabType, label: 'Cadastro de Embarcações', icon: Ship },
-        { id: 'reports' as TabType, label: 'Relatórios & Histórico', icon: FileSearch },
+        { id: 'pecas-acessorios' as TabType, label: 'Checklist de Acessórios', icon: Package },
+        { id: 'pecas-whatsapp' as TabType, label: 'WhatsApp Peças', icon: MessageSquare },
       ]
     },
     {
       group: 'Financeiro',
       items: [
         { id: 'finance-dashboard' as TabType, label: 'Visão Geral (Dashboard)', icon: PieChart },
-        { id: 'finance-lancamentos' as TabType, label: 'Lançamentos (Contas a Pagar/Receber)', icon: FileText },
+        { id: 'finance-lancamentos' as TabType, label: 'Lançamentos (Pagar/Receber)', icon: FileText },
         { id: 'finance-fluxo' as TabType, label: 'Fluxo de Caixa', icon: Wallet },
         { id: 'finance-recorrencia' as TabType, label: 'Gestão de Parcelas', icon: CalendarClock },
-        { id: 'finance-cadastros' as TabType, label: 'Cadastros Financeiros', icon: Settings },
-        { id: 'finance-relatorios' as TabType, label: 'Relatórios & DRE', icon: FileSearch },
-        { id: 'finance-fuel' as TabType, label: 'Lançamento de Combustível', icon: Droplets },
         { id: 'finance-boletos' as TabType, label: 'Envio de Boletos', icon: Receipt },
-        { id: 'finance-whatsapp' as TabType, label: 'WhatsApp', icon: MessageSquare },
+        { id: 'finance-relatorios' as TabType, label: 'Relatórios & DRE', icon: FileSearch },
+        { id: 'finance-cadastros' as TabType, label: 'Cadastros Financeiros', icon: Settings },
+        { id: 'finance-whatsapp' as TabType, label: 'WhatsApp Cobrança', icon: MessageSquare },
       ]
     },
     {
@@ -508,14 +519,21 @@ export default function App() {
       ]
     },
     {
+      group: 'UTV Trilha (Off-Road)',
+      items: [
+        { id: 'utv-operacao' as TabType, label: 'Módulo UTV Trilha', icon: Truck },
+      ]
+    },
+    {
       group: 'Administração & Sistema',
       items: [
-        { id: 'portal-interno' as TabType, label: 'Portal Interno', icon: MessageSquare },
         { id: 'users' as TabType, label: 'Gestão de Usuários', icon: Shield },
+        { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
         { id: 'notificacoes-robot' as TabType, label: 'Robô de Notificações', icon: Bot },
         { id: 'integrations' as TabType, label: 'Configurações & Integrações', icon: Settings },
-        { id: 'feedback' as TabType, label: 'Central de Feedback', icon: MessageSquare },
         { id: 'audit-logs' as TabType, label: 'Registro de Atividades', icon: History },
+        { id: 'portal-interno' as TabType, label: 'Portal Interno', icon: MessageSquare },
+        { id: 'feedback' as TabType, label: 'Central de Feedback', icon: MessageSquare },
       ]
     }
   ].map(group => ({
@@ -535,6 +553,20 @@ export default function App() {
       return true;
     })
   })).filter(group => group.items.length > 0);
+
+  // Garante que o grupo da tab ativa nunca fique colapsado/escondido
+  useEffect(() => {
+    const activeGroup = menuGroups.find(g => g.items.some(i => i.id === activeTab));
+    if (activeGroup && collapsedGroups[activeGroup.group]) {
+      setCollapsedGroups(prev => {
+        const next = { ...prev, [activeGroup.group]: false };
+        try {
+          localStorage.setItem('admin_sidebar_collapsed_groups', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!isAdmin && ['utv-operacao', 'utv-controle-anual', 'utv-rateio'].includes(activeTab)) {
@@ -884,37 +916,60 @@ export default function App() {
           </div>
 
           {/* Navigation Links */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
-            {menuGroups.map((group, idx) => (
-              <div key={idx} className="space-y-1">
-                {isSidebarOpen && (
-                  <div className="px-3 py-1 text-[10px] uppercase font-black tracking-wider text-slate-400">
-                    {group.group}
-                  </div>
-                )}
-                {group.items.map(item => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
+            {menuGroups.map((group, idx) => {
+              const isCollapsed = Boolean(collapsedGroups[group.group]);
+              const hasActiveItem = group.items.some(i => i.id === activeTab);
 
-                  return (
+              return (
+                <div key={idx} className="space-y-1">
+                  {isSidebarOpen ? (
                     <button
-                      key={item.id}
-                      onClick={() => handleTabChange(item.id)}
-                      title={!isSidebarOpen ? item.label : undefined}
-                      className={`
-                        w-full flex items-center px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer
-                        ${isActive 
-                          ? (isFinanceiro || activeTab.startsWith('finance-') ? 'bg-brand-500 text-white shadow-xs' : 'bg-[#186b77] text-white shadow-xs') 
-                          : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}
-                      `}
+                      type="button"
+                      onClick={() => toggleGroupCollapse(group.group)}
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] uppercase font-black tracking-wider text-slate-400 hover:text-slate-700 hover:bg-slate-100/70 transition-all cursor-pointer select-none group"
+                      title={isCollapsed ? `Expandir ${group.group}` : `Recolher ${group.group}`}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${isSidebarOpen ? 'mr-3' : 'mx-auto'} ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                      {isSidebarOpen && <span className="truncate">{item.label}</span>}
+                      <span className="truncate flex items-center gap-1.5">
+                        {group.group}
+                        {hasActiveItem && isCollapsed && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#186b77]" />
+                        )}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 shrink-0 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} />
                     </button>
-                  );
-                })}
-              </div>
-            ))}
+                  ) : (
+                    <div className="my-2 border-t border-slate-100" />
+                  )}
+
+                  {(!isCollapsed || !isSidebarOpen) && (
+                    <div className="space-y-1">
+                      {group.items.map(item => {
+                        const Icon = item.icon;
+                        const isActive = activeTab === item.id;
+
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => handleTabChange(item.id)}
+                            title={!isSidebarOpen ? item.label : undefined}
+                            className={`
+                              w-full flex items-center px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer
+                              ${isActive 
+                                ? (isFinanceiro || activeTab.startsWith('finance-') ? 'bg-brand-500 text-white shadow-xs' : 'bg-[#186b77] text-white shadow-xs') 
+                                : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}
+                            `}
+                          >
+                            <Icon className={`w-4 h-4 shrink-0 ${isSidebarOpen ? 'mr-3' : 'mx-auto'} ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                            {isSidebarOpen && <span className="truncate">{item.label}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* User & Logout Footer */}
@@ -978,6 +1033,8 @@ export default function App() {
                 {activeTab === 'utv-operacao' && isAdmin && <UtvPage initialTab="operacao" />}
                 {activeTab === 'utv-controle-anual' && isAdmin && <UtvPage initialTab="controle-anual" />}
                 {activeTab === 'utv-rateio' && isAdmin && <UtvPage initialTab="rateio" />}
+                {activeTab === 'comercial-hub' && <ComercialDashboard onLogout={handleLogout} operadorNome={adminName} />}
+                {activeTab === 'marina-hub' && <MarinaDashboard onLogout={handleLogout} operadorNome={adminName} />}
               </Suspense>
             </ErrorBoundary>
           </div>

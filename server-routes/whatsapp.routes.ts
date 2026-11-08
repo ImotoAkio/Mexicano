@@ -92,6 +92,31 @@ function parseEvolutionError(errorText: string, fallbackText: string, recipient:
 // Helper exportado para envio programático de mensagens via WhatsApp (Evolution API)
 export async function sendEvolutionText(number: string, text: string): Promise<{ success: boolean; message?: string }> {
   try {
+    // 🛡️ TRAVA FÍSICA INVIOLÁVEL DE SANDBOX: NUNCA envia para clientes reais se notif_sandbox_ativa estiver '1'
+    try {
+      const { getConfigValue } = await import("../server-db");
+      const sandboxAtiva = (await getConfigValue("notif_sandbox_ativa")) === "1";
+      const sandboxTelefone = (await getConfigValue("notif_sandbox_telefone")) || "";
+      if (sandboxAtiva) {
+        let cleanedDest = String(number || '').replace(/\D/g, "");
+        let cleanedSandbox = sandboxTelefone.replace(/\D/g, "");
+        if (cleanedSandbox.length >= 10 && cleanedSandbox.length <= 11 && !cleanedSandbox.startsWith("55")) {
+          cleanedSandbox = `55${cleanedSandbox}`;
+        }
+        if (cleanedDest.length >= 10 && cleanedDest.length <= 11 && !cleanedDest.startsWith("55")) {
+          cleanedDest = `55${cleanedDest}`;
+        }
+
+        // Se o número de destino NÃO for exatamente o número do Sandbox configurado, BLOQUEIA IMEDIATAMENTE
+        if (!cleanedSandbox || cleanedDest !== cleanedSandbox) {
+          console.warn(`🛡️ [WHATSAPP BLOQUEADO POR SANDBOX] Tentativa de envio para ${number} barrada com sucesso.`);
+          return { success: true, message: "Envio interceptado e protegido pelo Modo Sandbox." };
+        }
+      }
+    } catch (sandboxErr) {
+      console.warn("Erro ao verificar trava sandbox no sendEvolutionText:", sandboxErr);
+    }
+
     const apiUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
     const instance = process.env.EVOLUTION_INSTANCE || "mexicano";

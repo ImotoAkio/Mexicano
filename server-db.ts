@@ -2198,11 +2198,12 @@ export async function upsertClient(client: any) {
     contratosJson
   ]);
 
-  if (client.empresas && Array.isArray(client.empresas)) {
+  if (client.id && client.empresas && Array.isArray(client.empresas)) {
     await currentPool.query("DELETE FROM ClienteEmpresas WHERE clienteId = ?", [client.id]);
-    if (client.empresas.length > 0) {
-      const values = client.empresas.map((e: string) => [client.id, e]);
-      await currentPool.query("INSERT INTO ClienteEmpresas (clienteId, empresa) VALUES ?", [values]);
+    const uniqueEmpresas = Array.from(new Set(client.empresas.map((e: any) => String(e).trim()).filter(Boolean)));
+    if (uniqueEmpresas.length > 0) {
+      const values = uniqueEmpresas.map((e: string) => [client.id, e]);
+      await currentPool.query("INSERT IGNORE INTO ClienteEmpresas (clienteId, empresa) VALUES ?", [values]);
     }
   }
 }
@@ -2621,11 +2622,12 @@ export async function upsertBoat(boat: any) {
     );
   } catch (e) {}
 
-  if (boat.empresas && Array.isArray(boat.empresas)) {
+  if (boat.id && boat.empresas && Array.isArray(boat.empresas)) {
     await currentPool.query("DELETE FROM EmbarcacaoEmpresas WHERE embarcacaoId = ?", [boat.id]);
-    if (boat.empresas.length > 0) {
-      const values = boat.empresas.map((e: string) => [boat.id, e]);
-      await currentPool.query("INSERT INTO EmbarcacaoEmpresas (embarcacaoId, empresa) VALUES ?", [values]);
+    const uniqueEmpresas = Array.from(new Set(boat.empresas.map((e: any) => String(e).trim()).filter(Boolean)));
+    if (uniqueEmpresas.length > 0) {
+      const values = uniqueEmpresas.map((e: string) => [boat.id, e]);
+      await currentPool.query("INSERT IGNORE INTO EmbarcacaoEmpresas (embarcacaoId, empresa) VALUES ?", [values]);
     }
   }
 
@@ -2697,7 +2699,7 @@ export async function upsertReservation(reserva: any) {
       operadorChegada = VALUES(operadorChegada),
       destino = VALUES(destino),
       pessoasABordo = VALUES(pessoasABordo),
-      confirmacaoEnviada = VALUES(confirmacaoEnviada),
+      confirmacaoEnviada = GREATEST(COALESCE(confirmacaoEnviada, 0), VALUES(confirmacaoEnviada)),
       litrosAbastecidos = VALUES(litrosAbastecidos),
       horaSubida = VALUES(horaSubida),
       operadorSubida = VALUES(operadorSubida),
@@ -2954,7 +2956,7 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
           statusMarina = VALUES(statusMarina), horaDescida = VALUES(horaDescida),
           fotosChecklistDescida = VALUES(fotosChecklistDescida),
           operadorDescida = VALUES(operadorDescida), operadorSaida = VALUES(operadorSaida),
-          operadorChegada = VALUES(operadorChegada), confirmacaoEnviada = VALUES(confirmacaoEnviada),
+          operadorChegada = VALUES(operadorChegada), confirmacaoEnviada = GREATEST(COALESCE(confirmacaoEnviada, 0), VALUES(confirmacaoEnviada)),
           litrosAbastecidos = VALUES(litrosAbastecidos)
       `, [
         res.id, res.embarcacaoId, res.clienteId, res.data, res.periodo,
@@ -7603,7 +7605,7 @@ export async function createCheckinVisita(data: any): Promise<any> {
 // Notificações Logs (Robô Inteligente de WhatsApp)
 // ----------------------------------------------------
 export async function logNotificacao(data: {
-  tipo: 'reserva_confirmacao' | 'financeiro_lancamento';
+  tipo: 'reserva_confirmacao' | 'reserva_confirmacao_debito' | 'financeiro_lancamento';
   referenciaId: string;
   clienteId: string;
   clienteNome?: string;
@@ -7617,7 +7619,21 @@ export async function logNotificacao(data: {
   if (!currentPool) return null;
 
   const id = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const createdAt = new Date().toISOString();
+  // Salva timestamp alinhado à data de Brasília no prefixo YYYY-MM-DD para filtros diários exatos
+  const brDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
+  const brTime = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(new Date());
+  const createdAt = `${brDate}T${brTime}-03:00`;
 
   await currentPool.query(
     `INSERT INTO NotificacoesLogs (id, tipo, referenciaId, clienteId, clienteNome, telefone, horarioSlot, mensagem, status, erro, createdAt)
@@ -7660,8 +7676,15 @@ export async function hasNotificacaoLog(
   const currentPool = getDbPool();
   if (!currentPool) return false;
 
-  let query = `SELECT id FROM NotificacoesLogs WHERE tipo = ? AND referenciaId = ? AND status = 'sucesso'`;
-  const params: any[] = [tipo, referenciaId];
+  let query = `SELECT id FROM NotificacoesLogs WHERE referenciaId = ? AND status = 'sucesso'`;
+  const params: any[] = [referenciaId];
+
+  if (tipo === 'reserva_confirmacao' || tipo === 'reserva_confirmacao_debito') {
+    query += ` AND tipo IN ('reserva_confirmacao', 'reserva_confirmacao_debito')`;
+  } else {
+    query += ` AND tipo = ?`;
+    params.push(tipo);
+  }
 
   if (horarioSlot) {
     query += ` AND horarioSlot = ?`;

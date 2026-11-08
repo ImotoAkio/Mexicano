@@ -149,6 +149,7 @@ export default function ClientLoginPage({ onLoginSuccess }: ClientLoginPageProps
         body: JSON.stringify({
           identifier: cleanCpf,
           resetToken,
+          password,
           newPassword: password,
         }),
       });

@@ -90,7 +90,6 @@ export default function MarinaEmbarcacoesClientesView({
 
     const token = localStorage.getItem('admin_token');
     const socket = io(window.location.origin, {
-      auth: { token: localStorage.getItem("admin_token") },
       auth: token ? { token } : undefined,
       transports: ['polling', 'websocket']
     });

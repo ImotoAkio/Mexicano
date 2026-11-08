@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles, Clock, Send, CheckCircle2, AlertCircle, RefreshCw,
-  Plus, X, Bot, DollarSign, CalendarCheck, ShieldCheck, Check,
-  MessageSquare, AlertTriangle, FileText, ShieldAlert,
+  Plus, X, DollarSign, ShieldCheck, Check,
+  FileText, ShieldAlert,
   UserCheck, CheckSquare, Square, RotateCcw, Smartphone,
-  ExternalLink, Search, Copy, Zap, Info, Filter, ArrowRight
+  ExternalLink, Search, Copy, Zap, Info, Eye, Link2
 } from 'lucide-react';
 import { getAuthHeaders } from '../utils/apiAuth';
 
@@ -21,6 +21,19 @@ export const DEFAULT_10_CONFIRMATION_TITLES = [
   "10º Envio: Última chamada antes do cancelamento automático"
 ];
 
+export const DEFAULT_10_DEBT_CONFIRMATION_TITLES = [
+  "1º Envio (Débito): Aviso cordial de pendência + Quitação PIX no link",
+  "2º Envio (Débito): Lembrete de liberação financeira para descida",
+  "3º Envio (Débito): Organização do pátio + Desbloqueio imediato via PIX",
+  "4º Envio (Débito): Normas operacionais + Regularização em 1 minuto",
+  "5º Envio (Débito): Alinhamento de marinharia + Quitação expressa",
+  "6º Envio (Débito): Pendência ativa + Opção de pagar ou cancelar saída",
+  "7º Envio (Débito): Movimentação intensa no píer + Regularização necessária",
+  "8º Envio (Débito): Urgência moderada + Quitação PIX ou cancelamento",
+  "9º Envio (Débito): Penúltimo aviso antes de suspender a descida",
+  "10º Envio (Débito): Última chamada para regularização e confirmação hoje"
+];
+
 export const DEFAULT_10_CONFIRMATION_TEMPLATES_FRONT = [
   "Bom dia, *{cliente}*! ☀️ Tudo bem?\n\nSua embarcação *{barco}* está agendada para *{quando}*! 🚤\n\nNossa equipe de marinharia já está preparando tudo. Para adiantarmos a descida {do_seu_barco} e seu plano de navegação, por favor confirme sua saída pelo link direto no app:\n\n👉 {link}\n\nTenha um excelente passeio!",
   "Olá, *{cliente}*! Passando para checar os detalhes do seu passeio de *{quando}* com {seu_barco} *{barco}*. ⚓\n\nVocê consegue nos confirmar rapidinho? Leva menos de 1 minuto pelo seu link de acesso rápido:\n\n👉 {link}\n\nAssim garantimos {seu_barco} pronta e revisada para a sua chegada!",
@@ -34,13 +47,37 @@ export const DEFAULT_10_CONFIRMATION_TEMPLATES_FRONT = [
   "Olá, *{cliente}*! Última verificação da marina: sua reserva {do_seu_barco} *{barco}* para *{quando}* continua pendente de confirmação.\n\nPara confirmar sua saída ou cancelar a reserva sem penalidades, acesse o link abaixo:\n👉 {link}\n\nContamos com sua compreensão para mantermos o pátio e as descidas organizadas!"
 ];
 
+export const DEFAULT_10_DEBT_CONFIRMATION_TEMPLATES_FRONT = [
+  "Bom dia, *{cliente}*! ☀️ Tudo bem?\n\nSua saída com {seu_barco} *{barco}* está agendada para *{quando}*! 🚤\n\nIdentificamos uma pendência financeira em aberto no valor de *R$ {valor_debito}*. Para liberar a descida {do_seu_barco} e preencher seu Plano de Navegação, acesse o link abaixo para quitar via PIX instantâneo e confirmar seu check-in:\n\n👉 {link}\n\nAssim que o pagamento for identificado, sua embarcação é liberada automaticamente!",
+  "Olá, *{cliente}*! Passando para lembrar do seu agendamento para *{quando}* com {seu_barco} *{barco}*. ⚓\n\nPara que a marinharia possa programar a descida {do_seu_barco}, é necessário regularizar a pendência em aberto (*R$ {valor_debito}*) e confirmar seus horários de saída no link rápido:\n\n👉 {link}\n\nNo próprio link você gera o PIX Copia e Cola e já conclui o check-in na hora!",
+  "Oi, *{cliente}*! 🚤 Nossa equipe de pátio está organizando a fila de descida das embarcações de hoje.\n\nSua reserva {do_seu_barco} *{barco}* aguarda a quitação do saldo vencido de *R$ {valor_debito}* para liberação operacional. Regularize e confirme sua saída em 1 minuto pelo link:\n\n👉 {link}\n\nEstamos à disposição caso precise de apoio!",
+  "Olá, *{cliente}*! ⚠️ Lembrando que para a liberação {do_seu_barco} *{barco}* no píer hoje, o sistema requer a situação financeira em dia (*R$ {valor_debito}* em aberto) e o preenchimento do Plano de Navegação obrigatório.\n\nResolva tudo em uma única tela pelo seu link exclusivo:\n\n👉 {link}\n\nA liberação via PIX é imediata!",
+  "Oi, *{cliente}*! Tudo bem? Ainda pretende sair *{quando}* com {seu_barco} *{barco}*? 🌊\n\nPara desbloquear a descida {do_seu_barco} junto à marinharia, acesse o link abaixo, quite a pendência de *R$ {valor_debito}* via PIX e informe seu destino e passageiros:\n\n👉 {link}\n\nQualquer dúvida sobre os valores, estamos à disposição aqui no WhatsApp!",
+  "Olá, *{cliente}*! Sua reserva para *{quando}* em {seu_barco} *{barco}* segue retida aguardando regularização financeira (*R$ {valor_debito}*) e confirmação de check-in.\n\nAcesse seu link direto para quitar e liberar a embarcação:\n👉 {link}\n\n💡 *Não vai mais sair hoje?* Você também pode cancelar a reserva em 1 clique pelo link acima.",
+  "Oi, *{cliente}*! ⚓ O movimento nos tratores de descida está intenso nesta manhã. Para mantermos {seu_barco} *{barco}* na programação de hoje, precisamos da quitação do débito em aberto (*R$ {valor_debito}*) e da confirmação do passeio:\n\n👉 {link}\n\n💡 Caso tenha mudado de planos, cancele a reserva pelo link para liberarmos a fila do pátio.",
+  "Olá, *{cliente}*! 😊 Queremos evitar qualquer espera na sua chegada à marina! Se ainda for navegar hoje com {seu_barco} *{barco}*, regularize o saldo de *R$ {valor_debito}* via PIX no link abaixo e libere seu check-in imediatamente:\n\n👉 {link}\n\n⚠️ Se não for utilizar a embarcação hoje, basta cancelar a saída pelo próprio link.",
+  "Oi, *{cliente}*! ⚠️ Penúltimo aviso da marinharia: {seu_barco} *{barco}* permanece bloqueada para descida hoje devido à pendência de *R$ {valor_debito}* e falta de check-in.\n\nPara quitar agora via PIX e liberar sua saída, acesse:\n👉 {link}\n\nSe não for comparecer, pedimos a gentileza de cancelar a reserva no link acima.",
+  "Olá, *{cliente}*! Última chamada operacional: a reserva {do_seu_barco} *{barco}* para *{quando}* continua bloqueada por pendência financeira (*R$ {valor_debito}*).\n\nRealize a quitação imediata e confirme sua saída ou cancele o agendamento pelo link:\n👉 {link}\n\nAgradecemos sua atenção e parceria!"
+];
+
 interface NotifConfig {
   notif_modo_operacao: 'automatico' | 'manual';
   notif_reservas_ativa: boolean;
+  notif_usar_mensagem_debito: boolean;
+  notif_sandbox_ativa?: boolean;
+  notif_sandbox_telefone?: string;
   notif_reservas_horarios: string[];
   notif_financeiro_ativa: boolean;
   notif_financeiro_template: string;
   whatsapp_conf_templates_10: string[];
+  whatsapp_conf_debt_templates_10: string[];
+}
+
+interface SchedulerRuntime {
+  isRunning: boolean;
+  executedSlotsToday: string[];
+  currentTimeBR: string;
+  todayStr: string;
 }
 
 interface NotifLog {
@@ -65,15 +102,21 @@ interface ReservaPendente {
   statusMarina: string;
   confirmacaoEnviada: number | boolean;
   tentativasConfirmacao: number;
+  ultimaTentativaConfirmacao?: string;
   clienteId: string;
   clienteNome: string;
   clienteTelefone: string;
+  clienteStatusFinanceiro?: string;
   embarcacaoId: string;
   embarcacaoNome: string;
   embarcacaoNumero: string;
   embarcacaoTipo?: string;
   embarcacaoModelo?: string;
   embarcacaoFabricante?: string;
+  isInadimplente?: boolean;
+  bloqueioManualSemFaturas?: boolean;
+  valorDebito?: number;
+  qtdFaturasVencidas?: number;
 }
 
 interface Props {
@@ -86,13 +129,17 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
   const [config, setConfig] = useState<NotifConfig>({
     notif_modo_operacao: 'automatico',
     notif_reservas_ativa: true,
+    notif_usar_mensagem_debito: true,
     notif_reservas_horarios: ['08:00', '09:00'],
     notif_financeiro_ativa: true,
     notif_financeiro_template: "Olá, *{cliente}*! 😊\n\nIdentificamos um novo lançamento no seu cadastro:\n\n📋 *Descrição:* {descricao}\n💰 *Valor:* R$ {valor}\n📅 *Vencimento:* {vencimento}{link_info}\n\nFicamos à disposição para qualquer dúvida! 👍",
-    whatsapp_conf_templates_10: [...DEFAULT_10_CONFIRMATION_TEMPLATES_FRONT]
+    whatsapp_conf_templates_10: [...DEFAULT_10_CONFIRMATION_TEMPLATES_FRONT],
+    whatsapp_conf_debt_templates_10: [...DEFAULT_10_DEBT_CONFIRMATION_TEMPLATES_FRONT]
   });
 
+  const [runtime, setRuntime] = useState<SchedulerRuntime | null>(null);
   const [activeSection, setActiveSection] = useState<ActiveSection>('fila');
+  const [templateCategory, setTemplateCategory] = useState<'regular' | 'debt'>('regular');
   const [activeTemplateIdx, setActiveTemplateIdx] = useState(0);
   const [previewVessel, setPreviewVessel] = useState<'lancha' | 'jet'>('lancha');
   const [novoHorario, setNovoHorario] = useState('');
@@ -100,13 +147,17 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [logs, setLogs] = useState<NotifLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   // Reservas pendentes
   const [reservasPendentes, setReservasPendentes] = useState<ReservaPendente[]>([]);
   const [selectedReservaIds, setSelectedReservaIds] = useState<string[]>([]);
   const [loadingPendentes, setLoadingPendentes] = useState(false);
   const [runningDisparo, setRunningDisparo] = useState(false);
+  const [singleDisparoId, setSingleDisparoId] = useState<string | null>(null);
+  const [generatingLinkForId, setGeneratingLinkForId] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
+  const [filaFinanceFilter, setFilaFinanceFilter] = useState<'all' | 'em_dia' | 'com_debito'>('all');
 
   // Modais de confirmação de segurança
   const [showConfirmDisparoModal, setShowConfirmDisparoModal] = useState(false);
@@ -118,7 +169,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
   const [lastTestMagicLink, setLastTestMagicLink] = useState<string | null>(null);
 
   // Filtro dos logs
-  const [logFilterType, setLogFilterType] = useState<'all' | 'reserva' | 'financeiro' | 'erro'>('all');
+  const [logFilterType, setLogFilterType] = useState<'all' | 'reserva' | 'reserva_debito' | 'financeiro' | 'erro'>('all');
   const [logSearch, setLogSearch] = useState('');
 
   const templateTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -133,10 +184,19 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
           setConfig(prev => ({
             ...prev,
             ...data.config,
+            notif_usar_mensagem_debito: data.config.notif_usar_mensagem_debito !== false,
+            notif_sandbox_ativa: data.config.notif_sandbox_ativa === true,
+            notif_sandbox_telefone: data.config.notif_sandbox_telefone || '',
             whatsapp_conf_templates_10: data.config.whatsapp_conf_templates_10 && data.config.whatsapp_conf_templates_10.length === 10
               ? data.config.whatsapp_conf_templates_10
-              : DEFAULT_10_CONFIRMATION_TEMPLATES_FRONT
+              : DEFAULT_10_CONFIRMATION_TEMPLATES_FRONT,
+            whatsapp_conf_debt_templates_10: data.config.whatsapp_conf_debt_templates_10 && data.config.whatsapp_conf_debt_templates_10.length === 10
+              ? data.config.whatsapp_conf_debt_templates_10
+              : DEFAULT_10_DEBT_CONFIRMATION_TEMPLATES_FRONT
           }));
+        }
+        if (data.runtime) {
+          setRuntime(data.runtime);
         }
       }
     } catch (e) {
@@ -150,7 +210,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
   const loadLogs = async () => {
     try {
       setLoadingLogs(true);
-      const res = await fetch('/api/notifications/logs?limit=50', { headers: getAuthHeaders() });
+      const res = await fetch('/api/notifications/logs?limit=80', { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setLogs(data.logs || []);
@@ -207,16 +267,21 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
     }
   };
 
-  const handleResetTemplates = async () => {
+  const handleResetTemplates = async (target: 'regular' | 'debt' | 'all' = 'all') => {
     try {
       const res = await fetch('/api/notifications/reset-templates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ target })
       });
       if (res.ok) {
         const data = await res.json();
-        setConfig(prev => ({ ...prev, whatsapp_conf_templates_10: data.templates }));
-        showToast('Modelos restaurados com sucesso!', 'success');
+        setConfig(prev => ({
+          ...prev,
+          ...(data.templates ? { whatsapp_conf_templates_10: data.templates } : {}),
+          ...(data.debtTemplates ? { whatsapp_conf_debt_templates_10: data.debtTemplates } : {})
+        }));
+        showToast('Modelos restaurados para o padrão recomendado!', 'success');
         setShowResetModal(false);
       }
     } catch (e) {
@@ -225,8 +290,14 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
   };
 
   const handleSwitchModo = (novoModo: 'automatico' | 'manual') => {
-    setConfig(prev => ({ ...prev, notif_modo_operacao: novoModo }));
-    handleSaveConfig({ notif_modo_operacao: novoModo });
+    // Quando o administrador ativa o modo Automático, garante que notif_reservas_ativa fique true
+    // para evitar a armadilha de "Modo Automático + Horários Desativados"
+    const updates: Partial<NotifConfig> = {
+      notif_modo_operacao: novoModo,
+      ...(novoModo === 'automatico' ? { notif_reservas_ativa: true } : {})
+    };
+    setConfig(prev => ({ ...prev, ...updates }));
+    handleSaveConfig(updates);
     if (novoModo === 'manual') {
       loadReservasPendentes();
       setActiveSection('fila');
@@ -239,14 +310,15 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
       showToast('Informe um horário válido (formato HH:mm)', 'error');
       return;
     }
-    if (config.notif_reservas_horarios.includes(trimmed)) {
+    const normalized = trimmed.split(':').map(p => p.padStart(2, '0')).join(':');
+    if (config.notif_reservas_horarios.includes(normalized)) {
       showToast('Este horário já está na lista', 'error');
       return;
     }
-    const updated = [...config.notif_reservas_horarios, trimmed].sort();
-    setConfig(prev => ({ ...prev, notif_reservas_horarios: updated }));
+    const updated = [...config.notif_reservas_horarios, normalized].sort();
+    setConfig(prev => ({ ...prev, notif_reservas_horarios: updated, notif_reservas_ativa: true }));
     setNovoHorario('');
-    handleSaveConfig({ notif_reservas_horarios: updated });
+    handleSaveConfig({ notif_reservas_horarios: updated, notif_reservas_ativa: true });
   };
 
   const handleRemoveHorario = (horarioToRemove: string) => {
@@ -262,23 +334,29 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
   };
 
   const toggleSelectAll = () => {
-    const comTelefone = reservasPendentes.filter(r => !!r.clienteTelefone).map(r => r.id);
-    if (selectedReservaIds.length === comTelefone.length) {
-      setSelectedReservaIds([]);
+    const comTelefone = filteredReservas.filter(r => !!r.clienteTelefone).map(r => r.id);
+    const allFilteredSelected = comTelefone.length > 0 && comTelefone.every(id => selectedReservaIds.includes(id));
+    if (allFilteredSelected) {
+      setSelectedReservaIds(prev => prev.filter(id => !comTelefone.includes(id)));
     } else {
-      setSelectedReservaIds(comTelefone);
+      setSelectedReservaIds(prev => Array.from(new Set([...prev, ...comTelefone])));
     }
   };
 
-  const executeDisparoManual = async () => {
-    if (selectedReservaIds.length === 0) return;
+  const executeDisparoManual = async (customIds?: string[]) => {
+    const targetIds = customIds || selectedReservaIds;
+    if (targetIds.length === 0) return;
     try {
-      setRunningDisparo(true);
+      if (customIds && customIds.length === 1) {
+        setSingleDisparoId(customIds[0]);
+      } else {
+        setRunningDisparo(true);
+      }
       setShowConfirmDisparoModal(false);
       const res = await fetch('/api/notifications/test-reserva-cycle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ selectedReservaIds })
+        body: JSON.stringify({ selectedReservaIds: targetIds })
       });
       const data = await res.json();
       if (data.success) {
@@ -292,6 +370,36 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
       showToast(e.message || 'Erro ao executar disparo', 'error');
     } finally {
       setRunningDisparo(false);
+      setSingleDisparoId(null);
+    }
+  };
+
+  const handleGenerateAndCopyMagicLink = async (r: ReservaPendente, openInNewTab = false) => {
+    try {
+      setGeneratingLinkForId(r.id);
+      const res = await fetch('/api/notifications/generate-magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          clienteId: r.clienteId,
+          reservaId: r.id,
+          origin: window.location.origin
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.magicLink) {
+        await navigator.clipboard.writeText(data.magicLink);
+        showToast(`Link Mágico de ${r.clienteNome.split(' ')[0]} copiado!`, 'success');
+        if (openInNewTab) {
+          window.open(data.magicLink, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        showToast(data.message || 'Erro ao gerar link mágico', 'error');
+      }
+    } catch (e) {
+      showToast('Erro ao gerar link mágico', 'error');
+    } finally {
+      setGeneratingLinkForId(null);
     }
   };
 
@@ -302,7 +410,10 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
     }
     try {
       setSendingTestMessage(true);
-      const currentText = config.whatsapp_conf_templates_10[activeTemplateIdx] || config.whatsapp_conf_templates_10[0];
+      const activeList = templateCategory === 'debt'
+        ? config.whatsapp_conf_debt_templates_10
+        : config.whatsapp_conf_templates_10;
+      const currentText = activeList[activeTemplateIdx] || activeList[0];
 
       const res = await fetch('/api/notifications/test-send-whatsapp', {
         method: 'POST',
@@ -311,6 +422,8 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
           number: testNumber,
           templateIndex: activeTemplateIdx,
           text: currentText,
+          isDebtTemplate: templateCategory === 'debt',
+          simulatedDebtValue: 1450.00,
           origin: window.location.origin
         })
       });
@@ -336,11 +449,17 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
     if (!el) return;
     const start = el.selectionStart;
     const end = el.selectionEnd;
-    const current = config.whatsapp_conf_templates_10[activeTemplateIdx] || '';
+    const isDebt = templateCategory === 'debt';
+    const currentList = isDebt ? config.whatsapp_conf_debt_templates_10 : config.whatsapp_conf_templates_10;
+    const current = currentList[activeTemplateIdx] || '';
     const updated = current.substring(0, start) + tag + current.substring(end);
-    const newTemplates = [...config.whatsapp_conf_templates_10];
+    const newTemplates = [...currentList];
     newTemplates[activeTemplateIdx] = updated;
-    setConfig(prev => ({ ...prev, whatsapp_conf_templates_10: newTemplates }));
+    if (isDebt) {
+      setConfig(prev => ({ ...prev, whatsapp_conf_debt_templates_10: newTemplates }));
+    } else {
+      setConfig(prev => ({ ...prev, whatsapp_conf_templates_10: newTemplates }));
+    }
 
     setTimeout(() => {
       el.focus();
@@ -363,9 +482,15 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
   }
 
   const isModoManual = config.notif_modo_operacao === 'manual';
-  const currentTemplateText = config.whatsapp_conf_templates_10[activeTemplateIdx] || '';
+  const activeTemplateList = templateCategory === 'debt'
+    ? config.whatsapp_conf_debt_templates_10
+    : config.whatsapp_conf_templates_10;
+  const activeTitlesList = templateCategory === 'debt'
+    ? DEFAULT_10_DEBT_CONFIRMATION_TITLES
+    : DEFAULT_10_CONFIRMATION_TITLES;
+  const currentTemplateText = activeTemplateList[activeTemplateIdx] || '';
 
-  // Simulação inteligente de prévia do WhatsApp (Lancha vs Jet Ski)
+  // Simulação inteligente de prévia do WhatsApp (Lancha vs Jet Ski + Débito)
   const isSimulatingJet = previewVessel === 'jet';
   let previewText = currentTemplateText
     .replace(/\{\s*cliente\s*\}/gi, 'Gabriel')
@@ -373,6 +498,9 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
     .replace(/\{\s*quando\s*\}/gi, 'hoje')
     .replace(/\{\s*data\s*\}/gi, new Date().toLocaleDateString('pt-BR'))
     .replace(/\{\s*link\s*\}/gi, `https://${window.location.host}/m/a8k9z2`)
+    .replace(/\{\s*valor_debito\s*\}/gi, '1.450,00')
+    .replace(/\{\s*debito\s*\}/gi, '1.450,00')
+    .replace(/\{\s*qtd_faturas\s*\}/gi, '2')
     .replace(/\{\s*tipo\s*\}/gi, isSimulatingJet ? 'jet' : 'lancha')
     .replace(/\{\s*tipo_barco\s*\}/gi, isSimulatingJet ? 'jet' : 'lancha')
     .replace(/\{\s*seu_barco\s*\}/gi, isSimulatingJet ? 'seu jet' : 'sua lancha')
@@ -390,8 +518,14 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
       .replace(/\blancha\b/gi, 'jet');
   }
 
+  // Contadores financeiros na fila de hoje
+  const totalEmDiaCount = reservasPendentes.filter(r => !r.isInadimplente).length;
+  const totalInadimplentesCount = reservasPendentes.filter(r => !!r.isInadimplente).length;
+
   // Filtragem de reservas pendentes
   const filteredReservas = reservasPendentes.filter(r => {
+    if (filaFinanceFilter === 'em_dia' && r.isInadimplente) return false;
+    if (filaFinanceFilter === 'com_debito' && !r.isInadimplente) return false;
     if (!searchFilter) return true;
     const q = searchFilter.toLowerCase();
     const cliente = (r.clienteNome || '').toLowerCase();
@@ -403,7 +537,8 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
   // Filtragem de logs
   const filteredLogs = logs.filter(log => {
     if (logFilterType === 'reserva' && log.tipo !== 'reserva_confirmacao') return false;
-    if (logFilterType === 'financeiro' && log.tipo === 'reserva_confirmacao') return false;
+    if (logFilterType === 'reserva_debito' && log.tipo !== 'reserva_confirmacao_debito') return false;
+    if (logFilterType === 'financeiro' && (log.tipo === 'reserva_confirmacao' || log.tipo === 'reserva_confirmacao_debito')) return false;
     if (logFilterType === 'erro' && log.status === 'sucesso') return false;
     if (logSearch) {
       const q = logSearch.toLowerCase();
@@ -414,7 +549,8 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
     return true;
   });
 
-  const validPhoneCount = reservasPendentes.filter(r => !!r.clienteTelefone).length;
+  const validPhoneCount = filteredReservas.filter(r => !!r.clienteTelefone).length;
+  const selectedInFilteredCount = filteredReservas.filter(r => selectedReservaIds.includes(r.id)).length;
 
   return (
     <div className="space-y-6">
@@ -431,7 +567,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
             </div>
 
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   Modo de Operação
                 </span>
@@ -441,13 +577,20 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                     : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                 }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${isModoManual ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
-                  {isModoManual ? 'Manual (Supervisionado)' : 'Automático'}
+                  {isModoManual ? 'Manual (Supervisionado)' : 'Automático (Ativo)'}
                 </span>
+                {runtime?.currentTimeBR && (
+                  <span className="text-[11px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                    Relógio Servidor: {runtime.currentTimeBR}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-600 mt-0.5">
                 {isModoManual
-                  ? 'Trava ativa: nenhum disparo é feito sem sua autorização prévia.'
-                  : `Disparos automáticos programados às ${config.notif_reservas_horarios.join(' e ')}.`}
+                  ? 'Trava ativa: nenhum disparo automático é feito sem sua autorização prévia.'
+                  : config.notif_reservas_ativa && config.notif_reservas_horarios.length > 0
+                    ? `Disparos automáticos para reservas do dia às ${config.notif_reservas_horarios.join(', ')} (com janela inteligente de recuperação de 15 min).`
+                    : 'Atenção: adicione ao menos um horário na aba Programação para o disparo automático.'}
               </p>
             </div>
           </div>
@@ -487,37 +630,127 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-100">
           <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
             <span className="text-[11px] text-slate-500 block">Pendentes Hoje</span>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className={`text-base font-bold ${reservasPendentes.length > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
                 {reservasPendentes.length}
               </span>
-              {reservasPendentes.length > 0 && (
-                <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-1.5 py-0.2 rounded">
+              {totalInadimplentesCount > 0 && (
+                <span className="text-[10px] font-bold text-rose-700 bg-rose-100/90 px-1.5 py-0.5 rounded">
+                  {totalInadimplentesCount} c/ débito
+                </span>
+              )}
+              {reservasPendentes.length > 0 && totalInadimplentesCount === 0 && (
+                <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded">
                   Requer ação
                 </span>
               )}
             </div>
           </div>
 
-          <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
+          <div
+            onClick={() => setActiveSection('horarios')}
+            className="bg-slate-50/80 hover:bg-slate-100/70 cursor-pointer transition-colors rounded-xl p-3 border border-slate-100"
+            title="Clique para configurar os horários de disparo"
+          >
             <span className="text-[11px] text-slate-500 block">Horários Ativos</span>
-            <span className="text-xs font-bold text-slate-800 mt-0.5 block truncate">
-              {config.notif_reservas_ativa ? config.notif_reservas_horarios.join(', ') : 'Desativado'}
+            <div className="flex items-center justify-between gap-1 mt-0.5">
+              <span className={`text-xs font-bold truncate ${config.notif_reservas_ativa && config.notif_reservas_horarios.length > 0 ? 'text-slate-800' : 'text-rose-600'}`}>
+                {config.notif_reservas_ativa && config.notif_reservas_horarios.length > 0
+                  ? config.notif_reservas_horarios.join(', ')
+                  : 'Desativado (Clique p/ ativar)'}
+              </span>
+            </div>
+          </div>
+
+          <div
+            onClick={() => setActiveSection('modelos')}
+            className="bg-slate-50/80 hover:bg-slate-100/70 cursor-pointer transition-colors rounded-xl p-3 border border-slate-100"
+          >
+            <span className="text-[11px] text-slate-500 block">Régua Inteligente</span>
+            <span className="text-xs font-bold text-[#186b77] mt-0.5 block truncate">
+              {config.notif_usar_mensagem_debito ? '10 Níveis + Aviso Débito' : '10 Modelos Padrão'}
             </span>
           </div>
 
-          <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
-            <span className="text-[11px] text-slate-500 block">Régua de Confirmação</span>
-            <span className="text-xs font-bold text-[#186b77] mt-0.5 block">
-              10 Modelos Dinâmicos
-            </span>
-          </div>
-
-          <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
+          <div
+            onClick={() => setActiveSection('horarios')}
+            className="bg-slate-50/80 hover:bg-slate-100/70 cursor-pointer transition-colors rounded-xl p-3 border border-slate-100"
+          >
             <span className="text-[11px] text-slate-500 block">Avisos Financeiros</span>
             <span className={`text-xs font-bold mt-0.5 block ${config.notif_financeiro_ativa ? 'text-emerald-700' : 'text-slate-400'}`}>
-              {config.notif_financeiro_ativa ? 'Ativo com PIX' : 'Pausado'}
+              {config.notif_financeiro_ativa ? 'Ativo com PIX no Check-in' : 'Pausado'}
             </span>
+          </div>
+        </div>
+
+        {/* 1.1 BARRA DE SEGURANÇA / MODO SANDBOX (TESTE SEGURO) */}
+        <div className={`mt-4 p-3.5 rounded-xl border transition-all ${
+          config.notif_sandbox_ativa
+            ? 'bg-amber-500/10 border-amber-300 text-amber-950'
+            : 'bg-slate-50/80 border-slate-200 text-slate-700'
+        }`}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                config.notif_sandbox_ativa ? 'bg-amber-500 text-white shadow-xs' : 'bg-slate-200 text-slate-500'
+              }`}>
+                <ShieldAlert className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">
+                    Modo Sandbox de Teste Seguro
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.2 rounded-full ${
+                    config.notif_sandbox_ativa
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {config.notif_sandbox_ativa ? 'ATIVADO (Trava de Clientes Ligada)' : 'Desativado (Modo Real)'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  {config.notif_sandbox_ativa
+                    ? 'Nenhum cotista real receberá mensagens. Todos os envios serão desviados para o número de teste abaixo ou registrados apenas em tela.'
+                    : 'Atenção: com o sandbox desativado, qualquer disparo autorizado é enviado diretamente para o WhatsApp do cliente.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 self-start md:self-center">
+              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500">Enviar p/:</span>
+                <input
+                  type="text"
+                  placeholder="(DDD) 99999-9999"
+                  value={config.notif_sandbox_telefone || ''}
+                  onChange={(e) => setConfig(prev => ({ ...prev, notif_sandbox_telefone: e.target.value }))}
+                  onBlur={() => handleSaveConfig({ notif_sandbox_telefone: config.notif_sandbox_telefone })}
+                  className="text-xs font-mono w-32 border-0 p-0 focus:outline-none focus:ring-0 text-slate-800 placeholder:text-slate-400"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const novoStatus = !config.notif_sandbox_ativa;
+                  setConfig(prev => ({ ...prev, notif_sandbox_ativa: novoStatus }));
+                  handleSaveConfig({ notif_sandbox_ativa: novoStatus });
+                  showToast(
+                    novoStatus ? 'Modo Sandbox ATIVADO! Clientes protegidos.' : 'Modo Sandbox DESATIVADO. Disparos reais liberados.',
+                    novoStatus ? 'success' : 'error'
+                  );
+                }}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs ${
+                  config.notif_sandbox_ativa
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    : 'bg-slate-800 hover:bg-slate-900 text-white'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                {config.notif_sandbox_ativa ? 'Desativar Sandbox' : 'Ativar Modo Sandbox'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -554,7 +787,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
           }`}
         >
           <Sparkles className="w-4 h-4" />
-          Modelos de Mensagem (10 Níveis)
+          Modelos de Mensagem (Em Dia & Débito)
         </button>
 
         <button
@@ -602,14 +835,12 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                 Fila de Confirmações para Hoje
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                {isModoManual
-                  ? 'Selecione os clientes desejados e autorize o disparo manual.'
-                  : 'Fila atual monitorada pelo servidor. Você pode antecipar disparos a qualquer momento.'}
+                Apenas reservas agendadas para hoje que ainda não fizeram check-in e não desceram para a água. Clientes inadimplentes recebem automaticamente o aviso de débito com quitação PIX no próprio link mágico.
               </p>
             </div>
 
             {/* Ações da Tabela */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={loadReservasPendentes}
@@ -642,30 +873,63 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
             </div>
           </div>
 
-          {/* Barra de Filtro e Seleção Rápida */}
+          {/* Barra de Filtro Financeiro, Busca e Seleção Rápida */}
           {reservasPendentes.length > 0 && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Filtrar por cliente ou barco..."
-                  value={searchFilter}
-                  onChange={(e) => setSearchFilter(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#186b77] focus:border-[#186b77]"
-                />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por cliente ou barco..."
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#186b77] focus:border-[#186b77]"
+                  />
+                </div>
+
+                {/* Pílulas de Filtro Financeiro */}
+                <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setFilaFinanceFilter('all')}
+                    className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                      filaFinanceFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Todos ({reservasPendentes.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilaFinanceFilter('em_dia')}
+                    className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                      filaFinanceFilter === 'em_dia' ? 'bg-white text-emerald-800 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Em Dia ({totalEmDiaCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilaFinanceFilter('com_debito')}
+                    className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                      filaFinanceFilter === 'com_debito' ? 'bg-white text-rose-700 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Com Débito ({totalInadimplentesCount})
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-slate-500">
                 <span>
-                  <strong>{selectedReservaIds.length}</strong> de {validPhoneCount} selecionado(s)
+                  <strong>{selectedInFilteredCount}</strong> de {validPhoneCount} selecionado(s)
                 </span>
                 <button
                   type="button"
                   onClick={toggleSelectAll}
                   className="text-xs font-semibold text-[#186b77] hover:underline"
                 >
-                  {selectedReservaIds.length === validPhoneCount ? 'Desmarcar todos' : 'Marcar todos'}
+                  {selectedInFilteredCount === validPhoneCount && validPhoneCount > 0 ? 'Desmarcar visíveis' : 'Marcar visíveis'}
                 </button>
               </div>
             </div>
@@ -681,12 +945,12 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                 Tudo em dia para hoje!
               </p>
               <p className="text-xs text-slate-500 max-w-sm">
-                Não há reservas pendentes de confirmação nesta data. Todos os clientes já responderam ou não há saídas agendadas.
+                Não há reservas pendentes de confirmação nesta data. Todos os clientes já fizeram check-in ou não há saídas pendentes hoje.
               </p>
             </div>
           ) : filteredReservas.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-400">
-              Nenhuma reserva encontrada para a busca "{searchFilter}".
+              Nenhuma reserva encontrada para os filtros selecionados.
             </div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -700,7 +964,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                         className="text-slate-500 hover:text-slate-800"
                         title="Alternar todos"
                       >
-                        {selectedReservaIds.length > 0 && selectedReservaIds.length === validPhoneCount ? (
+                        {selectedInFilteredCount > 0 && selectedInFilteredCount === validPhoneCount ? (
                           <CheckSquare className="w-4 h-4 text-[#186b77]" />
                         ) : (
                           <Square className="w-4 h-4" />
@@ -709,9 +973,11 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                     </th>
                     <th className="py-2.5 px-3">Cliente</th>
                     <th className="py-2.5 px-3">Embarcação</th>
+                    <th className="py-2.5 px-3">Situação / Mensagem</th>
                     <th className="py-2.5 px-3">Telefone</th>
                     <th className="py-2.5 px-3">Próxima Etapa</th>
-                    <th className="py-2.5 px-3 text-right">Envios Anteriores</th>
+                    <th className="py-2.5 px-3 text-center">Envios</th>
+                    <th className="py-2.5 px-3 text-right">Ações Rápidas</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -721,6 +987,11 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                     const boatCode = r.embarcacaoNumero ? `M${r.embarcacaoNumero}` : (r.embarcacaoNome || 'Embarcação');
                     const proximaTentativa = Number(r.tentativasConfirmacao || 0) + 1;
                     const proximoModelo = Math.min(proximaTentativa, 10);
+                    const hasDebt = !!r.isInadimplente;
+                    const valorDebitoFormatted = Number(r.valorDebito || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    });
 
                     return (
                       <tr
@@ -730,22 +1001,65 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                           isSelected ? 'bg-emerald-50/40' : 'hover:bg-slate-50/70'
                         } ${!hasPhone ? 'opacity-60 cursor-not-allowed bg-slate-50/50' : ''}`}
                       >
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={isSelected}
                             disabled={!hasPhone}
-                            onChange={() => {}}
+                            onChange={() => hasPhone && toggleSelectReserva(r.id)}
                             className="rounded border-slate-300 text-[#186b77] focus:ring-[#186b77]"
                           />
                         </td>
-                        <td className="py-2.5 px-3 font-semibold text-slate-900">
-                          {r.clienteNome || 'Cliente'}
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-slate-900">{r.clienteNome || 'Cliente'}</div>
+                          {r.ultimaTentativaConfirmacao && (
+                            <div className="text-[10px] text-slate-400">
+                              Último envio: {new Date(r.ultimaTentativaConfirmacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3">
                           <span className="font-bold text-[#186b77]">{boatCode}</span>
                           {r.embarcacaoNome && r.embarcacaoNumero && (
                             <span className="text-slate-400 text-[11px] ml-1">({r.embarcacaoNome})</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {hasDebt ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <AlertCircle className="w-3 h-3 text-rose-600" />
+                                {Number(r.valorDebito || 0) > 0
+                                  ? `Débito: R$ ${valorDebitoFormatted}`
+                                  : 'Inadimplente'}
+                              </span>
+                              <div className="text-[10px] text-rose-600/80 font-medium">
+                                {config.notif_usar_mensagem_debito ? 'Envia Modelo c/ Débito + PIX' : 'Bloqueio c/ PIX no Link'}
+                              </div>
+                            </div>
+                          ) : r.bloqueioManualSemFaturas ? (
+                            <div className="space-y-0.5">
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                                title="O cadastro está marcado como inadimplente, mas não há nenhuma fatura vencida vinculada a este cliente."
+                              >
+                                <AlertCircle className="w-3 h-3 text-amber-600" />
+                                Marcado inadimplente
+                              </span>
+                              <div className="text-[10px] text-amber-700/80 font-medium">
+                                Sem faturas vencidas • revisar cadastro
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                Em dia
+                              </span>
+                              <div className="text-[10px] text-slate-400">
+                                Envia Modelo Padrão
+                              </div>
+                            </div>
                           )}
                         </td>
                         <td className="py-2.5 px-3 font-mono">
@@ -758,12 +1072,49 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                           )}
                         </td>
                         <td className="py-2.5 px-3">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                            hasDebt && config.notif_usar_mensagem_debito
+                              ? 'bg-amber-50 text-amber-900 border-amber-200'
+                              : 'bg-teal-50 text-teal-800 border-teal-200'
+                          }`}>
                             Modelo {proximoModelo} ({proximaTentativa}º Envio)
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono text-slate-500">
+                        <td className="py-2.5 px-3 text-center font-mono text-slate-500">
                           {r.tentativasConfirmacao || 0} de 10
+                        </td>
+                        <td className="py-2.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateAndCopyMagicLink(r, false)}
+                              disabled={generatingLinkForId === r.id}
+                              className="px-2 py-1 text-[11px] font-semibold text-slate-700 hover:text-[#186b77] bg-slate-100 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 rounded-lg inline-flex items-center gap-1 transition-colors"
+                              title="Copiar Link Mágico de Check-in deste cliente"
+                            >
+                              {generatingLinkForId === r.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Link2 className="w-3 h-3" />
+                              )}
+                              Link
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => executeDisparoManual([r.id])}
+                              disabled={!hasPhone || singleDisparoId === r.id || runningDisparo}
+                              className="px-2.5 py-1 text-[11px] font-bold text-white bg-[#186b77] hover:bg-[#12535d] rounded-lg inline-flex items-center gap-1 transition-colors disabled:opacity-40"
+                              title="Disparar confirmação via WhatsApp agora para este cliente"
+                            >
+                              {singleDisparoId === r.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Send className="w-3 h-3" />
+                              )}
+                              Enviar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -775,16 +1126,16 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
         </div>
       )}
 
-      {/* 4. ABA 2: MODELOS DE MENSAGEM (10 NÍVEIS) */}
+      {/* 4. ABA 2: MODELOS DE MENSAGEM (10 NÍVEIS REGULARES + 10 NÍVEIS COM DÉBITO) */}
       {activeSection === 'modelos' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                Modelos de Confirmação Progressiva
+                Modelos de Confirmação Progressiva (10 Níveis)
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                A cada reenvio, o robô avança para o próximo modelo para evitar mensagens repetitivas.
+                Personalize a régua de mensagens tanto para clientes em dia quanto para clientes com pendência financeira vencida.
               </p>
             </div>
 
@@ -810,16 +1161,65 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
             </div>
           </div>
 
+          {/* Seletor de Categoria de Modelo: Cliente em Dia vs. Cliente com Débito */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+            <div className="inline-flex bg-slate-200/80 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setTemplateCategory('regular')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  templateCategory === 'regular'
+                    ? 'bg-white text-[#186b77] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                Cliente em Dia (10 Modelos)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTemplateCategory('debt')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  templateCategory === 'debt'
+                    ? 'bg-white text-rose-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <DollarSign className="w-4 h-4 text-rose-600" />
+                Cliente com Débito / Inadimplente (10 Modelos)
+              </button>
+            </div>
+
+            {/* Switch para ativar/desativar o envio diferenciado para inadimplentes */}
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={config.notif_usar_mensagem_debito}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setConfig(prev => ({ ...prev, notif_usar_mensagem_debito: checked }));
+                  handleSaveConfig({ notif_usar_mensagem_debito: checked });
+                }}
+                className="rounded border-slate-300 text-[#186b77] focus:ring-[#186b77] w-4 h-4"
+              />
+              <span className="text-xs font-semibold text-slate-700">
+                Usar mensagem diferenciada com valor do débito quando houver atraso
+              </span>
+            </label>
+          </div>
+
           {/* Stepper / Abas das 10 Etapas */}
           <div className="flex flex-wrap gap-1.5 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/80">
-            {config.whatsapp_conf_templates_10.map((_, idx) => (
+            {activeTemplateList.map((_, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => setActiveTemplateIdx(idx)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                   activeTemplateIdx === idx
-                    ? 'bg-[#186b77] text-white shadow-xs font-bold'
+                    ? templateCategory === 'debt'
+                      ? 'bg-rose-700 text-white shadow-xs font-bold'
+                      : 'bg-[#186b77] text-white shadow-xs font-bold'
                     : 'bg-white/60 text-slate-600 hover:bg-white hover:text-slate-900'
                 }`}
               >
@@ -834,11 +1234,13 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-bold text-[#186b77] uppercase tracking-wider">
-                    Etapa {activeTemplateIdx + 1} de 10
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                    templateCategory === 'debt' ? 'text-rose-700' : 'text-[#186b77]'
+                  }`}>
+                    {templateCategory === 'debt' ? 'Régua de Cobrança & Check-in' : 'Régua Padrão'} • Etapa {activeTemplateIdx + 1} de 10
                   </span>
                   <h3 className="text-sm font-bold text-slate-900">
-                    {DEFAULT_10_CONFIRMATION_TITLES[activeTemplateIdx]}
+                    {activeTitlesList[activeTemplateIdx]}
                   </h3>
                 </div>
                 <span className="text-[11px] text-slate-400 font-mono">
@@ -851,9 +1253,13 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                 rows={9}
                 value={currentTemplateText}
                 onChange={(e) => {
-                  const updated = [...config.whatsapp_conf_templates_10];
+                  const updated = [...activeTemplateList];
                   updated[activeTemplateIdx] = e.target.value;
-                  setConfig(prev => ({ ...prev, whatsapp_conf_templates_10: updated }));
+                  if (templateCategory === 'debt') {
+                    setConfig(prev => ({ ...prev, whatsapp_conf_debt_templates_10: updated }));
+                  } else {
+                    setConfig(prev => ({ ...prev, whatsapp_conf_templates_10: updated }));
+                  }
                 }}
                 className="w-full text-xs font-mono p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#186b77]/20 focus:border-[#186b77] text-slate-900 leading-relaxed"
                 placeholder="Escreva a mensagem aqui..."
@@ -864,7 +1270,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-700 text-[11px] flex items-center gap-1">
                     <Info className="w-3.5 h-3.5 text-slate-400" />
-                    Clique em uma tag para inserir no texto:
+                    Clique em uma tag para inserir no cursor:
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 text-[11px]">
@@ -901,31 +1307,23 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                     onClick={() => insertTag('{link}')}
                     className="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold transition-colors"
                   >
-                    + {'{link}'} (Link de Acesso)
+                    + {'{link}'} (Link Mágico)
                   </button>
                   <button
                     type="button"
-                    onClick={() => insertTag('{tipo}')}
-                    className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-bold transition-colors"
-                    title="Substitui por 'lancha' ou 'jet'"
+                    onClick={() => insertTag('{valor_debito}')}
+                    className="px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 font-bold transition-colors"
+                    title="Valor atualizado das faturas vencidas (ex: 1.450,00)"
                   >
-                    + {'{tipo}'}
+                    + {'{valor_debito}'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => insertTag('{seu_barco}')}
-                    className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-bold transition-colors"
-                    title="Substitui por 'sua lancha' ou 'seu jet'"
+                    onClick={() => insertTag('{qtd_faturas}')}
+                    className="px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 font-bold transition-colors"
+                    title="Quantidade de faturas vencidas do cliente"
                   >
-                    + {'{seu_barco}'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => insertTag('{do_seu_barco}')}
-                    className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-bold transition-colors"
-                    title="Substitui por 'da sua lancha' ou 'do seu jet'"
-                  >
-                    + {'{do_seu_barco}'}
+                    + {'{qtd_faturas}'}
                   </button>
                   <button
                     type="button"
@@ -962,7 +1360,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                   <div className="flex items-center gap-2">
                     <span className="flex items-center gap-1.5 font-bold">
                       <Smartphone className="w-4 h-4 text-emerald-800" />
-                      Modelo {activeTemplateIdx + 1}
+                      Modelo {activeTemplateIdx + 1} ({templateCategory === 'debt' ? 'Com Débito' : 'Em Dia'})
                     </span>
                     <div className="inline-flex bg-black/10 p-0.5 rounded-lg text-[10px]">
                       <button
@@ -1009,7 +1407,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
               <div className="mt-4 pt-3 border-t border-black/10 space-y-2">
                 <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Send className="w-3.5 h-3.5 text-emerald-700" />
-                  Enviar teste para seu WhatsApp
+                  Enviar teste deste modelo para seu WhatsApp
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -1077,7 +1475,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Horários de Verificação Diária</h3>
-                  <p className="text-xs text-slate-500">Momentos em que o servidor verifica a fila</p>
+                  <p className="text-xs text-slate-500">Momentos em que o robô dispara confirmações para as reservas do dia</p>
                 </div>
               </div>
 
@@ -1099,22 +1497,30 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
             <div className="space-y-3">
               <span className="text-xs font-semibold text-slate-700 block">Horários Configurados:</span>
               <div className="flex flex-wrap gap-2">
-                {config.notif_reservas_horarios.map((horario) => (
-                  <span
-                    key={horario}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 text-xs font-bold"
-                  >
-                    ⏰ {horario}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveHorario(horario)}
-                      className="text-teal-600 hover:text-rose-600 rounded-full p-0.5 transition-colors"
-                      title="Remover horário"
+                {config.notif_reservas_horarios.map((horario) => {
+                  const wasExecutedToday = runtime?.executedSlotsToday?.some(k => k.endsWith(`_${horario}`));
+                  return (
+                    <span
+                      key={horario}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 text-xs font-bold"
                     >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </span>
-                ))}
+                      ⏰ {horario}
+                      {wasExecutedToday && (
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-semibold">
+                          Executado hoje
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveHorario(horario)}
+                        className="text-teal-600 hover:text-rose-600 rounded-full p-0.5 transition-colors"
+                        title="Remover horário"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
 
               <div className="flex items-center gap-2 pt-2">
@@ -1133,6 +1539,10 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                   Adicionar Horário
                 </button>
               </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-[11px] text-slate-600 leading-relaxed">
+                <strong>Proteção anti-falha ativa:</strong> Caso o servidor reinicie exatamente no minuto programado, o robô possui uma janela inteligente de recuperação de 15 minutos e verificação em banco de dados para garantir que nenhum horário seja perdido ou disparado em duplicidade.
+              </div>
             </div>
           </div>
 
@@ -1144,8 +1554,8 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                   <DollarSign className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Avisos Financeiros Automáticos</h3>
-                  <p className="text-xs text-slate-500">Notificação de cobrança com link PIX/Boleto</p>
+                  <h3 className="text-sm font-bold text-slate-900">Avisos Financeiros de Novas Cobranças</h3>
+                  <p className="text-xs text-slate-500">Notificação enviada quando uma nova cobrança é lançada para o cliente</p>
                 </div>
               </div>
 
@@ -1165,7 +1575,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
             </div>
 
             <div className="space-y-3">
-              <span className="text-xs font-semibold text-slate-700 block">Modelo da Mensagem:</span>
+              <span className="text-xs font-semibold text-slate-700 block">Modelo da Mensagem de Nova Cobrança:</span>
               <textarea
                 rows={4}
                 value={config.notif_financeiro_template}
@@ -1198,7 +1608,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                 Histórico & Auditoria de Disparos
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Registro detalhado dos envios realizados pelo robô
+                Registro detalhado dos envios realizados pelo robô (clique em uma linha para ler a mensagem enviada)
               </p>
             </div>
 
@@ -1215,7 +1625,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
 
           {/* Filtros de Logs */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
               <button
                 type="button"
                 onClick={() => setLogFilterType('all')}
@@ -1232,7 +1642,16 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                   logFilterType === 'reserva' ? 'bg-white text-teal-800 shadow-2xs font-bold' : 'text-slate-600'
                 }`}
               >
-                Reservas
+                Reservas (Em Dia)
+              </button>
+              <button
+                type="button"
+                onClick={() => setLogFilterType('reserva_debito')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                  logFilterType === 'reserva_debito' ? 'bg-white text-rose-800 shadow-2xs font-bold' : 'text-slate-600'
+                }`}
+              >
+                Reservas (c/ Débito)
               </button>
               <button
                 type="button"
@@ -1282,41 +1701,75 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                     <th className="py-2.5 px-3">Telefone</th>
                     <th className="py-2.5 px-3">Slot</th>
                     <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Mensagem</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredLogs.map((log) => {
                     const isSuccess = log.status === 'sucesso';
                     const dateFormatted = new Date(log.createdAt).toLocaleString('pt-BR');
+                    const isExpanded = expandedLogId === log.id;
                     return (
-                      <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">{dateFormatted}</td>
-                        <td className="py-2.5 px-3">
-                          {log.tipo === 'reserva_confirmacao' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
-                              Reserva
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              Financeiro
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 font-semibold text-slate-900">{log.clienteNome || 'Cliente'}</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-600">{log.telefone}</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-600">{log.horarioSlot || '-'}</td>
-                        <td className="py-2.5 px-3">
-                          {isSuccess ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Enviado
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-rose-600 font-semibold" title={log.erro || ''}>
-                              <AlertCircle className="w-3.5 h-3.5" /> Erro
-                            </span>
-                          )}
-                        </td>
-                      </tr>
+                      <React.Fragment key={log.id}>
+                        <tr
+                          onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                          className="hover:bg-slate-50/70 transition-colors cursor-pointer"
+                        >
+                          <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">{dateFormatted}</td>
+                          <td className="py-2.5 px-3">
+                            {log.tipo === 'reserva_confirmacao_debito' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                                Reserva + Aviso Débito
+                              </span>
+                            ) : log.tipo === 'reserva_confirmacao' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                                Reserva (Em Dia)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                Financeiro
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-900">{log.clienteNome || 'Cliente'}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">{log.telefone}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">{log.horarioSlot || '-'}</td>
+                          <td className="py-2.5 px-3">
+                            {isSuccess ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Enviado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-rose-600 font-semibold" title={log.erro || ''}>
+                                <AlertCircle className="w-3.5 h-3.5" /> Erro
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <button
+                              type="button"
+                              className="text-[11px] text-[#186b77] hover:underline inline-flex items-center gap-1 font-semibold"
+                            >
+                              <Eye className="w-3 h-3" />
+                              {isExpanded ? 'Ocultar' : 'Ver texto'}
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="bg-slate-50/90">
+                            <td colSpan={7} className="p-3.5">
+                              <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">
+                                {log.mensagem || 'Sem texto registrado.'}
+                                {log.erro && (
+                                  <div className="mt-2 pt-2 border-t border-rose-100 text-rose-600 font-semibold">
+                                    Detalhe do erro: {log.erro}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -1346,10 +1799,10 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
 
             <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-2">
               <p>
-                Você está prestes a autorizar o envio de confirmação para <strong>{selectedReservaIds.length} reserva(s)</strong> selecionada(s).
+                Você está prestes a autorizar o envio de confirmação para <strong>{selectedReservaIds.length} reserva(s)</strong> selecionada(s) de hoje.
               </p>
               <p className="text-slate-500">
-                Cada cliente receberá a mensagem no modelo de sua etapa correspondente com link individual e seguro de check-in direto no WhatsApp.
+                Clientes em dia receberão o modelo padrão e clientes inadimplentes receberão o aviso de débito com link mágico para quitação PIX + check-in.
               </p>
             </div>
 
@@ -1363,7 +1816,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
               </button>
               <button
                 type="button"
-                onClick={executeDisparoManual}
+                onClick={() => executeDisparoManual()}
                 disabled={runningDisparo}
                 className="px-4 py-2 bg-[#186b77] hover:bg-[#12535d] text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
               >
@@ -1388,13 +1841,13 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
                   Restaurar Modelos Padrões
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Substituir textos personalizados
+                  Substituir textos personalizados pelos padrões do sistema
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Deseja restaurar os 10 modelos de mensagem para o padrão do sistema? Suas alterações salvas anteriormente serão substituídas pelos textos recomendados.
+              Deseja restaurar os modelos de mensagem para o padrão recomendado da marina (10 níveis regulares e 10 níveis com aviso de débito)?
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -1407,10 +1860,10 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
               </button>
               <button
                 type="button"
-                onClick={handleResetTemplates}
+                onClick={() => handleResetTemplates('all')}
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
               >
-                Restaurar Textos
+                Restaurar Todos os Modelos
               </button>
             </div>
           </div>

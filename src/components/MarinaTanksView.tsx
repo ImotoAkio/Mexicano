@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import { 
   Droplets, Loader2, Save, AlertTriangle, 
   CheckCircle2, Truck, ArrowUpRight, ArrowDownRight,

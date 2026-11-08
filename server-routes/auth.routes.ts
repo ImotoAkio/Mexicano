@@ -438,7 +438,8 @@ authRoutes.post("/client/forgot-password/verify", authLimiter, async (req, res) 
 
 // Route: Gravar nova senha com o token de redefinição
 authRoutes.post("/client/forgot-password/reset", authLimiter, async (req, res) => {
-  const { resetToken, password } = req.body;
+  const resetToken = req.body.resetToken;
+  const password = req.body.password || req.body.newPassword;
 
   if (!resetToken || !password) {
     return res.status(400).json({ error: true, message: "Token de autorização e nova senha são obrigatórios." });

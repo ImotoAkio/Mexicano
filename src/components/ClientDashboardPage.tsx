@@ -568,6 +568,7 @@ export default function ClientDashboardPage({
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [selectedReservationForCheckin, setSelectedReservationForCheckin] = useState<any>(null);
+  const [pendingCheckinAfterPayment, setPendingCheckinAfterPayment] = useState<any>(null);
   const [isBoardingTicketModalOpen, setIsBoardingTicketModalOpen] = useState(false);
   const [selectedReservationForTicket, setSelectedReservationForTicket] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -601,10 +602,27 @@ export default function ClientDashboardPage({
   const todayStr = todayStrLocal;
 
   const totalAberto = transacoesList
-    .filter((t: any) => t.status !== 'pago' && t.status !== 'cancelado' && (t.status === 'vencido' || (t.dataVencimento && t.dataVencimento < todayStr)))
+    .filter((t: any) => !['pago', 'cancelado', 'realizado', 'estornado'].includes(String(t.status || '').toLowerCase()) && (t.status === 'vencido' || (t.dataVencimento && t.dataVencimento < todayStr)))
     .reduce((acc: number, t: any) => acc + getClientTxUpdatedValue(t).final, 0);
 
   const isInadimplente = totalAberto > 0 || client?.statusFinanceiro === 'inadimplente';
+
+  // Retorno automático ao Check-in se o cliente clicou em "Quitar na Aba Financeira" e concluiu o pagamento lá
+  useEffect(() => {
+    if (!pendingCheckinAfterPayment) return;
+    if (pixPaymentConfirmed || !isInadimplente) {
+      const targetRes = pendingCheckinAfterPayment;
+      setPendingCheckinAfterPayment(null);
+      setSelectedTransactionForPix(null);
+      setSelectedReservationForCheckin(targetRes);
+      setIsCheckinModalOpen(true);
+      showToast(
+        'Débito Quitado com Sucesso!',
+        'Seu cadastro foi liberado. Agora confirme seu Plano de Navegação de hoje!',
+        'success'
+      );
+    }
+  }, [pixPaymentConfirmed, isInadimplente, pendingCheckinAfterPayment]);
 
   const handleOpenSmartCheckin = (targetRes?: any) => {
     const candidate =
@@ -3461,10 +3479,30 @@ export default function ClientDashboardPage({
         isInadimplente={isInadimplente}
         totalAberto={totalAberto}
         onGoToPayments={() => {
+          if (selectedReservationForCheckin) {
+            setPendingCheckinAfterPayment(selectedReservationForCheckin);
+          }
           setIsCheckinModalOpen(false);
           setFinanceTab('fatura');
           handleTabChange('finance');
           window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onPaymentConfirmed={() => {
+          if (onRefresh) onRefresh(true);
+          showToast(
+            'Pagamento Confirmado!',
+            'Sua embarcação foi desbloqueada. Conclua agora seu Plano de Navegação!',
+            'success'
+          );
+        }}
+        onCancelReservation={(resId) => {
+          setCancelledIds(prev => [...prev, resId]);
+          showToast(
+            'Reserva Cancelada',
+            'Sua saída de hoje foi cancelada e a marinharia foi informada.',
+            'warning'
+          );
+          if (onRefresh) onRefresh(true);
         }}
         client={client}
         clientToken={clientToken}

@@ -4,10 +4,14 @@ import { getConfigValue, setConfigValue, getNotificacoesLogs } from "../server-d
 import {
   processReservasConfirmationCycle,
   getConfirmationTemplates,
+  getDebtConfirmationTemplates,
   DEFAULT_10_CONFIRMATION_TEMPLATES,
+  DEFAULT_10_DEBT_CONFIRMATION_TEMPLATES,
   generateClientMagicLink,
   formatConfirmationMessage,
-  ensureValidMagicLinkToken
+  ensureValidMagicLinkToken,
+  getClientsOverdueDebtMap,
+  getSchedulerRuntimeStatus
 } from "../server-notifications-scheduler";
 import { sendEvolutionText } from "./whatsapp.routes";
 
@@ -29,11 +33,16 @@ router.get("/notifications/config", requireAdminAuth, async (req, res) => {
       } catch (e) {}
     }
 
+    const notif_usar_mensagem_debito = (await getConfigValue("notif_usar_mensagem_debito")) !== "0";
+    const notif_sandbox_ativa = (await getConfigValue("notif_sandbox_ativa")) === "1";
+    const notif_sandbox_telefone = (await getConfigValue("notif_sandbox_telefone")) || "";
     const notif_financeiro_ativa = (await getConfigValue("notif_financeiro_ativa")) !== "0";
     const notif_financeiro_template = await getConfigValue("notif_financeiro_template") ||
       "Olá, *{cliente}*! 😊\n\nIdentificamos um novo lançamento no seu cadastro:\n\n📋 *Descrição:* {descricao}\n💰 *Valor:* R$ {valor}\n📅 *Vencimento:* {vencimento}{link_info}\n\nFicamos à disposição para qualquer dúvida! 👍";
 
     const whatsapp_conf_templates_10 = await getConfirmationTemplates();
+    const whatsapp_conf_debt_templates_10 = await getDebtConfirmationTemplates();
+    const runtime = getSchedulerRuntimeStatus();
 
     res.json({
       success: true,
@@ -41,10 +50,15 @@ router.get("/notifications/config", requireAdminAuth, async (req, res) => {
         notif_modo_operacao,
         notif_reservas_ativa,
         notif_reservas_horarios,
+        notif_usar_mensagem_debito,
+        notif_sandbox_ativa,
+        notif_sandbox_telefone,
         notif_financeiro_ativa,
         notif_financeiro_template,
-        whatsapp_conf_templates_10
-      }
+        whatsapp_conf_templates_10,
+        whatsapp_conf_debt_templates_10
+      },
+      runtime
     });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Erro ao carregar configurações de notificação." });
@@ -60,14 +74,22 @@ router.post("/notifications/config", requireAdminAuth, sensitiveLimiter, async (
       notif_modo_operacao,
       notif_reservas_ativa,
       notif_reservas_horarios,
+      notif_usar_mensagem_debito,
+      notif_sandbox_ativa,
+      notif_sandbox_telefone,
       notif_financeiro_ativa,
       notif_financeiro_template,
-      whatsapp_conf_templates_10
+      whatsapp_conf_templates_10,
+      whatsapp_conf_debt_templates_10
     } = req.body;
 
     if (notif_modo_operacao !== undefined) {
       const safeModo = notif_modo_operacao === "manual" ? "manual" : "automatico";
       await setConfigValue("notif_modo_operacao", safeModo);
+      // Quando o administrador ativa o modo automático na chave mestra, garante que a régua de reservas também fique ativa
+      if (safeModo === "automatico" && notif_reservas_ativa === undefined) {
+        await setConfigValue("notif_reservas_ativa", "1");
+      }
     }
 
     if (notif_reservas_ativa !== undefined) {
@@ -82,6 +104,18 @@ router.post("/notifications/config", requireAdminAuth, sensitiveLimiter, async (
       await setConfigValue("notif_reservas_horarios", JSON.stringify(cleaned));
     }
 
+    if (notif_usar_mensagem_debito !== undefined) {
+      await setConfigValue("notif_usar_mensagem_debito", notif_usar_mensagem_debito ? "1" : "0");
+    }
+
+    if (notif_sandbox_ativa !== undefined) {
+      await setConfigValue("notif_sandbox_ativa", notif_sandbox_ativa ? "1" : "0");
+    }
+
+    if (notif_sandbox_telefone !== undefined) {
+      await setConfigValue("notif_sandbox_telefone", String(notif_sandbox_telefone).trim());
+    }
+
     if (notif_financeiro_ativa !== undefined) {
       await setConfigValue("notif_financeiro_ativa", notif_financeiro_ativa ? "1" : "0");
     }
@@ -94,6 +128,10 @@ router.post("/notifications/config", requireAdminAuth, sensitiveLimiter, async (
       await setConfigValue("whatsapp_conf_templates_10", JSON.stringify(whatsapp_conf_templates_10));
     }
 
+    if (whatsapp_conf_debt_templates_10 !== undefined && Array.isArray(whatsapp_conf_debt_templates_10)) {
+      await setConfigValue("whatsapp_conf_debt_templates_10", JSON.stringify(whatsapp_conf_debt_templates_10));
+    }
+
     res.json({ success: true, message: "Configurações de notificação salvas com sucesso!" });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Erro ao salvar configurações de notificação." });
@@ -101,12 +139,22 @@ router.post("/notifications/config", requireAdminAuth, sensitiveLimiter, async (
 });
 
 // ----------------------------------------------------
-// 2b. Restaurar 10 modelos de templates padrões
+// 2b. Restaurar 10 modelos de templates padrões (Em Dia + Com Débito)
 // ----------------------------------------------------
 router.post("/notifications/reset-templates", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   try {
-    await setConfigValue("whatsapp_conf_templates_10", JSON.stringify(DEFAULT_10_CONFIRMATION_TEMPLATES));
-    res.json({ success: true, templates: DEFAULT_10_CONFIRMATION_TEMPLATES });
+    const mode = req.body?.mode || "all";
+    if (mode === "all" || mode === "regular") {
+      await setConfigValue("whatsapp_conf_templates_10", JSON.stringify(DEFAULT_10_CONFIRMATION_TEMPLATES));
+    }
+    if (mode === "all" || mode === "debt") {
+      await setConfigValue("whatsapp_conf_debt_templates_10", JSON.stringify(DEFAULT_10_DEBT_CONFIRMATION_TEMPLATES));
+    }
+    res.json({
+      success: true,
+      templates: DEFAULT_10_CONFIRMATION_TEMPLATES,
+      debtTemplates: DEFAULT_10_DEBT_CONFIRMATION_TEMPLATES
+    });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Erro ao restaurar modelos padrões." });
   }
@@ -126,7 +174,7 @@ router.get("/notifications/logs", requireAdminAuth, async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 4. Obter reservas pendentes de confirmação de hoje
+// 4. Obter reservas pendentes de confirmação de hoje (Com Diagnóstico de Débito em Tempo Real)
 // ----------------------------------------------------
 router.get("/notifications/reservas-pendentes", requireAdminAuth, async (req, res) => {
   try {
@@ -143,7 +191,7 @@ router.get("/notifications/reservas-pendentes", requireAdminAuth, async (req, re
     const [rows] = await currentPool.query(
       `SELECT r.id, r.data, r.periodo, r.status, r.statusMarina, r.confirmacaoEnviada,
               r.tentativasConfirmacao, r.ultimaTentativaConfirmacao,
-              c.id as clienteId, c.nome as clienteNome, c.telefone as clienteTelefone,
+              c.id as clienteId, c.nome as clienteNome, c.telefone as clienteTelefone, c.statusFinanceiro as clienteStatusFin,
               e.id as embarcacaoId, e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
               e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
        FROM Reservas r
@@ -152,13 +200,65 @@ router.get("/notifications/reservas-pendentes", requireAdminAuth, async (req, re
        WHERE r.data = ? 
          AND r.status != 'cancelado' 
          AND r.status != 'confirmado'
+         AND COALESCE(r.statusMarina, '') NOT IN ('confirmada', 'descida', 'pier', 'pronta', 'saida', 'navegando', 'chegada', 'guardada')
+         AND (r.horaDescida IS NULL OR r.horaDescida = '')
+         AND (r.horaSaida IS NULL OR r.horaSaida = '')
        ORDER BY r.createdAt ASC`,
       [targetDate]
     );
 
-    res.json({ success: true, date: targetDate, reservas: rows });
+    const debtMap = await getClientsOverdueDebtMap(targetDate);
+
+    const enrichedReservas = (rows as any[]).map((r) => {
+      const debtInfo = r.clienteId ? debtMap.get(String(r.clienteId)) : undefined;
+      const isInadimplente = Boolean(debtInfo && debtInfo.hasDebt && debtInfo.totalAberto > 0);
+      // Cadastro marcado como inadimplente manualmente, mas sem nenhuma fatura vencida vinculada ao cliente
+      const bloqueioManualSemFaturas = !isInadimplente && r.clienteStatusFin === "inadimplente";
+      return {
+        ...r,
+        isInadimplente,
+        bloqueioManualSemFaturas,
+        valorDebito: debtInfo?.totalAberto || 0,
+        qtdFaturasVencidas: debtInfo?.qtdFaturasVencidas || 0
+      };
+    });
+
+    res.json({ success: true, date: targetDate, reservas: enrichedReservas });
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Erro ao listar reservas pendentes." });
+  }
+});
+
+// ----------------------------------------------------
+// 4b. Gerar Magic Link direto para uma reserva (para copiar ou inspecionar no painel)
+// ----------------------------------------------------
+router.post("/notifications/generate-magic-link", requireAdminAuth, async (req, res) => {
+  try {
+    const { reservaId, origin } = req.body || {};
+    if (!reservaId) {
+      return res.status(400).json({ error: true, message: "reservaId é obrigatório." });
+    }
+    const currentPool = (await import("../server-db")).getDbPool();
+    if (!currentPool) return res.status(500).json({ error: true, message: "Banco offline" });
+
+    const [rows] = await currentPool.query(
+      `SELECT r.id, r.clienteId, c.nome as clienteNome
+       FROM Reservas r
+       LEFT JOIN Clientes c ON r.clienteId = c.id
+       WHERE r.id = ? LIMIT 1`,
+      [reservaId]
+    );
+    const rec = (rows as any[])[0];
+    if (!rec) {
+      return res.status(404).json({ error: true, message: "Reserva não encontrada." });
+    }
+
+    const requestOrigin = origin || req.headers.origin || (req.headers.referer ? new URL(req.headers.referer as string).origin : undefined);
+    const magicLink = await generateClientMagicLink(rec.clienteId, rec.clienteNome || "Cliente", rec.id, requestOrigin);
+
+    res.json({ success: true, magicLink });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Erro ao gerar Magic Link." });
   }
 });
 
@@ -169,7 +269,13 @@ router.post("/notifications/test-reserva-cycle", requireAdminAuth, sensitiveLimi
   try {
     const targetDate = req.body?.targetDate;
     const selectedReservaIds = req.body?.selectedReservaIds;
-    const result = await processReservasConfirmationCycle({ isManual: true, targetDate, selectedReservaIds });
+    const requestOrigin = req.body?.origin || req.headers.origin || (req.headers.referer ? new URL(req.headers.referer as string).origin : undefined);
+    const result = await processReservasConfirmationCycle({
+      isManual: true,
+      targetDate,
+      selectedReservaIds,
+      origin: requestOrigin
+    });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: true, message: err.message || "Erro ao executar ciclo de confirmação." });
@@ -177,11 +283,11 @@ router.post("/notifications/test-reserva-cycle", requireAdminAuth, sensitiveLimi
 });
 
 // ----------------------------------------------------
-// 5. Enviar mensagem de teste para um telefone com Magic Link real
+// 5b. Enviar mensagem de teste para um telefone com Magic Link real
 // ----------------------------------------------------
 router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   try {
-    const { number, templateIndex, text, reservaId, origin } = req.body;
+    const { number, templateIndex, text, reservaId, origin, isDebtTemplate, simulatedDebtValue } = req.body;
     if (!number) {
       return res.status(400).json({ error: true, message: "Informe número de telefone para o envio de teste." });
     }
@@ -223,11 +329,10 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
       if ((vitorRows as any[]).length > 0) {
         targetReserva = (vitorRows as any[])[0];
       } else {
-        // Se Vitor Akio não tiver reserva pendente futura, utiliza seu cadastro direto com sua embarcação EL MEXICANO 99
         const [vitorClientRows] = await currentPool.query(
           `SELECT c.id as clienteId, c.nome as clienteNome, c.telefone as clienteTelefone,
                   e.id as embarcacaoId, e.nome as embarcacaoNome, e.numero as embarcacaoNumero,
-              e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
+                  e.tipo as embarcacaoTipo, e.modelo as embarcacaoModelo, e.fabricante as embarcacaoFabricante
            FROM Clientes c
            LEFT JOIN Embarcacoes e ON e.id = 'boat_1780767211388'
            WHERE c.cpf LIKE '%07833944467%' OR c.cpf LIKE '%078.339.444-67%' OR c.id = 'cli_1780767128264'
@@ -286,7 +391,7 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
     }
 
     // 2. Determinar o origin para o link
-    const requestOrigin = origin || req.headers.origin || (req.headers.referer ? new URL(req.headers.referer as string).origin : null);
+    const requestOrigin = origin || req.headers.origin || (req.headers.referer ? new URL(req.headers.referer as string).origin : undefined);
 
     // 3. Gerar o Magic Link REAL e autenticado
     const magicLink = await generateClientMagicLink(
@@ -299,14 +404,14 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
     // 4. Selecionar o template (texto personalizado ou template index)
     let templateText = text;
     if (!templateText) {
-      const templates = await getConfirmationTemplates();
+      const templates = isDebtTemplate ? await getDebtConfirmationTemplates() : await getConfirmationTemplates();
       const idx = typeof templateIndex === 'number' && templateIndex >= 0 && templateIndex < templates.length
         ? templateIndex
         : 0;
       templateText = templates[idx];
     }
 
-    // 5. Substituir tags dinâmicas (case-insensitive com suporte a espaços)
+    // 5. Substituir tags dinâmicas
     const clientePrimeiroNome = targetReserva.clienteNome ? targetReserva.clienteNome.trim().split(/\s+/)[0] : "Cliente";
     const nomeBarco = targetReserva.embarcacaoNome 
       ? (targetReserva.embarcacaoNome.includes(targetReserva.embarcacaoNumero) || targetReserva.embarcacaoNome.toLowerCase().includes('mexicano')
@@ -320,6 +425,8 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
       quando: "hoje",
       dataIso: targetReserva.data,
       magicLink,
+      valorDebito: Number(simulatedDebtValue) || 869.00,
+      qtdFaturas: 1,
       boatInfo: {
         tipo: targetReserva.embarcacaoTipo,
         nome: targetReserva.embarcacaoNome,
@@ -327,12 +434,6 @@ router.post("/notifications/test-send-whatsapp", requireAdminAuth, sensitiveLimi
         fabricante: targetReserva.embarcacaoFabricante
       }
     });
-
-
-
-
-
-
 
     console.log(`[Robô Teste WhatsApp] Destino: ${number} | Mensagem:\n${finalMessage}`);
 

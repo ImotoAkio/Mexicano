@@ -378,7 +378,7 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
     if (Array.isArray(transacoesIds) && transacoesIds.length > 0) {
       const placeholders = transacoesIds.map(() => "?").join(",");
       const [txRows] = await currentPool.query(
-        `SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND id IN (${placeholders}) AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado')`,
+        `SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND id IN (${placeholders}) AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado', 'realizado', 'estornado')`,
         [user.id, ...transacoesIds]
       );
       txs = txRows as any[];
@@ -389,7 +389,7 @@ router.post("/fatura/gerar-asaas", requireClientAuth, sensitiveLimiter, async (r
       const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`;
 
       const [txRows] = await currentPool.query(
-        "SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado') AND dataVencimento <= ?",
+        "SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado', 'realizado', 'estornado') AND dataVencimento <= ?",
         [user.id, cutoffStr]
       );
       txs = txRows as any[];
@@ -479,7 +479,7 @@ router.post("/transacoes/gerar-asaas-lote", requireAdminAuth, sensitiveLimiter, 
   try {
     const listPlaceholders = transacoesIds.map(() => '?').join(',');
     const [txRows] = await currentPool.query(
-      `SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND id IN (${listPlaceholders}) AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado')`,
+      `SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND id IN (${listPlaceholders}) AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado', 'realizado', 'estornado')`,
       [clienteId, ...transacoesIds]
     );
     const txs = (txRows as any[]);

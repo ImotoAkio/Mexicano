@@ -52,8 +52,7 @@ function hasClientOverdueDebt(client: any, transacoes: any[]): boolean {
   return (transacoes || []).some((t: any) =>
     t.clienteId === client?.id &&
     t.tipo === 'receita' &&
-    t.status !== 'pago' &&
-    t.status !== 'cancelado' &&
+    !['pago', 'cancelado', 'realizado', 'estornado'].includes(String(t.status || '').toLowerCase()) &&
     (t.status === 'vencido' || (t.dataVencimento && t.dataVencimento < todayStr))
   );
 }
