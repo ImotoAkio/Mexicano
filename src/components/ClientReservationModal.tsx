@@ -234,7 +234,7 @@ export default function ClientReservationModal({
   if (isSuccessState) {
     const b = boats.find(b => b.id === selectedBoatId);
     return (
-      <div className="fixed inset-0 z-[100] grid place-items-center py-8 px-4 bg-slate-900/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-300">
+      <div className="fixed inset-0 z-[100] grid place-items-center pt-[max(env(safe-area-inset-top,0px),2rem)] pb-[max(env(safe-area-inset-bottom,0px),1.5rem)] px-4 bg-slate-900/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-300 ios-scroll">
         <div className="bg-[#0f0f0f] border border-white/10 rounded-2xl max-w-4xl w-full shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 my-auto">
           
           {/* Header */}
@@ -339,7 +339,7 @@ export default function ClientReservationModal({
   const isSelectionInvalid = isBoatInMaintenance || isClosedDay || isDateOccupied || isPastDate;
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center py-8 px-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] grid place-items-center pt-[max(env(safe-area-inset-top,0px),2rem)] pb-[max(env(safe-area-inset-bottom,0px),1.5rem)] px-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200 ios-scroll">
       <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95">
         
         {/* Header */}

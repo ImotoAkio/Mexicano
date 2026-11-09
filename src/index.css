@@ -135,10 +135,10 @@
     user-select: none;
     -webkit-user-select: none;
     overflow-x: hidden;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
   }
 
   /* Allow text selection in inputs and textareas, and enforce 16px to prevent iOS focus auto-zoom */
@@ -271,13 +271,33 @@
 
 /* ═══════════ PWA Standalone Mode Enhancements ═══════════ */
 
-/* Safe area insets for iOS (notch, home indicator, status bar) */
+/* Safe area insets for iOS (notch, Dynamic Island, home indicator, status bar) */
+.pt-safe, .pwa-safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 1rem);
+}
+.pb-safe, .pwa-safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.75rem);
+}
+.pl-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.pr-safe {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* iOS High-Performance Fluid Scrolling */
+.ios-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
 @supports (padding: env(safe-area-inset-top)) {
   .pwa-safe-top {
-    padding-top: env(safe-area-inset-top);
+    padding-top: max(env(safe-area-inset-top, 0px), 1rem);
   }
   .pwa-safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.75rem);
   }
 }
 

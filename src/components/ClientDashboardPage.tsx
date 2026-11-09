@@ -2678,7 +2678,7 @@ export default function ClientDashboardPage({
     );
   };
   return (
-    <div className="h-[100dvh] w-full bg-[#020202] text-white font-sans relative overflow-x-hidden overflow-y-auto pb-24 selection:bg-[#B69D74]/30">
+    <div className="h-[100dvh] w-full bg-[#020202] text-white font-sans relative overflow-x-hidden overflow-y-auto pb-24 selection:bg-[#B69D74]/30 ios-scroll">
 
       {/* Ambient Dark Background Effect */}
       <div className="fixed inset-0 pointer-events-none opacity-40 mix-blend-screen z-0">
@@ -2687,8 +2687,8 @@ export default function ClientDashboardPage({
 
       {/* Main Content Area (Mobile Container Logic) */}
       <div className="relative z-10 w-full max-w-[480px] mx-auto min-h-max flex flex-col">
-        {/* Shared Header Start - Marina Concierge Header */}
-        <div className="flex items-center justify-between px-6 pb-4 pt-[max(env(safe-area-inset-top),1.5rem)]">
+        {/* Preserved Safe Header - Protege contra sobreposição da status bar / Dynamic Island */}
+        <header className="sticky top-0 z-40 bg-[#020202]/95 backdrop-blur-xl border-b border-white/[0.04] pt-[max(env(safe-area-inset-top,0px),1.5rem)] px-6 pb-3 flex items-center justify-between transition-colors shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
           <div>
             <h1 className="text-xl font-light tracking-wide text-white">
               Olá, <span className="text-white font-normal">{client.nome.split(' ')[0]}</span>
@@ -2711,8 +2711,8 @@ export default function ClientDashboardPage({
               <User className="w-4 h-4 text-white/70" />
             </button>
           </div>
-        </div>
-        {/* Shared Header End */}
+        </header>
+        {/* Preserved Safe Header End */}
 
         <AnimatePresence mode="wait" custom={tabDirection}>
           <motion.div
@@ -2939,7 +2939,7 @@ export default function ClientDashboardPage({
           onClick={() => setShowProfilePanel(false)}
         />
         <div
-          className={`absolute top-0 right-0 h-full w-full max-w-sm bg-[#090909] border-l border-white/[0.04] px-6 pb-6 pt-[max(env(safe-area-inset-top),1.5rem)] shadow-2xl transition-transform duration-300 ease-out flex flex-col overflow-y-auto ${
+          className={`absolute top-0 right-0 h-full w-full max-w-sm bg-[#090909] border-l border-white/[0.04] px-6 pb-6 pt-[max(env(safe-area-inset-top,0px),1.75rem)] shadow-2xl transition-transform duration-300 ease-out flex flex-col overflow-y-auto ${
             showProfilePanel ? 'translate-x-0' : 'translate-x-full'
           }`}
         >
@@ -3952,7 +3952,7 @@ export default function ClientDashboardPage({
       {/* Modal de Documentos da Embarcação (Integrado PWA) */}
       {docModalBoat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-6 bg-black/85 backdrop-blur-xl animate-in fade-in duration-200">
-          <div className="w-full h-full md:max-w-3xl md:h-[90vh] md:rounded-[2rem] bg-[#090909] border border-white/10 flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 pt-[max(env(safe-area-inset-top),0px)] pb-[max(env(safe-area-inset-bottom),0px)]">
+          <div className="w-full h-full md:max-w-3xl md:h-[90vh] md:rounded-[2rem] bg-[#090909] border border-white/10 flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 pt-[max(env(safe-area-inset-top,0px),1rem)] pb-[max(env(safe-area-inset-bottom,0px),0.75rem)]">
 
             {/* Modal Header */}
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-[#111] shrink-0">

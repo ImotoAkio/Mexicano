@@ -3,8 +3,9 @@ import Select from 'react-select';
 import { 
   Anchor, X, Ship, User, Zap, ChevronDown, RefreshCw, 
   ImageIcon, Edit2, Upload, Check, Trash2,
-  ShieldCheck, ShieldAlert, Calendar, AlertCircle, Clock, Flame } from 'lucide-react';
-import { boatDB, clientDB } from '../db';
+  ShieldCheck, ShieldAlert, Calendar, AlertCircle, Clock, Flame, MessageSquare } from 'lucide-react';
+import { boatDB, clientDB, getAdminToken } from '../db';
+import { fetchWhatsAppGroups, getCachedWhatsAppGroups, findWhatsAppGroup, WhatsAppGroup } from '../utils/whatsappGroups';
 import { Embarcacao, Cliente } from '../types';
 
 interface BoatModalProps {
@@ -48,7 +49,8 @@ export default function BoatModal({
   const [selectedDonos, setSelectedDonos] = useState<string[]>([]);
   const [googleCalendarId, setGoogleCalendarId] = useState('');
   const [whatsappGroupId, setWhatsappGroupId] = useState('');
-  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [availableGroups, setAvailableGroups] = useState<WhatsAppGroup[]>(() => getCachedWhatsAppGroups());
+  const [isManualInput, setIsManualInput] = useState(false);
   const [isFetchingGroups, setIsFetchingGroups] = useState(false);
   const [emManutencao, setEmManutencao] = useState(false);
   const [temSom, setTemSom] = useState(false);
@@ -190,26 +192,36 @@ export default function BoatModal({
         setEmpresas(defaultEmps);
         setIsAdvancedOpen(false);
       }
+
+      // Carregar grupos do WhatsApp automaticamente se necessário
+      const cached = getCachedWhatsAppGroups();
+      if (cached && cached.length > 0) {
+        setAvailableGroups(cached);
+      } else {
+        setIsFetchingGroups(true);
+        fetchWhatsAppGroups().then(groups => {
+          if (groups && groups.length > 0) setAvailableGroups(groups);
+        }).finally(() => {
+          setIsFetchingGroups(false);
+        });
+      }
     }
   }, [isOpen, editingBoat, isMarinaGerente]);
 
-  const handleFetchGroups = async () => {
+  const handleFetchGroups = async (notify = true) => {
     setIsFetchingGroups(true);
     try {
-      const token = localStorage.getItem('admin_token');
-      const res = await fetch('/api/whatsapp/groups', {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.groups)) {
-        const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
-        setAvailableGroups(unique);
-        showToast(`Foram carregados ${unique.length} grupos do WhatsApp!`);
-      } else {
-        showToast(data.message || 'Falha ao buscar grupos', 'error');
+      const groups = await fetchWhatsAppGroups(true);
+      setAvailableGroups(groups);
+      if (notify) {
+        if (groups.length > 0) {
+          showToast(`Foram carregados ${groups.length} grupos do WhatsApp!`);
+        } else {
+          showToast('Nenhum grupo encontrado na API.', 'error');
+        }
       }
     } catch (err: any) {
-      showToast(err.message || 'Erro ao conectar à API de grupos', 'error');
+      if (notify) showToast(err.message || 'Erro ao conectar à API de grupos', 'error');
     } finally {
       setIsFetchingGroups(false);
     }
@@ -366,14 +378,19 @@ export default function BoatModal({
       }
 
       try {
-        await fetch('/api/db/save', {
+        const token = getAdminToken();
+        const res = await fetch('/api/db/save', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           },
           body: JSON.stringify({ type: 'boats', action: 'upsert', data: savedBoat })
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          console.warn('Aviso: servidor retornou status', res.status, errData);
+        }
       } catch (err) {
         console.warn("Aviso ao sincronizar embarcação no servidor:", err);
       }
@@ -802,34 +819,30 @@ export default function BoatModal({
                     </div>
 
                     {showWhatsAppMapping && (
-                      <div className="space-y-1">
+                      <div className="space-y-1.5 pt-1">
                         <div className="flex items-center justify-between">
-                          <label className="block text-[11px] font-semibold text-slate-700">Grupo WhatsApp (Evolution API)</label>
-                          <button 
-                            type="button" 
-                            onClick={handleFetchGroups}
-                            disabled={isFetchingGroups}
-                            className="text-[10px] text-teal-600 font-semibold hover:text-teal-700 flex items-center cursor-pointer disabled:opacity-50"
-                          >
-                            <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingGroups ? 'animate-spin' : ''}`} />
-                            {isFetchingGroups ? 'Buscando...' : 'Buscar Grupos'}
-                          </button>
+                          <label className="block text-[11px] font-semibold text-slate-700">Grupo do WhatsApp (Evolution API)</label>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsManualInput(!isManualInput)}
+                              className="text-[10px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                            >
+                              {isManualInput ? 'Escolher da Lista' : 'Inserir ID Manual'}
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => handleFetchGroups(true)}
+                              disabled={isFetchingGroups}
+                              className="text-[10px] text-teal-600 font-semibold hover:text-teal-700 flex items-center cursor-pointer disabled:opacity-50"
+                            >
+                              <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingGroups ? 'animate-spin' : ''}`} />
+                              {isFetchingGroups ? 'Carregando...' : 'Atualizar Grupos'}
+                            </button>
+                          </div>
                         </div>
 
-                        {availableGroups.length > 0 ? (
-                          <select
-                            id="input-boat-whatsapp-id-select"
-                            tabIndex={13}
-                            value={whatsappGroupId}
-                            onChange={(e) => setWhatsappGroupId(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
-                          >
-                            <option value="">-- Selecione o Grupo do Barco --</option>
-                            {availableGroups.map((g: any, idx: number) => (
-                              <option key={g.id ? `grp-${g.id}-${idx}` : `grp-${idx}`} value={g.id}>{g.subject || g.name || g.id}</option>
-                            ))}
-                          </select>
-                        ) : (
+                        {isManualInput ? (
                           <input
                             id="input-boat-whatsapp-id"
                             type="text"
@@ -839,6 +852,61 @@ export default function BoatModal({
                             onChange={(e) => setWhatsappGroupId(e.target.value)}
                             className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-mono"
                           />
+                        ) : (
+                          <select
+                            id="input-boat-whatsapp-id-select"
+                            tabIndex={13}
+                            value={whatsappGroupId}
+                            onChange={(e) => setWhatsappGroupId(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white font-medium text-slate-800 cursor-pointer"
+                          >
+                            <option value="">-- Sem Grupo Associado --</option>
+                            {/* Se houver um ID salvo que ainda não está na lista carregada, manter como opção para não perder */}
+                            {whatsappGroupId && !availableGroups.some(g => (g.id || g.jid) === whatsappGroupId) && (
+                              <option value={whatsappGroupId}>
+                                [Grupo Atual Vinculado: {whatsappGroupId}]
+                              </option>
+                            )}
+                            {availableGroups.map((g: any, idx: number) => {
+                              const gid = g.id || g.jid;
+                              return (
+                                <option key={gid ? `grp-${gid}-${idx}` : `grp-${idx}`} value={gid}>
+                                  {g.subject || g.name || gid}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        )}
+
+                        {/* Card visual de confirmação do grupo vinculado */}
+                        {whatsappGroupId ? (
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-teal-50/80 border border-teal-200 text-teal-900 text-xs">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <div className="w-6 h-6 rounded-md bg-teal-600 text-white flex items-center justify-center shrink-0">
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="overflow-hidden">
+                                <span className="font-bold text-[11px] block truncate">
+                                  {findWhatsAppGroup(whatsappGroupId, availableGroups)?.subject || findWhatsAppGroup(whatsappGroupId, availableGroups)?.name || 'Grupo Vinculado'}
+                                </span>
+                                <span className="block text-[9px] text-teal-700 font-mono truncate">
+                                  ID: {whatsappGroupId}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setWhatsappGroupId('')}
+                              className="text-[10px] font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-1.5 py-0.5 rounded transition-colors cursor-pointer shrink-0 ml-2"
+                              title="Remover vínculo com o WhatsApp"
+                            >
+                              Desvincular
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400">
+                            Nenhum grupo vinculado. Selecione o grupo acima para disparos automáticos e comunicados.
+                          </p>
                         )}
                       </div>
                     )}

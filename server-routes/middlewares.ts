@@ -13,29 +13,57 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
+export function getClientIp(req: express.Request): string {
+  const cfIp = req.headers["cf-connecting-ip"];
+  if (typeof cfIp === "string" && cfIp.trim()) return cfIp.trim();
+
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim()) {
+    return forwarded.split(",")[0].trim();
+  }
+
+  const realIp = req.headers["x-real-ip"];
+  if (typeof realIp === "string" && realIp.trim()) return realIp.trim();
+
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 600, // Permite navegação fluida e sincronização sem estourar limites
-  message: { error: true, message: "Taxa de requisições excedida." },
+  max: 3000, // Limite generoso por IP para permitir SPA, sockets e multiplos acessos simultaneos
+  keyGenerator: (req) => getClientIp(req),
+  skip: (req) => {
+    // Permite que requisicoes essenciais de leitura interna e usuarios autenticados naveguem livremente
+    if (req.method === 'GET') {
+      const auth = req.headers.authorization;
+      if (auth && auth.startsWith('Bearer ')) return true;
+      if (req.path === '/db/status' || req.path.startsWith('/config/public') || req.path.startsWith('/m/')) return true;
+    }
+    return false;
+  },
+  message: { error: true, message: "Taxa de requisicoes excedida. Aguarde um momento." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 export const sensitiveLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
-  message: { error: true, message: "Taxa excedida para operação sensível." },
+  max: 500,
+  keyGenerator: (req) => getClientIp(req),
+  message: { error: true, message: "Taxa excedida para operacao sensivel." },
 });
 
 export const whatsappLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  max: 600,
+  keyGenerator: (req) => getClientIp(req),
   message: { error: true, message: "Taxa excedida para disparos de WhatsApp." },
 });
 
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 50,
+  max: 100,
+  keyGenerator: (req) => getClientIp(req),
   message: { error: true, message: "Muitas tentativas de login. Tente novamente em 15 minutos." },
   standardHeaders: true,
   legacyHeaders: false,

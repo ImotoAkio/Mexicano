@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
-import { boatDB, clientDB, isDbLoaded } from '../db';
+import React, { useState, useMemo, useEffect } from 'react';
+import { boatDB, clientDB, isDbLoaded, getAdminToken } from '../db';
 import { Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
-import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid, ChevronDown, Filter, Shield, Calendar, FileText, Flame } from 'lucide-react';
+import { Ship, Plus, Search, Trash2, Edit2, User, Key, Check, X, ShieldAlert, Anchor, Wrench, RefreshCw, Zap, Upload, Image as ImageIcon, Volume2, List, LayoutGrid, ChevronDown, Filter, Shield, Calendar, FileText, Flame, MessageSquare } from 'lucide-react';
 import BoatModal from './BoatModal';
+import { fetchWhatsAppGroups, getCachedWhatsAppGroups, findWhatsAppGroup, WhatsAppGroup } from '../utils/whatsappGroups';
 
 import defaultJetImg from '../assets/images/jet.webp';
 import defaultLanchaImg from '../assets/images/lancha.webp';
@@ -159,10 +160,10 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
 
       // If we have data, we just update it
       if (dbBoats.length > 0) {
-        setBoats(prev => prev.length !== dbBoats.length ? dbBoats : prev);
+        setBoats([...dbBoats]);
       }
       if (dbClients.length > 0) {
-        setClients(prev => prev.length !== dbClients.length ? dbClients : prev);
+        setClients([...dbClients]);
       }
 
       // If db finished loading (or already had data), drop the loader
@@ -175,6 +176,13 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
         }
       }
     };
+
+    const handleDbSync = () => {
+      setBoats([...boatDB.getAll()]);
+      setClients([...clientDB.getAll()]);
+    };
+    window.addEventListener('db_updated', handleDbSync);
+    window.addEventListener('db_synced', handleDbSync);
 
     // If already loaded or already have data, don't show loader at all
     if (isDbLoaded || boatDB.getAll().length > 0) {
@@ -194,6 +202,8 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     return () => {
       clearInterval(interval);
       clearTimeout(timeout);
+      window.removeEventListener('db_updated', handleDbSync);
+      window.removeEventListener('db_synced', handleDbSync);
     };
   }, []); // Run only on mount
 
@@ -309,7 +319,8 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
   const [isFetchingGroups, setIsFetchingGroups] = useState(false);
-  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [isSavingMapping, setIsSavingMapping] = useState(false);
+  const [availableGroups, setAvailableGroups] = useState<WhatsAppGroup[]>(() => getCachedWhatsAppGroups());
   const [mappingState, setMappingState] = useState<Record<string, string>>({}); // boat.id -> group.id
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -353,22 +364,14 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
   // WhatsApp Sync Mapping (preserving logic)
   const handleOpenMappingModal = async () => {
     setIsMappingModalOpen(true);
+    const cached = getCachedWhatsAppGroups();
+    if (cached && cached.length > 0) {
+      setAvailableGroups(cached);
+    }
     setIsFetchingGroups(true);
     try {
-      const token = localStorage.getItem('admin_token');
-      const res = await fetch('/api/whatsapp/groups', {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      const data = await res.json();
-      if (!data.success || !Array.isArray(data.groups)) {
-        showToast(data.message || 'Falha ao baixar lista de grupos da API', 'error');
-        setAvailableGroups([]);
-        setIsFetchingGroups(false);
-        return;
-      }
-
-      const unique = Array.from(new Map(data.groups.map((g: any) => [g.id || g.jid, g])).values());
-      setAvailableGroups(unique);
+      const groups = await fetchWhatsAppGroups(cached.length === 0);
+      setAvailableGroups(groups);
 
       const newMapping: Record<string, string> = {};
       const currentBoats = boatDB.getAll();
@@ -382,7 +385,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
 
         const paddedNum = b.numero ? b.numero.padStart(2, '0') : '';
         const standardName = `VILA NÁUTICA ${paddedNum}`;
-        const group = data.groups.find((g: any) => {
+        const group = groups.find((g: any) => {
           const subject = (g.subject || g.name || '').toUpperCase();
           if (paddedNum && subject.includes(standardName.toUpperCase())) return true;
           if (b.nome && subject.includes(b.nome.toUpperCase())) return true;
@@ -396,7 +399,7 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
       }
 
       setMappingState(newMapping);
-      showToast(`Carregados ${data.groups.length} grupos. ${suggestionsCount} associações sugeridas.`);
+      showToast(`Carregados ${groups.length} grupos. ${suggestionsCount} associações sugeridas.`);
     } catch (err: any) {
       showToast(err.message || 'Erro ao mapear grupos da API', 'error');
     } finally {
@@ -404,22 +407,47 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
     }
   };
 
-  const handleSaveMapping = () => {
+  const handleSaveMapping = async () => {
+    setIsSavingMapping(true);
     try {
       const currentBoats = boatDB.getAll();
       let count = 0;
+      const updatedBoats: Embarcacao[] = [];
+
       for (const b of currentBoats) {
-        const newGroupId = mappingState[b.id] || '';
-        if (newGroupId !== (b.whatsappGroupId || '')) {
-          boatDB.update(b.id, { whatsappGroupId: newGroupId || undefined });
+        const newGroupId = (mappingState[b.id] || '').trim();
+        const oldGroupId = (b.whatsappGroupId || '').trim();
+        if (newGroupId !== oldGroupId) {
+          const updated = boatDB.update(b.id, { whatsappGroupId: newGroupId || undefined });
+          updatedBoats.push(updated);
           count++;
         }
       }
+
+      // Sincronizar as embarcações alteradas diretamente no servidor
+      const token = getAdminToken();
+      for (const boat of updatedBoats) {
+        try {
+          await fetch('/api/db/save', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ type: 'boats', action: 'upsert', data: boat })
+          });
+        } catch (syncErr) {
+          console.warn('Erro ao sincronizar barco mapeado no servidor:', boat.id, syncErr);
+        }
+      }
+
       handleRefresh();
       setIsMappingModalOpen(false);
-      showToast(`Mapeamento salvo! ${count} embarcações atualizadas.`);
+      showToast(`Mapeamento salvo com sucesso! ${count} embarcação(ões) atualizada(s).`);
     } catch (err: any) {
       showToast(err.message || 'Erro ao salvar mapeamento', 'error');
+    } finally {
+      setIsSavingMapping(false);
     }
   };
 
@@ -769,6 +797,15 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                                 C/ Som
                               </span>
                             )}
+                            {boat.whatsappGroupId && (
+                              <span 
+                                className="text-[9px] text-teal-700 font-bold bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded-md flex items-center gap-1 mt-0.5"
+                                title={`WhatsApp Vinculado: ${findWhatsAppGroup(boat.whatsappGroupId, availableGroups)?.subject || boat.whatsappGroupId}`}
+                              >
+                                <MessageSquare className="w-2.5 h-2.5 text-teal-600" />
+                                Wpp OK
+                              </span>
+                            )}
                           </div>
                         </td>
 
@@ -885,6 +922,15 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                          <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-indigo-50 text-indigo-700 flex items-center border border-indigo-100">
                            <Volume2 className="w-2.5 h-2.5 mr-1" />
                            Som
+                         </span>
+                       )}
+                       {boat.whatsappGroupId && (
+                         <span 
+                           className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md bg-teal-50 text-teal-700 flex items-center border border-teal-200"
+                           title={`WhatsApp Vinculado: ${findWhatsAppGroup(boat.whatsappGroupId, availableGroups)?.subject || boat.whatsappGroupId}`}
+                         >
+                           <MessageSquare className="w-2.5 h-2.5 mr-1 text-teal-600" />
+                           WhatsApp
                          </span>
                        )}
                     </div>
@@ -1078,9 +1124,17 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
                           className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#186b77] focus:border-transparent font-medium text-slate-700 cursor-pointer shadow-inner-xs"
                         >
                           <option value="">-- Sem Grupo Associado --</option>
-                          {availableGroups.map((g, idx) => (
-                            <option key={g.id ? `grp-${g.id}-${idx}` : `grp-${idx}`} value={g.id}>{g.subject || g.name || g.id}</option>
-                          ))}
+                          {mappingState[boat.id] && !availableGroups.some(g => (g.id || g.jid) === mappingState[boat.id]) && (
+                            <option value={mappingState[boat.id]}>
+                              [Grupo Atual: {mappingState[boat.id]}]
+                            </option>
+                          )}
+                          {availableGroups.map((g, idx) => {
+                            const gid = g.id || g.jid;
+                            return (
+                              <option key={gid ? `grp-${gid}-${idx}` : `grp-${idx}`} value={gid}>{g.subject || g.name || gid}</option>
+                            );
+                          })}
                         </select>
                       </div>
                     </div>
@@ -1092,16 +1146,18 @@ export default function BoatPage({ showWhatsAppMapping = true }: BoatPageProps) 
             <div className="bg-white px-6 py-5 flex gap-3 border-t border-slate-100 shadow-[0_-4px_15px_-10px_rgba(0,0,0,0.05)]">
                <button
                 onClick={() => setIsMappingModalOpen(false)}
-                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer shadow-xs active:scale-95"
+                disabled={isSavingMapping}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
                >
                 Cancelar
                </button>
                <button
                 onClick={handleSaveMapping}
-                disabled={isFetchingGroups}
-                className="flex-1 rounded-xl bg-[#186b77] hover:bg-[#12555f] px-4 py-2.5 text-sm font-bold text-white transition-all cursor-pointer disabled:opacity-50 shadow-sm hover:shadow-md active:scale-95"
+                disabled={isFetchingGroups || isSavingMapping}
+                className="flex-1 rounded-xl bg-[#186b77] hover:bg-[#12555f] px-4 py-2.5 text-sm font-bold text-white transition-all cursor-pointer disabled:opacity-50 shadow-sm hover:shadow-md active:scale-95 flex items-center justify-center gap-2"
                >
-                Salvar Associações
+                {isSavingMapping && <RefreshCw className="w-4 h-4 animate-spin" />}
+                {isSavingMapping ? 'Salvando Associações...' : 'Salvar Associações'}
                </button>
             </div>
           </div>

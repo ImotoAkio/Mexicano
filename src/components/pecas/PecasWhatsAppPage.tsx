@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { maintenanceDB, boatDB, clientDB } from '../../db';
+import { maintenanceDB, boatDB, clientDB, getAdminToken } from '../../db';
 import { Embarcacao, Cliente, Manutencao } from '../../types';
 import { getHorimetroSettings, calcularStatusRevisao } from '../../utils/horimetroUtils';
 import { 
@@ -827,18 +827,34 @@ export default function PecasWhatsAppPage() {
     setMappingState(prev => ({ ...prev, [boatId]: groupId }));
   };
 
-  const handleSaveGroupMapping = () => {
+  const handleSaveGroupMapping = async () => {
     try {
       let count = 0;
+      const updatedBoats: any[] = [];
       for (const b of boats) {
-        const newGroupId = mappingState[b.id] || '';
-        if (newGroupId !== (b.whatsappGroupId || '')) {
-          boatDB.update(b.id, { whatsappGroupId: newGroupId || undefined });
+        const newGroupId = (mappingState[b.id] || '').trim();
+        const oldGroupId = (b.whatsappGroupId || '').trim();
+        if (newGroupId !== oldGroupId) {
+          const updated = boatDB.update(b.id, { whatsappGroupId: newGroupId || undefined });
+          updatedBoats.push(updated);
           count++;
         }
       }
+      const token = getAdminToken();
+      for (const boat of updatedBoats) {
+        try {
+          await fetch('/api/db/save', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ type: 'boats', action: 'upsert', data: boat })
+          });
+        } catch (e) {}
+      }
       setBoats(boatDB.getAll());
-      showToast(`Mapeamento salvo! ${count} atualizações.`);
+      showToast(`Mapeamento salvo com sucesso! ${count} atualizações.`);
     } catch (err) {
       showToast('Erro ao salvar mapeamento', 'error');
     }

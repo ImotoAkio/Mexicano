@@ -133,7 +133,7 @@ export const io = new SocketIOServer(httpServer, {
   }
 });
 app.locals.io = io; // Expose socket.io to route handlers via req.app.locals.io
-app.set('trust proxy', 1);
+app.set('trust proxy', true);
 const PORT = 3000;
 
 // Security: Helmet HTTP headers (configured for SPA compatibility)
