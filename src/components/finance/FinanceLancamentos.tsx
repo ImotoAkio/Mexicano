@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Wallet, TrendingUp, TrendingDown, Plus, Search, 
   Download, Eye, AlertCircle, RefreshCw, XCircle, Calendar,
-  Receipt, Building2, Upload
+  Receipt, Building2, Upload, Database, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { TransacaoFinanceira, Cliente, Embarcacao, Reserva } from '../../types';
 import { jsPDF } from 'jspdf';
@@ -12,6 +12,7 @@ import logoUrl from '../../assets/images/vale_nauticos_logo_1780256879963.png';
 
 import TransactionDetailsModal from './TransactionDetailsModal';
 import ImportXMLModal from './ImportXMLModal';
+import ImportGempModal from './ImportGempModal';
 import FinanceLancamentoDrawer from './FinanceLancamentoDrawer';
 import Select from 'react-select';
 import { clientDB } from '../../db';
@@ -66,9 +67,55 @@ export default function FinanceLancamentos({
   const [dataInicioFilter, setDataInicioFilter] = useState<string>('');
   const [dataFimFilter, setDataFimFilter] = useState<string>('');
 
+  // Ordenação nos filtros
+  const [sortBy, setSortBy] = useState<string>(() => {
+    return localStorage.getItem('finance_lancamentos_sort_by') || 'vencimento_desc';
+  });
+
+  // Limite de registros exibidos e paginação
+  const [itemsPerPage, setItemsPerPage] = useState<number | 'todos'>(() => {
+    const saved = localStorage.getItem('finance_lancamentos_items_per_page');
+    if (saved === 'todos') return 'todos';
+    const parsed = Number(saved);
+    return [25, 50, 100, 200].includes(parsed) ? parsed : 50;
+  });
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  const handleItemsPerPageChange = (val: number | 'todos') => {
+    setItemsPerPage(val);
+    localStorage.setItem('finance_lancamentos_items_per_page', String(val));
+    setCurrentPage(1);
+  };
+
+  const handleSortByChange = (val: string) => {
+    setSortBy(val);
+    localStorage.setItem('finance_lancamentos_sort_by', val);
+    setCurrentPage(1);
+  };
+
+  const formatDateSafe = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const cleanStr = String(dateStr).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr)) {
+      const parts = cleanStr.substring(0, 10).split('-');
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(cleanStr)) {
+      return cleanStr;
+    }
+    const d = new Date(cleanStr);
+    if (isNaN(d.getTime())) return cleanStr || '-';
+    return d.toLocaleDateString('pt-BR');
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, tipoFilter, clienteFilter, embarcacaoFilter, dataInicioFilter, dataFimFilter, empresaFiltro, sortBy, itemsPerPage]);
+
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isGempModalOpen, setIsGempModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TransacaoFinanceira | null>(null);
   const [viewingTransaction, setViewingTransaction] = useState<TransacaoFinanceira | null>(null);
 
@@ -414,13 +461,21 @@ export default function FinanceLancamentos({
 
     const searchLower = searchTerm.toLowerCase();
     const clientName = clientes.find(c => c.id === t.clienteId)?.nome?.toLowerCase() || '';
+    const fornObj = fornecedores.find(f => f.id === t.fornecedorId);
+    const fornName = (fornObj?.nomeFantasia || fornObj?.razaoSocial || '').toLowerCase();
+    const metaObj = typeof t.metadata === 'string' ? (() => { try { return JSON.parse(t.metadata); } catch { return null; } })() : t.metadata;
+    const gempFavName = (metaObj?.gempClienteNome || metaObj?.gempFornecedorNome || '').toLowerCase();
+    const gempBoatVaga = (metaObj?.gempEmbarcacaoVaga || '').toLowerCase();
     const boatName = embarcacoes.find(b => b.id === t.embarcacaoId)?.nome?.toLowerCase() || '';
     const valueStr = String(t.valor);
-    const dateFormatted = new Date(t.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR');
+    const dateFormatted = formatDateSafe(t.dataVencimento);
 
     const matchesSearch = t.categoria.toLowerCase().includes(searchLower) || 
                           (t.descricao && t.descricao.toLowerCase().includes(searchLower)) ||
                           clientName.includes(searchLower) ||
+                          fornName.includes(searchLower) ||
+                          gempFavName.includes(searchLower) ||
+                          gempBoatVaga.includes(searchLower) ||
                           boatName.includes(searchLower) ||
                           valueStr.includes(searchLower) ||
                           dateFormatted.includes(searchLower) ||
@@ -458,6 +513,66 @@ export default function FinanceLancamentos({
 
     return matchesSearch && matchesStatus && matchesTipo && matchesCliente && matchesEmbarcacao && matchesPeriodo;
   });
+
+  // Ordenação das transações filtradas conforme o filtro selecionado
+  const sortedTransacoes = useMemo(() => {
+    const list = [...filteredTransacoes];
+    list.sort((a, b) => {
+      if (sortBy === 'vencimento_desc') {
+        const da = a.dataVencimento ? new Date(a.dataVencimento).getTime() : 0;
+        const db = b.dataVencimento ? new Date(b.dataVencimento).getTime() : 0;
+        return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
+      }
+      if (sortBy === 'vencimento_asc') {
+        const da = a.dataVencimento ? new Date(a.dataVencimento).getTime() : 0;
+        const db = b.dataVencimento ? new Date(b.dataVencimento).getTime() : 0;
+        return (isNaN(da) ? 0 : da) - (isNaN(db) ? 0 : db);
+      }
+      if (sortBy === 'valor_desc') {
+        return (Number(b.valor) || 0) - (Number(a.valor) || 0);
+      }
+      if (sortBy === 'valor_asc') {
+        return (Number(a.valor) || 0) - (Number(b.valor) || 0);
+      }
+      if (sortBy === 'cliente_asc') {
+        const nameA = (clientes.find(c => c.id === a.clienteId)?.nome || fornecedores.find(f => f.id === a.fornecedorId)?.nomeFantasia || a.metadata?.gempClienteNome || a.metadata?.gempFornecedorNome || a.descricao || '').toLowerCase();
+        const nameB = (clientes.find(c => c.id === b.clienteId)?.nome || fornecedores.find(f => f.id === b.fornecedorId)?.nomeFantasia || b.metadata?.gempClienteNome || b.metadata?.gempFornecedorNome || b.descricao || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      }
+      if (sortBy === 'cliente_desc') {
+        const nameA = (clientes.find(c => c.id === a.clienteId)?.nome || fornecedores.find(f => f.id === a.fornecedorId)?.nomeFantasia || a.metadata?.gempClienteNome || a.metadata?.gempFornecedorNome || a.descricao || '').toLowerCase();
+        const nameB = (clientes.find(c => c.id === b.clienteId)?.nome || fornecedores.find(f => f.id === b.fornecedorId)?.nomeFantasia || b.metadata?.gempClienteNome || b.metadata?.gempFornecedorNome || b.descricao || '').toLowerCase();
+        return nameB.localeCompare(nameA);
+      }
+      if (sortBy === 'cadastro_desc') {
+        const ca = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const cb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return (isNaN(cb) ? 0 : cb) - (isNaN(ca) ? 0 : ca);
+      }
+      if (sortBy === 'cadastro_asc') {
+        const ca = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const cb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return (isNaN(ca) ? 0 : ca) - (isNaN(cb) ? 0 : cb);
+      }
+      if (sortBy === 'categoria_asc') {
+        return (a.categoria || '').localeCompare(b.categoria || '');
+      }
+      return 0;
+    });
+    return list;
+  }, [filteredTransacoes, sortBy, clientes, fornecedores]);
+
+  // Paginação e limitação da lista exibida
+  const totalItems = sortedTransacoes.length;
+  const isAll = itemsPerPage === 'todos';
+  const numericLimit = isAll ? totalItems : itemsPerPage;
+  const totalPages = isAll ? 1 : Math.max(1, Math.ceil(totalItems / numericLimit));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = isAll ? 0 : (safeCurrentPage - 1) * numericLimit;
+  const endIndex = isAll ? totalItems : Math.min(startIndex + numericLimit, totalItems);
+  const displayedTransacoes = isAll
+    ? sortedTransacoes
+    : sortedTransacoes.slice(startIndex, endIndex);
 
   // KPIs
   const totalRecebidos = filteredTransacoes
@@ -581,6 +696,16 @@ export default function FinanceLancamentos({
 
             <button
               type="button"
+              onClick={() => setIsGempModalOpen(true)}
+              className="h-9 px-3.5 rounded-lg bg-amber-50 border border-amber-300/80 hover:bg-amber-100/80 text-amber-950 flex items-center gap-2 text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+              title="Importar Contas a Receber e Pagar do ERP GEMP (Firebird)"
+            >
+              <Database className="w-3.5 h-3.5 text-amber-700" />
+              <span>Importar GEMP</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setIsImportModalOpen(true)}
               className="h-9 px-3.5 rounded-lg bg-white border border-stone-200/90 hover:bg-stone-50 text-stone-700 flex items-center gap-2 text-xs font-medium transition-colors cursor-pointer shadow-xs"
               title="Importar extrato XML"
@@ -653,7 +778,11 @@ export default function FinanceLancamentos({
           </div>
           <div className="mt-2">
             <div className="text-xl font-bold text-stone-900 tabular-nums">{filteredTransacoes.length}</div>
-            <div className="text-xs text-stone-400 mt-0.5">Transações filtradas na lista</div>
+            <div className="text-xs text-stone-400 mt-0.5">
+              {isAll || filteredTransacoes.length <= (typeof itemsPerPage === 'number' ? itemsPerPage : 0)
+                ? 'Transações filtradas na lista'
+                : `Exibindo ${displayedTransacoes.length} de ${filteredTransacoes.length} registros`}
+            </div>
           </div>
         </div>
       </div>
@@ -696,7 +825,7 @@ export default function FinanceLancamentos({
               <option value="cancelado">Cancelados</option>
             </select>
 
-            <div className="w-48">
+            <div className="w-44">
               <Select
                 value={{ value: clienteFilter, label: clienteFilter === 'todos' ? 'Todos Clientes' : clientes.find(c => c.id === clienteFilter)?.nome || 'Não encontrado' }}
                 onChange={(selected) => setClienteFilter(selected?.value || 'todos')}
@@ -721,32 +850,76 @@ export default function FinanceLancamentos({
                 placeholder="Cliente..."
               />
             </div>
+
+            {/* Ordenar Por */}
+            <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2.5 h-10 shadow-2xs">
+              <ArrowUpDown className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+              <select
+                value={sortBy}
+                onChange={e => handleSortByChange(e.target.value)}
+                className="bg-transparent text-xs font-medium text-stone-700 focus:outline-none cursor-pointer pr-1"
+                title="Ordenar por"
+              >
+                <option value="vencimento_desc">Vencimento (Mais recentes)</option>
+                <option value="vencimento_asc">Vencimento (Mais antigos)</option>
+                <option value="valor_desc">Valor (Maior)</option>
+                <option value="valor_asc">Valor (Menor)</option>
+                <option value="cliente_asc">Cliente / Favorecido (A–Z)</option>
+                <option value="cliente_desc">Cliente / Favorecido (Z–A)</option>
+                <option value="cadastro_desc">Cadastro (Mais recentes)</option>
+                <option value="cadastro_asc">Cadastro (Mais antigos)</option>
+                <option value="categoria_asc">Categoria (A–Z)</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* Linha secundária de filtros: Período e Limpar */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2.5 border-t border-stone-100 text-xs">
-          <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
-            <span className="text-stone-400 font-medium flex items-center gap-1 shrink-0">
-              <Calendar className="w-3.5 h-3.5" />
-              Período:
-            </span>
-            <input
-              type="date"
-              value={dataInicioFilter}
-              onChange={e => setDataInicioFilter(e.target.value)}
-              className="h-8 px-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs font-medium text-stone-700 focus:outline-none focus:border-mx-ink"
-            />
-            <span className="text-stone-400">até</span>
-            <input
-              type="date"
-              value={dataFimFilter}
-              onChange={e => setDataFimFilter(e.target.value)}
-              className="h-8 px-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs font-medium text-stone-700 focus:outline-none focus:border-mx-ink"
-            />
+        {/* Linha secundária de filtros: Período, Limite de Exibição e Limpar */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-2.5 border-t border-stone-100 text-xs">
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <span className="text-stone-400 font-medium flex items-center gap-1 shrink-0">
+                <Calendar className="w-3.5 h-3.5" />
+                Período:
+              </span>
+              <input
+                type="date"
+                value={dataInicioFilter}
+                onChange={e => setDataInicioFilter(e.target.value)}
+                className="h-8 px-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs font-medium text-stone-700 focus:outline-none focus:border-mx-ink"
+              />
+              <span className="text-stone-400">até</span>
+              <input
+                type="date"
+                value={dataFimFilter}
+                onChange={e => setDataFimFilter(e.target.value)}
+                className="h-8 px-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs font-medium text-stone-700 focus:outline-none focus:border-mx-ink"
+              />
+            </div>
+
+            {/* Seletor rápido de quantidade por página */}
+            <div className="flex items-center gap-1.5 pl-0 sm:pl-3 sm:border-l sm:border-stone-200">
+              <span className="text-stone-400 font-medium">Exibir:</span>
+              <div className="inline-flex rounded-lg border border-stone-200 bg-stone-50 p-0.5 shadow-2xs">
+                {([25, 50, 100, 200, 'todos'] as const).map(qty => (
+                  <button
+                    key={String(qty)}
+                    type="button"
+                    onClick={() => handleItemsPerPageChange(qty)}
+                    className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-all cursor-pointer ${
+                      itemsPerPage === qty
+                        ? 'bg-white text-stone-900 shadow-2xs border border-stone-200/80 font-bold'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-white/60'
+                    }`}
+                  >
+                    {qty === 'todos' ? 'Todos' : qty}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {(searchTerm || statusFilter !== 'todos' || tipoFilter !== 'todos' || clienteFilter !== 'todos' || embarcacaoFilter !== 'todos' || dataInicioFilter || dataFimFilter) && (
+          {(searchTerm || statusFilter !== 'todos' || tipoFilter !== 'todos' || clienteFilter !== 'todos' || embarcacaoFilter !== 'todos' || dataInicioFilter || dataFimFilter || sortBy !== 'vencimento_desc' || itemsPerPage !== 50) && (
             <button
               onClick={() => {
                 setSearchTerm('');
@@ -756,6 +929,8 @@ export default function FinanceLancamentos({
                 setEmbarcacaoFilter('todos');
                 setDataInicioFilter('');
                 setDataFimFilter('');
+                setSortBy('vencimento_desc');
+                setItemsPerPage(50);
               }}
               className="h-8 px-2.5 text-xs font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 self-end sm:self-auto"
             >
@@ -772,7 +947,7 @@ export default function FinanceLancamentos({
             <div className="w-8 h-8 border-3 border-mx-ink border-t-transparent rounded-full animate-spin" />
             <p className="font-semibold text-xs">Carregando dados financeiros...</p>
           </div>
-        ) : filteredTransacoes.length === 0 ? (
+        ) : totalItems === 0 ? (
           <div className="p-16 flex flex-col items-center justify-center text-stone-400 gap-2">
             <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-1">
               <Search className="w-5 h-5 text-stone-400" />
@@ -781,123 +956,243 @@ export default function FinanceLancamentos({
             <p className="text-xs text-stone-400 max-w-sm text-center">Tente ajustar os filtros ou pesquisar outro termo.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-stone-50 border-b border-stone-200/80 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
-                <tr>
-                  <th className="py-3 px-4">Cliente / Favorecido</th>
-                  <th className="py-3 px-4">Embarcação</th>
-                  <th className="py-3 px-4">Categoria / Descrição</th>
-                  <th className="py-3 px-4">Vencimento</th>
-                  <th className="py-3 px-4">Valor</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {filteredTransacoes.map((t) => {
-                  const cliente = clientes.find(c => c.id === t.clienteId);
-                  const barco = embarcacoes.find(b => b.id === t.embarcacaoId);
+          <div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-stone-50 border-b border-stone-200/80 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Cliente / Favorecido</th>
+                    <th className="py-3 px-4">Embarcação</th>
+                    <th className="py-3 px-4">Categoria / Descrição</th>
+                    <th className="py-3 px-4">Vencimento</th>
+                    <th className="py-3 px-4">Valor</th>
+                    <th className="py-3 px-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {displayedTransacoes.map((t) => {
+                    const cliente = clientes.find(c => c.id === t.clienteId);
+                    const fornecedor = fornecedores.find(f => f.id === t.fornecedorId);
+                    const barco = embarcacoes.find(b => b.id === t.embarcacaoId);
+                    const meta = typeof t.metadata === 'string'
+                      ? (() => { try { return JSON.parse(t.metadata); } catch { return null; } })()
+                      : t.metadata;
+                    const gempFavNome = meta?.gempClienteNome || meta?.gempFornecedorNome || '';
+                    const gempFavDoc = meta?.gempClienteCpfCnpj || meta?.gempFornecedorCnpj || '';
+                    const gempEmbarcacaoVaga = meta?.gempEmbarcacaoVaga || '';
 
-                  let nomesEmbarcacoes = barco ? barco.nome : '';
-                  if (!nomesEmbarcacoes && cliente) {
-                    const clientBoats: string[] = [];
-                    if (cliente.embarcacaoId) {
-                      const b = embarcacoes.find(x => x.id === cliente.embarcacaoId);
-                      if (b) clientBoats.push(b.nome);
+                    let nomesEmbarcacoes = barco ? barco.nome : '';
+                    if (!nomesEmbarcacoes && cliente) {
+                      const clientBoats: string[] = [];
+                      if (cliente.embarcacaoId) {
+                        const b = embarcacoes.find(x => x.id === cliente.embarcacaoId);
+                        if (b) clientBoats.push(b.nome);
+                      }
+                      if (cliente.embarcacoes?.length) {
+                        cliente.embarcacoes.forEach(cb => {
+                          if (cb.embarcacaoId !== cliente.embarcacaoId) {
+                            const b = embarcacoes.find(x => x.id === cb.embarcacaoId);
+                            if (b) clientBoats.push(b.nome);
+                          }
+                        });
+                      }
+                      nomesEmbarcacoes = clientBoats.join(' / ');
                     }
-                    if (cliente.embarcacoes?.length) {
-                      cliente.embarcacoes.forEach(cb => {
-                        if (cb.embarcacaoId !== cliente.embarcacaoId) {
-                          const b = embarcacoes.find(x => x.id === cb.embarcacaoId);
-                          if (b) clientBoats.push(b.nome);
-                        }
-                      });
+                    if (!nomesEmbarcacoes && gempEmbarcacaoVaga) {
+                      nomesEmbarcacoes = gempEmbarcacaoVaga;
                     }
-                    nomesEmbarcacoes = clientBoats.join(' / ');
-                  }
 
-                  return (
-                    <tr
-                      key={t.id}
-                      onClick={() => setViewingTransaction(t)}
-                      className="hover:bg-stone-50/60 transition-colors cursor-pointer"
-                    >
-                      <td className="py-3 px-4">
-                        {cliente ? (
-                          <div>
-                            <span className="font-semibold text-stone-900 block truncate max-w-[200px]">
-                              {cliente.nome}
-                            </span>
-                            {cliente.cpf && (
-                              <span className="text-[10px] text-stone-400 block font-mono">
-                                {cliente.cpf}
+                    return (
+                      <tr
+                        key={t.id}
+                        onClick={() => setViewingTransaction(t)}
+                        className="hover:bg-stone-50/60 transition-colors cursor-pointer"
+                      >
+                        <td className="py-3 px-4">
+                          {cliente ? (
+                            <div>
+                              <span className="font-semibold text-stone-900 block truncate max-w-[200px]">
+                                {cliente.nome}
                               </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-stone-400 italic">Geral / Não vinculado</span>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-4">
-                        {nomesEmbarcacoes ? (
-                          <span className="font-medium text-[11px] text-stone-700 bg-stone-100 border border-stone-200/60 px-2 py-0.5 rounded-md inline-block truncate max-w-[150px]">
-                            {nomesEmbarcacoes}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-stone-400">-</span>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <p className="font-semibold text-stone-900 text-xs">{t.categoria}</p>
-                        {t.descricao && (
-                          <p className="text-[11px] text-stone-500 truncate max-w-xs">{cleanDescription(t.descricao)}</p>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-stone-800 text-xs mb-1">
-                          {new Date(t.dataVencimento + 'T12:00:00').toLocaleDateString('pt-BR')}
-                        </div>
-                        {getStatusBadge(t)}
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <div className="flex flex-col">
-                          <span className={`font-bold text-sm tabular-nums ${t.tipo === 'receita' ? 'text-stone-900' : 'text-rose-700'}`}>
-                            {t.tipo === 'despesa' && '- '}{formatCurrency(Number(t.valor))}
-                          </span>
-                          {(() => {
-                            const { days, interest } = calculateTransactionInterest(t);
-                            if (days > 0) {
-                              return (
-                                <span className="text-[10px] text-rose-600 font-bold mt-0.5 tabular-nums">
-                                  + {formatCurrency(interest)} ({days}d)
+                              {cliente.cpf && (
+                                <span className="text-[10px] text-stone-400 block font-mono">
+                                  {cliente.cpf}
                                 </span>
-                              );
-                            }
-                            return null;
-                          })()}
-                        </div>
-                      </td>
+                              )}
+                            </div>
+                          ) : fornecedor ? (
+                            <div>
+                              <span className="font-semibold text-stone-900 block truncate max-w-[200px]">
+                                {fornecedor.nomeFantasia || fornecedor.razaoSocial}
+                              </span>
+                              {fornecedor.cnpjCpf && (
+                                <span className="text-[10px] text-stone-400 block font-mono">
+                                  {fornecedor.cnpjCpf}
+                                </span>
+                              )}
+                            </div>
+                          ) : gempFavNome ? (
+                            <div>
+                              <span className="font-semibold text-stone-800 block truncate max-w-[200px]">
+                                {gempFavNome}
+                              </span>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                {gempFavDoc && (
+                                  <span className="text-[10px] text-stone-400 font-mono">
+                                    {gempFavDoc}
+                                  </span>
+                                )}
+                                <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                                  GEMP
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-stone-400 italic">Geral / Não vinculado</span>
+                          )}
+                        </td>
 
-                      <td className="py-3 px-4 text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setViewingTransaction(t)}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer"
-                            title="Visualizar Detalhes"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="py-3 px-4">
+                          {nomesEmbarcacoes ? (
+                            <span className="font-medium text-[11px] text-stone-700 bg-stone-100 border border-stone-200/60 px-2 py-0.5 rounded-md inline-block truncate max-w-[150px]">
+                              {nomesEmbarcacoes}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-stone-400">-</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <p className="font-semibold text-stone-900 text-xs">{t.categoria}</p>
+                          {t.descricao && (
+                            <p className="text-[11px] text-stone-500 truncate max-w-xs">{cleanDescription(t.descricao)}</p>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-stone-800 text-xs mb-1">
+                            {formatDateSafe(t.dataVencimento)}
+                          </div>
+                          {getStatusBadge(t)}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col">
+                            <span className={`font-bold text-sm tabular-nums ${t.tipo === 'receita' ? 'text-stone-900' : 'text-rose-700'}`}>
+                              {t.tipo === 'despesa' && '- '}{formatCurrency(Number(t.valor))}
+                            </span>
+                            {(() => {
+                              const { days, interest } = calculateTransactionInterest(t);
+                              if (days > 0) {
+                                return (
+                                  <span className="text-[10px] text-rose-600 font-bold mt-0.5 tabular-nums">
+                                    + {formatCurrency(interest)} ({days}d)
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 text-right" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setViewingTransaction(t)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer"
+                              title="Visualizar Detalhes"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Barra de Paginação e Controles de Limite */}
+            <div className="px-4 py-3 border-t border-stone-200/80 bg-stone-50/70 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-600">
+              <div className="flex items-center gap-3">
+                <span>
+                  Mostrando <strong className="text-stone-900 font-semibold">{totalItems === 0 ? 0 : startIndex + 1}</strong> a{' '}
+                  <strong className="text-stone-900 font-semibold">{endIndex}</strong> de{' '}
+                  <strong className="text-stone-900 font-semibold">{totalItems}</strong> lançamentos
+                </span>
+
+                {/* Seletor rápido de quantidade por página no rodapé */}
+                <div className="hidden md:flex items-center gap-1.5 pl-3 border-l border-stone-200">
+                  <span className="text-stone-400">Exibir:</span>
+                  <div className="inline-flex rounded-lg border border-stone-200 bg-white p-0.5 shadow-2xs">
+                    {([25, 50, 100, 200, 'todos'] as const).map(qty => (
+                      <button
+                        key={String(qty)}
+                        type="button"
+                        onClick={() => handleItemsPerPageChange(qty)}
+                        className={`px-2 py-0.5 text-[11px] font-semibold rounded transition-all cursor-pointer ${
+                          itemsPerPage === qty
+                            ? 'bg-stone-900 text-white shadow-2xs'
+                            : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                        }`}
+                      >
+                        {qty === 'todos' ? 'Todos' : qty}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Controles de Navegação de Página */}
+              {!isAll && totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={safeCurrentPage === 1}
+                    className="w-7 h-7 flex items-center justify-center rounded-md border border-stone-200 bg-white hover:bg-stone-100 text-stone-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Primeira Página"
+                  >
+                    <ChevronsLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={safeCurrentPage === 1}
+                    className="px-2.5 h-7 flex items-center gap-1 rounded-md border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Página Anterior"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline text-xs">Anterior</span>
+                  </button>
+
+                  <div className="px-2.5 text-xs font-semibold text-stone-700 whitespace-nowrap">
+                    Página <span className="text-stone-900 font-bold">{safeCurrentPage}</span> de <span className="text-stone-900 font-bold">{totalPages}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={safeCurrentPage === totalPages}
+                    className="px-2.5 h-7 flex items-center gap-1 rounded-md border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Próxima Página"
+                  >
+                    <span className="hidden sm:inline text-xs">Próxima</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={safeCurrentPage === totalPages}
+                    className="w-7 h-7 flex items-center justify-center rounded-md border border-stone-200 bg-white hover:bg-stone-100 text-stone-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Última Página"
+                  >
+                    <ChevronsRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -961,6 +1256,16 @@ export default function FinanceLancamentos({
       )}
 
       {/* Modais */}
+      <ImportGempModal
+        isOpen={isGempModalOpen}
+        onClose={() => setIsGempModalOpen(false)}
+        onImportSuccess={() => fetchData()}
+        defaultEmpresa={empresaFiltro}
+        contasBancarias={contasBancarias}
+        planosContas={planosContas}
+        centrosDeCusto={centrosCusto}
+      />
+
       <ImportXMLModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}

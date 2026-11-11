@@ -1967,67 +1967,84 @@ export default function ClientDashboardPage({
 
     return (
       <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pt-0 pb-24">
-        {/* Cartão Estilo Black Card - Vila Náutica Member Card de Alto Padrão */}
-        <div className="bg-gradient-to-br from-[#1c1c22] via-[#0f0f13] to-[#070709] border border-[#B69D74]/35 rounded-[2rem] p-6 sm:p-7 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative overflow-hidden mb-8 group">
-          {/* Textura de reflexo metálico e filigrana */}
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(182,157,116,0.18),transparent_70%)] pointer-events-none" />
-          <div className="absolute top-0 right-0 w-48 h-48 bg-[#B69D74]/10 rounded-full blur-[60px] translate-x-1/4 -translate-y-1/4 pointer-events-none" />
-          
-          {/* Marca d'água da rosa dos ventos em filigrana */}
-          <div className="absolute right-[-20px] bottom-[-20px] w-44 h-44 opacity-5 pointer-events-none text-[#B69D74]">
-            <Compass className="w-full h-full" />
-          </div>
-          
-          <div className="relative z-10 flex flex-col h-full justify-between gap-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#B69D74] to-[#e5d3b3] p-[1px]">
-                  <div className="w-full h-full bg-[#0d0d10] rounded-[11px] flex items-center justify-center">
-                    <Wallet className="w-4 h-4 text-[#B69D74]" />
+        {/* Cartão Financeiro Minimalista de Alto Padrão */}
+        {(() => {
+          const primaryBoat = boats.find(b => 
+            (Array.isArray(client?.embarcacoes) && client.embarcacoes.some((eb: any) => eb?.embarcacaoId === b.id)) ||
+            client?.embarcacaoId === b.id
+          );
+          const userCota = client?.cota || (Array.isArray(client?.embarcacoes) && client.embarcacoes[0]?.cota) || null;
+          const cardRightLabel = userCota 
+            ? { title: 'Cota', value: primaryBoat ? `${getBoatCode(primaryBoat)} · ${userCota}` : userCota }
+            : (primaryBoat ? { title: 'Embarcação', value: getBoatCode(primaryBoat) } : null);
+
+          return (
+            <div className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-[#161619] via-[#0f0f12] to-[#09090b] border border-white/[0.08] p-6 sm:p-7 shadow-[0_20px_50px_rgba(0,0,0,0.6)] mb-6">
+              {/* Brilho ambiente sutil */}
+              <div className="absolute top-0 right-0 w-64 h-32 bg-[#B69D74]/[0.05] rounded-full blur-3xl pointer-events-none" />
+
+              <div className="relative z-10 flex flex-col justify-between gap-6">
+                {/* Cabeçalho do Cartão */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold tracking-[0.22em] uppercase text-[#B69D74]">
+                      Vila Náutica
+                    </span>
+                    <span className="text-white/20 text-xs">·</span>
+                    <span className="text-[11px] tracking-wider text-white/40 font-light">
+                      Member
+                    </span>
+                  </div>
+
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-wide ${
+                    isInadimplente
+                      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isInadimplente ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+                    <span>{isInadimplente ? 'Pendente' : 'Em dia'}</span>
                   </div>
                 </div>
+
+                {/* Saldo / Fatura */}
                 <div>
-                  <span className="block text-[11px] font-semibold text-white tracking-[0.2em] uppercase font-mono">
-                    VILA NÁUTICA
-                  </span>
-                  <span className="block text-[9px] text-[#B69D74] tracking-widest uppercase font-mono">
-                    Member Black Card
-                  </span>
+                  <p className="text-[11px] text-white/40 tracking-wide mb-1 font-normal">
+                    {isInadimplente ? 'Total em aberto' : 'Fatura em aberto'}
+                  </p>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-lg text-white/40 font-light">R$</span>
+                    <h2 className="text-3xl sm:text-4xl font-light text-white tracking-tight">
+                      {totalAberto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </h2>
+                  </div>
+                </div>
+
+                {/* Rodapé do Cartão */}
+                <div className="flex items-end justify-between pt-4 border-t border-white/[0.06]">
+                  <div className="min-w-0 mr-3">
+                    <p className="text-sm font-medium text-white/90 truncate tracking-wide">
+                      {client?.nome}
+                    </p>
+                    <p className="text-[11px] text-[#B69D74] mt-0.5 font-light">
+                      {client?.plano === 'completo' ? 'Plano Completo · 365 Dias' : 'Cotista Titular'}
+                    </p>
+                  </div>
+
+                  {cardRightLabel && (
+                    <div className="shrink-0 text-right">
+                      <span className="text-[10px] text-white/30 uppercase tracking-widest block font-medium">
+                        {cardRightLabel.title}
+                      </span>
+                      <span className="text-xs text-white/70 font-medium">
+                        {cardRightLabel.value}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
-              
-              <div className={`px-3 py-1 rounded-full text-[9px] font-mono font-bold uppercase tracking-widest border backdrop-blur-md ${
-                isInadimplente
-                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
-              }`}>
-                {isInadimplente ? 'Pendente' : 'Situação Regular'}
-              </div>
             </div>
-
-            <div>
-              <p className="text-[10px] uppercase font-mono tracking-widest text-white/40 mb-1">
-                {isInadimplente ? 'Total em Aberto / Regularização' : 'Próxima Fatura / Situação'}
-              </p>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-base text-white/50 font-light font-mono">R$</span>
-                <h2 className="text-3xl sm:text-4xl font-light text-white tracking-tight font-mono">
-                  {totalAberto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </h2>
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between pt-3 border-t border-white/[0.06] text-[10px] uppercase font-mono tracking-wider text-white/40">
-              <div className="truncate mr-2">
-                <span className="text-white/70 block truncate">{client.nome}</span>
-                <span className="text-[9px] text-[#B69D74]">{client.plano === 'completo' ? 'Plano Completo · 365 Dias' : 'Cotista Titular'}</span>
-              </div>
-              <span className="shrink-0 text-white/30 font-mono">
-                COTA #{client.id || '01'}
-              </span>
-            </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Abas Estilo Toggle Pill */}
         <div className="flex p-1 bg-white/5 rounded-2xl mb-6 backdrop-blur-sm border border-white/5">

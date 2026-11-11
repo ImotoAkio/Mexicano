@@ -859,7 +859,7 @@ clientRoutes.get("/financeiro-config", requireClientAuth, async (req, res) => {
 clientRoutes.post("/send-calendar", requireClientAuth, whatsappLimiter, async (req, res) => {
   try {
     const userId = (req as any).user.id;
-    const { base64Image, embarcacaoId, dates, caption } = req.body;
+    const { base64Image, embarcacaoId, dates, caption, portalUrl: customPortalUrl } = req.body;
 
     if (!base64Image || !embarcacaoId) {
       return res.status(400).json({ error: true, message: "Imagem e ID da embarcação são obrigatórios." });
@@ -892,13 +892,56 @@ clientRoutes.post("/send-calendar", requireClientAuth, whatsappLimiter, async (r
       return res.status(500).json({ error: true, message: "Serviço de WhatsApp não configurado no servidor." });
     }
 
+    // Determina o link do portal do cliente (app)
+    let rawAppUrl = customPortalUrl;
+    if (!rawAppUrl || rawAppUrl.includes("localhost") || rawAppUrl.includes("127.0.0.1") || rawAppUrl.includes("tunnelmole")) {
+      try {
+        const dbUrl = await getConfigValue("app_url");
+        if (dbUrl && !dbUrl.includes("localhost") && !dbUrl.includes("127.0.0.1") && !dbUrl.includes("tunnelmole")) {
+          rawAppUrl = dbUrl;
+        } else if (process.env.APP_URL && !process.env.APP_URL.includes("localhost") && !process.env.APP_URL.includes("127.0.0.1") && !process.env.APP_URL.includes("tunnelmole")) {
+          rawAppUrl = process.env.APP_URL;
+        }
+      } catch {}
+    }
+    if (!rawAppUrl || rawAppUrl.includes("localhost") || rawAppUrl.includes("127.0.0.1") || rawAppUrl.includes("tunnelmole")) {
+      rawAppUrl = "https://mexicano.echo.dev.br";
+    }
+    const cleanBaseUrl = rawAppUrl.replace(/\/$/, "");
+    const portalUrl = cleanBaseUrl.endsWith("/portal") ? cleanBaseUrl : `${cleanBaseUrl}/portal`;
+
+    // Monta a legenda informando que foi realizada pelo App e convidando outros cotistas com o link
+    let finalCaption = caption;
+    if (!finalCaption) {
+      let template = "";
+      try {
+        template = (await getConfigValue("whatsapp_client_reserva_template")) || "";
+      } catch {}
+
+      if (!template || !template.trim()) {
+        template = [
+          "📲 *Reserva Realizada via App* 🚤",
+          "👤 Cotista: {cliente}",
+          "🗓️ Data: {data}",
+          "",
+          "👉 Agende pelo App: {link}"
+        ].join("\n");
+      }
+
+      finalCaption = template
+        .replace(/{barco}/g, boat.nome || 'Embarcação')
+        .replace(/{cliente}/g, client.nome || 'Cotista')
+        .replace(/{data}/g, dates || '')
+        .replace(/{link}/g, portalUrl);
+    }
+
     const base64Data = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
 
     const payload = {
       number: boat.whatsappGroupId,
       mediatype: "image",
       mimetype: "image/png",
-      caption: caption || `📅 *Agendamento Confirmado*\n🚤 ${boat.nome || 'Embarcação'}\n👤 Cotista: ${client.nome}\n🗓️ Data: ${dates || ''}`,
+      caption: finalCaption,
       media: base64Data
     };
 

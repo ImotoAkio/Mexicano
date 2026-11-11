@@ -683,6 +683,9 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN notificacaoEnviada TINYINT(1) DEFAULT 0;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN origem_empresa VARCHAR(50) NULL;`);
+    } catch (e) {}
 
     // 8a. ContasBancarias Table
     await connection.query(`
@@ -1351,6 +1354,7 @@ export async function initializeDatabase() {
 
     try {
       await ensureInternalMexicanoClient(connection);
+      await standardizeClientCotasInDatabase(connection);
       await reconcileBoatCotasWithMexicano(connection);
       console.log("✅ Mexicano internal quotas and inventory reconciled for all boats.");
     } catch(mexErr) {
@@ -1698,8 +1702,156 @@ export async function initializeDatabase() {
 let dbCache: { data: any; timestamp: number } | null = null;
 const CACHE_TTL_MS = 15000; // 15 seconds cache
 
+let cachedTransacoesData: { [key: string]: { timestamp: number; data: any[] } } = {};
+let inFlightTransacoesPromises: { [key: string]: Promise<any> | null } = {};
+
+export function invalidateTransacoesCache() {
+  cachedTransacoesData = {};
+  inFlightTransacoesPromises = {};
+}
+
 export function invalidateDbCache() {
   dbCache = null;
+  invalidateTransacoesCache();
+}
+
+// Helper para padronizar códigos de cota (C1, C2, C3...) e migrar legados ('1/4', 'Cota', etc.)
+export function parseExplicitCota(raw: any): string | null {
+  if (raw === undefined || raw === null) return null;
+  const s = String(raw).trim().toUpperCase();
+  if (!s || s.includes('/') || s.includes('%') || s === 'COTA' || s === 'N/A') return null;
+  const m = s.match(/^(?:COTA|C)[\s\-_]*0*(\d+)$/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n > 0 && n <= 64) return `C${n}`;
+  }
+  if (/^0*\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (n > 0 && n <= 64) return `C${n}`;
+  }
+  return null;
+}
+
+/**
+ * Varre os clientes no banco de dados MySQL e padroniza os campos `cota` e `embarcacoes`
+ * para a nomenclatura oficial C1, C2, C3..., eliminando termos legados como "1/4", "Cota", etc.
+ */
+export async function standardizeClientCotasInDatabase(connectionOrPool: any) {
+  try {
+    const [clients]: any = await connectionOrPool.query(
+      "SELECT id, nome, embarcacaoId, cota, embarcacoes, status FROM Clientes"
+    );
+    if (!Array.isArray(clients) || clients.length === 0) return;
+
+    const occupiedByBoat = new Map<string, Set<string>>();
+    const getOccupiedSet = (boatId: string) => {
+      if (!occupiedByBoat.has(boatId)) occupiedByBoat.set(boatId, new Set());
+      return occupiedByBoat.get(boatId)!;
+    };
+
+    // 1ª Passada: registrar cotas explícitas válidas de clientes não inativos e não da entidade mexicana
+    clients.forEach((c: any) => {
+      if (c.status === 'inativo' || c.id === MEXICANO_INTERNAL_CLIENT_ID) return;
+      let ebs: any[] = [];
+      if (c.embarcacoes) {
+        try {
+          ebs = typeof c.embarcacoes === 'string' ? JSON.parse(c.embarcacoes) : c.embarcacoes;
+        } catch {
+          ebs = [];
+        }
+      }
+      if (Array.isArray(ebs) && ebs.length > 0) {
+        ebs.forEach((eb: any) => {
+          if (!eb?.embarcacaoId) return;
+          const exp = parseExplicitCota(eb.cota);
+          if (exp) {
+            getOccupiedSet(eb.embarcacaoId).add(exp);
+          }
+        });
+      } else if (c.embarcacaoId) {
+        const exp = parseExplicitCota(c.cota);
+        if (exp) {
+          getOccupiedSet(c.embarcacaoId).add(exp);
+        }
+      }
+    });
+
+    const allocateNextFreeSlot = (boatId: string): string => {
+      if (!boatId) return 'C1';
+      const set = getOccupiedSet(boatId);
+      let slot = 1;
+      while (set.has(`C${slot}`)) slot++;
+      const code = `C${slot}`;
+      set.add(code);
+      return code;
+    };
+
+    // 2ª Passada: verificar e atualizar clientes com dados legados ou despadronizados
+    for (const c of clients) {
+      if (c.id === MEXICANO_INTERNAL_CLIENT_ID) continue;
+      let ebs: any[] = [];
+      let hadEbs = false;
+      if (c.embarcacoes) {
+        try {
+          ebs = typeof c.embarcacoes === 'string' ? JSON.parse(c.embarcacoes) : c.embarcacoes;
+          hadEbs = Array.isArray(ebs) && ebs.length > 0;
+        } catch {
+          ebs = [];
+        }
+      }
+
+      let changed = false;
+      let newCota = c.cota;
+      let newEbs: any[] = [];
+
+      if (hadEbs) {
+        newEbs = ebs.map((eb: any, idx: number) => {
+          const exp = parseExplicitCota(eb.cota);
+          const normalized = exp || (eb.embarcacaoId ? allocateNextFreeSlot(eb.embarcacaoId) : `C${idx + 1}`);
+          if (normalized !== eb.cota) changed = true;
+          return {
+            ...eb,
+            cota: normalized
+          };
+        });
+        if (newEbs.length > 0 && newCota !== newEbs[0].cota) {
+          newCota = newEbs[0].cota;
+          changed = true;
+        }
+      } else if (c.embarcacaoId) {
+        const exp = parseExplicitCota(c.cota);
+        const normalized = exp || allocateNextFreeSlot(c.embarcacaoId);
+        if (normalized !== c.cota) {
+          newCota = normalized;
+          changed = true;
+        }
+        newEbs = [{
+          embarcacaoId: c.embarcacaoId,
+          cota: newCota,
+          plano: c.plano === 'completo' ? 'completo' : 'normal'
+        }];
+        changed = true;
+      } else if (c.cota) {
+        const exp = parseExplicitCota(c.cota);
+        const normalized = exp || 'C1';
+        if (normalized !== c.cota) {
+          newCota = normalized;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        const ebsJson = newEbs.length > 0 ? JSON.stringify(newEbs) : (c.embarcacoes || null);
+        await connectionOrPool.query(
+          "UPDATE Clientes SET cota = ?, embarcacoes = ? WHERE id = ?",
+          [newCota, ebsJson, c.id]
+        );
+      }
+    }
+    console.log("✅ Clientes cotas standardized in database.");
+  } catch (err) {
+    console.warn("[standardizeClientCotasInDatabase] Warning:", err);
+  }
 }
 
 // Fetch entire database records
@@ -1774,23 +1926,6 @@ export async function pullDatabase(forceFresh = false) {
       });
     }
   });
-
-  // Helper para padronizar códigos de cota (C1, C2, C3...) e migrar legados ('1/4', 'Cota', etc.)
-  const parseExplicitCota = (raw: any): string | null => {
-    if (raw === undefined || raw === null) return null;
-    const s = String(raw).trim().toUpperCase();
-    if (!s || s.includes('/') || s.includes('%') || s === 'COTA' || s === 'N/A') return null;
-    const m = s.match(/^(?:COTA|C)[\s\-_]*0*(\d+)$/i);
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (n > 0 && n <= 64) return `C${n}`;
-    }
-    if (/^0*\d+$/.test(s)) {
-      const n = parseInt(s, 10);
-      if (n > 0 && n <= 64) return `C${n}`;
-    }
-    return null;
-  };
 
   // Parse JSON serializations back to rich arrays/objects
   const parsedClients = (clients as any[]).map(c => {
@@ -2041,6 +2176,27 @@ export async function upsertClient(client: any) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   if (!client || !client.id) throw new Error("Invalid client object: id is required.");
+
+  // Garantir padronização rigorosa da cota (C1, C2...) antes de persistir no banco MySQL
+  let parsedEbs: any[] = [];
+  if (client.embarcacoes) {
+    try {
+      parsedEbs = typeof client.embarcacoes === 'string' ? JSON.parse(client.embarcacoes) : client.embarcacoes;
+    } catch {
+      parsedEbs = [];
+    }
+  }
+
+  if (Array.isArray(parsedEbs) && parsedEbs.length > 0) {
+    client.embarcacoes = parsedEbs.map((eb: any, idx: number) => ({
+      ...eb,
+      cota: parseExplicitCota(eb?.cota) || `C${idx + 1}`
+    }));
+    client.cota = client.embarcacoes[0].cota;
+    client.embarcacaoId = client.embarcacoes[0].embarcacaoId || client.embarcacaoId;
+  } else if (client.cota) {
+    client.cota = parseExplicitCota(client.cota) || 'C1';
+  }
 
   const embarcacoesJson = client.embarcacoes
     ? (typeof client.embarcacoes === 'string' ? client.embarcacoes : JSON.stringify(client.embarcacoes))
@@ -3244,36 +3400,79 @@ export async function deleteClientAuth(clienteId: string) {
 
 // ---------------- Transacoes Financeiras ----------------
 
+let lastOverdueUpdate = 0;
+
 export async function getAllTransacoes(empresa?: string) {
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
-  // Auto-update overdue transactions before fetching
-  const todayStr = new Date().toISOString().split('T')[0];
-  let updateQuery = `
-    UPDATE TransacoesFinanceiras
-    SET status = 'vencido'
-    WHERE status = 'lancado'
-      AND dataVencimento < ?
-      AND dataVencimento != ''
-      AND dataVencimento IS NOT NULL
-  `;
-  const updateParams: any[] = [todayStr];
-  if (empresa) {
-    updateQuery += ` AND empresa = ?`;
-    updateParams.push(empresa);
-  }
-  await currentPool.query(updateQuery, updateParams);
-
-  let selectQuery = "SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC";
-  let selectParams: any[] = [];
-  if (empresa) {
-    selectQuery = "SELECT * FROM TransacoesFinanceiras WHERE (empresa = ? OR ? IS NULL) ORDER BY dataVencimento DESC";
-    selectParams = [empresa, empresa];
+  const cacheKey = empresa || 'all';
+  const now = Date.now();
+  if (cachedTransacoesData[cacheKey] && (now - cachedTransacoesData[cacheKey].timestamp < 15000)) {
+    return cachedTransacoesData[cacheKey].data;
   }
 
-  const [rows] = await currentPool.query(selectQuery, selectParams);
-  return rows;
+  if (inFlightTransacoesPromises[cacheKey]) {
+    return inFlightTransacoesPromises[cacheKey];
+  }
+
+  const runQuery = async () => {
+    try {
+      // Auto-update overdue transactions periodically (at most once every 10 minutes)
+      const nowTime = Date.now();
+      if (nowTime - lastOverdueUpdate > 10 * 60 * 1000) {
+        lastOverdueUpdate = nowTime;
+        try {
+          const todayStr = new Date().toISOString().split('T')[0];
+          await currentPool.query(`
+            UPDATE TransacoesFinanceiras
+            SET status = 'vencido'
+            WHERE status = 'lancado'
+              AND dataVencimento < ?
+              AND dataVencimento != ''
+              AND dataVencimento IS NOT NULL
+          `, [todayStr]);
+        } catch (updateErr) {
+          console.warn("[Auto-update overdue error]:", updateErr);
+        }
+      }
+
+      let selectQuery = "SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC";
+      let selectParams: any[] = [];
+      if (empresa) {
+        selectQuery = "SELECT * FROM TransacoesFinanceiras WHERE (empresa = ? OR ? IS NULL) ORDER BY dataVencimento DESC";
+        selectParams = [empresa, empresa];
+      }
+
+      const [rows] = await currentPool.query(selectQuery, selectParams);
+      const parsed = (rows as any[]).map((r) => {
+        let parsedMeta = r.metadata;
+        if (typeof parsedMeta === "string") {
+          try {
+            parsedMeta = JSON.parse(parsedMeta);
+          } catch {
+            parsedMeta = null;
+          }
+        }
+        return {
+          ...r,
+          metadata: parsedMeta,
+        };
+      });
+
+      cachedTransacoesData[cacheKey] = {
+        timestamp: Date.now(),
+        data: parsed
+      };
+
+      return parsed;
+    } finally {
+      inFlightTransacoesPromises[cacheKey] = null;
+    }
+  };
+
+  inFlightTransacoesPromises[cacheKey] = runQuery();
+  return inFlightTransacoesPromises[cacheKey];
 }
 
 export async function upsertTransacao(t: any, connection?: any) {
@@ -3324,6 +3523,7 @@ export async function upsertTransacao(t: any, connection?: any) {
   if (t.clienteId) {
     await syncClientFinancialStatus(t.clienteId);
   }
+  invalidateTransacoesCache();
 }
 
 export async function deleteTransacao(id: string) {
@@ -3341,6 +3541,7 @@ export async function deleteTransacao(id: string) {
   if (clienteId) {
     await syncClientFinancialStatus(clienteId);
   }
+  invalidateTransacoesCache();
 }
 
 export async function deleteAllTransacoes() {
@@ -3353,6 +3554,7 @@ export async function deleteAllTransacoes() {
   for (const c of clients as any[]) {
     await syncClientFinancialStatus(c.id);
   }
+  invalidateTransacoesCache();
 }
 
 export async function deleteTransacoesByClientIds(clientIds: string[]) {

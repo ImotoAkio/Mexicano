@@ -35,7 +35,11 @@ export default function FinanceDashboardPage({
       if (!silent) setLoading(true);
       setIsRefreshing(true);
       const token = localStorage.getItem('admin_token') || localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
-      if (!token) return;
+      if (!token) {
+        setLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
 
       const [resTrans, resPlanos] = await Promise.all([
         fetch('/api/financeiro/transacoes', { headers: { Authorization: `Bearer ${token}` } }),

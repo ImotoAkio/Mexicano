@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar, Anchor, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
+import { X, Calendar, Anchor, CheckCircle2, AlertTriangle, FileText, MessageSquare } from 'lucide-react';
 import { createGoogleCalendarEvent, CalendarSyncResult } from '../googleCalendar';
 import { getBoatCode } from '../utils/boatUtils';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
@@ -92,8 +92,12 @@ export default function ClientReservationModal({
   const handleWhatsAppExport = async (base64: string, boat: any) => {
     setWhatsappStatus('sending');
     try {
-      const clientName = getFirstTwoNames(client.nome);
       const datesFormatted = formatDateBR(dateValue);
+
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const portalUrl = (!origin || origin.includes('localhost') || origin.includes('127.0.0.1'))
+        ? 'https://mexicano.echo.dev.br/portal'
+        : `${origin}/portal`;
 
       const token = clientToken || localStorage.getItem('client_token') || (window as any).__CLIENT_TOKEN__;
       const res = await fetch('/api/client/send-calendar', {
@@ -105,7 +109,8 @@ export default function ClientReservationModal({
         body: JSON.stringify({ 
           base64Image: base64, 
           embarcacaoId: boat.id,
-          dates: datesFormatted
+          dates: datesFormatted,
+          portalUrl
         })
       });
       if (res.ok) {
@@ -263,6 +268,28 @@ export default function ClientReservationModal({
               <p className="text-sm text-white/60 max-w-sm mx-auto leading-relaxed">
                 A embarcação <strong className="text-white font-medium">{getBoatCode(b)}</strong> foi agendada para o dia <strong className="text-[#B69D74]">{formatDateBR(dateValue)}</strong>.
               </p>
+
+              {/* Status do envio ao grupo de WhatsApp */}
+              <div className="pt-2 flex justify-center">
+                {whatsappStatus === 'sending' && (
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Notificando grupo do WhatsApp da embarcação...</span>
+                  </div>
+                )}
+                {whatsappStatus === 'sent' && (
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Notificação enviada ao grupo do WhatsApp com o link do app!</span>
+                  </div>
+                )}
+                {whatsappStatus === 'error' && (
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Reserva salva! Grupo de WhatsApp não notificado (serviço indisponível ou sem grupo vinculado).</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 mt-8">

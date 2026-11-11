@@ -154,7 +154,7 @@ router.post("/boletos/match-clients", requireAdminAuth, async (req, res) => {
 
 router.post("/boletos/send", requireAdminAuth, whatsappLimiter, async (req, res) => {
   try {
-    const { instanceName, boletos } = req.body;
+    const { instanceName, boletos, simulateTyping = true } = req.body;
     // boletos = [{ clientId, number, text, localPath, fileName }]
     
     if (!instanceName || !boletos || !Array.isArray(boletos)) {
@@ -165,22 +165,48 @@ router.post("/boletos/send", requireAdminAuth, whatsappLimiter, async (req, res)
     const apiKey = process.env.EVOLUTION_API_KEY;
 
     if (!apiUrl || !apiKey) {
-      return res.status(500).json({ error: true, message: "Evolution API not configured" });
+      return res.status(500).json({ error: true, message: "Evolution API não configurada no servidor." });
     }
 
     const results = [];
 
-    for (const boleto of boletos) {
+    for (let i = 0; i < boletos.length; i++) {
+      const boleto = boletos[i];
       try {
-        let cleanedNumber = boleto.number.replace(/\D/g, "");
+        let cleanedNumber = String(boleto.number || "").replace(/\D/g, "");
         if (cleanedNumber.length >= 10 && cleanedNumber.length <= 11 && !cleanedNumber.startsWith("55")) {
           cleanedNumber = `55${cleanedNumber}`;
+        }
+
+        if (cleanedNumber.length < 10) {
+          results.push({ clientId: boleto.clientId, status: 'error', error: 'Número de telefone inválido' });
+          continue;
         }
         
         // Read file
         if (!fs.existsSync(boleto.localPath)) {
-          results.push({ clientId: boleto.clientId, status: 'error', error: 'Arquivo não encontrado' });
+          results.push({ clientId: boleto.clientId, status: 'error', error: 'Arquivo do boleto não encontrado no servidor' });
           continue;
+        }
+
+        // Anti-block: simulate human typing state (composing) via Evolution API
+        if (simulateTyping) {
+          try {
+            await fetch(`${apiUrl}/chat/sendPresence/${instanceName}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "apikey": apiKey },
+              body: JSON.stringify({
+                number: cleanedNumber,
+                presence: "composing",
+                delay: 1500
+              }),
+              signal: AbortSignal.timeout(3500)
+            });
+            // Small pause so WhatsApp registers typing presence on the network
+            await new Promise(r => setTimeout(r, 1000));
+          } catch (presenceErr) {
+            // Presence is best-effort, do not halt send if it fails
+          }
         }
         
         const fileBuffer = fs.readFileSync(boleto.localPath);
@@ -199,7 +225,7 @@ router.post("/boletos/send", requireAdminAuth, whatsappLimiter, async (req, res)
           method: "POST",
           headers: { "Content-Type": "application/json", "apikey": apiKey },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(15000)
+          signal: AbortSignal.timeout(25000)
         });
         
         if (!response.ok) {
@@ -207,19 +233,23 @@ router.post("/boletos/send", requireAdminAuth, whatsappLimiter, async (req, res)
           results.push({ clientId: boleto.clientId, status: 'error', error: errorText });
         } else {
           results.push({ clientId: boleto.clientId, status: 'success' });
-          // Cleanup file after successful send
+          // Cleanup temporary file after successful send
           try {
-            fs.unlinkSync(boleto.localPath);
+            if (fs.existsSync(boleto.localPath)) {
+              fs.unlinkSync(boleto.localPath);
+            }
           } catch (e) {
             console.error("Erro ao deletar boleto temporário:", e);
           }
         }
         
-        // Wait 2 seconds before sending next (rate limiting)
-        await new Promise(r => setTimeout(r, 2000));
+        // If sent in a backend multi-batch, apply a baseline delay between items
+        if (boletos.length > 1 && i < boletos.length - 1) {
+          await new Promise(r => setTimeout(r, 3000));
+        }
         
       } catch (err: any) {
-        results.push({ clientId: boleto.clientId, status: 'error', error: err.message });
+        results.push({ clientId: boleto.clientId, status: 'error', error: err.message || 'Falha no disparo' });
       }
     }
 

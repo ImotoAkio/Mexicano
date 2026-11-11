@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User, Ship, Building2, Plus, X, Check, Loader2, FileText, Compass, MapPin, Lock, AlertTriangle, ChevronRight } from 'lucide-react';
 import { clientDB, boatDB } from '../db';
 import { Cliente, Embarcacao } from '../types';
+import {
+  normalizeCotaCode,
+  getBoatCotaOccupancyMap,
+  getBoatCotasList,
+  getBoatTotalCotas
+} from '../utils/cotaUtils';
 
 interface ClientModalProps {
   isOpen: boolean;
@@ -64,6 +70,39 @@ export default function ClientModal({
       return !emps.includes('MARINA');
     })()
   );
+
+  // Lista de outros clientes para controle de cotas ocupadas
+  const otherClients = useMemo(() => {
+    return clientDB.getAll().filter(c => c.id !== editingClient?.id);
+  }, [editingClient, isOpen]);
+
+  // Helper para encontrar a próxima cota livre considerando os outros clientes ativos + as demais cotas já adicionadas neste formulário
+  const findNextFreeCotaForBoat = (
+    boatId: string,
+    currentList: Array<{ embarcacaoId: string; cota: string; [key: string]: any }>,
+    ignoreIndex?: number
+  ): string => {
+    if (!boatId) return 'C1';
+    const allClients = clientDB.getAll().filter(c => c.id !== editingClient?.id);
+    const boatObj = boats.find(b => b.id === boatId);
+    const occupiedMap = getBoatCotaOccupancyMap(boatId, allClients, boatObj);
+
+    const usedInForm = new Set<string>();
+    currentList.forEach((it, idx) => {
+      if (idx !== ignoreIndex && it.embarcacaoId === boatId && it.cota) {
+        usedInForm.add(normalizeCotaCode(it.cota, 1));
+      }
+    });
+
+    const total = getBoatTotalCotas(boatObj, occupiedMap.size + usedInForm.size);
+    for (let i = 1; i <= total; i++) {
+      const code = `C${i}`;
+      if (!occupiedMap.has(code) && !usedInForm.has(code)) {
+        return code;
+      }
+    }
+    return `C${total + 1}`;
+  };
   
   // Form States
   const [name, setName] = useState('');
@@ -233,9 +272,9 @@ export default function ClientModal({
         setName(editingClient.nome || '');
         setStatus(editingClient.status || 'ativo');
         if (editingClient.embarcacoes && editingClient.embarcacoes.length > 0) {
-          setClientBoats(editingClient.embarcacoes.map(eb => ({
+          setClientBoats(editingClient.embarcacoes.map((eb, idx) => ({
             embarcacaoId: eb.embarcacaoId || '',
-            cota: eb.cota || '',
+            cota: normalizeCotaCode(eb.cota, idx + 1),
             plano: eb.plano || editingClient.plano || 'normal',
             acessorios: eb.acessorios || {
               tenda: editingClient.acessorios?.tenda || false,
@@ -248,7 +287,7 @@ export default function ClientModal({
         } else if (editingClient.embarcacaoId) {
           setClientBoats([{
             embarcacaoId: editingClient.embarcacaoId || '',
-            cota: editingClient.cota || '',
+            cota: normalizeCotaCode(editingClient.cota, 1),
             plano: editingClient.plano || 'normal',
             acessorios: editingClient.acessorios || undefined
           }]);
@@ -289,11 +328,15 @@ export default function ClientModal({
 
         if (isMarinaUser) {
           const marinaBoats = (propBoats && propBoats.length > 0 ? propBoats : boatDB.getAll()).filter(isBoatMarina);
-          setClientBoats([{ embarcacaoId: marinaBoats[0]?.id || '', cota: '', plano: 'normal' }]);
+          const defaultBoatId = marinaBoats[0]?.id || '';
+          const nextFree = defaultBoatId ? findNextFreeCotaForBoat(defaultBoatId, []) : 'C1';
+          setClientBoats([{ embarcacaoId: defaultBoatId, cota: nextFree, plano: 'normal' }]);
           setEmpresas(['MARINA']);
         } else {
           const availableBoats = propBoats && propBoats.length > 0 ? propBoats : boatDB.getAll();
-          setClientBoats([{ embarcacaoId: availableBoats[0]?.id || '', cota: '', plano: 'normal' }]);
+          const defaultBoatId = availableBoats[0]?.id || '';
+          const nextFree = defaultBoatId ? findNextFreeCotaForBoat(defaultBoatId, []) : 'C1';
+          setClientBoats([{ embarcacaoId: defaultBoatId, cota: nextFree, plano: 'normal' }]);
           setEmpresas(defaultEmpresas && defaultEmpresas.length > 0 ? defaultEmpresas : ['VALE']);
         }
 
@@ -383,13 +426,47 @@ export default function ClientModal({
     
     const validBoats = clientBoats.filter(cb => cb.embarcacaoId);
     if (validBoats.length > 0 && validBoats.some(cb => !cb.cota.trim())) {
-      showToast('Informe o número da cota para todas as embarcações selecionadas.', 'error');
+      showToast('Selecione uma cota válida para todas as embarcações selecionadas.', 'error');
       setActiveTab('veiculos');
       return;
     }
 
+    // Validar conflitos e duplicidades de cotas
+    const otherActiveClients = clientDB.getAll().filter(c => c.id !== (editingId || editingClient?.id));
+    const seenPairs = new Set<string>();
+
+    for (let i = 0; i < validBoats.length; i++) {
+      const item = validBoats[i];
+      const normCode = normalizeCotaCode(item.cota, i + 1);
+      const pairKey = `${item.embarcacaoId}::${normCode}`;
+      const boatObj = boats.find(b => b.id === item.embarcacaoId);
+      const boatLabel = boatObj?.nome || 'Embarcação';
+
+      if (seenPairs.has(pairKey)) {
+        showToast(`A cota ${normCode} da embarcação ${boatLabel} foi selecionada mais de uma vez para este cliente.`, 'error');
+        setActiveTab('veiculos');
+        return;
+      }
+      seenPairs.add(pairKey);
+
+      const occupiedMap = getBoatCotaOccupancyMap(item.embarcacaoId, otherActiveClients, boatObj);
+      const occupant = occupiedMap.get(normCode);
+      if (occupant && occupant.clienteId !== (editingId || editingClient?.id)) {
+        showToast(`A cota ${normCode} (${boatLabel}) já pertence ao cotista ${occupant.clienteNome}.`, 'error');
+        setActiveTab('veiculos');
+        return;
+      }
+    }
+
     try {
-      const primaryBoat = validBoats[0];
+      const normalizedCotasList = validBoats.map((cb, idx) => ({
+        embarcacaoId: cb.embarcacaoId,
+        cota: normalizeCotaCode(cb.cota, idx + 1),
+        plano: cb.plano || 'normal',
+        acessorios: boats.find(b => b.id === cb.embarcacaoId)?.tipo === 'lancha' ? cb.acessorios : undefined
+      }));
+
+      const primaryBoat = normalizedCotasList[0];
       let saved: Cliente;
 
       const finalEmpresas = isMarinaUser
@@ -399,13 +476,8 @@ export default function ClientModal({
       const clientDataPayload = {
         nome: name.toUpperCase(),
         embarcacaoId: primaryBoat?.embarcacaoId || '',
-        cota: primaryBoat?.cota?.toUpperCase() || '',
-        embarcacoes: validBoats.map(cb => ({
-          embarcacaoId: cb.embarcacaoId,
-          cota: cb.cota.toUpperCase(),
-          plano: cb.plano || 'normal',
-          acessorios: boats.find(b => b.id === cb.embarcacaoId)?.tipo === 'lancha' ? cb.acessorios : undefined
-        })),
+        cota: primaryBoat?.cota || '',
+        embarcacoes: normalizedCotasList,
         email,
         telefone: phone,
         cpf,
@@ -800,7 +872,11 @@ export default function ClientModal({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setClientBoats([...clientBoats, { embarcacaoId: selectableBoats[0]?.id || '', cota: '', plano: 'normal' }])}
+                    onClick={() => {
+                      const defaultBoatId = selectableBoats[0]?.id || '';
+                      const nextFree = defaultBoatId ? findNextFreeCotaForBoat(defaultBoatId, clientBoats) : 'C1';
+                      setClientBoats([...clientBoats, { embarcacaoId: defaultBoatId, cota: nextFree, plano: 'normal' }]);
+                    }}
                     disabled={Boolean(isValeReadOnly)}
                     className="inline-flex items-center text-xs font-semibold text-blue-700 bg-blue-50/80 hover:bg-blue-100 border border-blue-200/70 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -845,51 +921,125 @@ export default function ClientModal({
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                              Embarcação *
+                        {/* Seleção da Embarcação */}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                            Embarcação *
+                          </label>
+                          <select
+                            value={cb.embarcacaoId}
+                            disabled={Boolean(isValeReadOnly)}
+                            onChange={(e) => {
+                              const newBoatId = e.target.value;
+                              const nextFree = newBoatId ? findNextFreeCotaForBoat(newBoatId, clientBoats, idx) : '';
+                              const newList = [...clientBoats];
+                              newList[idx].embarcacaoId = newBoatId;
+                              newList[idx].cota = nextFree;
+                              setClientBoats(newList);
+                            }}
+                            className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+                          >
+                            <option value="">Selecione uma embarcação...</option>
+                            {[...selectableBoats].sort((a, b) => a.nome.localeCompare(b.nome)).map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.nome} ({b.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
+                              </option>
+                            ))}
+                          </select>
+                          {selectableBoats.length === 0 && (
+                            <p className="text-[11px] text-amber-700 mt-1">
+                              Nenhuma embarcação vinculada à Marina Club encontrada.
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Seleção Padronizada da Cota (C1..CN) */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-medium text-slate-700">
+                              Identificação da Cota Padronizada *
                             </label>
-                            <select
-                              value={cb.embarcacaoId}
-                              disabled={Boolean(isValeReadOnly)}
-                              onChange={(e) => {
-                                const newList = [...clientBoats];
-                                newList[idx].embarcacaoId = e.target.value;
-                                setClientBoats(newList);
-                              }}
-                              className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
-                            >
-                              <option value="">Selecione uma embarcação...</option>
-                              {[...selectableBoats].sort((a, b) => a.nome.localeCompare(b.nome)).map(b => (
-                                <option key={b.id} value={b.id}>
-                                  {b.nome} ({b.tipo === 'jet' ? 'Jet Ski' : 'Lancha'})
-                                </option>
-                              ))}
-                            </select>
-                            {selectableBoats.length === 0 && (
-                              <p className="text-[11px] text-amber-700 mt-1">
-                                Nenhuma embarcação vinculada à Marina Club encontrada.
-                              </p>
-                            )}
+                            <span className="text-[10px] text-slate-400">
+                              {cb.embarcacaoId ? 'Clique em uma cota disponível' : 'Selecione uma embarcação primeiro'}
+                            </span>
                           </div>
 
-                          <div>
-                            <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                              Identificação da Cota *
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="Ex: C1, C3"
-                              value={cb.cota}
-                              onChange={(e) => {
-                                const newList = [...clientBoats];
-                                newList[idx].cota = e.target.value;
-                                setClientBoats(newList);
-                              }}
-                              className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-mono uppercase focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            />
-                          </div>
+                          {!cb.embarcacaoId ? (
+                            <div className="p-3 bg-slate-100/60 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-500">
+                              Escolha uma embarcação acima para visualizar as cotas disponíveis.
+                            </div>
+                          ) : (
+                            (() => {
+                              const boatObj = boats.find(b => b.id === cb.embarcacaoId);
+                              const occMap = getBoatCotaOccupancyMap(cb.embarcacaoId, otherClients, boatObj);
+                              const currentNorm = normalizeCotaCode(cb.cota, idx + 1);
+                              const currentSlotNum = parseInt(currentNorm.replace(/\D/g, ''), 10) || 0;
+                              const neededTotal = Math.max(occMap.size, currentSlotNum);
+                              const slots = getBoatCotasList(boatObj, neededTotal);
+
+                              return (
+                                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                                  {slots.map(slot => {
+                                    const occ = occMap.get(slot);
+                                    const occupiedByOtherClient = !!(occ && occ.clienteId !== editingClient?.id);
+                                    const usedInOtherRow = clientBoats.some(
+                                      (other, otherIdx) =>
+                                        otherIdx !== idx &&
+                                        other.embarcacaoId &&
+                                        other.embarcacaoId === cb.embarcacaoId &&
+                                        normalizeCotaCode(other.cota, otherIdx + 1) === slot
+                                    );
+                                    const isSelected = currentNorm === slot;
+                                    const isDisabled = Boolean(isValeReadOnly) || occupiedByOtherClient || usedInOtherRow;
+
+                                    return (
+                                      <button
+                                        key={slot}
+                                        type="button"
+                                        disabled={isDisabled}
+                                        onClick={() => {
+                                          const newList = [...clientBoats];
+                                          newList[idx].cota = slot;
+                                          setClientBoats(newList);
+                                        }}
+                                        title={
+                                          occupiedByOtherClient
+                                            ? `Ocupada por ${occ?.clienteNome}`
+                                            : usedInOtherRow
+                                            ? 'Já selecionada em outra cota deste cliente'
+                                            : `Selecionar cota ${slot}`
+                                        }
+                                        className={`py-2 px-1.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center transition-all tabular-nums ${
+                                          isSelected
+                                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs ring-2 ring-blue-500/20 cursor-pointer'
+                                            : isDisabled
+                                            ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-75'
+                                            : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50/60 hover:border-blue-300 cursor-pointer'
+                                        }`}
+                                      >
+                                        <span className="font-mono">{slot}</span>
+                                        <span
+                                          className={`text-[9px] font-medium truncate max-w-full ${
+                                            isSelected
+                                              ? 'text-blue-100'
+                                              : isDisabled
+                                              ? 'text-slate-400'
+                                              : 'text-emerald-600'
+                                          }`}
+                                        >
+                                          {occupiedByOtherClient
+                                            ? 'Ocupada'
+                                            : usedInOtherRow
+                                            ? 'Em uso'
+                                            : 'Livre'}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()
+                          )}
                         </div>
 
                         {/* Plano de Acesso Semanal */}

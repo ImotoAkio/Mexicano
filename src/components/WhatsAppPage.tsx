@@ -71,9 +71,24 @@ const BLOQUEIO_VARIATIONS_VESPERA = [
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const getTodayDateStr = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const isTransactionOverdue = (t: TransacaoFinanceira): boolean => {
+  if (t.status === 'pago' || t.status === 'cancelado') return false;
+  if (t.status === 'vencido') return true;
+  if (!t.dataVencimento) return false;
+  return t.dataVencimento < getTodayDateStr();
+};
+
 const calculateTransactionInterest = (t: TransacaoFinanceira) => {
   const originalVal = Number(t.valor) || 0;
-  if (t.status === 'pago' || !t.dataVencimento) {
+  if (t.status === 'pago' || t.status === 'cancelado' || !t.dataVencimento) {
     return { daysOverdue: 0, interest: 0, total: originalVal };
   }
   const [y, m, d] = t.dataVencimento.split('-').map(Number);
@@ -86,13 +101,14 @@ const calculateTransactionInterest = (t: TransacaoFinanceira) => {
   const diffTime = today.getTime() - dueDate.getTime();
   const daysOverdue = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-  if (daysOverdue <= 0) {
+  if (daysOverdue <= 0 && t.status !== 'vencido') {
     return { daysOverdue: 0, interest: 0, total: originalVal };
   }
 
+  const effectiveDays = Math.max(daysOverdue, 0);
   const ratePerDay = 0.0007333; // 0.07333% ao dia (~2.2% ao mes)
-  const interest = originalVal * ratePerDay * daysOverdue;
-  return { daysOverdue, interest, total: originalVal + interest };
+  const interest = originalVal * ratePerDay * effectiveDays;
+  return { daysOverdue: effectiveDays, interest, total: originalVal + interest };
 };
 
 export default function WhatsAppPage() {
@@ -115,7 +131,8 @@ export default function WhatsAppPage() {
       'whatsapp_bloqueio_template_vespera',
       'whatsapp_bloqueio_template_dia',
       'whatsapp_bloqueio_counter',
-      'whatsapp_cal_template'
+      'whatsapp_cal_template',
+      'whatsapp_client_reserva_template'
     ].join(',');
 
     fetch(`/api/config?chaves=${keys}`, { headers })
@@ -152,6 +169,10 @@ export default function WhatsAppPage() {
             setCalMessageTemplate(data.configs.whatsapp_cal_template);
             localStorage.setItem('whatsapp_cal_template', data.configs.whatsapp_cal_template);
           }
+          if (data.configs.whatsapp_client_reserva_template) {
+            setClientReservaTemplate(data.configs.whatsapp_client_reserva_template);
+            localStorage.setItem('whatsapp_client_reserva_template', data.configs.whatsapp_client_reserva_template);
+          }
         }
       })
       .catch(console.warn);
@@ -182,6 +203,25 @@ export default function WhatsAppPage() {
     // Persist to centralized database
     const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
     fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_conf_template2: val }) }).catch(console.warn);
+  };
+
+  const defaultClientReservaTemplate = [
+    "📲 *Reserva Realizada via App* 🚤",
+    "👤 Cotista: {cliente}",
+    "🗓️ Data: {data}",
+    "",
+    "👉 Agende pelo App: {link}"
+  ].join("\n");
+
+  const [clientReservaTemplate, setClientReservaTemplate] = useState(() => {
+    return localStorage.getItem('whatsapp_client_reserva_template') || defaultClientReservaTemplate;
+  });
+
+  const handleSaveClientReservaTemplate = (val: string) => {
+    setClientReservaTemplate(val);
+    localStorage.setItem('whatsapp_client_reserva_template', val);
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    fetch('/api/config', { method: 'POST', headers, body: JSON.stringify({ whatsapp_client_reserva_template: val }) }).catch(console.warn);
   };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -387,14 +427,12 @@ export default function WhatsAppPage() {
   const generateExtratoText = (clientId: string): string => {
     const client = clientDB.getById(clientId);
     if (!client) return '';
-    const unpaid = transacoes.filter(t => t.clienteId === clientId && t.status !== 'pago' && t.status !== 'cancelado');
+    const unpaid = transacoes.filter(t => t.clienteId === clientId && isTransactionOverdue(t));
     if (unpaid.length === 0) {
-      return `Olá, *${formatFirstName(client.nome)}*! Tudo bem? ⚓\n\nVerificamos em nosso sistema e seu cadastro está 100% regularizado, sem nenhuma pendência financeira em aberto.\n\nQualquer dúvida, estamos à disposição! 👍`;
+      return `Olá, *${formatFirstName(client.nome)}*! Tudo bem? ⚓\n\nVerificamos em nosso sistema e seu cadastro está 100% regularizado, sem nenhum débito vencido em aberto.\n\nQualquer dúvida, estamos à disposição! 👍`;
     }
     let text = `Olá, *${formatFirstName(client.nome)}*! Tudo bem? ⚓\n\n`;
-    text += `Constam em nosso sistema as seguintes pendências financeiras vinculadas ao seu cadastro:
-
-`;
+    text += `Constam em nosso sistema as seguintes pendências financeiras vencidas vinculadas ao seu cadastro:\n\n`;
     let totalGeral = 0;
     unpaid.forEach((t, i) => {
       const { interest, total } = calculateTransactionInterest(t);
@@ -402,30 +440,18 @@ export default function WhatsAppPage() {
       const catName = t.categoria ? t.categoria.replace('Servi??o', 'Serviço').replace('??', 'ç') : 'Lançamento';
       const desc = t.descricao ? ` - ${t.descricao}` : '';
       const venc = t.dataVencimento ? t.dataVencimento.split('-').reverse().join('/') : '-';
-      text += `🔸 *${i+1}. ${catName}*${desc}
-`;
-      text += `Vencimento: ${venc}
-`;
+      text += `🔸 *${i+1}. ${catName}*${desc}\n`;
+      text += `Vencimento: ${venc} (VENCIDO)\n`;
       text += `Valor Orig.: R$ ${Number(t.valor).toFixed(2).replace('.', ',')}`;
       if (interest > 0) {
         text += ` | Juros/Atraso: R$ ${interest.toFixed(2).replace('.', ',')}`;
       }
-      text += `
-*_Total: R$ ${total.toFixed(2).replace('.', ',')}_*
-
-`;
+      text += `\n*_Total: R$ ${total.toFixed(2).replace('.', ',')}_*\n\n`;
     });
     
-    text += `*Total Geral Pendente: R$ ${totalGeral.toFixed(2).replace('.', ',')}*
-
-`;
-    text += `⚠ Sua embarcação/reserva se encontra bloqueada até a regularização.
-
-`;
-    text += `Para efetuar o pagamento, utilize a nossa chave PIX:
-[ INSERIR CHAVE AQUI ]
-
-`;
+    text += `*Total Geral Vencido: R$ ${totalGeral.toFixed(2).replace('.', ',')}*\n\n`;
+    text += `⚠ Sua embarcação/reserva se encontra bloqueada até a regularização.\n\n`;
+    text += `Para efetuar o pagamento, utilize a nossa chave PIX:\n[ INSERIR CHAVE AQUI ]\n\n`;
     text += `Por favor, nos envie o comprovante assim que realizar o pagamento para liberarmos o seu acesso no sistema! 👍`;
     return text;
   };
@@ -1549,6 +1575,28 @@ const handleToggleSelectClient = (id: string) => {
                   <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{barco}'}</code> (Código da embarcação, ex: M18)</span>
                   <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{quando}'}</code> (Dia relativo, ex: hoje / amanhã / no dia 03/07)</span>
                 </div>
+
+                <div className="md:col-span-2 flex flex-col space-y-1.5 pt-3 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <span>📲 Modelo: Reserva Realizada pelo App (Enviada ao Grupo do Barco)</span>
+                    </label>
+                  </div>
+                  <textarea
+                    value={clientReservaTemplate}
+                    onChange={e => handleSaveClientReservaTemplate(e.target.value)}
+                    rows={5}
+                    className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-sans"
+                    placeholder="Mensagem com o link do app para convidar cotistas..."
+                  />
+                  <div className="text-[10px] text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
+                    <span className="font-bold text-slate-700">Variáveis:</span>
+                    <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{barco}'}</code> (Nome/Código do barco)</span>
+                    <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{cliente}'}</code> (Nome do cotista)</span>
+                    <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{data}'}</code> (Data agendada)</span>
+                    <span><code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold">{'{link}'}</code> (Link do Portal do Cliente)</span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -2494,13 +2542,13 @@ const handleToggleSelectClient = (id: string) => {
                   <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs divide-y divide-slate-100 max-h-[400px] overflow-y-auto subtle-scrollbar">
                     {clientDB.getAll()
                       .filter(c =>
-                        (!extratoSearchQuery ? transacoes.some(t => t.clienteId === c.id && t.status !== 'pago' && t.status !== 'cancelado') : true) &&
+                        (!extratoSearchQuery ? transacoes.some(t => t.clienteId === c.id && isTransactionOverdue(t)) : true) &&
                         (c.nome.toLowerCase().includes(extratoSearchQuery.toLowerCase()) ||
                         (c.telefone && c.telefone.includes(extratoSearchQuery)))
                       )
                       .slice(0, extratoSearchQuery ? 50 : 20)
                       .map(client => {
-                        const unpaid = transacoes.filter(t => t.clienteId === client.id && t.status !== 'pago' && t.status !== 'cancelado');
+                        const unpaid = transacoes.filter(t => t.clienteId === client.id && isTransactionOverdue(t));
                         if (!extratoSearchQuery && unpaid.length === 0) return null;
 
                         const totalDebt = unpaid.reduce((acc, t) => {
@@ -2892,7 +2940,7 @@ const handleToggleSelectClient = (id: string) => {
       <div className="fixed -left-[9999px] top-0 pointer-events-none" aria-hidden="true">
         {(() => {
           const renderInvoiceCard = (captureId: string, client: Cliente) => {
-            const clientUnpaid = transacoes.filter(t => t.clienteId === client.id && t.status !== 'pago' && t.status !== 'cancelado');
+            const clientUnpaid = transacoes.filter(t => t.clienteId === client.id && isTransactionOverdue(t));
             const totalGeral = clientUnpaid.reduce((acc, t) => {
               const { total } = calculateTransactionInterest(t);
               return acc + total;

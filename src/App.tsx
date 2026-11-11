@@ -19,6 +19,8 @@ const FinanceLancamentos = lazy(() => import('./components/finance/FinanceLancam
 const FinanceParcelasFixas = lazy(() => import('./components/finance/FinanceParcelasFixas'));
 const FinanceCadastroConfigs = lazy(() => import('./components/finance/FinanceCadastroConfigs'));
 const FinanceRelatorios = lazy(() => import('./components/finance/FinanceRelatorios'));
+const FinanceGempMigrationPage = lazy(() => import('./components/finance/FinanceGempMigrationPage'));
+const FinanceClientesPage = lazy(() => import('./components/finance/FinanceClientesPage'));
 import LoginPage from './components/LoginPage';
 import ClientLoginPage from './components/ClientLoginPage';
 const ClientDashboardPage = lazy(() => import('./components/ClientDashboardPage'));
@@ -138,7 +140,7 @@ const AdminFuelWrapper = () => {
   return <AdminFuelPage data={data} setData={setData} reloadData={loadData} operadorNome="Admin" isAdmin={true} />;
 };
 
-type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot' | 'comercial-hub' | 'marina-hub';
+type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'finance-gemp' | 'finance-clientes' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot' | 'comercial-hub' | 'marina-hub';
 
 function persistClientSessionToken(token: string, reservaId?: string | null) {
   if (!token || token === 'null' || token === 'undefined') return;
@@ -369,7 +371,7 @@ export default function App() {
   // Load DB into memory
   useEffect(() => {
     let isMounted = true;
-    if (isAuthenticated && currentPath.startsWith('/admin') && !isAdminDbLoaded) {
+    if (isAuthenticated && !isAdminDbLoaded) {
       loadFromRemote().then((data) => {
         if (isMounted) {
           setDbData(data);
@@ -380,11 +382,11 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, currentPath, isAdminDbLoaded]);
+  }, [isAuthenticated, isAdminDbLoaded]);
 
-  // Real-time synchronization for Admin/Marina/Peças dashboard
+  // Real-time synchronization for Admin/Marina/Peças/Financeiro dashboard
   useEffect(() => {
-    if (isAuthenticated && currentPath.startsWith('/admin')) {
+    if (isAuthenticated) {
       const token = localStorage.getItem('admin_token');
       const socket = io('/', { path: '/socket.io', auth: { token } });
 
@@ -505,8 +507,10 @@ export default function App() {
         { id: 'finance-fluxo' as TabType, label: 'Fluxo de Caixa', icon: Wallet },
         { id: 'finance-recorrencia' as TabType, label: 'Gestão de Parcelas', icon: CalendarClock },
         { id: 'finance-boletos' as TabType, label: 'Envio de Boletos', icon: Receipt },
+        { id: 'finance-clientes' as TabType, label: 'Clientes & Cotistas', icon: Users },
         { id: 'finance-relatorios' as TabType, label: 'Relatórios & DRE', icon: FileSearch },
         { id: 'finance-cadastros' as TabType, label: 'Cadastros Financeiros', icon: Settings },
+        { id: 'finance-gemp' as TabType, label: 'Migração ERP GEMP', icon: Database },
         { id: 'finance-whatsapp' as TabType, label: 'WhatsApp Cobrança', icon: MessageSquare },
       ]
     },
@@ -544,7 +548,7 @@ export default function App() {
         return false;
       }
       if (isFinanceiro) {
-        return ['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(item.id);
+        return ['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-gemp', 'finance-fuel', 'finance-boletos', 'finance-clientes', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(item.id);
       } else if (isPecasServicos) {
         return ['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(item.id);
       } else if (isComercial) {
@@ -571,7 +575,7 @@ export default function App() {
   useEffect(() => {
     if (!isAdmin && ['utv-operacao', 'utv-controle-anual', 'utv-rateio'].includes(activeTab)) {
       setActiveTab('schedules');
-    } else if (isFinanceiro && !['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(activeTab)) {
+    } else if (isFinanceiro && !['finance-dashboard', 'finance-lancamentos', 'finance-fluxo', 'finance-recorrencia', 'finance-cadastros', 'finance-relatorios', 'finance-gemp', 'finance-fuel', 'finance-boletos', 'finance-whatsapp', 'manutencoes', 'portal-interno', 'finance-schedules', 'clients', 'boats'].includes(activeTab)) {
       setActiveTab('finance-dashboard');
     } else if (isPecasServicos && !['manutencoes', 'chamados', 'pecas-horimetros', 'pecas-acessorios', 'pecas-whatsapp', 'pecas-atividades', 'checklists', 'finance-schedules', 'boats', 'clients'].includes(activeTab)) {
       setActiveTab('manutencoes');
@@ -1018,8 +1022,10 @@ export default function App() {
                 {activeTab === 'finance-fluxo' && <FinanceFluxoCaixa />}
                 {activeTab === 'finance-recorrencia' && <FinanceParcelasFixas />}
                 {activeTab === 'finance-cadastros' && <FinanceCadastroConfigs />}
+                {activeTab === 'finance-gemp' && <FinanceGempMigrationPage />}
                 {activeTab === 'finance-relatorios' && <FinanceRelatorios />}
                 {activeTab === 'finance-boletos' && <BoletosPage />}
+                {activeTab === 'finance-clientes' && <FinanceClientesPage />}
                 {activeTab === 'finance-whatsapp' && <FinanceWhatsAppPage />}
                 {activeTab === 'users' && <UsersPage />}
                 {activeTab === 'feedback' && <FeedbackAdmin />}

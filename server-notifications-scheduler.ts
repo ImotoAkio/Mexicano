@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { getDbPool, getConfigValue, logNotificacao, hasNotificacaoLog } from "./server-db";
 import { sendEvolutionText } from "./server-routes/whatsapp.routes";
 import { sendPushToClient } from "./server-push";
+import { syncGempDailyIncremental } from "./server-gemp";
 
 /**
  * 10 Modelos Padrões de Mensagens de Confirmação Progressivas (Cliente Em Dia)
@@ -928,7 +929,9 @@ export async function triggerFinancialNotification(transacao: any): Promise<bool
 }
 
 /**
- * Inicia o temporizador contínuo do robô no servidor (verifica a cada 25 segundos)
+ * Inicia o temporizador contínuo do robô no servidor:
+ * 1. Confirmações de passeios e check-ins no WhatsApp (a cada 25s)
+ * 2. Sincronização incremental contínua do ERP GEMP Firebird (a cada 15 minutos)
  */
 export function startNotificationScheduler() {
   console.log("⏰ [Robô Notificações] Agendador inteligente de WhatsApp inicializado.");
@@ -945,4 +948,26 @@ export function startNotificationScheduler() {
       console.warn("[Robô Notificações Scheduler] Erro silencioso na rodada:", err?.message);
     }
   }, 25000);
+
+  // Sincronizador Automático ERP GEMP (roda 30s após boot e depois a cada 15 minutos)
+  setTimeout(() => {
+    syncGempDailyIncremental()
+      .then((res) => {
+        if (res.insertedOrUpdated > 0) {
+          console.log(`[GEMP Auto-Sync] Sincronização inicial finalizada: ${res.novos} novos, ${res.atualizados} atualizados/baixados.`);
+        }
+      })
+      .catch((e) => console.warn("[GEMP Auto-Sync] Aviso na checagem inicial:", e?.message));
+  }, 30000);
+
+  setInterval(async () => {
+    try {
+      const res = await syncGempDailyIncremental();
+      if (res.insertedOrUpdated > 0) {
+        console.log(`[GEMP Auto-Sync] Ciclo automático executado: ${res.novos} novos, ${res.atualizados} atualizados/baixados.`);
+      }
+    } catch (err: any) {
+      console.warn("[GEMP Auto-Sync] Erro no ciclo automático de 15min:", err?.message);
+    }
+  }, 15 * 60 * 1000); // 15 minutos
 }

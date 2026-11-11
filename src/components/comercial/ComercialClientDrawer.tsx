@@ -24,6 +24,12 @@ import {
 } from 'lucide-react';
 import { Cliente, Embarcacao, StatusContrato } from '../../types';
 import { clientDB } from '../../db';
+import {
+  normalizeCotaCode,
+  getBoatCotaOccupancyMap,
+  getBoatCotasList,
+  getBoatTotalCotas
+} from '../../utils/cotaUtils';
 
 interface ComercialClientDrawerProps {
   open: boolean;
@@ -101,6 +107,36 @@ export default function ComercialClientDrawer({
     return [...boats].sort((a, b) => a.nome.localeCompare(b.nome));
   }, [boats]);
 
+  const otherClients = useMemo(() => {
+    return clientDB.getAll().filter(c => c.id !== editingClient?.id);
+  }, [editingClient, open]);
+
+  const findNextFreeCotaForBoat = (
+    boatId: string,
+    currentList: CotaItem[],
+    ignoreIndex?: number
+  ): string => {
+    if (!boatId) return 'C1';
+    const boatObj = boats.find(b => b.id === boatId);
+    const occupiedMap = getBoatCotaOccupancyMap(boatId, otherClients, boatObj);
+
+    const usedInForm = new Set<string>();
+    currentList.forEach((it, idx) => {
+      if (idx !== ignoreIndex && it.embarcacaoId === boatId && it.cota) {
+        usedInForm.add(normalizeCotaCode(it.cota, 1));
+      }
+    });
+
+    const total = getBoatTotalCotas(boatObj, occupiedMap.size + usedInForm.size);
+    for (let i = 1; i <= total; i++) {
+      const code = `C${i}`;
+      if (!occupiedMap.has(code) && !usedInForm.has(code)) {
+        return code;
+      }
+    }
+    return `C${total + 1}`;
+  };
+
   // Tecla ESC para fechar
   useEffect(() => {
     if (!open) return;
@@ -127,16 +163,16 @@ export default function ComercialClientDrawer({
 
       // Cotas
       if (editingClient.embarcacoes && editingClient.embarcacoes.length > 0) {
-        setCotasList(editingClient.embarcacoes.map(eb => ({
+        setCotasList(editingClient.embarcacoes.map((eb, idx) => ({
           embarcacaoId: eb.embarcacaoId || '',
-          cota: eb.cota || 'Cota',
+          cota: normalizeCotaCode(eb.cota, idx + 1),
           plano: eb.plano || editingClient.plano || 'normal',
           acessorios: eb.acessorios ? { ...eb.acessorios } : undefined
         })));
       } else if (editingClient.embarcacaoId) {
         setCotasList([{
           embarcacaoId: editingClient.embarcacaoId,
-          cota: editingClient.cota || 'Cota',
+          cota: normalizeCotaCode(editingClient.cota, 1),
           plano: editingClient.plano || 'normal',
           acessorios: editingClient.acessorios ? { ...editingClient.acessorios } : undefined
         }]);
@@ -271,11 +307,12 @@ export default function ComercialClientDrawer({
 
   const handleAddCota = () => {
     const firstBoatId = sortedBoats.length > 0 ? sortedBoats[0].id : '';
+    const nextFree = firstBoatId ? findNextFreeCotaForBoat(firstBoatId, cotasList) : 'C1';
     setCotasList(prev => [
       ...prev,
       {
         embarcacaoId: firstBoatId,
-        cota: 'Cota 1/4',
+        cota: nextFree,
         plano: 'normal',
         acessorios: {
           tenda: false,
@@ -309,9 +346,15 @@ export default function ComercialClientDrawer({
     setErrorMessage(null);
 
     try {
-      const primaryBoat = cotasList.length > 0 ? cotasList[0] : null;
+      const normalizedCotas = cotasList.map((c, idx) => ({
+        embarcacaoId: c.embarcacaoId,
+        cota: normalizeCotaCode(c.cota, idx + 1),
+        plano: c.plano || 'normal',
+        acessorios: c.acessorios
+      }));
+      const primaryBoat = normalizedCotas.length > 0 ? normalizedCotas[0] : null;
 
-      const anyBoatCompleto = cotasList.some(c => c.plano === 'completo');
+      const anyBoatCompleto = normalizedCotas.some(c => c.plano === 'completo');
       const payload: Partial<Cliente> = {
         nome: nome.trim(),
         status,
@@ -323,12 +366,7 @@ export default function ComercialClientDrawer({
         observacoesFinanceiras: observacoesFinanceiras.trim(),
         embarcacaoId: primaryBoat ? primaryBoat.embarcacaoId : '',
         cota: primaryBoat ? primaryBoat.cota : '',
-        embarcacoes: cotasList.map(c => ({
-          embarcacaoId: c.embarcacaoId,
-          cota: c.cota,
-          plano: c.plano || 'normal',
-          acessorios: c.acessorios
-        })),
+        embarcacoes: normalizedCotas,
         cpf: cpf.trim(),
         rg: rg.trim(),
         orgaoEmissor: orgaoEmissor.trim(),
@@ -770,14 +808,18 @@ export default function ComercialClientDrawer({
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
                       <div>
                         <label className="text-[10px] font-semibold text-stone-500 block mb-1">
                           Embarcação
                         </label>
                         <select
                           value={cotaItem.embarcacaoId}
-                          onChange={e => handleUpdateCota(idx, { embarcacaoId: e.target.value })}
+                          onChange={e => {
+                            const newBoatId = e.target.value;
+                            const nextFree = newBoatId ? findNextFreeCotaForBoat(newBoatId, cotasList, idx) : '';
+                            handleUpdateCota(idx, { embarcacaoId: newBoatId, cota: nextFree });
+                          }}
                           className="w-full h-8 px-2 rounded-md border border-stone-200 bg-white text-xs font-medium text-stone-800 focus:outline-none focus:ring-2 focus:ring-mx-ink/20 cursor-pointer"
                         >
                           <option value="">Selecione...</option>
@@ -789,17 +831,87 @@ export default function ComercialClientDrawer({
                         </select>
                       </div>
 
-                      <div>
-                        <label className="text-[10px] font-semibold text-stone-500 block mb-1">
-                          Cota (Ex: C1, 1/4)
-                        </label>
-                        <input
-                          type="text"
-                          value={cotaItem.cota}
-                          onChange={e => handleUpdateCota(idx, { cota: e.target.value })}
-                          placeholder="Cota..."
-                          className="w-full h-8 px-2.5 rounded-md border border-stone-200 text-xs font-semibold text-stone-900 focus:outline-none focus:ring-2 focus:ring-mx-ink/20"
-                        />
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-semibold text-stone-500 block">
+                            Cota Padronizada
+                          </label>
+                          <span className="text-[9px] text-stone-400">
+                            {cotaItem.embarcacaoId ? 'Selecione a cota' : 'Escolha a embarcação'}
+                          </span>
+                        </div>
+                        {!cotaItem.embarcacaoId ? (
+                          <div className="p-2 bg-stone-50 rounded border border-dashed border-stone-200 text-center text-[10px] text-stone-500">
+                            Selecione a embarcação acima
+                          </div>
+                        ) : (
+                          (() => {
+                            const boatObj = boats.find(b => b.id === cotaItem.embarcacaoId);
+                            const occMap = getBoatCotaOccupancyMap(cotaItem.embarcacaoId, otherClients, boatObj);
+                            const currentNorm = normalizeCotaCode(cotaItem.cota, idx + 1);
+                            const currentSlotNum = parseInt(currentNorm.replace(/\D/g, ''), 10) || 0;
+                            const neededTotal = Math.max(occMap.size, currentSlotNum);
+                            const slots = getBoatCotasList(boatObj, neededTotal);
+
+                            return (
+                              <div className="grid grid-cols-4 sm:grid-cols-8 gap-1">
+                                {slots.map(slot => {
+                                  const occ = occMap.get(slot);
+                                  const occupiedByOtherClient = !!(occ && occ.clienteId !== editingClient?.id);
+                                  const usedInOtherRow = cotasList.some(
+                                    (other, otherIdx) =>
+                                      otherIdx !== idx &&
+                                      other.embarcacaoId &&
+                                      other.embarcacaoId === cotaItem.embarcacaoId &&
+                                      normalizeCotaCode(other.cota, otherIdx + 1) === slot
+                                  );
+                                  const isSelected = currentNorm === slot;
+                                  const isDisabled = occupiedByOtherClient || usedInOtherRow;
+
+                                  return (
+                                    <button
+                                      key={slot}
+                                      type="button"
+                                      disabled={isDisabled}
+                                      onClick={() => handleUpdateCota(idx, { cota: slot })}
+                                      title={
+                                        occupiedByOtherClient
+                                          ? `Ocupada por ${occ?.clienteNome}`
+                                          : usedInOtherRow
+                                          ? 'Já selecionada em outra cota'
+                                          : `Selecionar cota ${slot}`
+                                      }
+                                      className={`py-1 px-1 rounded border text-[11px] font-bold flex flex-col items-center justify-center transition-all ${
+                                        isSelected
+                                          ? 'bg-stone-900 text-white border-stone-900 shadow-2xs cursor-pointer'
+                                          : isDisabled
+                                          ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed opacity-75'
+                                          : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50 cursor-pointer'
+                                      }`}
+                                    >
+                                      <span>{slot}</span>
+                                      <span
+                                        className={`text-[8px] font-medium truncate max-w-full ${
+                                          isSelected
+                                            ? 'text-white/80'
+                                            : isDisabled
+                                            ? 'text-stone-400'
+                                            : 'text-emerald-600'
+                                        }`}
+                                      >
+                                        {occupiedByOtherClient
+                                          ? 'Ocupada'
+                                          : usedInOtherRow
+                                          ? 'Em uso'
+                                          : 'Livre'}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()
+                        )}
                       </div>
                     </div>
 

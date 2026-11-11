@@ -16,7 +16,9 @@ import {
   Clock,
   ArrowRight,
   X,
-  Volume2
+  Volume2,
+  MessageSquare,
+  ShieldAlert
 } from 'lucide-react';
 import UserAvatarMenu from '../header/UserAvatarMenu';
 import FinanceiroSidebar from './FinanceiroSidebar';
@@ -24,18 +26,25 @@ import FinanceDashboardPage from './FinanceDashboardPage';
 import FinanceLancamentos from './FinanceLancamentos';
 import FinanceLancamentoDrawer from './FinanceLancamentoDrawer';
 import FinanceiroSettingsModal, { loadFinanceiroSettings } from './FinanceiroSettingsModal';
-import { clientDB, boatDB, onDbUpdate } from '../../db';
+import { clientDB, boatDB, onDbUpdate, loadFromRemote, isDbLoaded } from '../../db';
 import { Cliente, Embarcacao, TransacaoFinanceira } from '../../types';
 
 // Lazy-loaded secondary pages
 const FinanceFluxoCaixa = lazy(() => import('./FinanceFluxoCaixa'));
 const FinanceParcelasFixas = lazy(() => import('./FinanceParcelasFixas'));
 const BoletosPage = lazy(() => import('./BoletosPage'));
+const FinanceClientesPage = lazy(() => import('./FinanceClientesPage'));
 const FinanceRelatorios = lazy(() => import('./FinanceRelatorios'));
 const FinanceCadastroConfigs = lazy(() => import('./FinanceCadastroConfigs'));
+const FinanceGempMigrationPage = lazy(() => import('./FinanceGempMigrationPage'));
 const FinanceReservasPage = lazy(() => import('./FinanceReservasPage'));
 const FinanceAgendamentosReportPage = lazy(() => import('./FinanceAgendamentosReportPage'));
 const AdminFuelPage = lazy(() => import('../MarinaFuelView'));
+const FinanceWhatsAppPage = lazy(() => import('../FinanceWhatsAppPage'));
+
+function FinanceWhatsAppView() {
+  return <FinanceWhatsAppPage />;
+}
 
 function FuelWrapper({ operadorNome }: { operadorNome?: string }) {
   const [fuelData, setFuelData] = useState<any>({ clients: [], boats: [], transacoes: [], reservations: [] });
@@ -232,6 +241,10 @@ export default function FinanceiroDashboard({ onLogout, operadorNome }: Financei
     };
     syncLocal();
 
+    if (!isDbLoaded || clientDB.getAll().length === 0) {
+      loadFromRemote().then(() => syncLocal()).catch(console.error);
+    }
+
     const handleUpdate = () => {
       fetchGlobalData();
       syncLocal();
@@ -376,6 +389,10 @@ export default function FinanceiroDashboard({ onLogout, operadorNome }: Financei
           e.preventDefault();
           handleNavSelect('boletos');
           showToast('Atalho Alt + B → Boletos & Cobrança');
+        } else if (k === 'w') {
+          e.preventDefault();
+          handleNavSelect('whatsapp');
+          showToast('Atalho Alt + W → WhatsApp Cobrança');
         } else if (k === 'r') {
           e.preventDefault();
           handleNavSelect('relatorios');
@@ -413,6 +430,8 @@ export default function FinanceiroDashboard({ onLogout, operadorNome }: Financei
         { id: 'nav-flux', label: 'Ir para Fluxo de Caixa', shortcut: 'Alt + F', nav: 'fluxo' },
         { id: 'nav-parc', label: 'Ir para Gestão de Parcelas', shortcut: 'Alt + P', nav: 'parcelas' },
         { id: 'nav-bole', label: 'Ir para Boletos & Cobrança', shortcut: 'Alt + B', nav: 'boletos' },
+        { id: 'nav-cli', label: 'Ir para Clientes & Cotistas', shortcut: 'Alt + C', nav: 'clientes' },
+        { id: 'nav-wa', label: 'Ir para WhatsApp Cobrança', shortcut: 'Alt + W', nav: 'whatsapp' },
         { id: 'nav-res', label: 'Ir para Consulta de Reservas', nav: 'reservas' },
         { id: 'nav-agrep', label: 'Ir para Relatórios & Agendamentos', nav: 'agendamentos_relatorios' },
         { id: 'nav-rela', label: 'Ir para Relatórios & DRE', shortcut: 'Alt + R', nav: 'relatorios' },
@@ -437,6 +456,8 @@ export default function FinanceiroDashboard({ onLogout, operadorNome }: Financei
       { id: 'nav-flux', label: 'Ir para Fluxo de Caixa', shortcut: 'Alt + F', nav: 'fluxo' },
       { id: 'nav-parc', label: 'Ir para Gestão de Parcelas', shortcut: 'Alt + P', nav: 'parcelas' },
       { id: 'nav-bole', label: 'Ir para Boletos & Cobrança', shortcut: 'Alt + B', nav: 'boletos' },
+      { id: 'nav-cli', label: 'Ir para Clientes & Cotistas', shortcut: 'Alt + C', nav: 'clientes' },
+      { id: 'nav-wa', label: 'Ir para WhatsApp Cobrança', shortcut: 'Alt + W', nav: 'whatsapp' },
       { id: 'nav-rela', label: 'Ir para Relatórios & DRE', shortcut: 'Alt + R', nav: 'relatorios' },
     ].filter(a => a.label.toLowerCase().includes(q));
 
@@ -663,10 +684,13 @@ export default function FinanceiroDashboard({ onLogout, operadorNome }: Financei
               {activeNav === 'fluxo' && <FinanceFluxoCaixa />}
               {activeNav === 'parcelas' && <FinanceParcelasFixas />}
               {activeNav === 'boletos' && <BoletosPage />}
+              {activeNav === 'clientes' && <FinanceClientesPage />}
+              {(activeNav === 'whatsapp' || activeNav === 'finance-whatsapp') && <FinanceWhatsAppView />}
               {activeNav === 'reservas' && <FinanceReservasPage />}
               {activeNav === 'agendamentos_relatorios' && <FinanceAgendamentosReportPage />}
               {activeNav === 'relatorios' && <FinanceRelatorios />}
               {activeNav === 'cadastros' && <FinanceCadastroConfigs />}
+              {activeNav === 'gemp' && <FinanceGempMigrationPage />}
               {activeNav === 'combustivel' && <FuelWrapper operadorNome={operadorNome} />}
             </Suspense>
           </div>

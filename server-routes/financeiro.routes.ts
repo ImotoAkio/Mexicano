@@ -37,7 +37,14 @@ import {
   createAsaasBulkCharge
 } from "../server-asaas";
 import { reconcileAsaasPaidPayment } from "./webhook.routes";
-import { getDbPool, getConfigValue, setConfigValue } from "../server-db";
+import { getDbPool, setConfigValue } from "../server-db";
+import {
+  fetchGempPreview,
+  importGempItemsToDb,
+  clearGempImportedItems,
+  syncGempDailyIncremental,
+  GempEmpresaKey
+} from "../server-gemp";
 
 function getGlobalEmpresaFromRole(role: string): string | null {
   const r = role.toLowerCase().trim();
@@ -809,6 +816,166 @@ router.get("/asaas-status/:paymentId", requireAnyAuth, async (req, res) => {
     });
   } catch (err: any) {
     return res.json({ success: false, paid: false, message: err.message });
+  }
+});
+
+// ----------------------------------------------------------------------
+// INTEGRAÇÃO ERP GEMP (FIREBIRD 5.0 - READ ONLY PREVIEW & IMPORT)
+// ----------------------------------------------------------------------
+router.get("/gemp/preview", requireAdminAuth, async (req, res) => {
+  try {
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || "");
+    let empresas: GempEmpresaKey[] = ["MEXICANO", "VALE_ADMINISTRADORA"];
+
+    if (allowedEmpresa === "Mexicano") {
+      empresas = ["MEXICANO"];
+    } else if (allowedEmpresa === "Vale Administradora") {
+      empresas = ["VALE_ADMINISTRADORA"];
+    } else if (req.query.empresas) {
+      const raw = String(req.query.empresas)
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter((s): s is GempEmpresaKey => s === "MEXICANO" || s === "VALE_ADMINISTRADORA");
+      if (raw.length > 0) empresas = raw;
+    }
+
+    let tipos: ("receita" | "despesa")[] = ["receita", "despesa"];
+    if (req.query.tipos) {
+      const rawTipos = String(req.query.tipos)
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s): s is "receita" | "despesa" => s === "receita" || s === "despesa");
+      if (rawTipos.length > 0) tipos = rawTipos;
+    }
+
+    const escopoRaw = String(req.query.escopo || "abertos_e_quitados_corte");
+    const escopo = ["abertos_e_quitados_corte", "apenas_abertos", "todo_historico"].includes(escopoRaw)
+      ? (escopoRaw as "abertos_e_quitados_corte" | "apenas_abertos" | "todo_historico")
+      : "abertos_e_quitados_corte";
+
+    const dataCorteQuitados = req.query.dataCorteQuitados ? String(req.query.dataCorteQuitados) : undefined;
+    const lastSyncAt = await getConfigValue("gemp_last_sync_at");
+
+    const result = await fetchGempPreview({
+      empresas,
+      tipos,
+      escopo,
+      dataCorteQuitados,
+    });
+
+    return res.json({
+      ...result,
+      lastSyncAt: lastSyncAt || null,
+    });
+  } catch (err: any) {
+    console.error("[GEMP Preview Error]", err);
+    return res.status(500).json({
+      error: true,
+      message: err.message || "Falha ao consultar o banco de dados do ERP GEMP.",
+    });
+  }
+});
+
+router.post("/gemp/import", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    const {
+      items,
+      contaBancariaIdPadrao,
+      planoContasReceitaIdPadrao,
+      planoContasDespesaIdPadrao,
+      centroCustoIdPadrao,
+    } = req.body || {};
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: true, message: "Nenhum lançamento selecionado para importação." });
+    }
+
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || "");
+    const filteredItems = allowedEmpresa
+      ? items.filter((item: any) => item.empresa === allowedEmpresa)
+      : items;
+
+    const result = await importGempItemsToDb({
+      items: filteredItems,
+      contaBancariaIdPadrao: contaBancariaIdPadrao || null,
+      planoContasReceitaIdPadrao: planoContasReceitaIdPadrao || null,
+      planoContasDespesaIdPadrao: planoContasDespesaIdPadrao || null,
+      centroCustoIdPadrao: centroCustoIdPadrao || null,
+    });
+
+    const syncTimestamp = new Date().toISOString();
+    await setConfigValue("gemp_last_sync_at", syncTimestamp);
+
+    const io = (req.app as any)?.locals?.io;
+    if (io) {
+      io.emit("finance_updated", { source: "gemp_import", count: result.insertedOrUpdated });
+    }
+
+    return res.json({
+      success: true,
+      ...result,
+      lastSyncAt: syncTimestamp,
+    });
+  } catch (err: any) {
+    console.error("[GEMP Import Error]", err);
+    return res.status(500).json({
+      error: true,
+      message: err.message || "Falha ao importar lançamentos do ERP GEMP.",
+    });
+  }
+});
+
+router.post("/gemp/sync-incremental", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    const result = await syncGempDailyIncremental();
+    const io = (req.app as any)?.locals?.io;
+    if (io && result.insertedOrUpdated > 0) {
+      io.emit("finance_updated", { source: "gemp_incremental_sync", count: result.insertedOrUpdated });
+    }
+
+    return res.json({
+      success: true,
+      ...result,
+      lastSyncAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.error("[GEMP Sync Incremental Error]", err);
+    return res.status(500).json({
+      error: true,
+      message: err.message || "Falha na sincronização diária com o ERP GEMP.",
+    });
+  }
+});
+
+router.post("/gemp/clear", requireAdminAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || "");
+    let target: GempEmpresaKey | "TODOS" = "TODOS";
+    if (allowedEmpresa === "Mexicano") {
+      target = "MEXICANO";
+    } else if (allowedEmpresa === "Vale Administradora") {
+      target = "VALE_ADMINISTRADORA";
+    } else if (req.body?.origemEmpresa === "MEXICANO" || req.body?.origemEmpresa === "VALE_ADMINISTRADORA") {
+      target = req.body.origemEmpresa;
+    }
+
+    const result = await clearGempImportedItems(target);
+
+    const io = (req.app as any)?.locals?.io;
+    if (io) {
+      io.emit("finance_updated", { source: "gemp_clear", count: result.deletedCount });
+    }
+
+    return res.json({
+      success: true,
+      ...result,
+    });
+  } catch (err: any) {
+    console.error("[GEMP Clear Error]", err);
+    return res.status(500).json({
+      error: true,
+      message: err.message || "Falha ao remover lançamentos migrados do GEMP.",
+    });
   }
 });
 

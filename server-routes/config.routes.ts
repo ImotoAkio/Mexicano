@@ -125,6 +125,17 @@ router.get("/config/public", async (req, res) => {
 router.get("/config", requireAdminAuth, async (req, res) => {
   try {
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+
+    const chavesStr = req.query.chaves as string | undefined;
+    if (chavesStr) {
+      const keys = chavesStr.split(",").map(k => k.trim()).filter(Boolean);
+      const configs: Record<string, string | null> = {};
+      for (const k of keys) {
+        configs[k] = await getConfigValue(k);
+      }
+      return res.json({ configs, ...configs });
+    }
+
     const google_client_id = await getConfigValue("google_client_id");
     const mappingsStr = await getConfigValue("calendar_mappings");
     let calendar_mappings = null;
@@ -140,6 +151,7 @@ router.get("/config", requireAdminAuth, async (req, res) => {
     const whatsapp_conf_template1 = await getConfigValue("whatsapp_conf_template1");
     const whatsapp_conf_template2 = await getConfigValue("whatsapp_conf_template2");
     const whatsapp_cal_template = await getConfigValue("whatsapp_cal_template");
+    const whatsapp_client_reserva_template = await getConfigValue("whatsapp_client_reserva_template");
     const finance_whatsapp_instance = await getConfigValue("finance_whatsapp_instance");
     const finance_whatsapp_custom_templates_str = await getConfigValue("finance_whatsapp_custom_templates");
     let finance_whatsapp_custom_templates = null;
@@ -193,6 +205,7 @@ router.get("/config", requireAdminAuth, async (req, res) => {
       whatsapp_conf_template1,
       whatsapp_conf_template2,
       whatsapp_cal_template,
+      whatsapp_client_reserva_template,
       finance_whatsapp_instance,
       finance_whatsapp_custom_templates,
       nautical_csv_mapping,
@@ -211,6 +224,7 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
   try {
     const { google_client_id, calendar_mappings, google_service_account_json,
             whatsapp_conf_template1, whatsapp_conf_template2, whatsapp_cal_template,
+            whatsapp_client_reserva_template,
             finance_whatsapp_instance, finance_whatsapp_custom_templates,
             nautical_csv_mapping, asaas_api_key, asaas_api_url, asaas_webhook_token,
             marina_checkin_saida, marina_checkin_chegada, marina_checkin_antecedencia,
@@ -247,6 +261,9 @@ router.post("/config", requireAdminAuth, sensitiveLimiter, async (req, res) => {
     }
     if (whatsapp_cal_template !== undefined) {
       await setConfigValue("whatsapp_cal_template", whatsapp_cal_template);
+    }
+    if (whatsapp_client_reserva_template !== undefined) {
+      await setConfigValue("whatsapp_client_reserva_template", whatsapp_client_reserva_template);
     }
 
     // Finance WhatsApp instance

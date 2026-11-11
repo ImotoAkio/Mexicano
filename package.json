@@ -49,6 +49,7 @@
     "motion": "^12.23.24",
     "multer": "^2.1.1",
     "mysql2": "^3.22.4",
+    "node-firebird": "^2.21.0",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",

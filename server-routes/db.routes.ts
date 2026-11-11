@@ -9,7 +9,8 @@ import {
   deleteReservation, upsertReservation,
   bulkSyncDatabase,
   getControlesSom, upsertControleSom,
-  upsertRegistroAtividade
+  upsertRegistroAtividade,
+  standardizeClientCotasInDatabase
 } from "../server-db";
 import { io } from "../server";
 
@@ -146,6 +147,17 @@ router.post("/bulk-save", requireAdminAuth, async (req, res) => {
   } catch (err: any) {
     console.error("Failed bulk sync database route:", err);
     res.status(500).json({ error: true, message: err.message || "Bulk sync failure." });
+  }
+});
+
+router.post("/standardize-cotas", requireAdminAuth, async (req, res) => {
+  try {
+    const currentPool = getDbPool();
+    if (!currentPool) return res.status(503).json({ error: true, message: "Banco de dados indisponível." });
+    await standardizeClientCotasInDatabase(currentPool);
+    res.json({ success: true, message: "Cotas padronizadas com sucesso no banco de dados." });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Erro ao padronizar cotas." });
   }
 });
 

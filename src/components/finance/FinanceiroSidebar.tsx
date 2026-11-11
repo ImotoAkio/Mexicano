@@ -12,10 +12,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
-  Wallet,
-  AlertCircle,
   CalendarDays,
-  ClipboardList
+  ClipboardList,
+  Database,
+  MessageSquare,
+  Users
 } from 'lucide-react';
 import logoMexicano from '../../assets/images/logo_mexicano_trim.png';
 import { TransacaoFinanceira } from '../../types';
@@ -50,6 +51,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'parcelas', label: 'Gestão de Parcelas', icon: CalendarClock },
       { id: 'boletos', label: 'Boletos & Cobrança', icon: Receipt },
+      { id: 'clientes', label: 'Clientes & Cotistas', icon: Users },
+      { id: 'whatsapp', label: 'WhatsApp Cobrança', icon: MessageSquare },
     ],
   },
   {
@@ -67,6 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'relatorios', label: 'Relatórios & DRE', icon: FileSearch },
       { id: 'cadastros', label: 'Cadastros', icon: Settings },
+      { id: 'gemp', label: 'Migração ERP GEMP', icon: Database },
     ],
   },
 ];
@@ -144,39 +148,22 @@ export default function FinanceiroSidebar({
     return transacoes.filter(t => t.empresa === empresaFiltro || (!t.empresa && empresaFiltro === 'Mexicano'));
   }, [transacoes, empresaFiltro]);
 
-  // Compute metrics for the sidebar
-  const { saldo, vencidosCount, inadimplencia } = useMemo(() => {
+  // Compute overdue count for badge on 'lancamentos'
+  const vencidosCount = useMemo(() => {
     const todayStr = new Date().toISOString().substring(0, 10);
-    let totalReceitasPagas = 0;
-    let totalDespesasPagas = 0;
     let countVencidos = 0;
-    let totalInadimplente = 0;
 
     filtered.forEach(t => {
-      if (t.status === 'pago') {
-        if (t.tipo === 'receita') totalReceitasPagas += Number(t.valor) || 0;
-        else totalDespesasPagas += Number(t.valor) || 0;
-      }
       if (t.tipo === 'receita' && (t.status === 'vencido' || (t.status === 'lancado' && t.dataVencimento < todayStr))) {
         countVencidos++;
-        totalInadimplente += Number(t.valor) || 0;
       }
     });
 
-    return {
-      saldo: totalReceitasPagas - totalDespesasPagas,
-      vencidosCount: countVencidos,
-      inadimplencia: totalInadimplente,
-    };
+    return countVencidos;
   }, [filtered]);
 
-  const formatCurrency = (val: number) => {
-    if (privacyMode) return 'R$ ••••';
-    return `R$ ${(Number(val) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
   const renderItem = (item: NavItem) => {
-    const isActive = active === item.id;
+    const isActive = active === item.id || (item.id === 'whatsapp' && active === 'finance-whatsapp');
     const Icon = item.icon;
 
     // Badges dinâmicos
@@ -287,54 +274,6 @@ export default function FinanceiroSidebar({
           </div>
         ))}
       </nav>
-
-      {/* Bottom Live Liquidity Widget */}
-      <div className="p-3 border-t border-stone-100/80">
-        {!collapsed ? (
-          <div className="rounded-xl bg-stone-50/80 border border-stone-200/70 p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-stone-500 flex items-center gap-1.5">
-                <Wallet className="w-3.5 h-3.5 text-stone-400" />
-                Saldo em Caixa
-              </span>
-              <span
-                className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                  saldo >= 0 ? 'text-emerald-700 bg-emerald-50 border border-emerald-200/60' : 'text-rose-700 bg-rose-50 border border-rose-200/60'
-                }`}
-              >
-                {saldo >= 0 ? 'Positivo' : 'Atenção'}
-              </span>
-            </div>
-            <div>
-              <div className="text-sm font-bold text-stone-900 tabular-nums">
-                {formatCurrency(saldo)}
-              </div>
-              <div className="text-[10px] text-stone-400 mt-0.5 truncate">
-                {empresaFiltro === 'Todos' ? 'Todas as contas integradas' : empresaFiltro}
-              </div>
-            </div>
-            {vencidosCount > 0 && (
-              <div className="pt-1.5 border-t border-stone-200/60 flex items-center justify-between text-[10px]">
-                <span className="text-stone-400 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3 text-rose-500" />
-                  Inadimplência
-                </span>
-                <span className="font-semibold text-rose-600 tabular-nums">
-                  {formatCurrency(inadimplencia)}
-                </span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div
-            title={`Saldo Consolidado: ${formatCurrency(saldo)}`}
-            className="w-10 h-10 mx-auto rounded-lg bg-stone-50 border border-stone-200/80 flex items-center justify-center text-stone-600 cursor-pointer hover:bg-stone-100"
-            onClick={() => onSelect('dashboard')}
-          >
-            <Wallet className="w-4 h-4 text-stone-600" />
-          </div>
-        )}
-      </div>
     </aside>
   );
 }

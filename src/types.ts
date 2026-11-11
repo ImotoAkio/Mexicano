@@ -396,6 +396,8 @@ export interface TransacaoFinanceira {
   planoContasId?: string;
   centroCustoId?: string;
   empresa?: string;
+  origem_empresa?: string;
+  metadata?: any;
   grupoParcelamentoId?: string;
   numeroParcela?: number;
   totalParcelas?: number;
