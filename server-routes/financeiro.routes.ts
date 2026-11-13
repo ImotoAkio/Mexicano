@@ -4,6 +4,7 @@ import { requireAdminAuth, requireAnyAuth, requireClientAuth, sensitiveLimiter }
 import {
   getAllTransacoes,
   deleteTransacao,
+  deleteTransacoesByIds,
   deleteAllTransacoes,
   deleteTransacoesByClientIds,
   upsertTransacao,
@@ -12,6 +13,7 @@ import {
   deleteAtividade,
   upsertAtividade,
   getConfigValue,
+  getAllConfigValues,
   syncMultipleClientsFinancialStatus,
   syncClientFinancialStatus,
   getAllContasBancarias,
@@ -63,8 +65,9 @@ async function isPagamentoOnlineHabilitado(): Promise<boolean> {
 
 router.get("/transacoes", requireAdminAuth, async (req, res) => {
   try {
-    let transacoes = await getAllTransacoes();
     const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    const targetEmpresa = allowedEmpresa || (typeof req.query.empresa === 'string' ? req.query.empresa : undefined);
+    let transacoes = await getAllTransacoes(targetEmpresa);
     if (allowedEmpresa) {
       transacoes = transacoes.filter((t: any) => t.empresa === allowedEmpresa);
     } else if (req.query.empresa) {
@@ -72,6 +75,24 @@ router.get("/transacoes", requireAdminAuth, async (req, res) => {
     }
     if (req.query.clienteId) {
       transacoes = transacoes.filter((t: any) => t.clienteId === req.query.clienteId);
+    }
+    if (req.query.status && typeof req.query.status === 'string') {
+      transacoes = transacoes.filter((t: any) => t.status === req.query.status);
+    }
+    if (req.query.categoria && typeof req.query.categoria === 'string') {
+      transacoes = transacoes.filter((t: any) => t.categoria === req.query.categoria);
+    }
+    if (req.query.dataInicio && typeof req.query.dataInicio === 'string') {
+      transacoes = transacoes.filter((t: any) => (t.dataVencimento || '') >= req.query.dataInicio!);
+    }
+    if (req.query.dataFim && typeof req.query.dataFim === 'string') {
+      transacoes = transacoes.filter((t: any) => (t.dataVencimento || '') <= req.query.dataFim!);
+    }
+    if (req.query.limit) {
+      const lim = Number(req.query.limit);
+      if (Number.isFinite(lim) && lim > 0) {
+        transacoes = transacoes.slice(0, lim);
+      }
     }
     res.json(transacoes);
   } catch (err: any) {
@@ -86,15 +107,15 @@ router.post("/transacoes/save", requireAdminAuth, sensitiveLimiter, async (req, 
     const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
     if (action === 'delete') {
       if (Array.isArray(data)) {
-        for (const item of data) {
-          await deleteTransacao(typeof item === 'object' && item?.id ? item.id : item);
-        }
+        const ids = data.map(item => (typeof item === 'object' && item?.id ? item.id : item)).filter(Boolean);
+        await deleteTransacoesByIds(ids);
       } else if (data?.ids && Array.isArray(data.ids)) {
-        for (const id of data.ids) {
-          await deleteTransacao(id);
-        }
+        await deleteTransacoesByIds(data.ids.filter(Boolean));
       } else {
-        await deleteTransacao(data.id || data);
+        const targetId = data?.id || data;
+        if (targetId) {
+          await deleteTransacao(targetId);
+        }
       }
     } else if (action === 'delete_all') {
       await deleteAllTransacoes();
@@ -604,31 +625,32 @@ router.post("/centros-custo/save", requireAdminAuth, async (req, res) => {
 // ----------------------------------------------------------------------
 router.get("/configuracoes", requireAdminAuth, async (req, res) => {
   try {
-    const taxaJurosMensal = await getConfigValue('fin_taxa_juros_mensal') || '2.2';
-    const taxaMultaAtraso = await getConfigValue('fin_taxa_multa_atraso') || '2.0';
-    const asaasContaBancariaId = await getConfigValue('fin_asaas_conta_bancaria_id') || '';
-    const fin_asaas_split_enabled = await getConfigValue('fin_asaas_split_enabled') === '1';
-    const diasFaturaAtual = await getConfigValue('fin_asaas_dias_fatura_atual') || '30';
-    const billingTypePadrao = await getConfigValue('fin_asaas_billing_type_padrao') || 'PIX';
-    const registrarTaxaGatewayRaw = await getConfigValue('fin_asaas_registrar_taxa_gateway');
+    const allConfigs = await getAllConfigValues();
+    const taxaJurosMensal = allConfigs.get('fin_taxa_juros_mensal') || '2.2';
+    const taxaMultaAtraso = allConfigs.get('fin_taxa_multa_atraso') || '2.0';
+    const asaasContaBancariaId = allConfigs.get('fin_asaas_conta_bancaria_id') || '';
+    const fin_asaas_split_enabled = allConfigs.get('fin_asaas_split_enabled') === '1';
+    const diasFaturaAtual = allConfigs.get('fin_asaas_dias_fatura_atual') || '30';
+    const billingTypePadrao = allConfigs.get('fin_asaas_billing_type_padrao') || 'PIX';
+    const registrarTaxaGatewayRaw = allConfigs.get('fin_asaas_registrar_taxa_gateway');
     const registrarTaxaGateway = registrarTaxaGatewayRaw === null || registrarTaxaGatewayRaw === undefined
       ? true
       : registrarTaxaGatewayRaw === '1';
 
     // Padrão de Lançamento de Venda (Mexicano)
-    const vendaPadraoEmpresa = await getConfigValue('venda_padrao_empresa') || 'Mexicano';
-    const vendaPadraoPlanoContasId = await getConfigValue('venda_padrao_plano_contas_id') || '';
-    const vendaPadraoCentroCustoId = await getConfigValue('venda_padrao_centro_custo_id') || '';
-    const vendaPadraoContaBancariaId = await getConfigValue('venda_padrao_conta_bancaria_id') || '';
-    const vendaPadraoCategoria = await getConfigValue('venda_padrao_categoria') || 'Venda de Cota';
+    const vendaPadraoEmpresa = allConfigs.get('venda_padrao_empresa') || 'Mexicano';
+    const vendaPadraoPlanoContasId = allConfigs.get('venda_padrao_plano_contas_id') || '';
+    const vendaPadraoCentroCustoId = allConfigs.get('venda_padrao_centro_custo_id') || '';
+    const vendaPadraoContaBancariaId = allConfigs.get('venda_padrao_conta_bancaria_id') || '';
+    const vendaPadraoCategoria = allConfigs.get('venda_padrao_categoria') || 'Venda de Cota';
 
     // Padrão de Lançamento de Taxa de Administração
-    const taxaAdmPadraoEmpresa = await getConfigValue('taxa_adm_padrao_empresa') || 'Vale Administradora';
-    const taxaAdmPadraoPlanoContasId = await getConfigValue('taxa_adm_padrao_plano_contas_id') || '';
-    const taxaAdmPadraoCentroCustoId = await getConfigValue('taxa_adm_padrao_centro_custo_id') || '';
-    const taxaAdmPadraoContaBancariaId = await getConfigValue('taxa_adm_padrao_conta_bancaria_id') || '';
-    const taxaAdmPadraoCategoria = await getConfigValue('taxa_adm_padrao_categoria') || 'Taxa de Administração';
-    const taxaAdmPadraoValor = await getConfigValue('taxa_adm_padrao_valor') || '850.00';
+    const taxaAdmPadraoEmpresa = allConfigs.get('taxa_adm_padrao_empresa') || 'Vale Administradora';
+    const taxaAdmPadraoPlanoContasId = allConfigs.get('taxa_adm_padrao_plano_contas_id') || '';
+    const taxaAdmPadraoCentroCustoId = allConfigs.get('taxa_adm_padrao_centro_custo_id') || '';
+    const taxaAdmPadraoContaBancariaId = allConfigs.get('taxa_adm_padrao_conta_bancaria_id') || '';
+    const taxaAdmPadraoCategoria = allConfigs.get('taxa_adm_padrao_categoria') || 'Taxa de Administração';
+    const taxaAdmPadraoValor = allConfigs.get('taxa_adm_padrao_valor') || '850.00';
 
     res.json({
       success: true,

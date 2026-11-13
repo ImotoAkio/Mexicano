@@ -1125,31 +1125,26 @@ export async function loadFromRemote(forceRefresh = false) {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const statusRes = await fetch('/api/db/status', { headers });
-      if (!statusRes.ok) {
-          isDbLoadAttempted = true;
-          isDbLoaded = true;
-          return { success: false, message: "Não foi possível verificar conexão com a VPS." };
-      }
-      const status = await statusRes.json();
-
-      if (!status.connected) {
-        isDbLoadAttempted = true;
-        isDbLoaded = true;
-        return {
-          connected: false,
-          success: false,
-          vpsHost: status.vpsHost,
-          message: status.error || "Banco de dados da VPS desconectado. O sistema operará sem dados."
-        };
-      }
-
-      // Pull remote records
+      // Pull remote records directly (avoid extra /api/db/status round-trip unless pull fails)
       const url = forceRefresh ? '/api/db/pull?forceRefresh=true' : '/api/db/pull';
       const pullRes = await fetch(url, { headers });
       if (!pullRes.ok) {
           isDbLoadAttempted = true;
           isDbLoaded = true;
+          try {
+            const statusRes = await fetch('/api/db/status', { headers });
+            if (statusRes.ok) {
+              const status = await statusRes.json();
+              if (!status.connected) {
+                return {
+                  connected: false,
+                  success: false,
+                  vpsHost: status.vpsHost,
+                  message: status.error || "Banco de dados da VPS desconectado. O sistema operará sem dados."
+                };
+              }
+            }
+          } catch {}
           return { success: false, message: "Acesso de leitura remota falhou." };
       }
       const remoteData = await pullRes.json();
@@ -1203,8 +1198,6 @@ export async function loadFromRemote(forceRefresh = false) {
       return {
         connected: true,
         success: true,
-        vpsHost: status.vpsHost,
-        database: status.database,
         message: "Dados carregados com sucesso da VPS!"
       };
     } catch (err: any) {

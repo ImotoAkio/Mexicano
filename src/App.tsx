@@ -91,12 +91,14 @@ import {
 const AdminChecklistsWrapper = () => {
   const [data, setData] = useState<any>({ clients: [], boats: [], reservations: [] });
 
-  const loadData = () => {
+  const loadData = (forceNetwork = false) => {
+    const currentReservations = reservationDB.getAll();
     setData({
       clients: clientDB.getAll(),
       boats: boatDB.getAll(),
-      reservations: reservationDB.getAll()
+      reservations: currentReservations
     });
+    if (!forceNetwork && currentReservations.length > 0) return;
     const token = localStorage.getItem('admin_token');
     if (!token || token === 'null' || token === 'undefined') return;
     fetch('/api/db/pull', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -109,10 +111,10 @@ const AdminChecklistsWrapper = () => {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(false);
   }, []);
 
-  return <AdminChecklistsPage data={data} setData={setData} reloadData={loadData} />;
+  return <AdminChecklistsPage data={data} setData={setData} reloadData={() => loadData(true)} />;
 };
 
 const AdminFuelWrapper = () => {

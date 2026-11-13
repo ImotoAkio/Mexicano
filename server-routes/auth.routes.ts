@@ -2,7 +2,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { getAdminByUsername, getClientByCpf, getClientAuth, upsertClientAuth, deleteClientAuth, pullDatabase, updateAdmin } from "../server-db";
+import { getAdminByUsername, getClientByCpf, getClientAuth, upsertClientAuth, deleteClientAuth, getClientPortalData, getDbPool, updateAdmin } from "../server-db";
 import { authLimiter, requireAdminAuth } from "./middlewares";
 import { sanitizeClientPayload } from "./client.routes";
 import { sendEvolutionText } from "./whatsapp.routes";
@@ -57,10 +57,12 @@ authRoutes.post("/admin", authLimiter, async (req, res) => {
     let funcionarioNome = admin.funcionarioNome || admin.nome || admin.username;
     if (admin.funcionarioId) {
       try {
-        const dbData = await pullDatabase();
-        const func = (dbData.funcionarios || []).find((f: any) => f.id === admin.funcionarioId);
-        if (func && func.nome) {
-          funcionarioNome = func.nome;
+        const pool = getDbPool();
+        if (pool) {
+          const [fRows]: any = await pool.query("SELECT nome FROM Funcionarios WHERE id = ? LIMIT 1", [admin.funcionarioId]);
+          if (fRows[0]?.nome) {
+            funcionarioNome = fRows[0].nome;
+          }
         }
       } catch (e) {
         console.warn("Falha ao buscar funcionário vinculado:", e);
@@ -160,19 +162,13 @@ authRoutes.post("/client", authLimiter, async (req, res) => {
       return res.status(401).json({ error: true, message: "Senha incorreta." });
     }
 
-    // Load associated data
-    const dbData = await pullDatabase();
-    const allBoats = dbData.boats || [];
-    const allReservations = dbData.reservations || [];
-
-    const clientBoatsList = client.embarcacoes && client.embarcacoes.length > 0
-      ? client.embarcacoes.map((eb: any) => eb.embarcacaoId)
-      : [client.embarcacaoId];
-
-    const boats = allBoats.filter((b: any) => clientBoatsList.includes(b.id));
-    const rawReservations = allReservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
-    const rawTransacoes = (dbData.transacoes || []).filter((t: any) => t.clienteId === client.id && t.tipo === 'receita');
-    const { safeClient, safeReservations } = sanitizeClientPayload(client, rawReservations, rawTransacoes, []);
+    // Load associated data for this client only
+    const portalData = await getClientPortalData(client.id);
+    const fullClient = portalData.client || client;
+    const boats = portalData.boats || [];
+    const rawReservations = portalData.reservations || [];
+    const rawTransacoes = portalData.transacoes || [];
+    const { safeClient, safeReservations } = sanitizeClientPayload(fullClient, rawReservations, rawTransacoes, []);
 
     const token = jwt.sign(
       { id: client.id, nome: client.nome, role: "client", tv: clientAuth.tokenVersion ?? 1 },
@@ -252,10 +248,12 @@ authRoutes.get("/validate", async (req, res) => {
         if (admin && admin.funcionarioNome) {
           funcionarioNome = admin.funcionarioNome;
         } else if (admin && admin.funcionarioId) {
-          const dbData = await pullDatabase();
-          const func = (dbData.funcionarios || []).find((f: any) => f.id === admin.funcionarioId);
-          if (func && func.nome) {
-            funcionarioNome = func.nome;
+          const pool = getDbPool();
+          if (pool) {
+            const [fRows]: any = await pool.query("SELECT nome FROM Funcionarios WHERE id = ? LIMIT 1", [admin.funcionarioId]);
+            if (fRows[0]?.nome) {
+              funcionarioNome = fRows[0].nome;
+            }
           }
         } else if (admin && admin.nome) {
           funcionarioNome = admin.nome;

@@ -16,10 +16,10 @@ async function fetchRemoteData() {
 
 export const useAppQuery = () => {
   return useQuery({
-    queryKey: ['appData'],
+    queryKey: ['db_pull'],
     queryFn: fetchRemoteData,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    refetchInterval: 1000 * 60 * 2, // Background refetch every 2m
+    staleTime: 1000 * 60 * 3, // 3 minutes
+    refetchInterval: 1000 * 60 * 5, // Background refetch every 5m
   });
 };
 

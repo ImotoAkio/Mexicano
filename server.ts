@@ -404,15 +404,22 @@ io.on("connection", async (socket) => {
   if (role === 'client') {
     socket.join(`client:${user.id}`);
     try {
-      const dbData = await pullDatabase();
-      const client = dbData.clients.find((c: any) => c.id === user.id);
-      if (client) {
-        const clientBoats = client.embarcacoes && client.embarcacoes.length > 0
-          ? client.embarcacoes.map((eb: any) => eb.embarcacaoId)
-          : [client.embarcacaoId];
-        clientBoats.forEach((boatId: string) => {
-          if (boatId) socket.join(`boat:${boatId}`);
-        });
+      const pool = getDbPool();
+      if (pool) {
+        const [cRows]: any = await pool.query("SELECT embarcacaoId, embarcacoes FROM Clientes WHERE id = ? LIMIT 1", [user.id]);
+        const client = cRows[0];
+        if (client) {
+          let parsedEbs: any[] = [];
+          if (client.embarcacoes) {
+            try { parsedEbs = typeof client.embarcacoes === 'string' ? JSON.parse(client.embarcacoes) : client.embarcacoes; } catch {}
+          }
+          const clientBoats = Array.isArray(parsedEbs) && parsedEbs.length > 0
+            ? parsedEbs.map((eb: any) => eb.embarcacaoId)
+            : [client.embarcacaoId];
+          clientBoats.forEach((boatId: string) => {
+            if (boatId) socket.join(`boat:${boatId}`);
+          });
+        }
       }
     } catch (e) {
       console.warn("Falha ao associar barcos ao socket do cliente:", e);

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { getDbPool, pullDatabase, upsertReservation, deleteReservation, cancelReservation, getConfigValue, getClientAuth, upsertClientAuth } from "../server-db";
+import { getDbPool, pullDatabase, getClientPortalData, invalidateDbCache, upsertReservation, deleteReservation, cancelReservation, getConfigValue, getClientAuth, upsertClientAuth } from "../server-db";
 import { requireClientAuth, sensitiveLimiter, whatsappLimiter } from "./middlewares";
 import { writeAuditLog } from "./middlewares";
 import { getVapidKeys, saveClientPushSubscription, removeClientPushSubscription } from "../server-push";
@@ -105,23 +105,18 @@ const clientRoutes = Router();
 clientRoutes.get("/me", requireClientAuth, async (req, res) => {
   try {
     const userId = (req as any).user.id;
-    const forceRefresh = req.query.forceRefresh === 'true';
-    const dbData = await pullDatabase(forceRefresh);
-    const client = dbData.clients.find((c: any) => c.id === userId);
+    const portalData = await getClientPortalData(userId);
+    const client = portalData.client;
 
     if (!client) {
       return res.status(404).json({ error: true, message: "Cliente não encontrado." });
     }
 
-    const clientBoatsList = client.embarcacoes && client.embarcacoes.length > 0
-      ? client.embarcacoes.map((eb: any) => eb.embarcacaoId)
-      : [client.embarcacaoId];
-
-    const boats = dbData.boats.filter((b: any) => clientBoatsList.includes(b.id));
-    const rawReservations = dbData.reservations.filter((r: any) => clientBoatsList.includes(r.embarcacaoId));
-    const rawTransacoes = dbData.transacoes.filter((t: any) => t.clienteId === client.id && t.tipo === 'receita');
-    const chamados = dbData.chamados ? dbData.chamados.filter((c: any) => c.clienteId === client.id) : [];
-    const rawManutencoes = dbData.manutencoes ? dbData.manutencoes.filter((m: any) => clientBoatsList.includes(m.embarcacaoId)) : [];
+    const boats = portalData.boats;
+    const rawReservations = portalData.reservations;
+    const rawTransacoes = portalData.transacoes;
+    const chamados = portalData.chamados;
+    const rawManutencoes = portalData.manutencoes;
 
     const { safeClient, safeReservations, safeTransacoes, safeManutencoes } = sanitizeClientPayload(
       client,
@@ -181,8 +176,8 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
       return res.status(400).json({ error: true, message: "Observações não podem exceder 500 caracteres." });
     }
 
-    const dbData = await pullDatabase();
-    const client = dbData.clients.find((c: any) => c.id === userId);
+    const dbData = await getClientPortalData(userId);
+    const client = dbData.client;
 
     if (!client) {
       return res.status(404).json({ error: true, message: "Cliente não encontrado." });
@@ -347,6 +342,7 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
 
       await conn.commit();
       conn.release();
+      invalidateDbCache();
     } catch (txErr) {
       await conn.rollback();
       conn.release();
@@ -389,6 +385,8 @@ clientRoutes.post("/update-reservation", requireClientAuth, async (req, res) => 
     if (updateResult.affectedRows === 0) {
       return res.status(404).json({ error: true, message: "Reserva não encontrada para atualização." });
     }
+
+    invalidateDbCache();
 
     // Emit event to update Marina/Admin panels automatically
     req.app.locals.io?.emit("marina_update", { action: 'upsert', reservation: { id, googleEventId } });
@@ -476,8 +474,8 @@ clientRoutes.post("/checkin", requireClientAuth, async (req, res) => {
       return res.status(400).json({ error: true, message: "O check-in só pode ser realizado na data agendada do passeio." });
     }
 
-    const dbData = await pullDatabase();
-    const clientCheckin = dbData.clients.find((c: any) => c.id === userId);
+    const dbData = await getClientPortalData(userId);
+    const clientCheckin = dbData.client;
     if (clientCheckin && hasClientOverdueDebt(clientCheckin, dbData.transacoes)) {
       return res.status(403).json({ error: true, message: "Você possui valores em aberto. Regularize sua situação para confirmar a saída." });
     }
@@ -502,6 +500,7 @@ clientRoutes.post("/checkin", requireClientAuth, async (req, res) => {
       "UPDATE Reservas SET previsaoSaida = ?, previsaoChegada = ?, pessoasABordo = ?, destino = ?, acessoriosSolicitados = ?, statusMarina = 'agendado', status = 'confirmado' WHERE id = ? AND clienteId = ?",
       [previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosJson, id, userId]
     );
+    invalidateDbCache();
 
     const [rows] = await currentPool.query("SELECT * FROM Reservas WHERE id = ? AND clienteId = ?", [id, userId]);
     const updatedRes = (rows as any[])[0] || { id, clienteId: userId, previsaoSaida, previsaoChegada, pessoasABordo, destino, acessoriosSolicitados: acessoriosJson, statusMarina: 'agendado', status: 'confirmado' };
@@ -571,6 +570,7 @@ clientRoutes.post("/cancel-reservation", requireClientAuth, async (req, res) => 
       return res.status(400).json({ error: true, message: "Não foi possível cancelar o agendamento." });
     }
 
+    invalidateDbCache();
     req.app.locals.io?.emit("marina_update", { action: 'cancel', reservation: { id, status: 'cancelado' } });
 
     res.json({ success: true });
@@ -592,7 +592,7 @@ clientRoutes.get("/weekend-info", requireClientAuth, async (req, res) => {
     const m = Number(month);
     const y = Number(year);
 
-    const dbData = await pullDatabase();
+    const dbData = await getClientPortalData(userId);
 
     // Count how many guaranteed Saturdays and Sundays this client used this month
     const usage = { saturdayUsed: false, sundayUsed: false };
@@ -606,7 +606,6 @@ clientRoutes.get("/weekend-info", requireClientAuth, async (req, res) => {
     }
 
     // Find extra reservations from OTHER cotistas on this boat that this client could contest
-    const clientBoatsList = (dbData.clients.find((c: any) => c.id === userId)?.embarcacoes || []).map((eb: any) => eb.embarcacaoId);
     const now = new Date();
     const contestable: any[] = [];
 
@@ -651,8 +650,8 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
       return res.status(400).json({ error: true, message: "reservaId e embarcacaoId são obrigatórios." });
     }
 
-    const dbData = await pullDatabase();
-    const client = dbData.clients.find((c: any) => c.id === userId);
+    const dbData = await getClientPortalData(userId);
+    const client = dbData.client;
     if (!client) return res.status(404).json({ error: true, message: "Cliente não encontrado." });
 
     if (hasClientOverdueDebt(client, dbData.transacoes)) {
@@ -779,6 +778,7 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
 
       await conn.commit();
       conn.release();
+      invalidateDbCache();
     } catch (txErr) {
       await conn.rollback();
       conn.release();
@@ -803,7 +803,8 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
 
     // 5. Send WhatsApp notification to the displaced client
     try {
-      const displacedClient = dbData.clients.find((c: any) => c.id === targetRes.clienteId);
+      const [displacedRows] = await currentPool.query("SELECT id, nome FROM Clientes WHERE id = ? LIMIT 1", [targetRes.clienteId]);
+      const displacedClient = (displacedRows as any[])[0];
       const boat = dbData.boats.find((b: any) => b.id === embarcacaoId);
       if (displacedClient && boat && boat.whatsappGroupId) {
         const formattedDate = targetRes.data.split('-').reverse().join('/');
@@ -865,8 +866,8 @@ clientRoutes.post("/send-calendar", requireClientAuth, whatsappLimiter, async (r
       return res.status(400).json({ error: true, message: "Imagem e ID da embarcação são obrigatórios." });
     }
 
-    const dbData = await pullDatabase();
-    const client = dbData.clients.find((c: any) => c.id === userId);
+    const dbData = await getClientPortalData(userId);
+    const client = dbData.client;
     if (!client) {
       return res.status(404).json({ error: true, message: "Cliente não encontrado." });
     }
@@ -1020,9 +1021,7 @@ clientRoutes.post("/change-password", requireClientAuth, sensitiveLimiter, async
     // upsertClientAuth automaticamente incrementa o tokenVersion, invalidando sessões antigas
     await upsertClientAuth(userId, newHash);
 
-    const dbData = await pullDatabase();
-    const client = dbData.clients.find((c: any) => c.id === userId);
-    writeAuditLog(client?.nome || userId, "client", "CHANGE_PASSWORD_SUCCESS", req.ip);
+    writeAuditLog((req as any).user?.nome || userId, "client", "CHANGE_PASSWORD_SUCCESS", req.ip);
 
     res.json({ success: true, message: "Senha alterada com sucesso! Faça login novamente com a nova senha." });
   } catch (err: any) {

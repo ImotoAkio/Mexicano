@@ -359,10 +359,20 @@ export default function FinanceFluxoCaixa() {
     setLoading(true);
     try {
       const token = localStorage.getItem('admin_token');
+      const headers = { 'Authorization': `Bearer ${token}` };
 
-      const [res, resConfig] = await Promise.all([
-        fetch('/api/db/pull', { headers: { 'Authorization': `Bearer ${token}` }}),
-        fetch('/api/financeiro/configuracoes', { headers: { 'Authorization': `Bearer ${token}` }})
+      // Initialize from local cached DB immediately if empty
+      if (clientesList.length === 0) {
+        try {
+          const cachedClients = clientDB.getAll();
+          if (cachedClients && cachedClients.length > 0) setClientesList(cachedClients);
+        } catch (_) {}
+      }
+
+      const [resTransacoes, resConfig, resDb] = await Promise.all([
+        fetch('/api/financeiro/transacoes', { headers }),
+        fetch('/api/financeiro/configuracoes', { headers }),
+        fetch('/api/db/pull', { headers })
       ]);
 
       if (resConfig.ok) {
@@ -376,8 +386,8 @@ export default function FinanceFluxoCaixa() {
         }
       }
 
-      if(res.ok) {
-        const dbData = await res.json();
+      if (resDb.ok) {
+        const dbData = await resDb.json();
         if (dbData.planosContas) {
           const map = dbData.planosContas.reduce((acc: any, p: any) => { acc[p.id] = p.descricao; return acc; }, {});
           setMapPlanos(map);
@@ -386,7 +396,7 @@ export default function FinanceFluxoCaixa() {
         if (dbData.clientes || dbData.clients || dbData.fornecedores) {
           const cls = dbData.clientes || dbData.clients || [];
           const forns = dbData.fornecedores || [];
-          setClientesList(cls);
+          if (cls.length > 0) setClientesList(cls);
           setFornecedoresList(forns);
         }
         if (dbData.embarcacoes || dbData.boats) {
@@ -400,10 +410,12 @@ export default function FinanceFluxoCaixa() {
           setMapCentros(map);
           setCentrosList(dbData.centrosCusto);
         }
+      }
 
-        if(Array.isArray(dbData.transacoes)) {
-          // Normalize legacy shapes
-          const mapped = dbData.transacoes.map((t: any) => ({
+      if (resTransacoes.ok) {
+        const data = await resTransacoes.json();
+        if (Array.isArray(data)) {
+          const mapped = data.map((t: any) => ({
              ...t,
              status: t.status || 'lancado', // fallback
              empresa: t.empresa || 'Mexicano',
@@ -681,33 +693,28 @@ export default function FinanceFluxoCaixa() {
   const handleConfirmBulkDelete = async () => {
     const token = localStorage.getItem('admin_token') || localStorage.getItem('marina_token');
     const idsToDelete = [...selectedIds];
-
-    // Optimistic UI update
-    setTransacoes(prev => prev.filter(t => !idsToDelete.includes(String(t.id))));
+    if (idsToDelete.length === 0) return;
 
     try {
-      const deletePromises = idsToDelete.map(id =>
-        fetch('/api/financeiro/transacoes/save', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ action: 'delete', data: { id } })
-        })
-      );
+      const res = await fetch('/api/financeiro/transacoes/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ action: 'delete', data: { ids: idsToDelete } })
+      });
 
-      const responses = await Promise.all(deletePromises);
-      const allOk = responses.every(r => r.ok);
-
-      if (!allOk) {
-        fetchTransacoes();
-        throw new Error("Erro ao excluir alguns lançamentos.");
-      } else {
-        clearSelection();
-        fetchTransacoes();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Erro ao excluir alguns lançamentos.");
       }
-    } catch (err) {
+
+      setTransacoes(prev => prev.filter(t => !idsToDelete.includes(String(t.id))));
+      clearSelection();
+      fetchTransacoes();
+    } catch (err: any) {
+      alert(err?.message || "Erro ao excluir lançamentos selecionados.");
       fetchTransacoes();
       throw err;
     }

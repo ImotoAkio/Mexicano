@@ -949,25 +949,27 @@ export function startNotificationScheduler() {
     }
   }, 25000);
 
-  // Sincronizador Automático ERP GEMP (roda 30s após boot e depois a cada 15 minutos)
+  // Sincronizador ERP GEMP: NÃO executa automaticamente por padrão.
+  // Somente roda se o administrador habilitar explicitamente 'gemp_auto_sync_ativa' = '1'.
+  const runGempAutoSyncIfEnabled = async (isInitial = false) => {
+    try {
+      const autoSyncAtivo = (await getConfigValue("gemp_auto_sync_ativa")) === "1";
+      if (!autoSyncAtivo) return;
+
+      const res = await syncGempDailyIncremental();
+      if (res.insertedOrUpdated > 0) {
+        console.log(`[GEMP Auto-Sync] ${isInitial ? "Sincronização inicial finalizada" : "Ciclo automático executado"}: ${res.novos} novos, ${res.atualizados} atualizados/baixados.`);
+      }
+    } catch (err: any) {
+      console.warn("[GEMP Auto-Sync] Erro no ciclo agendado:", err?.message);
+    }
+  };
+
   setTimeout(() => {
-    syncGempDailyIncremental()
-      .then((res) => {
-        if (res.insertedOrUpdated > 0) {
-          console.log(`[GEMP Auto-Sync] Sincronização inicial finalizada: ${res.novos} novos, ${res.atualizados} atualizados/baixados.`);
-        }
-      })
-      .catch((e) => console.warn("[GEMP Auto-Sync] Aviso na checagem inicial:", e?.message));
+    runGempAutoSyncIfEnabled(true).catch(() => {});
   }, 30000);
 
   setInterval(async () => {
-    try {
-      const res = await syncGempDailyIncremental();
-      if (res.insertedOrUpdated > 0) {
-        console.log(`[GEMP Auto-Sync] Ciclo automático executado: ${res.novos} novos, ${res.atualizados} atualizados/baixados.`);
-      }
-    } catch (err: any) {
-      console.warn("[GEMP Auto-Sync] Erro no ciclo automático de 15min:", err?.message);
-    }
-  }, 15 * 60 * 1000); // 15 minutos
+    await runGempAutoSyncIfEnabled(false);
+  }, 15 * 60 * 1000); // 15 minutos (quando ativo)
 }

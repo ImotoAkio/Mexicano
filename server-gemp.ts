@@ -563,6 +563,19 @@ export async function fetchGempPreview(options: GempPreviewOptions) {
             (normCliName ? clientByName.get(normCliName) : null) ||
             null;
 
+          // REGRA DE EXCEÇÃO / ACORDO INTERNO:
+          // Cliente Aurélio possui acordo interno e não deve receber cobranças nem ser importado do GEMP
+          const isAurelioReceber =
+            cleanCpfCnpj === "06530608400" ||
+            normCliName === "AURELIO" ||
+            normCliName === "AURELIO ASSIS SILVA" ||
+            normCliName.includes("AURELIO") ||
+            matchedClient?.id === "cli_1784736364967";
+
+          if (isAurelioReceber) {
+            continue;
+          }
+
           // Match embarcação existente (pelo texto EMBARCACAO_VAGA / SERVICOS_ITENS / DESCRICAO ou pelo cliente vinculado)
           const embVagaStr = String(r.EMBARCACAO_VAGA || "").trim();
           const servicosStr = String(r.SERVICOS_ITENS || "").trim();
@@ -795,6 +808,17 @@ export async function fetchGempPreview(options: GempPreviewOptions) {
             null;
 
           const descDespStr = String(p.DESCRICAO_DESPESA || "").trim();
+
+          // REGRA DE EXCEÇÃO / ACORDO INTERNO:
+          // Aurélio possui acordo interno, não importar despesas/fornecedor vinculado
+          const isAurelioPagar =
+            cleanFornDoc === "06530608400" ||
+            normFornName.includes("AURELIO") ||
+            descDespStr.toUpperCase().includes("AURELIO");
+
+          if (isAurelioPagar) {
+            continue;
+          }
           const docNum = Number(p.DOCUMENTO || 0);
           const fornGempId = Number(p.FORNECEDOR_ID || 0);
           const prcNum = Number(p.PARCELA || 1);
@@ -992,6 +1016,17 @@ export async function importGempItemsToDb(payload: GempImportCommitPayload) {
       const values: any[] = [];
 
       for (const item of slice) {
+        // Regra de segurança: ignora qualquer lançamento referente ao Aurélio (acordo interno)
+        const descUpper = String(item.descricao || "").toUpperCase();
+        if (
+          item.clienteId === "cli_1784736364967" ||
+          descUpper.includes("AURELIO") ||
+          descUpper.includes("AURÉLIO") ||
+          descUpper.includes("065.306.084-00")
+        ) {
+          continue;
+        }
+
         if (item.clienteId) affectedClientIds.add(item.clienteId);
 
         const resolvedPlanoId =
@@ -1037,9 +1072,10 @@ export async function importGempItemsToDb(payload: GempImportCommitPayload) {
         );
       }
 
-      // 23 colunas exatas na tabela TransacoesFinanceiras
-      const rowPlaceholders = slice
-        .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      if (values.length === 0) continue;
+      const rowCount = values.length / 23;
+      const rowPlaceholders = Array(rowCount)
+        .fill("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .join(", ");
 
       await connection.query(

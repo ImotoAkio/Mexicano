@@ -1,8 +1,23 @@
 import { Router } from "express";
-import { getDbPool, pullDatabase, upsertReservation } from "../server-db";
+import { getDbPool, pullDatabase, upsertReservation, invalidateDbCache } from "../server-db";
 import { requireAdminAuth, writeAuditLog } from "./middlewares";
 
 const router = Router();
+
+async function getBoatAndClientById(pool: any, embarcacaoId?: string, clienteId?: string) {
+  const [boatRes, clientRes] = await Promise.all([
+    embarcacaoId && embarcacaoId !== "embarcacao_avulsa"
+      ? pool.query("SELECT * FROM Embarcacoes WHERE id = ? LIMIT 1", [embarcacaoId])
+      : Promise.resolve([[]]),
+    clienteId && clienteId !== "cliente_avulso" && clienteId !== "cliente_marina"
+      ? pool.query("SELECT * FROM Clientes WHERE id = ? LIMIT 1", [clienteId])
+      : Promise.resolve([[]])
+  ]);
+  return {
+    boat: (boatRes[0] as any[])[0] || null,
+    client: (clientRes[0] as any[])[0] || null
+  };
+}
 
 // 1. Listar Agendamentos da Marina
 router.get("/agendamentos", requireAdminAuth, async (req, res) => {
@@ -150,9 +165,7 @@ router.post("/agendamentos", requireAdminAuth, async (req, res) => {
 
     await upsertReservation(newRes);
 
-    const dbData = await pullDatabase(true);
-    const boat = dbData.boats.find((b: any) => b.id === finalEmbarcacaoId);
-    const client = dbData.clients.find((c: any) => c.id === finalClienteId);
+    const { boat, client } = await getBoatAndClientById(pool, finalEmbarcacaoId, finalClienteId);
 
     const enrichedRes = {
       ...newRes,
@@ -226,9 +239,7 @@ router.put("/agendamentos/:id", requireAdminAuth, async (req, res) => {
 
     await upsertReservation(updatedRes);
 
-    const dbData = await pullDatabase(true);
-    const boat = dbData.boats.find((b: any) => b.id === updatedRes.embarcacaoId);
-    const client = dbData.clients.find((c: any) => c.id === updatedRes.clienteId);
+    const { boat, client } = await getBoatAndClientById(pool, updatedRes.embarcacaoId, updatedRes.clienteId);
 
     const enrichedRes = {
       ...updatedRes,
@@ -254,6 +265,7 @@ router.delete("/agendamentos/:id", requireAdminAuth, async (req, res) => {
 
     const { id } = req.params;
     await pool.query("UPDATE Reservas SET status = 'cancelado' WHERE id = ?", [id]);
+    invalidateDbCache();
 
     req.app.locals.io?.emit("marina_update", { action: "cancel", reservation: { id, status: "cancelado" } });
     writeAuditLog((req as any).user?.nome || "Admin", "admin", "CANCEL_MARINA_AGENDAMENTO", req.ip, `Cancelou agendamento: ${id}`);
@@ -344,9 +356,7 @@ router.post("/fila/adicionar-imediato", requireAdminAuth, async (req, res) => {
 
     await upsertReservation(newRes);
 
-    const dbData = await pullDatabase(true);
-    const boat = dbData.boats.find((b: any) => b.id === finalEmbarcacaoId);
-    const client = dbData.clients.find((c: any) => c.id === finalClienteId);
+    const { boat, client } = await getBoatAndClientById(pool, finalEmbarcacaoId, finalClienteId);
 
     const enrichedRes = {
       ...newRes,

@@ -1700,7 +1700,8 @@ export async function initializeDatabase() {
 // ---------------- DB Operations ----------------
 
 let dbCache: { data: any; timestamp: number } | null = null;
-const CACHE_TTL_MS = 15000; // 15 seconds cache
+let inFlightPullPromise: Promise<any> | null = null;
+const CACHE_TTL_MS = 180000; // 3 minutes cache (auto-invalidated on writes)
 
 let cachedTransacoesData: { [key: string]: { timestamp: number; data: any[] } } = {};
 let inFlightTransacoesPromises: { [key: string]: Promise<any> | null } = {};
@@ -1712,6 +1713,7 @@ export function invalidateTransacoesCache() {
 
 export function invalidateDbCache() {
   dbCache = null;
+  inFlightPullPromise = null;
   invalidateTransacoesCache();
 }
 
@@ -1854,10 +1856,261 @@ export async function standardizeClientCotasInDatabase(connectionOrPool: any) {
   }
 }
 
-// Fetch entire database records
+function parseBoatRow(b: any, embarcacaoEmpresasMap?: Map<string, string[]>) {
+  let donosList: string[] = [];
+  if (b.donos) {
+    try {
+      donosList = typeof b.donos === 'string' ? JSON.parse(b.donos) : b.donos;
+    } catch {
+      donosList = [];
+    }
+  }
+  const parsedAcessorios = b.acessorios ? (typeof b.acessorios === 'string' ? (() => { try { return JSON.parse(b.acessorios); } catch { return undefined; } })() : b.acessorios) : undefined;
+  let fotosList: string[] = [];
+  if (b.fotos) {
+    try {
+      const parsedFotos = typeof b.fotos === 'string' ? JSON.parse(b.fotos) : b.fotos;
+      if (Array.isArray(parsedFotos)) {
+        parsedFotos.forEach((f: any) => {
+          if (f && typeof f === 'string' && !fotosList.includes(f)) fotosList.push(f);
+        });
+      }
+    } catch {}
+  }
+  if (fotosList.length === 0 && parsedAcessorios && Array.isArray((parsedAcessorios as any).fotos)) {
+    (parsedAcessorios as any).fotos.forEach((f: any) => {
+      if (f && typeof f === 'string' && !fotosList.includes(f)) fotosList.push(f);
+    });
+  }
+  if (b.imagemUrl && !fotosList.includes(b.imagemUrl)) {
+    fotosList = [b.imagemUrl, ...fotosList];
+  }
+  const effectiveImagemUrl = b.imagemUrl || fotosList[0] || undefined;
+  const effectiveDescricao = b.descricaoComercial || (parsedAcessorios && (parsedAcessorios as any).descricaoComercial) || undefined;
+
+  return {
+    ...b,
+    empresas: embarcacaoEmpresasMap?.get(b.id) || ['VALE'],
+    vaga: b.vaga || '',
+    tamanho: b.tamanho || b.comprimento || (parsedAcessorios && (parsedAcessorios as any).tamanho) || (parsedAcessorios && (parsedAcessorios as any).comprimento) || '',
+    comprimento: b.comprimento || b.tamanho || (parsedAcessorios && (parsedAcessorios as any).comprimento) || (parsedAcessorios && (parsedAcessorios as any).tamanho) || '',
+    chassi: b.chassi || '',
+    inscricao: b.inscricao || '',
+    validadeDocumento: b.validadeDocumento || b.validadeTie || (parsedAcessorios && ((parsedAcessorios as any).validadeDocumento || (parsedAcessorios as any).validadeTie)) || undefined,
+    validadeTie: b.validadeTie || b.validadeDocumento || (parsedAcessorios && ((parsedAcessorios as any).validadeTie || (parsedAcessorios as any).validadeDocumento)) || undefined,
+    validadeSeguro: b.validadeSeguro || (parsedAcessorios && (parsedAcessorios as any).validadeSeguro) || undefined,
+    validadeExtintor: b.validadeExtintor || (parsedAcessorios && (parsedAcessorios as any).validadeExtintor) || undefined,
+    tipo_propulsao: b.tipo_propulsao || '',
+    potencia: b.potencia || '',
+    donos: donosList,
+    emManutencao: b.emManutencao === 1 || b.emManutencao === true,
+    whatsappGroupId: b.whatsappGroupId || undefined,
+    temSom: b.temSom === 1 || b.temSom === true,
+    imagemUrl: effectiveImagemUrl,
+    fotos: fotosList,
+    descricaoComercial: effectiveDescricao,
+    acessorios: parsedAcessorios,
+    capacidadePassageiros: b.capacidadePassageiros !== null && b.capacidadePassageiros !== undefined ? Number(b.capacidadePassageiros) : undefined,
+    totalCotas: b.totalCotas !== null && b.totalCotas !== undefined && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4),
+    valorCota: b.valorCota !== null && b.valorCota !== undefined ? Number(b.valorCota) : 0,
+    taxaAdmMensal: b.taxaAdmMensal !== null && b.taxaAdmMensal !== undefined ? Number(b.taxaAdmMensal) : 0,
+    horasMotor: b.horasMotor ? Number(b.horasMotor) : 0,
+    ultimaAtualizacaoHoras: b.ultimaAtualizacaoHoras || undefined,
+    horasUltimaManutencao: b.horasUltimaManutencao ? Number(b.horasUltimaManutencao) : 0,
+    historicoHoras: b.historicoHoras ? (typeof b.historicoHoras === 'string' ? JSON.parse(b.historicoHoras) : b.historicoHoras) : undefined,
+  };
+}
+
+function parseReservationRow(r: any) {
+  let fotosChecklistSaida = [];
+  let fotosChecklistChegada = [];
+  let fotosChecklistDescida = [];
+  let fotosChecklistSubida = [];
+  try { if (r.fotosChecklistSaida) fotosChecklistSaida = JSON.parse(r.fotosChecklistSaida); } catch {}
+  try { if (r.fotosChecklistChegada) fotosChecklistChegada = JSON.parse(r.fotosChecklistChegada); } catch {}
+  try { if (r.fotosChecklistDescida) fotosChecklistDescida = JSON.parse(r.fotosChecklistDescida); } catch {}
+  try { if (r.fotosChecklistSubida) fotosChecklistSubida = JSON.parse(r.fotosChecklistSubida); } catch {}
+
+  return {
+    ...r,
+    observações: r.observacoes || "",
+    somRetirado: r.somRetirado === 1 || r.somRetirado === true,
+    somTesteSaida: r.somTesteSaida || "",
+    somTesteRetorno: r.somTesteRetorno || "",
+    confirmacaoEnviada: r.confirmacaoEnviada === 1 || r.confirmacaoEnviada === true,
+    fotosChecklistSaida,
+    fotosChecklistChegada,
+    fotosChecklistDescida,
+    fotosChecklistSubida,
+    acessoriosSolicitados: r.acessoriosSolicitados ? (typeof r.acessoriosSolicitados === "string" ? JSON.parse(r.acessoriosSolicitados) : r.acessoriosSolicitados) : undefined,
+  };
+}
+
+function parseManutencaoRow(m: any) {
+  return {
+    ...m,
+    orcamentoAprovado: m.orcamentoAprovado === 1 || m.orcamentoAprovado === true,
+    acessorios: m.acessorios ? (typeof m.acessorios === 'string' ? JSON.parse(m.acessorios) : m.acessorios) : undefined,
+    pecas: m.pecas ? (typeof m.pecas === 'string' ? JSON.parse(m.pecas) : m.pecas) : undefined,
+    cotistasSelecionados: m.cotistasSelecionados ? (typeof m.cotistasSelecionados === 'string' ? JSON.parse(m.cotistasSelecionados) : m.cotistasSelecionados) : undefined
+  };
+}
+
+function parseTransacaoRow(t: any) {
+  return {
+    ...t,
+    metadata: typeof t.metadata === "string" && t.metadata.trim() ? (() => { try { return JSON.parse(t.metadata); } catch { return null; } })() : (t.metadata || null)
+  };
+}
+
+/**
+ * Carregamento rápido e isolado exclusivamente para o Portal do Cliente (sem varrer o banco todo).
+ */
+export async function getClientPortalData(userId: string) {
+  const currentPool = getDbPool();
+  if (!currentPool) {
+    throw new Error("MySQL Connection pool is offline.");
+  }
+
+  const [
+    [clientRows],
+    [clienteEmpresas],
+    [rawTransacoes],
+    [chamados]
+  ] = await Promise.all([
+    currentPool.query("SELECT * FROM Clientes WHERE id = ? LIMIT 1", [userId]),
+    currentPool.query("SELECT empresa FROM ClienteEmpresas WHERE clienteId = ?", [userId]),
+    currentPool.query("SELECT * FROM TransacoesFinanceiras WHERE clienteId = ? AND tipo = 'receita' ORDER BY dataVencimento DESC", [userId]),
+    currentPool.query("SELECT * FROM Chamados WHERE clienteId = ? ORDER BY createdAt DESC", [userId])
+  ]);
+
+  const c = (clientRows as any[])[0];
+  if (!c) {
+    return { client: null, boats: [], reservations: [], transacoes: [], chamados: [], manutencoes: [] };
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const parsedTransacoes = (rawTransacoes as any[]).map(parseTransacaoRow);
+
+  let openCnt = 0;
+  let overdueCnt = 0;
+  for (const t of parsedTransacoes) {
+    const st = String(t.status || '').toLowerCase();
+    if (!['pago', 'cancelado'].includes(st)) {
+      openCnt++;
+      if (['vencido', 'atrasado'].includes(st) || (t.dataVencimento && t.dataVencimento < todayStr)) {
+        overdueCnt++;
+      }
+    }
+  }
+
+  let list: any[] | undefined = undefined;
+  if (c.embarcacoes) {
+    try {
+      list = typeof c.embarcacoes === 'string' ? JSON.parse(c.embarcacoes) : c.embarcacoes;
+    } catch {
+      list = undefined;
+    }
+  }
+
+  let contratoValoresParsed = undefined;
+  if (c.contratoValores) {
+    try {
+      contratoValoresParsed = typeof c.contratoValores === 'string' ? JSON.parse(c.contratoValores) : c.contratoValores;
+    } catch {}
+  }
+
+  let contratosParsed = undefined;
+  if (c.contratos) {
+    try {
+      contratosParsed = typeof c.contratos === 'string' ? JSON.parse(c.contratos) : c.contratos;
+    } catch {}
+  }
+
+  const empresasList = (clienteEmpresas as any[]).map(r => r.empresa);
+  const parsedClient: any = {
+    ...c,
+    status: c.status || 'ativo',
+    empresas: empresasList.length > 0 ? empresasList : ['VALE'],
+    embarcacoes: list,
+    temLancamentos: parsedTransacoes.length > 0,
+    temValoresEmAberto: openCnt > 0,
+    statusFinanceiro: overdueCnt > 0 ? 'inadimplente' : (openCnt > 0 ? 'pendente' : 'em_dia'),
+    observacoesFinanceiras: c.observacoesFinanceiras || '',
+    acessorios: c.acessorios ? (typeof c.acessorios === 'string' ? (() => { try { return JSON.parse(c.acessorios); } catch { return undefined; } })() : c.acessorios) : undefined,
+    contratoValores: contratoValoresParsed,
+    contratos: contratosParsed,
+  };
+
+  if (Array.isArray(parsedClient.embarcacoes) && parsedClient.embarcacoes.length > 0) {
+    parsedClient.embarcacoes.forEach((eb: any, idx: number) => {
+      eb.cota = parseExplicitCota(eb?.cota) || `C${idx + 1}`;
+      eb.plano = eb.plano || (parsedClient.plano === 'completo' ? 'completo' : 'normal');
+    });
+    parsedClient.embarcacaoId = parsedClient.embarcacoes[0].embarcacaoId;
+    parsedClient.cota = parsedClient.embarcacoes[0].cota;
+  } else if (parsedClient.embarcacaoId) {
+    parsedClient.cota = parseExplicitCota(parsedClient.cota) || 'C1';
+    parsedClient.embarcacoes = [{ embarcacaoId: parsedClient.embarcacaoId, cota: parsedClient.cota, plano: parsedClient.plano === 'completo' ? 'completo' : 'normal' }];
+  } else if (parsedClient.cota) {
+    parsedClient.cota = parseExplicitCota(parsedClient.cota) || 'C1';
+  }
+
+  const clientBoatsList: string[] = (
+    Array.isArray(parsedClient.embarcacoes) && parsedClient.embarcacoes.length > 0
+      ? parsedClient.embarcacoes.map((eb: any) => eb.embarcacaoId)
+      : [parsedClient.embarcacaoId]
+  ).filter(Boolean);
+
+  if (clientBoatsList.length === 0) {
+    return {
+      client: parsedClient,
+      boats: [],
+      reservations: [],
+      transacoes: parsedTransacoes,
+      chamados: chamados as any[],
+      manutencoes: []
+    };
+  }
+
+  const [
+    [boatRows],
+    [embarcacaoEmpresasRows],
+    [resRows],
+    [manutRows]
+  ] = await Promise.all([
+    currentPool.query("SELECT * FROM Embarcacoes WHERE id IN (?)", [clientBoatsList]),
+    currentPool.query("SELECT * FROM EmbarcacaoEmpresas WHERE embarcacaoId IN (?)", [clientBoatsList]),
+    currentPool.query("SELECT * FROM Reservas WHERE embarcacaoId IN (?)", [clientBoatsList]),
+    currentPool.query("SELECT * FROM Manutencoes WHERE embarcacaoId IN (?) ORDER BY createdAt DESC", [clientBoatsList])
+  ]);
+
+  const embarcacaoEmpresasMap = new Map<string, string[]>();
+  (embarcacaoEmpresasRows as any[]).forEach(row => {
+    if (!embarcacaoEmpresasMap.has(row.embarcacaoId)) embarcacaoEmpresasMap.set(row.embarcacaoId, []);
+    embarcacaoEmpresasMap.get(row.embarcacaoId)!.push(row.empresa);
+  });
+
+  return {
+    client: parsedClient,
+    boats: (boatRows as any[]).map(b => parseBoatRow(b, embarcacaoEmpresasMap)),
+    reservations: (resRows as any[]).map(parseReservationRow),
+    transacoes: parsedTransacoes,
+    chamados: chamados as any[],
+    manutencoes: (manutRows as any[]).map(parseManutencaoRow)
+  };
+}
+
+let lastPullOverdueUpdate = 0;
+
+// Fetch core operational database records (parallelized & deduplicated)
 export async function pullDatabase(forceFresh = false) {
   if (!forceFresh && dbCache && (Date.now() - dbCache.timestamp < CACHE_TTL_MS)) {
     return dbCache.data;
+  }
+
+  if (!forceFresh && inFlightPullPromise) {
+    return inFlightPullPromise;
   }
 
   const currentPool = getDbPool();
@@ -1865,309 +2118,261 @@ export async function pullDatabase(forceFresh = false) {
     throw new Error("MySQL Connection pool is offline.");
   }
 
-  const [clients] = await currentPool.query("SELECT * FROM Clientes");
-  const [boats] = await currentPool.query("SELECT * FROM Embarcacoes");
-  const [clienteEmpresas] = await currentPool.query("SELECT * FROM ClienteEmpresas");
-  const [embarcacaoEmpresas] = await currentPool.query("SELECT * FROM EmbarcacaoEmpresas");
+  const runPull = async () => {
+    const todayStr = new Date().toISOString().split('T')[0];
 
-  const clienteEmpresasMap = new Map<string, string[]>();
-  (clienteEmpresas as any[]).forEach(row => {
-    if (!clienteEmpresasMap.has(row.clienteId)) clienteEmpresasMap.set(row.clienteId, []);
-    clienteEmpresasMap.get(row.clienteId)!.push(row.empresa);
-  });
-
-  const embarcacaoEmpresasMap = new Map<string, string[]>();
-  (embarcacaoEmpresas as any[]).forEach(row => {
-    if (!embarcacaoEmpresasMap.has(row.embarcacaoId)) embarcacaoEmpresasMap.set(row.embarcacaoId, []);
-    embarcacaoEmpresasMap.get(row.embarcacaoId)!.push(row.empresa);
-  });
-  const [reservations] = await currentPool.query("SELECT * FROM Reservas");
-  const [controlesSom] = await currentPool.query("SELECT * FROM ControlesSom ORDER BY createdAt DESC");
-  const [manutencoes] = await currentPool.query("SELECT * FROM Manutencoes ORDER BY createdAt DESC");
-  const [mecanicos] = await currentPool.query("SELECT * FROM Mecanicos ORDER BY createdAt DESC");
-  const [tiposManutencao] = await currentPool.query("SELECT * FROM TiposManutencao ORDER BY nome ASC");
-  const [chamados] = await currentPool.query("SELECT * FROM Chamados ORDER BY createdAt DESC");
-  
-  // Auto-update overdue transactions before fetching
-  const todayStr = new Date().toISOString().split('T')[0];
-  await currentPool.query(`
-    UPDATE TransacoesFinanceiras 
-    SET status = 'vencido' 
-    WHERE status = 'lancado' 
-      AND dataVencimento < ? 
-      AND dataVencimento != '' 
-      AND dataVencimento IS NOT NULL
-  `, [todayStr]);
-
-  const [transacoes] = await currentPool.query("SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC");
-  const [funcionarios] = await currentPool.query("SELECT * FROM Funcionarios ORDER BY createdAt DESC");
-  const [folgas] = await currentPool.query("SELECT * FROM Folgas ORDER BY data DESC");
-  const [catalogoEPIs] = await currentPool.query("SELECT * FROM CatalogoEPIs ORDER BY nome ASC");
-  const [registrosAtividades] = await currentPool.query("SELECT * FROM RegistrosAtividades ORDER BY createdAt DESC LIMIT 500");
-
-
-  const [finCounts] = await currentPool.query(`
-    SELECT clienteId, 
-           COUNT(*) as totalCnt,
-           SUM(CASE WHEN status NOT IN ('pago', 'cancelado') THEN 1 ELSE 0 END) as openCnt,
-           SUM(CASE WHEN status IN ('vencido', 'atrasado') OR (status NOT IN ('pago', 'cancelado') AND dataVencimento < ?) THEN 1 ELSE 0 END) as overdueCnt
-    FROM TransacoesFinanceiras 
-    WHERE tipo = 'receita'
-    GROUP BY clienteId
-  `, [todayStr]);
-
-  const finMap = new Map<string, { totalCnt: number; openCnt: number; overdueCnt: number }>();
-  (finCounts as any[]).forEach(row => {
-    if (row.clienteId) {
-      finMap.set(row.clienteId, {
-        totalCnt: Number(row.totalCnt) || 0,
-        openCnt: Number(row.openCnt) || 0,
-        overdueCnt: Number(row.overdueCnt) || 0
-      });
+    // Auto-update overdue transactions periodically (at most once every 10 minutes instead of on every pull)
+    const nowMs = Date.now();
+    if (nowMs - lastPullOverdueUpdate > 10 * 60 * 1000) {
+      lastPullOverdueUpdate = nowMs;
+      currentPool.query(`
+        UPDATE TransacoesFinanceiras 
+        SET status = 'vencido' 
+        WHERE status = 'lancado' 
+          AND dataVencimento < ? 
+          AND dataVencimento != '' 
+          AND dataVencimento IS NOT NULL
+      `, [todayStr]).catch(err => console.warn("[pullDatabase overdue update warning]:", err));
     }
-  });
 
-  // Parse JSON serializations back to rich arrays/objects
-  const parsedClients = (clients as any[]).map(c => {
-    let list = undefined;
-    if (c.embarcacoes) {
-      try {
-        list = JSON.parse(c.embarcacoes);
-      } catch (err) {
-        list = undefined;
+    // Batch 1: Core entities in parallel (8 queries within pool limit of 10)
+    const [
+      [clients],
+      [boats],
+      [clienteEmpresas],
+      [embarcacaoEmpresas],
+      [reservations],
+      [finCounts],
+      [manutencoes],
+      [chamados]
+    ] = await Promise.all([
+      currentPool.query("SELECT * FROM Clientes"),
+      currentPool.query("SELECT * FROM Embarcacoes"),
+      currentPool.query("SELECT * FROM ClienteEmpresas"),
+      currentPool.query("SELECT * FROM EmbarcacaoEmpresas"),
+      currentPool.query("SELECT * FROM Reservas"),
+      currentPool.query(`
+        SELECT clienteId, 
+               COUNT(*) as totalCnt,
+               SUM(CASE WHEN status NOT IN ('pago', 'cancelado') THEN 1 ELSE 0 END) as openCnt,
+               SUM(CASE WHEN status IN ('vencido', 'atrasado') OR (status NOT IN ('pago', 'cancelado') AND dataVencimento < ?) THEN 1 ELSE 0 END) as overdueCnt
+        FROM TransacoesFinanceiras 
+        WHERE tipo = 'receita'
+        GROUP BY clienteId
+      `, [todayStr]),
+      currentPool.query("SELECT * FROM Manutencoes ORDER BY createdAt DESC"),
+      currentPool.query("SELECT * FROM Chamados ORDER BY createdAt DESC")
+    ]);
+
+    // Batch 2: Auxiliary operational tables + only fuel transactions needed by Marina views (avoids 5.5MB full financial dump)
+    const [
+      [controlesSom],
+      [mecanicos],
+      [tiposManutencao],
+      [transacoes],
+      [funcionarios],
+      [folgas],
+      [catalogoEPIs],
+      [registrosAtividades]
+    ] = await Promise.all([
+      currentPool.query("SELECT * FROM ControlesSom ORDER BY createdAt DESC"),
+      currentPool.query("SELECT * FROM Mecanicos ORDER BY createdAt DESC"),
+      currentPool.query("SELECT * FROM TiposManutencao ORDER BY nome ASC"),
+      currentPool.query(`
+        SELECT * FROM TransacoesFinanceiras 
+        WHERE categoria IN ('Abastecimento Marina', 'combustivel', 'Combustível')
+           OR LOWER(descricao) LIKE '%abastecimento%'
+           OR LOWER(descricao) LIKE '%litros%'
+        ORDER BY dataVencimento DESC
+      `),
+      currentPool.query("SELECT * FROM Funcionarios ORDER BY createdAt DESC"),
+      currentPool.query("SELECT * FROM Folgas ORDER BY data DESC"),
+      currentPool.query("SELECT * FROM CatalogoEPIs ORDER BY nome ASC"),
+      currentPool.query("SELECT * FROM RegistrosAtividades ORDER BY createdAt DESC LIMIT 500")
+    ]);
+
+    // Batch 3: Catalog tables in parallel
+    const [
+      [planosContas],
+      [centrosCusto],
+      [fornecedores],
+      [contasBancarias],
+      [funcionariosEPIs],
+      [historicoEPIMensal]
+    ] = await Promise.all([
+      currentPool.query("SELECT * FROM PlanosDeContas"),
+      currentPool.query("SELECT * FROM CentrosDeCusto"),
+      currentPool.query("SELECT * FROM Fornecedores"),
+      currentPool.query("SELECT * FROM ContasBancarias"),
+      currentPool.query("SELECT * FROM FuncionariosEPIs ORDER BY geradoEm DESC"),
+      currentPool.query("SELECT * FROM HistoricoEPIMensal ORDER BY mesAno DESC")
+    ]);
+
+    const clienteEmpresasMap = new Map<string, string[]>();
+    (clienteEmpresas as any[]).forEach(row => {
+      if (!clienteEmpresasMap.has(row.clienteId)) clienteEmpresasMap.set(row.clienteId, []);
+      clienteEmpresasMap.get(row.clienteId)!.push(row.empresa);
+    });
+
+    const embarcacaoEmpresasMap = new Map<string, string[]>();
+    (embarcacaoEmpresas as any[]).forEach(row => {
+      if (!embarcacaoEmpresasMap.has(row.embarcacaoId)) embarcacaoEmpresasMap.set(row.embarcacaoId, []);
+      embarcacaoEmpresasMap.get(row.embarcacaoId)!.push(row.empresa);
+    });
+
+    const finMap = new Map<string, { totalCnt: number; openCnt: number; overdueCnt: number }>();
+    (finCounts as any[]).forEach(row => {
+      if (row.clienteId) {
+        finMap.set(row.clienteId, {
+          totalCnt: Number(row.totalCnt) || 0,
+          openCnt: Number(row.openCnt) || 0,
+          overdueCnt: Number(row.overdueCnt) || 0
+        });
       }
-    }
-    const fin = finMap.get(c.id) || { totalCnt: 0, openCnt: 0, overdueCnt: 0 };
-    let contratoValoresParsed = undefined;
-    if (c.contratoValores) {
-      try {
-        contratoValoresParsed = typeof c.contratoValores === 'string' ? JSON.parse(c.contratoValores) : c.contratoValores;
-      } catch (e) {}
-    }
-    let contratosParsed = undefined;
-    if (c.contratos) {
-      try {
-        contratosParsed = typeof c.contratos === 'string' ? JSON.parse(c.contratos) : c.contratos;
-      } catch (e) {}
-    }
+    });
 
-    return {
-      ...c,
-      status: c.status || 'ativo',
-      empresas: clienteEmpresasMap.get(c.id) || ['VALE'],
-      embarcacoes: list,
-      temLancamentos: fin.totalCnt > 0,
-      temValoresEmAberto: fin.openCnt > 0,
-      statusFinanceiro: fin.overdueCnt > 0 ? 'inadimplente' : (fin.openCnt > 0 ? 'pendente' : 'em_dia'),
-      observacoesFinanceiras: c.observacoesFinanceiras || '',
-      acessorios: c.acessorios ? (typeof c.acessorios === 'string' ? JSON.parse(c.acessorios) : c.acessorios) : undefined,
-      contratoValores: contratoValoresParsed,
-      contratos: contratosParsed,
+    // Parse JSON serializations back to rich arrays/objects
+    const parsedClients = (clients as any[]).map(c => {
+      let list = undefined;
+      if (c.embarcacoes) {
+        try {
+          list = JSON.parse(c.embarcacoes);
+        } catch (err) {
+          list = undefined;
+        }
+      }
+      const fin = finMap.get(c.id) || { totalCnt: 0, openCnt: 0, overdueCnt: 0 };
+      let contratoValoresParsed = undefined;
+      if (c.contratoValores) {
+        try {
+          contratoValoresParsed = typeof c.contratoValores === 'string' ? JSON.parse(c.contratoValores) : c.contratoValores;
+        } catch (e) {}
+      }
+      let contratosParsed = undefined;
+      if (c.contratos) {
+        try {
+          contratosParsed = typeof c.contratos === 'string' ? JSON.parse(c.contratos) : c.contratos;
+        } catch (e) {}
+      }
+
+      return {
+        ...c,
+        status: c.status || 'ativo',
+        empresas: clienteEmpresasMap.get(c.id) || ['VALE'],
+        embarcacoes: list,
+        temLancamentos: fin.totalCnt > 0,
+        temValoresEmAberto: fin.openCnt > 0,
+        statusFinanceiro: fin.overdueCnt > 0 ? 'inadimplente' : (fin.openCnt > 0 ? 'pendente' : 'em_dia'),
+        observacoesFinanceiras: c.observacoesFinanceiras || '',
+        acessorios: c.acessorios ? (typeof c.acessorios === 'string' ? JSON.parse(c.acessorios) : c.acessorios) : undefined,
+        contratoValores: contratoValoresParsed,
+        contratos: contratosParsed,
+      };
+    });
+
+    // Padronizar cotas em todos os clientes carregados (convertendo '1/4', 'Cota', etc. para C1, C2...)
+    const occupiedByBoat = new Map<string, Set<string>>();
+    const getOccupiedSet = (boatId: string) => {
+      if (!occupiedByBoat.has(boatId)) occupiedByBoat.set(boatId, new Set());
+      return occupiedByBoat.get(boatId)!;
     };
-  });
 
-  // Padronizar cotas em todos os clientes carregados (convertendo '1/4', 'Cota', etc. para C1, C2...)
-  const occupiedByBoat = new Map<string, Set<string>>();
-  const getOccupiedSet = (boatId: string) => {
-    if (!occupiedByBoat.has(boatId)) occupiedByBoat.set(boatId, new Set());
-    return occupiedByBoat.get(boatId)!;
-  };
-
-  parsedClients.forEach((c: any) => {
-    if (c.status === 'inativo') return;
-    if (Array.isArray(c.embarcacoes) && c.embarcacoes.length > 0) {
-      c.embarcacoes.forEach((eb: any) => {
-        if (!eb?.embarcacaoId) return;
-        const exp = parseExplicitCota(eb.cota);
+    parsedClients.forEach((c: any) => {
+      if (c.status === 'inativo') return;
+      if (Array.isArray(c.embarcacoes) && c.embarcacoes.length > 0) {
+        c.embarcacoes.forEach((eb: any) => {
+          if (!eb?.embarcacaoId) return;
+          const exp = parseExplicitCota(eb.cota);
+          if (exp) {
+            eb.cota = exp;
+            getOccupiedSet(eb.embarcacaoId).add(exp);
+          }
+        });
+      } else if (c.embarcacaoId) {
+        const exp = parseExplicitCota(c.cota);
         if (exp) {
-          eb.cota = exp;
-          getOccupiedSet(eb.embarcacaoId).add(exp);
+          c.cota = exp;
+          getOccupiedSet(c.embarcacaoId).add(exp);
         }
-      });
-    } else if (c.embarcacaoId) {
-      const exp = parseExplicitCota(c.cota);
-      if (exp) {
-        c.cota = exp;
-        getOccupiedSet(c.embarcacaoId).add(exp);
       }
-    }
-  });
+    });
 
-  const allocateNextFreeSlot = (boatId: string): string => {
-    if (!boatId) return 'C1';
-    const set = getOccupiedSet(boatId);
-    let slot = 1;
-    while (set.has(`C${slot}`)) slot++;
-    const code = `C${slot}`;
-    set.add(code);
-    return code;
-  };
+    const allocateNextFreeSlot = (boatId: string): string => {
+      if (!boatId) return 'C1';
+      const set = getOccupiedSet(boatId);
+      let slot = 1;
+      while (set.has(`C${slot}`)) slot++;
+      const code = `C${slot}`;
+      set.add(code);
+      return code;
+    };
 
-  parsedClients.forEach((c: any) => {
-    if (Array.isArray(c.embarcacoes) && c.embarcacoes.length > 0) {
-      c.embarcacoes.forEach((eb: any) => {
-        if (!eb?.embarcacaoId) {
-          eb.cota = parseExplicitCota(eb?.cota) || 'C1';
+    parsedClients.forEach((c: any) => {
+      if (Array.isArray(c.embarcacoes) && c.embarcacoes.length > 0) {
+        c.embarcacoes.forEach((eb: any) => {
+          if (!eb?.embarcacaoId) {
+            eb.cota = parseExplicitCota(eb?.cota) || 'C1';
+            eb.plano = eb.plano || (c.plano === 'completo' ? 'completo' : 'normal');
+            return;
+          }
+          eb.cota = parseExplicitCota(eb.cota) || allocateNextFreeSlot(eb.embarcacaoId);
           eb.plano = eb.plano || (c.plano === 'completo' ? 'completo' : 'normal');
-          return;
-        }
-        eb.cota = parseExplicitCota(eb.cota) || allocateNextFreeSlot(eb.embarcacaoId);
-        eb.plano = eb.plano || (c.plano === 'completo' ? 'completo' : 'normal');
-      });
-      c.embarcacaoId = c.embarcacoes[0].embarcacaoId;
-      c.cota = c.embarcacoes[0].cota;
-    } else if (c.embarcacaoId) {
-      c.cota = parseExplicitCota(c.cota) || allocateNextFreeSlot(c.embarcacaoId);
-      c.embarcacoes = [{ embarcacaoId: c.embarcacaoId, cota: c.cota, plano: c.plano === 'completo' ? 'completo' : 'normal' }];
-    } else if (c.cota) {
-      c.cota = parseExplicitCota(c.cota) || 'C1';
-    }
-  });
-
-  const parsedBoats = (boats as any[]).map(b => {
-    let donosList: string[] = [];
-    if (b.donos) {
-      try {
-        donosList = JSON.parse(b.donos);
-      } catch (err) {
-        donosList = [];
+        });
+        c.embarcacaoId = c.embarcacoes[0].embarcacaoId;
+        c.cota = c.embarcacoes[0].cota;
+      } else if (c.embarcacaoId) {
+        c.cota = parseExplicitCota(c.cota) || allocateNextFreeSlot(c.embarcacaoId);
+        c.embarcacoes = [{ embarcacaoId: c.embarcacaoId, cota: c.cota, plano: c.plano === 'completo' ? 'completo' : 'normal' }];
+      } else if (c.cota) {
+        c.cota = parseExplicitCota(c.cota) || 'C1';
       }
-    }
-    const parsedAcessorios = b.acessorios ? (typeof b.acessorios === 'string' ? (() => { try { return JSON.parse(b.acessorios); } catch { return undefined; } })() : b.acessorios) : undefined;
-    let fotosList: string[] = [];
-    if (b.fotos) {
-      try {
-        const parsedFotos = typeof b.fotos === 'string' ? JSON.parse(b.fotos) : b.fotos;
-        if (Array.isArray(parsedFotos)) {
-          parsedFotos.forEach((f: any) => {
-            if (f && typeof f === 'string' && !fotosList.includes(f)) fotosList.push(f);
-          });
-        }
-      } catch {}
-    }
-    if (fotosList.length === 0 && parsedAcessorios && Array.isArray((parsedAcessorios as any).fotos)) {
-      (parsedAcessorios as any).fotos.forEach((f: any) => {
-        if (f && typeof f === 'string' && !fotosList.includes(f)) fotosList.push(f);
-      });
-    }
-    if (b.imagemUrl && !fotosList.includes(b.imagemUrl)) {
-      fotosList = [b.imagemUrl, ...fotosList];
-    }
-    const effectiveImagemUrl = b.imagemUrl || fotosList[0] || undefined;
-    const effectiveDescricao = b.descricaoComercial || (parsedAcessorios && (parsedAcessorios as any).descricaoComercial) || undefined;
+    });
 
-    return {
-      ...b,
-      empresas: embarcacaoEmpresasMap.get(b.id) || ['VALE'],
-      vaga: b.vaga || '',
-      tamanho: b.tamanho || b.comprimento || (parsedAcessorios && (parsedAcessorios as any).tamanho) || (parsedAcessorios && (parsedAcessorios as any).comprimento) || '',
-      comprimento: b.comprimento || b.tamanho || (parsedAcessorios && (parsedAcessorios as any).comprimento) || (parsedAcessorios && (parsedAcessorios as any).tamanho) || '',
-      chassi: b.chassi || '',
-      inscricao: b.inscricao || '',
-      validadeDocumento: b.validadeDocumento || b.validadeTie || (parsedAcessorios && ((parsedAcessorios as any).validadeDocumento || (parsedAcessorios as any).validadeTie)) || undefined,
-      validadeTie: b.validadeTie || b.validadeDocumento || (parsedAcessorios && ((parsedAcessorios as any).validadeTie || (parsedAcessorios as any).validadeDocumento)) || undefined,
-      validadeSeguro: b.validadeSeguro || (parsedAcessorios && (parsedAcessorios as any).validadeSeguro) || undefined,
-      validadeExtintor: b.validadeExtintor || (parsedAcessorios && (parsedAcessorios as any).validadeExtintor) || undefined,
-      tipo_propulsao: b.tipo_propulsao || '',
-      potencia: b.potencia || '',
-      donos: donosList,
-      emManutencao: b.emManutencao === 1 || b.emManutencao === true,
-      whatsappGroupId: b.whatsappGroupId || undefined,
-      temSom: b.temSom === 1 || b.temSom === true,
-      imagemUrl: effectiveImagemUrl,
-      fotos: fotosList,
-      descricaoComercial: effectiveDescricao,
-      acessorios: parsedAcessorios,
-      capacidadePassageiros: b.capacidadePassageiros !== null && b.capacidadePassageiros !== undefined ? Number(b.capacidadePassageiros) : undefined,
-      totalCotas: b.totalCotas !== null && b.totalCotas !== undefined && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4),
-      valorCota: b.valorCota !== null && b.valorCota !== undefined ? Number(b.valorCota) : 0,
-      taxaAdmMensal: b.taxaAdmMensal !== null && b.taxaAdmMensal !== undefined ? Number(b.taxaAdmMensal) : 0,
-      horasMotor: b.horasMotor ? Number(b.horasMotor) : 0,
-      ultimaAtualizacaoHoras: b.ultimaAtualizacaoHoras || undefined,
-      horasUltimaManutencao: b.horasUltimaManutencao ? Number(b.horasUltimaManutencao) : 0,
-      historicoHoras: b.historicoHoras ? (typeof b.historicoHoras === 'string' ? JSON.parse(b.historicoHoras) : b.historicoHoras) : undefined,
-    };
-  });
-
-  const parsedReservations = (reservations as any[]).map(r => {
-    let fotosChecklistSaida = [];
-    let fotosChecklistChegada = [];
-    let fotosChecklistDescida = [];
-    let fotosChecklistSubida = [];
-    try { if (r.fotosChecklistSaida) fotosChecklistSaida = JSON.parse(r.fotosChecklistSaida); } catch(e){}
-    try { if (r.fotosChecklistChegada) fotosChecklistChegada = JSON.parse(r.fotosChecklistChegada); } catch(e){}
-    try { if (r.fotosChecklistDescida) fotosChecklistDescida = JSON.parse(r.fotosChecklistDescida); } catch(e){}
-    try { if (r.fotosChecklistSubida) fotosChecklistSubida = JSON.parse(r.fotosChecklistSubida); } catch(e){}
-    
-    return {
+    const parsedBoats = (boats as any[]).map(b => parseBoatRow(b, embarcacaoEmpresasMap));
+    const parsedReservations = (reservations as any[]).map(parseReservationRow);
+    const parsedControlesSom = (controlesSom as any[]).map(r => ({
       ...r,
-      observações: r.observacoes || "", // map back to portuguese character key in FE type if needed
       somRetirado: r.somRetirado === 1 || r.somRetirado === true,
-      somTesteSaida: r.somTesteSaida || "",
-      somTesteRetorno: r.somTesteRetorno || "",
-      confirmacaoEnviada: r.confirmacaoEnviada === 1 || r.confirmacaoEnviada === true,
-      fotosChecklistSaida,
-      fotosChecklistChegada,
-      fotosChecklistDescida,
-      fotosChecklistSubida,
-      acessoriosSolicitados: r.acessoriosSolicitados ? (typeof r.acessoriosSolicitados === "string" ? JSON.parse(r.acessoriosSolicitados) : r.acessoriosSolicitados) : undefined,
+    }));
+
+    const result = {
+      clients: parsedClients,
+      boats: parsedBoats,
+      reservations: parsedReservations,
+      controlesSom: parsedControlesSom,
+      manutencoes: (manutencoes as any[]).map(parseManutencaoRow),
+      mecanicos: mecanicos as any[],
+      tiposManutencao: tiposManutencao as any[],
+      transacoes: (transacoes as any[]).map(parseTransacaoRow),
+      funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : [], primeiroEmprego: f.primeiroEmprego === 1})),
+      folgas: folgas as any[],
+      catalogoEPIs: catalogoEPIs as any[],
+      registrosAtividades: registrosAtividades as any[],
+      epis: (funcionariosEPIs as any[]).map(e => ({
+        ...e,
+        historicoTrocas: e.historicoTrocas ? (typeof e.historicoTrocas === 'string' ? JSON.parse(e.historicoTrocas) : e.historicoTrocas) : []
+      })),
+      historicoEpis: historicoEPIMensal as any[],
+      chamados: chamados as any[],
+      planosContas: planosContas as any[],
+      centrosCusto: centrosCusto as any[],
+      fornecedores: fornecedores as any[],
+      contasBancarias: contasBancarias as any[]
     };
+
+    dbCache = {
+      data: result,
+      timestamp: Date.now()
+    };
+
+    return result;
+  };
+
+  inFlightPullPromise = runPull().finally(() => {
+    inFlightPullPromise = null;
   });
 
-  const parsedControlesSom = (controlesSom as any[]).map(r => ({
-    ...r,
-    somRetirado: r.somRetirado === 1 || r.somRetirado === true,
-  }));
-
-  
-  const [planosContas] = await currentPool.query("SELECT * FROM PlanosDeContas");
-  const [centrosCusto] = await currentPool.query("SELECT * FROM CentrosDeCusto");
-  const [fornecedores] = await currentPool.query("SELECT * FROM Fornecedores");
-  const [contasBancarias] = await currentPool.query("SELECT * FROM ContasBancarias");
-
-  const [funcionariosEPIs] = await currentPool.query("SELECT * FROM FuncionariosEPIs ORDER BY geradoEm DESC");
-  const [historicoEPIMensal] = await currentPool.query("SELECT * FROM HistoricoEPIMensal ORDER BY mesAno DESC");
-
-  const result = {
-    clients: parsedClients,
-    boats: parsedBoats,
-    reservations: parsedReservations,
-    controlesSom: parsedControlesSom,
-    manutencoes: (manutencoes as any[]).map(m => ({
-      ...m,
-      orcamentoAprovado: m.orcamentoAprovado === 1 || m.orcamentoAprovado === true,
-      acessorios: m.acessorios ? JSON.parse(m.acessorios) : undefined,
-      pecas: m.pecas ? JSON.parse(m.pecas) : undefined,
-      cotistasSelecionados: m.cotistasSelecionados ? JSON.parse(m.cotistasSelecionados) : undefined
-    })),
-    mecanicos: mecanicos as any[],
-    tiposManutencao: tiposManutencao as any[],
-    transacoes: (transacoes as any[]).map(t => ({
-      ...t,
-      metadata: typeof t.metadata === "string" && t.metadata.trim() ? (() => { try { return JSON.parse(t.metadata); } catch(e){ return null; } })() : (t.metadata || null)
-    })),
-    funcionarios: (funcionarios as any[]).map(f => ({...f, turnos: f.turnos ? JSON.parse(f.turnos) : [], primeiroEmprego: f.primeiroEmprego === 1})),
-    folgas: folgas as any[],
-    catalogoEPIs: catalogoEPIs as any[],
-    registrosAtividades: registrosAtividades as any[],
-    epis: (funcionariosEPIs as any[]).map(e => ({
-      ...e,
-      historicoTrocas: e.historicoTrocas ? (typeof e.historicoTrocas === 'string' ? JSON.parse(e.historicoTrocas) : e.historicoTrocas) : []
-    })),
-    historicoEpis: historicoEPIMensal as any[],
-    chamados: chamados as any[],
-    planosContas: planosContas as any[],
-    centrosCusto: centrosCusto as any[],
-    fornecedores: fornecedores as any[],
-    contasBancarias: contasBancarias as any[]
-  };
-
-  dbCache = {
-    data: result,
-    timestamp: Date.now()
-  };
-
-  return result;
+  return inFlightPullPromise;
 }
 
 // Upsert a single client record
@@ -3160,25 +3365,41 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
   }
 }
 
-// Read configuration from Config table
-export async function getConfigValue(chave: string): Promise<string | null> {
-  const currentPool = getDbPool();
-  if (!currentPool) return null;
+let configCache: { data: Map<string, string>; timestamp: number } | null = null;
+const CONFIG_CACHE_TTL = 300000; // 5 minutes
 
-  try {
-    const [rows] = await currentPool.query("SELECT valor FROM Config WHERE chave = ?", [chave]);
-    const results = rows as any[];
-    if (results.length > 0) {
-      return results[0].valor;
-    }
-  } catch (err) {
-    console.warn(`[CONFIG READ ERROR] Could not read config key="${chave}":`, err);
+export function invalidateConfigCache() {
+  configCache = null;
+}
+
+export async function getAllConfigValues(): Promise<Map<string, string>> {
+  if (configCache && Date.now() - configCache.timestamp < CONFIG_CACHE_TTL) {
+    return configCache.data;
   }
-  return null;
+  const currentPool = getDbPool();
+  const map = new Map<string, string>();
+  if (!currentPool) return map;
+  try {
+    const [rows] = await currentPool.query("SELECT chave, valor FROM Config");
+    for (const r of rows as any[]) {
+      if (r.chave) map.set(r.chave, r.valor);
+    }
+    configCache = { data: map, timestamp: Date.now() };
+  } catch (err) {
+    console.warn("[CONFIG READ ERROR] Could not read Config table:", err);
+  }
+  return map;
+}
+
+// Read configuration from Config table (fast in-memory cache)
+export async function getConfigValue(chave: string): Promise<string | null> {
+  const all = await getAllConfigValues();
+  return all.has(chave) ? all.get(chave)! : null;
 }
 
 // Write/Upsert configuration to Config table
 export async function setConfigValue(chave: string, valor: string): Promise<void> {
+  invalidateConfigCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
 
@@ -3408,7 +3629,7 @@ export async function getAllTransacoes(empresa?: string) {
 
   const cacheKey = empresa || 'all';
   const now = Date.now();
-  if (cachedTransacoesData[cacheKey] && (now - cachedTransacoesData[cacheKey].timestamp < 15000)) {
+  if (cachedTransacoesData[cacheKey] && (now - cachedTransacoesData[cacheKey].timestamp < CACHE_TTL_MS)) {
     return cachedTransacoesData[cacheKey].data;
   }
 
@@ -3524,6 +3745,39 @@ export async function upsertTransacao(t: any, connection?: any) {
     await syncClientFinancialStatus(t.clienteId);
   }
   invalidateTransacoesCache();
+}
+
+
+export async function deleteTransacoesByIds(ids: string[]) {
+  if (!ids || ids.length === 0) return;
+  const currentPool = getDbPool();
+  if (!currentPool) throw new Error("MySQL Connection pool is offline.");
+
+  const affectedClientIds = new Set<string>();
+  const CHUNK_SIZE = 500;
+
+  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + CHUNK_SIZE);
+    try {
+      const [rows] = await currentPool.query(
+        "SELECT DISTINCT clienteId FROM TransacoesFinanceiras WHERE id IN (?) AND clienteId IS NOT NULL",
+        [chunk]
+      );
+      for (const r of rows as any[]) {
+        if (r.clienteId) affectedClientIds.add(r.clienteId);
+      }
+    } catch (_) {}
+
+    await currentPool.query("DELETE FROM TransacoesFinanceiras WHERE id IN (?)", [chunk]);
+  }
+
+  for (const cId of affectedClientIds) {
+    try {
+      await syncClientFinancialStatus(cId);
+    } catch (_) {}
+  }
+
+  invalidateDbCache();
 }
 
 export async function deleteTransacao(id: string) {
