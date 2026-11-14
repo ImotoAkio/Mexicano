@@ -871,13 +871,15 @@ export async function triggerFinancialNotification(transacao: any): Promise<bool
     // 4. Monta o template da mensagem
     const customTemplate = await getConfigValue("notif_financeiro_template");
     const template = customTemplate ||
-      "Olá, *{cliente}*! 😊\n\nIdentificamos um novo lançamento no seu cadastro:\n\n📋 *Descrição:* {descricao}\n💰 *Valor:* R$ {valor}\n📅 *Vencimento:* {vencimento}{link_info}\n\nFicamos à disposição para qualquer dúvida! 👍";
+      "Olá, *{cliente}*! 😊\n\nConsta uma cobrança/débito em aberto no valor de *R$ {valor}* em seu cadastro.\n\nPara consultar os detalhes e efetuar o pagamento com segurança dentro do portal, acesse seu link exclusivo:\n\n👉 {link_pagamento}\n\nFicamos à disposição para qualquer dúvida! 👍";
 
     const clientFirstName = formatFirstName(client.nome);
     const formattedValor = formatCurrency(transacao.valor);
     const formattedVencimento = formatDateBr(transacao.dataVencimento);
-    const linkPagamento = transacao.asaasPaymentUrl || "";
-    const linkInfo = linkPagamento ? `\n🔗 *Link para Pagamento:* ${linkPagamento}` : "";
+    const magicLink = await generateClientMagicLink(client.id, client.nome, "financeiro");
+    const linkPagamento = magicLink;
+    const linkInfo = linkPagamento ? `\n🔗 *Acessar Portal / Pagamento:* ${linkPagamento}` : "";
+
 
     const messageText = template
       .replace(/{cliente}/g, clientFirstName)
@@ -885,7 +887,9 @@ export async function triggerFinancialNotification(transacao: any): Promise<bool
       .replace(/{valor}/g, formattedValor)
       .replace(/{vencimento}/g, formattedVencimento || "A combinar")
       .replace(/{link_info}/g, linkInfo)
-      .replace(/{link_pagamento}/g, linkPagamento);
+      .replace(/{link_pagamento}/g, linkPagamento)
+      .replace(/{link}/g, linkPagamento);
+
 
     console.log(`[Robô Financeiro] Disparando notificação de lançamento para ${client.nome} (${client.telefone})...`);
 

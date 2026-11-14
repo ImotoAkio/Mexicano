@@ -47,6 +47,7 @@ import {
   syncGempDailyIncremental,
   GempEmpresaKey
 } from "../server-gemp";
+import { getTransacoesResumo, getTransacoesPaginated, getTransacaoById } from "../server-finance-queries";
 
 function getGlobalEmpresaFromRole(role: string): string | null {
   const r = role.toLowerCase().trim();
@@ -63,10 +64,103 @@ async function isPagamentoOnlineHabilitado(): Promise<boolean> {
   return (await getConfigValue("pagamentos_online_habilitado")) === "1";
 }
 
+router.get("/cadastros-basicos", requireAdminAuth, async (req, res) => {
+  try {
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    const pool = getDbPool();
+    if (!pool) return res.status(500).json({ error: true, message: "Banco de dados offline." });
+
+    const [
+      [clientesRows],
+      [embarcacoesRows],
+      contas,
+      planos,
+      fornecedores,
+      centros
+    ] = await Promise.all([
+      pool.query("SELECT id, nome, telefone, email, cpfCnpj, statusFinanceiro, embarcacaoId, embarcacoes FROM Clientes ORDER BY nome ASC"),
+      pool.query("SELECT id, nome, numero, modelo, tipo FROM Embarcacoes ORDER BY nome ASC"),
+      getAllContasBancarias(),
+      getAllPlanosDeContas(),
+      getAllFornecedores(),
+      getAllCentrosDeCusto(),
+    ]);
+
+    const filterByEmpresa = (arr: any[]) =>
+      allowedEmpresa ? arr.filter((item: any) => !item.empresa || item.empresa === allowedEmpresa) : arr;
+
+    const clientes = (clientesRows as any[]).map((c) => {
+      let ebs = c.embarcacoes;
+      if (typeof ebs === 'string') {
+        try { ebs = JSON.parse(ebs); } catch { ebs = []; }
+      }
+      return { ...c, embarcacoes: Array.isArray(ebs) ? ebs : [] };
+    });
+
+    res.json({
+      success: true,
+      clientes,
+      embarcacoes: embarcacoesRows,
+      contasBancarias: filterByEmpresa(contas),
+      planosContas: filterByEmpresa(planos),
+      fornecedores: filterByEmpresa(fornecedores),
+      centrosCusto: filterByEmpresa(centros),
+    });
+  } catch (err: any) {
+    console.error("Error fetching cadastros-basicos:", err);
+    res.status(500).json({ error: true, message: err.message || "Falha ao carregar cadastros básicos." });
+  }
+});
+
+router.get("/resumo", requireAdminAuth, async (req, res) => {
+  try {
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    const targetEmpresa = allowedEmpresa || (typeof req.query.empresa === 'string' ? req.query.empresa : undefined);
+    const resumo = await getTransacoesResumo(targetEmpresa);
+    res.json({ success: true, ...resumo });
+  } catch (err: any) {
+    console.error("Error fetching financeiro resumo:", err);
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch resumo" });
+  }
+});
+
+router.get("/transacoes/:id", requireAdminAuth, async (req, res) => {
+  try {
+    const tx = await getTransacaoById(req.params.id);
+    if (!tx) return res.status(404).json({ error: true, message: "Transação não encontrada" });
+    const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
+    if (allowedEmpresa && tx.empresa !== allowedEmpresa) {
+      return res.status(403).json({ error: true, message: "Acesso negado" });
+    }
+    res.json(tx);
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Failed to fetch transacao" });
+  }
+});
+
 router.get("/transacoes", requireAdminAuth, async (req, res) => {
   try {
     const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || '');
     const targetEmpresa = allowedEmpresa || (typeof req.query.empresa === 'string' ? req.query.empresa : undefined);
+    if (req.query.paginated === '1' || req.query.paginated === 'true') {
+      const result = await getTransacoesPaginated({
+        empresa: targetEmpresa,
+        tipo: typeof req.query.tipo === 'string' ? req.query.tipo : undefined,
+        status: typeof req.query.status === 'string' ? req.query.status : undefined,
+        clienteId: typeof req.query.clienteId === 'string' ? req.query.clienteId : undefined,
+        fornecedorId: typeof req.query.fornecedorId === 'string' ? req.query.fornecedorId : undefined,
+        categoria: typeof req.query.categoria === 'string' ? req.query.categoria : undefined,
+        origemEmpresa: typeof req.query.origemEmpresa === 'string' ? req.query.origemEmpresa : undefined,
+        month: typeof req.query.month === 'string' ? req.query.month : undefined,
+        dataInicio: typeof req.query.dataInicio === 'string' ? req.query.dataInicio : undefined,
+        dataFim: typeof req.query.dataFim === 'string' ? req.query.dataFim : undefined,
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+        sortBy: typeof req.query.sortBy === 'string' ? req.query.sortBy : undefined,
+        page: req.query.page ? Number(req.query.page) : 1,
+        pageSize: req.query.pageSize ? Number(req.query.pageSize) : 50,
+      });
+      return res.json(result);
+    }
     let transacoes = await getAllTransacoes(targetEmpresa);
     if (allowedEmpresa) {
       transacoes = transacoes.filter((t: any) => t.empresa === allowedEmpresa);
@@ -844,6 +938,25 @@ router.get("/asaas-status/:paymentId", requireAnyAuth, async (req, res) => {
 // ----------------------------------------------------------------------
 // INTEGRAÇÃO ERP GEMP (FIREBIRD 5.0 - READ ONLY PREVIEW & IMPORT)
 // ----------------------------------------------------------------------
+router.get("/gemp/auto-sync", requireAdminAuth, async (_req, res) => {
+  try {
+    const val = await getConfigValue("gemp_auto_sync_ativa");
+    res.json({ success: true, autoSyncAtiva: val === "1" });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Falha ao consultar config GEMP." });
+  }
+});
+
+router.post("/gemp/auto-sync", requireAdminAuth, async (req, res) => {
+  try {
+    const ativa = Boolean(req.body?.autoSyncAtiva);
+    await setConfigValue("gemp_auto_sync_ativa", ativa ? "1" : "0");
+    res.json({ success: true, autoSyncAtiva: ativa });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Falha ao salvar config GEMP." });
+  }
+});
+
 router.get("/gemp/preview", requireAdminAuth, async (req, res) => {
   try {
     const allowedEmpresa = getGlobalEmpresaFromRole((req as any).user?.role || "");

@@ -183,76 +183,32 @@ export default function FinanceLancamentos({
     try {
       const token = localStorage.getItem('admin_token');
       if (!token || token === 'null' || token === 'undefined') return;
-      const res = await fetch('/api/financeiro/transacoes', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      let transacoesData: any[] = [];
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const [res, resBasicos, resConfig] = await Promise.all([
+        fetch('/api/financeiro/transacoes', { headers }),
+        fetch('/api/financeiro/cadastros-basicos', { headers }),
+        fetch('/api/financeiro/configuracoes', { headers }),
+      ]);
       if (res.ok) {
-        try {
-          const [resContas, resPlanos, resForn, resCentros, resConfig] = await Promise.all([
-            fetch('/api/financeiro/contas-bancarias', { headers: { 'Authorization': `Bearer ${token}` } }),
-            fetch('/api/financeiro/planos-contas', { headers: { 'Authorization': `Bearer ${token}` } }),
-            fetch('/api/financeiro/fornecedores', { headers: { 'Authorization': `Bearer ${token}` } }),
-            fetch('/api/financeiro/centros-custo', { headers: { 'Authorization': `Bearer ${token}` } }),
-            fetch('/api/financeiro/configuracoes', { headers: { 'Authorization': `Bearer ${token}` } })
-          ]);
-          if (resContas.ok) setContasBancarias(await resContas.json());
-          if (resPlanos.ok) setPlanosContas(await resPlanos.json());
-          if (resForn.ok) setFornecedores(await resForn.json());
-          if (resCentros.ok) setCentrosCusto(await resCentros.json());
-          if (resConfig.ok) {
-            const d = await resConfig.json();
-            if (d.success && d.configuracoes) {
-              setTaxaJurosMensal(parseFloat(d.configuracoes.taxaJurosMensal ?? '2.2'));
-              setTaxaMultaAtraso(parseFloat(d.configuracoes.taxaMultaAtraso ?? '2.0'));
-            }
-          }
-        } catch (err) { console.error('Erro ao buscar dados complementares no financeiro:', err); }
-
-        transacoesData = await res.json();
-        if (Array.isArray(transacoesData)) {
-          setTransacoes(transacoesData);
+        const transacoesData = await res.json();
+        if (Array.isArray(transacoesData)) setTransacoes(transacoesData);
+      }
+      if (resBasicos.ok) {
+        const b = await resBasicos.json();
+        if (Array.isArray(b.contasBancarias)) setContasBancarias(b.contasBancarias);
+        if (Array.isArray(b.planosContas)) setPlanosContas(b.planosContas);
+        if (Array.isArray(b.fornecedores)) setFornecedores(b.fornecedores);
+        if (Array.isArray(b.centrosCusto)) setCentrosCusto(b.centrosCusto);
+        if (Array.isArray(b.clientes)) setClientes(b.clientes);
+        if (Array.isArray(b.embarcacoes)) setEmbarcacoes(b.embarcacoes);
+      }
+      if (resConfig.ok) {
+        const d = await resConfig.json();
+        if (d.success && d.configuracoes) {
+          setTaxaJurosMensal(parseFloat(d.configuracoes.taxaJurosMensal ?? '2.2'));
+          setTaxaMultaAtraso(parseFloat(d.configuracoes.taxaMultaAtraso ?? '2.0'));
         }
       }
-      
-      const resDb = await fetch('/api/db/pull', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (resDb.ok) {
-        const dbData = await resDb.json();
-        if ((!res.ok || transacoesData.length === 0) && Array.isArray(dbData.transacoes)) {
-          transacoesData = dbData.transacoes;
-          setTransacoes(transacoesData);
-        }
-        const clientsArray = dbData.clients || [];
-        const todayStr = new Date().toISOString().split('T')[0];
-
-        const newClients = clientsArray.map((c: any) => {
-          const isDefaulting = transacoesData.some((t: any) => {
-            if (t.clienteId !== c.id) return false;
-            if (t.tipo !== 'receita') return false;
-            if (t.status === 'vencido') return true;
-            if (t.status === 'lancado' && t.dataVencimento < todayStr) return true;
-            return false;
-          });
-          
-          const expectedStatus = isDefaulting ? 'inadimplente' : 'em_dia';
-          if (c.statusFinanceiro !== expectedStatus) {
-            try {
-              clientDB.update(c.id, { statusFinanceiro: expectedStatus });
-            } catch (e) {
-              console.warn("Failed to auto-update client status", e);
-            }
-            return { ...c, statusFinanceiro: expectedStatus };
-          }
-          return c;
-        });
-
-        setClientes(newClients);
-        setEmbarcacoes(dbData.boats || []);
-        setReservas(dbData.reservations || []);
-      }
-      
     } catch (err) {
       console.error("Failed to load finance data", err);
     } finally {
@@ -454,67 +410,64 @@ export default function FinanceLancamentos({
   };
 
   // Filtered transactions
-  const filteredTransacoes = transacoes.filter(t => {
-    if (empresaFiltro !== 'Todos') {
-      if (t.empresa !== empresaFiltro) return false;
-    }
+  const clientsMap = useMemo(() => new Map(clientes.map(c => [c.id, c])), [clientes]);
+  const fornecedoresMap = useMemo(() => new Map(fornecedores.map(f => [f.id, f])), [fornecedores]);
+  const boatsMap = useMemo(() => new Map(embarcacoes.map(b => [b.id, b])), [embarcacoes]);
 
+  // Filtered transactions (memoized + O(1) map lookups)
+  const filteredTransacoes = useMemo(() => {
     const searchLower = searchTerm.toLowerCase();
-    const clientName = clientes.find(c => c.id === t.clienteId)?.nome?.toLowerCase() || '';
-    const fornObj = fornecedores.find(f => f.id === t.fornecedorId);
-    const fornName = (fornObj?.nomeFantasia || fornObj?.razaoSocial || '').toLowerCase();
-    const metaObj = typeof t.metadata === 'string' ? (() => { try { return JSON.parse(t.metadata); } catch { return null; } })() : t.metadata;
-    const gempFavName = (metaObj?.gempClienteNome || metaObj?.gempFornecedorNome || '').toLowerCase();
-    const gempBoatVaga = (metaObj?.gempEmbarcacaoVaga || '').toLowerCase();
-    const boatName = embarcacoes.find(b => b.id === t.embarcacaoId)?.nome?.toLowerCase() || '';
-    const valueStr = String(t.valor);
-    const dateFormatted = formatDateSafe(t.dataVencimento);
+    return transacoes.filter(t => {
+      if (empresaFiltro !== 'Todos' && t.empresa !== empresaFiltro) return false;
+      const clientName = clientsMap.get(t.clienteId || '')?.nome?.toLowerCase() || '';
+      const fornObj = fornecedoresMap.get(t.fornecedorId || '');
+      const fornName = (fornObj?.nomeFantasia || fornObj?.razaoSocial || '').toLowerCase();
+      const metaObj = typeof t.metadata === 'string' ? (() => { try { return JSON.parse(t.metadata); } catch { return null; } })() : t.metadata;
+      const gempFavName = (metaObj?.gempClienteNome || metaObj?.gempFornecedorNome || '').toLowerCase();
+      const gempBoatVaga = (metaObj?.gempEmbarcacaoVaga || '').toLowerCase();
+      const boatName = boatsMap.get(t.embarcacaoId || '')?.nome?.toLowerCase() || '';
+      const valueStr = String(t.valor);
+      const dateFormatted = formatDateSafe(t.dataVencimento);
 
-    const matchesSearch = t.categoria.toLowerCase().includes(searchLower) || 
-                          (t.descricao && t.descricao.toLowerCase().includes(searchLower)) ||
-                          clientName.includes(searchLower) ||
-                          fornName.includes(searchLower) ||
-                          gempFavName.includes(searchLower) ||
-                          gempBoatVaga.includes(searchLower) ||
-                          boatName.includes(searchLower) ||
-                          valueStr.includes(searchLower) ||
-                          dateFormatted.includes(searchLower) ||
-                          t.status.toLowerCase().includes(searchLower) ||
-                          t.tipo.toLowerCase().includes(searchLower);
-    
-    const matchesStatus = statusFilter === 'todos' 
-      ? true 
-      : statusFilter === 'baixas' ? (t.status !== 'pago' && !!t.comprovante) : (t.status === statusFilter);
-
-    const matchesTipo = tipoFilter === 'todos' || t.tipo === tipoFilter;
-    const matchesCliente = clienteFilter === 'todos' || t.clienteId === clienteFilter;
-    
-    let matchesEmbarcacao = true;
-    if (embarcacaoFilter !== 'todos') {
-      const isDirect = t.embarcacaoId === embarcacaoFilter;
-      const cliente = clientes.find(c => c.id === t.clienteId);
-      const isClientBoat = !t.embarcacaoId && cliente && (
-        cliente.embarcacaoId === embarcacaoFilter || 
-        cliente.embarcacoes?.some(e => e.embarcacaoId === embarcacaoFilter)
+      const matchesSearch = !searchLower || (
+        (t.categoria || '').toLowerCase().includes(searchLower) ||
+        (t.descricao && t.descricao.toLowerCase().includes(searchLower)) ||
+        clientName.includes(searchLower) ||
+        fornName.includes(searchLower) ||
+        gempFavName.includes(searchLower) ||
+        gempBoatVaga.includes(searchLower) ||
+        boatName.includes(searchLower) ||
+        valueStr.includes(searchLower) ||
+        dateFormatted.includes(searchLower) ||
+        (t.status || '').toLowerCase().includes(searchLower) ||
+        (t.tipo || '').toLowerCase().includes(searchLower)
       );
-      matchesEmbarcacao = isDirect || isClientBoat;
-    }
+      if (!matchesSearch) return false;
 
-    let matchesPeriodo = true;
-    const dataRef = new Date(t.dataVencimento + 'T12:00:00');
-    if (dataInicioFilter) {
-      const inicio = new Date(dataInicioFilter + 'T00:00:00');
-      if (dataRef < inicio) matchesPeriodo = false;
-    }
-    if (dataFimFilter) {
-      const fim = new Date(dataFimFilter + 'T23:59:59');
-      if (dataRef > fim) matchesPeriodo = false;
-    }
+      const matchesStatus = statusFilter === 'todos'
+        ? true
+        : statusFilter === 'baixas' ? (t.status !== 'pago' && !!t.comprovante) : (t.status === statusFilter);
+      if (!matchesStatus) return false;
 
-    return matchesSearch && matchesStatus && matchesTipo && matchesCliente && matchesEmbarcacao && matchesPeriodo;
-  });
+      if (tipoFilter !== 'todos' && t.tipo !== tipoFilter) return false;
+      if (clienteFilter !== 'todos' && t.clienteId !== clienteFilter) return false;
 
-  // Ordenação das transações filtradas conforme o filtro selecionado
+      if (embarcacaoFilter !== 'todos') {
+        const isDirect = t.embarcacaoId === embarcacaoFilter;
+        const cliente = clientsMap.get(t.clienteId || '');
+        const isClientBoat = !t.embarcacaoId && cliente && (
+          cliente.embarcacaoId === embarcacaoFilter ||
+          cliente.embarcacoes?.some((e: any) => e.embarcacaoId === embarcacaoFilter)
+        );
+        if (!isDirect && !isClientBoat) return false;
+      }
+
+      if (dataInicioFilter && (t.dataVencimento || '') < dataInicioFilter) return false;
+      if (dataFimFilter && (t.dataVencimento || '') > dataFimFilter) return false;
+
+      return true;
+    });
+  }, [transacoes, empresaFiltro, searchTerm, statusFilter, tipoFilter, clienteFilter, embarcacaoFilter, dataInicioFilter, dataFimFilter, clientsMap, fornecedoresMap, boatsMap]);
   const sortedTransacoes = useMemo(() => {
     const list = [...filteredTransacoes];
     list.sort((a, b) => {
@@ -535,13 +488,13 @@ export default function FinanceLancamentos({
         return (Number(a.valor) || 0) - (Number(b.valor) || 0);
       }
       if (sortBy === 'cliente_asc') {
-        const nameA = (clientes.find(c => c.id === a.clienteId)?.nome || fornecedores.find(f => f.id === a.fornecedorId)?.nomeFantasia || a.metadata?.gempClienteNome || a.metadata?.gempFornecedorNome || a.descricao || '').toLowerCase();
-        const nameB = (clientes.find(c => c.id === b.clienteId)?.nome || fornecedores.find(f => f.id === b.fornecedorId)?.nomeFantasia || b.metadata?.gempClienteNome || b.metadata?.gempFornecedorNome || b.descricao || '').toLowerCase();
+        const nameA = (clientsMap.get(a.clienteId || '')?.nome || fornecedoresMap.get(a.fornecedorId || '')?.nomeFantasia || a.metadata?.gempClienteNome || a.metadata?.gempFornecedorNome || a.descricao || '').toLowerCase();
+        const nameB = (clientsMap.get(b.clienteId || '')?.nome || fornecedoresMap.get(b.fornecedorId || '')?.nomeFantasia || b.metadata?.gempClienteNome || b.metadata?.gempFornecedorNome || b.descricao || '').toLowerCase();
         return nameA.localeCompare(nameB);
       }
       if (sortBy === 'cliente_desc') {
-        const nameA = (clientes.find(c => c.id === a.clienteId)?.nome || fornecedores.find(f => f.id === a.fornecedorId)?.nomeFantasia || a.metadata?.gempClienteNome || a.metadata?.gempFornecedorNome || a.descricao || '').toLowerCase();
-        const nameB = (clientes.find(c => c.id === b.clienteId)?.nome || fornecedores.find(f => f.id === b.fornecedorId)?.nomeFantasia || b.metadata?.gempClienteNome || b.metadata?.gempFornecedorNome || b.descricao || '').toLowerCase();
+        const nameA = (clientsMap.get(a.clienteId || '')?.nome || fornecedoresMap.get(a.fornecedorId || '')?.nomeFantasia || a.metadata?.gempClienteNome || a.metadata?.gempFornecedorNome || a.descricao || '').toLowerCase();
+        const nameB = (clientsMap.get(b.clienteId || '')?.nome || fornecedoresMap.get(b.fornecedorId || '')?.nomeFantasia || b.metadata?.gempClienteNome || b.metadata?.gempFornecedorNome || b.descricao || '').toLowerCase();
         return nameB.localeCompare(nameA);
       }
       if (sortBy === 'cadastro_desc') {
@@ -1098,7 +1051,7 @@ export default function FinanceLancamentos({
                         <td className="py-3 px-4 text-right" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             <button
-                              onClick={() => setViewingTransaction(t)}
+                              onClick={() => { setViewingTransaction(t); const tok = localStorage.getItem('admin_token'); if (tok && t.id) fetch(`/api/financeiro/transacoes/${t.id}`, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.ok ? r.json() : null).then(full => { if (full?.id) setViewingTransaction(full); }).catch(() => {}); }}
                               className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer"
                               title="Visualizar Detalhes"
                             >

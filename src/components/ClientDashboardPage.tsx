@@ -649,6 +649,11 @@ export default function ClientDashboardPage({
       try { localStorage.removeItem('auto_checkin_reserva_id'); } catch {}
       delete (window as any).__AUTO_CHECKIN_RESERVA_ID__;
 
+      if (String(autoResId) === 'financeiro' || String(autoResId).startsWith('fin_')) {
+        setActiveTab('finance');
+        return;
+      }
+
       // 1. Verifica estritamente as reservas do cliente para HOJE (não canceladas)
       const todaysActive = myReservations.filter(
         (r: any) => r.data === todayStrLocal && r.status !== 'cancelado' && !cancelledIds.includes(r.id)

@@ -132,7 +132,7 @@ export default function WhatsAppAutomationsTab({ showToast }: Props) {
     notif_usar_mensagem_debito: true,
     notif_reservas_horarios: ['08:00', '09:00'],
     notif_financeiro_ativa: true,
-    notif_financeiro_template: "Olá, *{cliente}*! 😊\n\nIdentificamos um novo lançamento no seu cadastro:\n\n📋 *Descrição:* {descricao}\n💰 *Valor:* R$ {valor}\n📅 *Vencimento:* {vencimento}{link_info}\n\nFicamos à disposição para qualquer dúvida! 👍",
+    notif_financeiro_template: "Olá, *{cliente}*! 😊\n\nConsta uma cobrança/débito em aberto no valor de *R$ {valor}* em seu cadastro.\n\nPara consultar os detalhes e efetuar o pagamento com segurança dentro do portal, acesse seu link exclusivo:\n\n👉 {link_pagamento}\n\nFicamos à disposição para qualquer dúvida! 👍",
     whatsapp_conf_templates_10: [...DEFAULT_10_CONFIRMATION_TEMPLATES_FRONT],
     whatsapp_conf_debt_templates_10: [...DEFAULT_10_DEBT_CONFIRMATION_TEMPLATES_FRONT]
   });

@@ -38,7 +38,7 @@ router.get("/notifications/config", requireAdminAuth, async (req, res) => {
     const notif_sandbox_telefone = (await getConfigValue("notif_sandbox_telefone")) || "";
     const notif_financeiro_ativa = (await getConfigValue("notif_financeiro_ativa")) !== "0";
     const notif_financeiro_template = await getConfigValue("notif_financeiro_template") ||
-      "Olá, *{cliente}*! 😊\n\nIdentificamos um novo lançamento no seu cadastro:\n\n📋 *Descrição:* {descricao}\n💰 *Valor:* R$ {valor}\n📅 *Vencimento:* {vencimento}{link_info}\n\nFicamos à disposição para qualquer dúvida! 👍";
+      "Olá, *{cliente}*! 😊\n\nConsta uma cobrança/débito em aberto no valor de *R$ {valor}* em seu cadastro.\n\nPara consultar os detalhes e efetuar o pagamento com segurança dentro do portal, acesse seu link exclusivo:\n\n👉 {link_pagamento}\n\nFicamos à disposição para qualquer dúvida! 👍";
 
     const whatsapp_conf_templates_10 = await getConfirmationTemplates();
     const whatsapp_conf_debt_templates_10 = await getDebtConfirmationTemplates();
@@ -232,6 +232,33 @@ router.get("/notifications/reservas-pendentes", requireAdminAuth, async (req, re
 // ----------------------------------------------------
 // 4b. Gerar Magic Link direto para uma reserva (para copiar ou inspecionar no painel)
 // ----------------------------------------------------
+router.post("/notifications/generate-finance-magic-link", requireAdminAuth, async (req, res) => {
+  try {
+    const { clienteId, origin } = req.body || {};
+    if (!clienteId) {
+      return res.status(400).json({ error: true, message: "clienteId é obrigatório." });
+    }
+    const currentPool = (await import("../server-db")).getDbPool();
+    if (!currentPool) return res.status(500).json({ error: true, message: "Banco offline" });
+
+    const [rows] = await currentPool.query(
+      "SELECT id, nome FROM Clientes WHERE id = ? LIMIT 1",
+      [clienteId]
+    );
+    const cli = (rows as any[])[0];
+    if (!cli) {
+      return res.status(404).json({ error: true, message: "Cliente não encontrado." });
+    }
+
+    const requestOrigin = origin || req.headers.origin || (req.headers.referer ? new URL(req.headers.referer as string).origin : undefined);
+    const magicLink = await generateClientMagicLink(cli.id, cli.nome || "Cliente", "financeiro", requestOrigin);
+
+    res.json({ success: true, magicLink });
+  } catch (err: any) {
+    res.status(500).json({ error: true, message: err.message || "Erro ao gerar Magic Link financeiro." });
+  }
+});
+
 router.post("/notifications/generate-magic-link", requireAdminAuth, async (req, res) => {
   try {
     const { reservaId, origin } = req.body || {};

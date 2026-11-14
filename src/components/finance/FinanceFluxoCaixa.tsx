@@ -372,7 +372,7 @@ export default function FinanceFluxoCaixa() {
       const [resTransacoes, resConfig, resDb] = await Promise.all([
         fetch('/api/financeiro/transacoes', { headers }),
         fetch('/api/financeiro/configuracoes', { headers }),
-        fetch('/api/db/pull', { headers })
+        fetch('/api/financeiro/cadastros-basicos', { headers })
       ]);
 
       if (resConfig.ok) {
@@ -561,35 +561,45 @@ export default function FinanceFluxoCaixa() {
   };
 
 
-  const filteredTransacoes = transacoes.filter(t => {
-    // 1. Empresa
-    if (empresaFiltro !== 'Todos' && t.empresa !== empresaFiltro) return false;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(50);
 
-    // 2. Tabs
-    const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
-    if (activeTab === 'A Receber' && (t.tipo !== 'receita' || t.status === 'pago')) return false;
-    if (activeTab === 'A Pagar' && (t.tipo !== 'despesa' || t.status === 'pago')) return false;
-    if (activeTab === 'Atrasadas' && (!isOverdue || t.status === 'pago')) return false;
-    if (activeTab === 'Pagos' && t.status !== 'pago') return false;
+  const filteredTransacoes = useMemo(() => {
+    const searchLower = searchTerm ? searchTerm.toLowerCase() : '';
+    const todayEnd = new Date();
+    const startTs = dataInicio ? new Date(dataInicio).getTime() : null;
+    const endTs = dataFim ? new Date(dataFim).getTime() : null;
 
-    // 3. Search text
-    if (searchTerm) {
-       const search = searchTerm.toLowerCase();
-       if (!t.descricao?.toLowerCase().includes(search)) return false;
-    }
+    return transacoes.filter(t => {
+      if (empresaFiltro !== 'Todos' && t.empresa !== empresaFiltro) return false;
+      const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < todayEnd);
+      if (activeTab === 'A Receber' && (t.tipo !== 'receita' || t.status === 'pago')) return false;
+      if (activeTab === 'A Pagar' && (t.tipo !== 'despesa' || t.status === 'pago')) return false;
+      if (activeTab === 'Atrasadas' && (!isOverdue || t.status === 'pago')) return false;
+      if (activeTab === 'Pagos' && t.status !== 'pago') return false;
+      if (searchLower && !t.descricao?.toLowerCase().includes(searchLower)) return false;
+      if (clienteFilter && t.clienteId !== clienteFilter && t.fornecedorId !== clienteFilter) return false;
+      if (embarcacaoFilter && t.embarcacaoId !== embarcacaoFilter) return false;
+      if (planoContasFilter !== 'todos' && t.planoContasId !== planoContasFilter) return false;
+      if (centroCustoFilter !== 'todos' && t.centroCustoId !== centroCustoFilter) return false;
+      if (startTs !== null && new Date(t.dataVencimento).getTime() < startTs) return false;
+      if (endTs !== null && new Date(t.dataVencimento).getTime() > endTs) return false;
+      return true;
+    });
+  }, [transacoes, empresaFiltro, activeTab, searchTerm, clienteFilter, embarcacaoFilter, planoContasFilter, centroCustoFilter, dataInicio, dataFim]);
 
-    // 4. Extended Filters
-    if (clienteFilter && t.clienteId !== clienteFilter && t.fornecedorId !== clienteFilter) return false;
-    if (embarcacaoFilter && t.embarcacaoId !== embarcacaoFilter) return false;
-    if (planoContasFilter !== 'todos' && t.planoContasId !== planoContasFilter) return false;
-    if (centroCustoFilter !== 'todos' && t.centroCustoId !== centroCustoFilter) return false;
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [empresaFiltro, activeTab, searchTerm, clienteFilter, embarcacaoFilter, planoContasFilter, centroCustoFilter, dataInicio, dataFim]);
 
-    if (dataInicio && new Date(t.dataVencimento) < new Date(dataInicio)) return false;
-    if (dataFim && new Date(t.dataVencimento) > new Date(dataFim)) return false;
-
-    return true;
-  });
-
+  const totalFluxoPages = Math.max(1, Math.ceil(filteredTransacoes.length / itemsPerPage));
+  const safeFluxoPage = Math.min(Math.max(1, currentPage), totalFluxoPages);
+  const fluxoStartIndex = (safeFluxoPage - 1) * itemsPerPage;
+  const fluxoEndIndex = Math.min(fluxoStartIndex + itemsPerPage, filteredTransacoes.length);
+  const displayedFluxoTransacoes = useMemo(
+    () => filteredTransacoes.slice(fluxoStartIndex, fluxoEndIndex),
+    [filteredTransacoes, fluxoStartIndex, fluxoEndIndex]
+  );
   // Calculate quick metrics for current view
   const metricReceber = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status !== 'pago').reduce((acc, curr) => acc + (parseFloat(curr.valor)||0), 0);
   const metricReceberJuros = filteredTransacoes.filter(t => t.tipo === 'receita' && t.status !== 'pago').reduce((acc, curr) => acc + calculateTransactionInterest(curr as any).interest, 0);
@@ -965,6 +975,7 @@ export default function FinanceFluxoCaixa() {
                  <p className="text-[14px]">Verifique seus filtros ou crie um novo lançamento.</p>
               </div>
             ) : (
+              <>
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 bg-white/90 backdrop-blur-xl z-[40] shadow-sm">
                   <tr>
@@ -997,7 +1008,7 @@ export default function FinanceFluxoCaixa() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f5f5f7]">
-                  {filteredTransacoes.map((t, idx) => {
+                  {displayedFluxoTransacoes.map((t, idx) => {
                     const isSelected = selectedIds.includes(String(t.id));
                     const isOverdue = t.status === 'vencido' || (t.status === 'lancado' && new Date(t.dataVencimento + 'T23:59:59') < new Date());
                     let statusLabel = 'Pendente';
@@ -1019,12 +1030,9 @@ export default function FinanceFluxoCaixa() {
                     }
 
                     return (
-                      <motion.tr
-                        initial={{ opacity: 0, y: 5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.02 }}
+                      <tr
                         key={t.id || idx}
-                        onClick={() => setViewingTransacao(t)}
+                        onClick={() => { setViewingTransacao(t); const tok = localStorage.getItem('admin_token'); if (tok && t.id) fetch(`/api/financeiro/transacoes/${t.id}`, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.ok ? r.json() : null).then(full => { if (full?.id) setViewingTransacao(full); }).catch(() => {}); }}
                         className={`group transition-colors cursor-pointer ${
                           isSelected
                             ? 'bg-[#0071e3]/[0.08] hover:bg-[#0071e3]/[0.12]'
@@ -1110,11 +1118,59 @@ export default function FinanceFluxoCaixa() {
                             onEnviarWhatsApp={() => handleEnviarWhatsApp(t)}
                           />
                         </td>
-                      </motion.tr>
+                      </tr>
                     );
                   })}
                 </tbody>
               </table>
+              {filteredTransacoes.length > 0 && (
+                <div className="px-4 py-3 border-t border-black/[0.06] bg-[#fafafa] flex flex-col sm:flex-row items-center justify-between gap-3 text-[13px] text-[#86868b]">
+                  <div className="flex items-center gap-3">
+                    <span>
+                      Mostrando <strong className="text-[#1d1d1f]">{fluxoStartIndex + 1}</strong> a{' '}
+                      <strong className="text-[#1d1d1f]">{fluxoEndIndex}</strong> de{' '}
+                      <strong className="text-[#1d1d1f]">{filteredTransacoes.length}</strong> lançamentos
+                    </span>
+                    <div className="hidden md:flex items-center gap-1 pl-3 border-l border-black/[0.08]">
+                      <span>Exibir:</span>
+                      {[25, 50, 100, 200].map(qty => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => { setItemsPerPage(qty); setCurrentPage(1); }}
+                          className={`px-2 py-0.5 rounded text-[12px] font-semibold cursor-pointer ${itemsPerPage === qty ? 'bg-[#1d1d1f] text-white' : 'hover:bg-black/[0.06] text-[#1d1d1f]'}`}
+                        >
+                          {qty}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {totalFluxoPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={safeFluxoPage === 1}
+                        className="px-2.5 py-1 rounded-lg border border-black/[0.08] bg-white text-[#1d1d1f] font-medium disabled:opacity-40 cursor-pointer"
+                      >
+                        Anterior
+                      </button>
+                      <span className="px-2 font-medium text-[#1d1d1f]">
+                        Página {safeFluxoPage} de {totalFluxoPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(p => Math.min(totalFluxoPages, p + 1))}
+                        disabled={safeFluxoPage === totalFluxoPages}
+                        className="px-2.5 py-1 rounded-lg border border-black/[0.08] bg-white text-[#1d1d1f] font-medium disabled:opacity-40 cursor-pointer"
+                      >
+                        Próxima
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>

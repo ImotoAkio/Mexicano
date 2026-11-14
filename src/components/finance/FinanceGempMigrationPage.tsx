@@ -50,6 +50,8 @@ export default function FinanceGempMigrationPage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [importing, setImporting] = useState(false);
   const [syncingDaily, setSyncingDaily] = useState(false);
+  const [autoSyncAtiva, setAutoSyncAtiva] = useState(false);
+  const [togglingAutoSync, setTogglingAutoSync] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [previewData, setPreviewData] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -85,7 +87,38 @@ export default function FinanceGempMigrationPage() {
       .catch(console.error);
 
     handleFetchPreview();
+    fetch('/api/financeiro/gemp/auto-sync', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && typeof d.autoSyncAtiva === 'boolean') setAutoSyncAtiva(d.autoSyncAtiva); })
+      .catch(() => {});
   }, []);
+
+
+  const handleToggleAutoSync = async () => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) return;
+    setTogglingAutoSync(true);
+    try {
+      const nextVal = !autoSyncAtiva;
+      const res = await fetch('/api/financeiro/gemp/auto-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ autoSyncAtiva: nextVal }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setAutoSyncAtiva(Boolean(d.autoSyncAtiva));
+        setSuccessMsg(d.autoSyncAtiva ? 'Sincronização automática ativada (a cada 15 min).' : 'Sincronização automática desativada. Agora as importações são 100% manuais.');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTogglingAutoSync(false);
+    }
+  };
+
+
+
 
   const handleFetchPreview = async () => {
     setLoadingPreview(true);
@@ -354,7 +387,21 @@ export default function FinanceGempMigrationPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start md:self-center">
+        <div className="flex items-center gap-2.5 self-start md:self-center flex-wrap">
+          <button
+            type="button"
+            disabled={togglingAutoSync}
+            onClick={handleToggleAutoSync}
+            className={`h-9 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50 ${
+              autoSyncAtiva
+                ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+            }`}
+            title="Controla se o sistema importa atualizações do GEMP automaticamente em segundo plano"
+          >
+            <span className={`w-2 h-2 rounded-full ${autoSyncAtiva ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+            <span>{autoSyncAtiva ? 'Auto-Sync: ATIVO (15m)' : 'Auto-Sync: DESATIVADO (Manual)'}</span>
+          </button>
           <button
             type="button"
             disabled={syncingDaily}

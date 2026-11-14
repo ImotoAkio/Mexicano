@@ -687,6 +687,23 @@ export async function initializeDatabase() {
       await connection.query(`ALTER TABLE TransacoesFinanceiras ADD COLUMN origem_empresa VARCHAR(50) NULL;`);
     } catch (e) {}
 
+    // Performance indexes on TransacoesFinanceiras (critical for GEMP high-volume queries)
+    const tfIndexes = [
+      `CREATE INDEX idx_tf_dataVencimento ON TransacoesFinanceiras (dataVencimento)`,
+      `CREATE INDEX idx_tf_empresa_venc ON TransacoesFinanceiras (empresa, dataVencimento)`,
+      `CREATE INDEX idx_tf_cliente_tipo_status ON TransacoesFinanceiras (clienteId, tipo, status)`,
+      `CREATE INDEX idx_tf_status_venc ON TransacoesFinanceiras (status, dataVencimento)`,
+      `CREATE INDEX idx_tf_origem_empresa ON TransacoesFinanceiras (origem_empresa)`,
+      `CREATE INDEX idx_tf_grupo_parcelamento ON TransacoesFinanceiras (grupoParcelamentoId)`,
+      `CREATE INDEX idx_tf_asaas_payment ON TransacoesFinanceiras (asaasPaymentId)`,
+      `CREATE INDEX idx_tf_categoria ON TransacoesFinanceiras (categoria)`
+    ];
+    for (const idxSql of tfIndexes) {
+      try {
+        await connection.query(idxSql);
+      } catch (e) {}
+    }
+
     // 8a. ContasBancarias Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS ContasBancarias (
@@ -3645,7 +3662,7 @@ export async function getAllTransacoes(empresa?: string) {
         lastOverdueUpdate = nowTime;
         try {
           const todayStr = new Date().toISOString().split('T')[0];
-          await currentPool.query(`
+          void currentPool.query(`
             UPDATE TransacoesFinanceiras
             SET status = 'vencido'
             WHERE status = 'lancado'
@@ -3658,16 +3675,17 @@ export async function getAllTransacoes(empresa?: string) {
         }
       }
 
-      let selectQuery = "SELECT * FROM TransacoesFinanceiras ORDER BY dataVencimento DESC";
+      const tfCols = "id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao, clienteId, embarcacaoId, comprovante, createdAt, asaasPaymentId, asaasPaymentUrl, asaasBatchId, reservaId, metodoPagamento, operador, empresa, contaBancariaId, planoContasId, centroCustoId, fornecedorId, grupoParcelamentoId, numeroParcela, totalParcelas, notificacaoEnviada, origem_empresa, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.gempClienteNome')) as gempClienteNome, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.gempFornecedorNome')) as gempFornecedorNome, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.origemSistema')) as origemSistema, JSON_EXTRACT(metadata, '$.manualOverride') as manualOverride";
+      let selectQuery = `SELECT ${tfCols} FROM TransacoesFinanceiras ORDER BY dataVencimento DESC`;
       let selectParams: any[] = [];
       if (empresa) {
-        selectQuery = "SELECT * FROM TransacoesFinanceiras WHERE (empresa = ? OR ? IS NULL) ORDER BY dataVencimento DESC";
+        selectQuery = `SELECT ${tfCols} FROM TransacoesFinanceiras WHERE (empresa = ? OR ? IS NULL) ORDER BY dataVencimento DESC`;
         selectParams = [empresa, empresa];
       }
 
       const [rows] = await currentPool.query(selectQuery, selectParams);
       const parsed = (rows as any[]).map((r) => {
-        let parsedMeta = r.metadata;
+        let parsedMeta = r.metadata ?? ((r.gempClienteNome || r.gempFornecedorNome || r.origemSistema || r.manualOverride) ? { ...(r.gempClienteNome ? { gempClienteNome: r.gempClienteNome } : {}), ...(r.gempFornecedorNome ? { gempFornecedorNome: r.gempFornecedorNome } : {}), ...(r.origemSistema ? { origemSistema: r.origemSistema } : {}), ...(r.manualOverride ? { manualOverride: r.manualOverride === true || r.manualOverride === 'true' || r.manualOverride === 1 } : {}) } : null);
         if (typeof parsedMeta === "string") {
           try {
             parsedMeta = JSON.parse(parsedMeta);
@@ -3710,6 +3728,29 @@ export async function upsertTransacao(t: any, connection?: any) {
     cleanedDesc = cleanedDesc.replace(/^\[IMPORTADO\]\s*/i, '');
   }
 
+  // Protect manually edited GEMP transactions from future automatic/incremental GEMP overwrites
+  let metaToSave = t.metadata;
+  if (idToUse.startsWith('gemp_') || (metaToSave && typeof metaToSave === 'object' && metaToSave.origemSistema === 'GEMP_FIREBIRD')) {
+    let baseMeta: Record<string, any> = {};
+    if (metaToSave && typeof metaToSave === 'object') {
+      baseMeta = { ...metaToSave };
+    } else if (typeof metaToSave === 'string') {
+      try { baseMeta = JSON.parse(metaToSave); } catch {}
+    } else if (currentPool) {
+      try {
+        const [existingRows]: any = await dbConfig.query("SELECT metadata FROM TransacoesFinanceiras WHERE id = ? LIMIT 1", [idToUse]);
+        if (existingRows?.[0]?.metadata) {
+          baseMeta = typeof existingRows[0].metadata === 'string' ? JSON.parse(existingRows[0].metadata) : existingRows[0].metadata;
+        }
+      } catch {}
+    }
+    metaToSave = {
+      ...baseMeta,
+      manualOverride: true,
+      manualUpdatedAt: new Date().toISOString(),
+    };
+  }
+
   await dbConfig.query(
     `INSERT INTO TransacoesFinanceiras (
       id, tipo, categoria, valor, dataVencimento, dataPagamento, status, descricao,
@@ -3735,7 +3776,7 @@ export async function upsertTransacao(t: any, connection?: any) {
       idToUse, t.tipo, t.categoria, t.valor, t.dataVencimento, t.dataPagamento || null,
       t.status, cleanedDesc, t.clienteId || null, t.embarcacaoId || null, t.comprovante || t.comprovanteUrl || null, createdAtToUse,
       t.asaasPaymentId || null, t.asaasPaymentUrl || null, t.reservaId || null, t.metodoPagamento || null,
-      t.operador || null, t.metadata ? JSON.stringify(t.metadata) : null,
+      t.operador || null, metaToSave ? (typeof metaToSave === 'string' ? metaToSave : JSON.stringify(metaToSave)) : null,
       t.empresa || 'Marina', t.contaBancariaId || null, t.planoContasId || null, t.centroCustoId || null, t.fornecedorId || null,
       t.grupoParcelamentoId || null, t.numeroParcela || null, t.totalParcelas || null
     ]
@@ -3824,7 +3865,25 @@ export async function deleteTransacoesByClientIds(clientIds: string[]) {
 }
 
 export async function syncMultipleClientsFinancialStatus(clientIds: string[]) {
-  if (!clientIds || clientIds.length === 0) return;
+  const uniqueIds = Array.from(new Set((clientIds || []).filter(Boolean)));
+  if (uniqueIds.length === 0) return;
+  const currentPool = getDbPool();
+  if (!currentPool) return;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const chunkSize = 500;
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    const [rows]: any = await currentPool.query(
+      `SELECT clienteId FROM TransacoesFinanceiras WHERE clienteId IN (?) AND tipo = 'receita' AND status NOT IN ('pago', 'cancelado') AND (status IN ('vencido', 'atrasado') OR dataVencimento < ?) GROUP BY clienteId`,
+      [chunk, todayStr]
+    );
+    const overdueSet = new Set<string>((rows || []).map((r: any) => String(r.clienteId)));
+    const inadimplentes = chunk.filter(id => overdueSet.has(String(id)));
+    const emDia = chunk.filter(id => !overdueSet.has(String(id)));
+    if (inadimplentes.length > 0) await currentPool.query("UPDATE Clientes SET statusFinanceiro = 'inadimplente' WHERE id IN (?)", [inadimplentes]);
+    if (emDia.length > 0) await currentPool.query("UPDATE Clientes SET statusFinanceiro = 'em_dia' WHERE id IN (?)", [emDia]);
+  }
+  return;
   for (const id of clientIds) {
     if (id) await syncClientFinancialStatus(id);
   }

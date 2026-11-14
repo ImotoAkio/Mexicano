@@ -540,7 +540,7 @@ export default function FinanceWhatsAppPage() {
     return client.statusFinanceiro === 'inadimplente';
   };
 
-  const generateExtratoText = (client: Cliente, clientOverdueUnpaid: TransacaoFinanceira[]): string => {
+  const generateExtratoText = (client: Cliente, clientOverdueUnpaid: TransacaoFinanceira[], magicLink?: string): string => {
     if (clientOverdueUnpaid.length === 0) {
       return `Olá, *${formatFirstName(client.nome)}*! Tudo bem? ⚓\n\nVerificamos em nosso sistema e seu cadastro está *100% regularizado*, sem nenhum débito vencido em aberto.\n\nQualquer dúvida, estamos à disposição! 👍`;
     }
@@ -564,7 +564,9 @@ export default function FinanceWhatsAppPage() {
 
     text += `*Total Vencido em Atraso: R$ ${totalGeral.toFixed(2).replace('.', ',')}*\n\n`;
     text += `⚠️ Solicitamos a regularização dos títulos vencidos para mantermos seus agendamentos e descidas autorizados.\n\n`;
-    text += `Para efetuar o pagamento via PIX ou solicitar a 2ª via atualizada, responda a esta mensagem.\n\n`;
+    text += magicLink
+      ? `Para consultar seu débito completo e efetuar o pagamento via PIX dentro do sistema, acesse seu link exclusivo:\n👉 ${magicLink}\n\n`
+      : `Para efetuar o pagamento via PIX ou solicitar a 2ª via atualizada, responda a esta mensagem.\n\n`;
     text += `Caso já tenha efetuado o pagamento, por favor desconsidere ou envie o comprovante por aqui. Obrigado! 👍`;
     return text;
   };
@@ -641,7 +643,19 @@ export default function FinanceWhatsAppPage() {
       const client = clients.find(c => c.id === clientId);
       if (!client) return;
       const clientOverdue = getClientOverdueDebts(clientId);
-      const text = generateExtratoText(client, clientOverdue);
+      let magicLink: string | undefined;
+      try {
+        const mlRes = await fetch('/api/notifications/generate-finance-magic-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ clienteId: client.id, origin: window.location.origin }),
+        });
+        if (mlRes.ok) {
+          const mlData = await mlRes.json();
+          if (mlData?.magicLink) magicLink = mlData.magicLink;
+        }
+      } catch {}
+      const text = generateExtratoText(client, clientOverdue, magicLink);
       await navigator.clipboard.writeText(text);
       showToast("Texto do extrato copiado com sucesso!", "success");
     } catch (e) {
@@ -674,7 +688,19 @@ export default function FinanceWhatsAppPage() {
     try {
       const b64 = extratoPreviewImage || await generateExtratoBase64(client.id);
       const clientOverdue = getClientOverdueDebts(client.id);
-      const text = generateExtratoText(client, clientOverdue);
+      let magicLink: string | undefined;
+      try {
+        const mlRes = await fetch('/api/notifications/generate-finance-magic-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ clienteId: client.id, origin: window.location.origin }),
+        });
+        if (mlRes.ok) {
+          const mlData = await mlRes.json();
+          if (mlData?.magicLink) magicLink = mlData.magicLink;
+        }
+      } catch {}
+      const text = generateExtratoText(client, clientOverdue, magicLink);
 
       const res = await fetch('/api/whatsapp/finance/send-message', {
         method: 'POST',
@@ -1022,7 +1048,7 @@ export default function FinanceWhatsAppPage() {
     e.target.value = '';
   };
 
-  const getPersonalizedMessage = (text: string, client: Cliente) => {
+  const getPersonalizedMessage = (text: string, client: Cliente, magicLink?: string) => {
     const firstName = client.nome ? client.nome.trim().split(' ')[0] : 'Cotista';
     const currentMonth = new Date().toLocaleString('pt-BR', { month: 'long' });
     const capitalizedMonth = currentMonth.charAt(0).toUpperCase() + currentMonth.slice(1);
@@ -1031,7 +1057,8 @@ export default function FinanceWhatsAppPage() {
     return text
       .replace(/\{nome\}/g, firstName)
       .replace(/\{mes\}/g, capitalizedMonth)
-      .replace(/\{data\}/g, currentDate);
+      .replace(/\{data\}/g, currentDate)
+      .replace(/\{\s*link\s*\}/gi, magicLink || '');
   };
 
   const handleMassSend = async () => {
@@ -1051,7 +1078,21 @@ export default function FinanceWhatsAppPage() {
       if (!client?.telefone) { failures++; log.push({ clientName: client?.nome || '?', phone: '-', status: 'error', timestamp: new Date().toLocaleTimeString() }); continue; }
 
       setProgress({ current: i + 1, total: selectedClientIds.length, successes, failures });
-      let personalizedText = getPersonalizedMessage(messageText, client);
+      let magicLinkForClient: string | undefined;
+      if (/\{\s*link\s*\}/i.test(messageText) || (attachIndividualExtratos && !messageText.trim())) {
+        try {
+          const mlRes = await fetch('/api/notifications/generate-finance-magic-link', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ clienteId: client.id, origin: window.location.origin }),
+          });
+          if (mlRes.ok) {
+            const mlData = await mlRes.json();
+            if (mlData?.magicLink) magicLinkForClient = mlData.magicLink;
+          }
+        } catch {}
+      }
+      let personalizedText = getPersonalizedMessage(messageText, client, magicLinkForClient);
       let mediaPayload: { media?: string; mimetype?: string; fileName?: string } = {};
 
       if (attachIndividualExtratos) {
@@ -1065,7 +1106,7 @@ export default function FinanceWhatsAppPage() {
               fileName: `Extrato_${client.nome.replace(/\s+/g, '_')}.png`,
             };
             if (!messageText.trim()) {
-              personalizedText = generateExtratoText(client, clientOverdue);
+              personalizedText = generateExtratoText(client, clientOverdue, magicLinkForClient);
             }
           } catch (err) {
             console.warn(`Erro ao gerar extrato dinâmico para ${client.nome}:`, err);

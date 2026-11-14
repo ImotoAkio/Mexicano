@@ -94,19 +94,20 @@ export default function FinanceiroSidebar({
   privacyMode = false,
   empresaFiltro = 'Todos',
 }: FinanceiroSidebarProps) {
-  const [transacoes, setTransacoes] = useState<TransacaoFinanceira[]>([]);
+  const [vencidosCount, setVencidosCount] = useState<number>(0);
 
-  const fetchTransacoes = async () => {
+  const fetchResumo = async () => {
     try {
       const token = localStorage.getItem('admin_token');
       if (!token) return;
-      const res = await fetch('/api/financeiro/transacoes', {
+      const empParam = empresaFiltro && empresaFiltro !== 'Todos' ? `?empresa=${encodeURIComponent(empresaFiltro)}` : '';
+      const res = await fetch(`/api/financeiro/resumo${empParam}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
-          setTransacoes(data);
+        if (typeof data?.vencidosCount === 'number') {
+          setVencidosCount(data.vencidosCount);
         }
       }
     } catch {
@@ -115,10 +116,10 @@ export default function FinanceiroSidebar({
   };
 
   useEffect(() => {
-    fetchTransacoes();
+    fetchResumo();
 
     const handleUpdate = () => {
-      fetchTransacoes();
+      fetchResumo();
     };
 
     window.addEventListener('finance_updated', handleUpdate);
@@ -142,25 +143,7 @@ export default function FinanceiroSidebar({
     };
   }, []);
 
-  // Filter transactions by selected company for sidebar summary
-  const filtered = useMemo(() => {
-    if (!empresaFiltro || empresaFiltro === 'Todos') return transacoes;
-    return transacoes.filter(t => t.empresa === empresaFiltro || (!t.empresa && empresaFiltro === 'Mexicano'));
-  }, [transacoes, empresaFiltro]);
-
-  // Compute overdue count for badge on 'lancamentos'
-  const vencidosCount = useMemo(() => {
-    const todayStr = new Date().toISOString().substring(0, 10);
-    let countVencidos = 0;
-
-    filtered.forEach(t => {
-      if (t.tipo === 'receita' && (t.status === 'vencido' || (t.status === 'lancado' && t.dataVencimento < todayStr))) {
-        countVencidos++;
-      }
-    });
-
-    return countVencidos;
-  }, [filtered]);
+  useEffect(() => { fetchResumo(); }, [empresaFiltro]);
 
   const renderItem = (item: NavItem) => {
     const isActive = active === item.id || (item.id === 'whatsapp' && active === 'finance-whatsapp');

@@ -387,7 +387,7 @@ export async function fetchGempPreview(options: GempPreviewOptions) {
     }
 
     const [txRows] = await pool.query(
-      "SELECT id, tipo, empresa, status, valor, dataVencimento, dataPagamento, clienteId, embarcacaoId, fornecedorId, planoContasId, contaBancariaId, centroCustoId FROM TransacoesFinanceiras WHERE id LIKE 'gemp_%'"
+      "SELECT id, tipo, empresa, status, valor, dataVencimento, dataPagamento, clienteId, embarcacaoId, fornecedorId, planoContasId, contaBancariaId, centroCustoId, JSON_EXTRACT(metadata, '$.manualOverride') AS manualOverride FROM TransacoesFinanceiras WHERE id LIKE 'gemp_%'"
     );
     for (const tx of txRows as any[]) {
       existingTxMap.set(tx.id, tx);
@@ -670,7 +670,8 @@ export async function fetchGempPreview(options: GempPreviewOptions) {
             const sameVal = Math.abs(Number(existing.valor || 0) - valorFinal) < 0.01;
             const sameVenc = existing.dataVencimento === dataVencimento;
             const samePagto = (existing.dataPagamento || null) === (status === "pago" ? (dataPagamento || dataVencimento) : null);
-            acaoSincronizacao = sameStatus && sameVal && sameVenc && samePagto ? "inalterado" : "atualizar";
+            const isManualOverride = existing.manualOverride === true || existing.manualOverride === 'true' || existing.manualOverride === 1 || existing.manualOverride === '1';
+            acaoSincronizacao = isManualOverride ? "inalterado" : (sameStatus && sameVal && sameVenc && samePagto ? "inalterado" : "atualizar");
           }
 
           items.push({
@@ -883,7 +884,8 @@ export async function fetchGempPreview(options: GempPreviewOptions) {
             const sameVal = Math.abs(Number(existing.valor || 0) - valorFinal) < 0.01;
             const sameVenc = existing.dataVencimento === dataVencimento;
             const samePagto = (existing.dataPagamento || null) === (status === "pago" ? (dataPagamento || dataVencimento) : null);
-            acaoSincronizacao = sameStatus && sameVal && sameVenc && samePagto ? "inalterado" : "atualizar";
+            const isManualOverride = existing.manualOverride === true || existing.manualOverride === 'true' || existing.manualOverride === 1 || existing.manualOverride === '1';
+            acaoSincronizacao = isManualOverride ? "inalterado" : (sameStatus && sameVal && sameVenc && samePagto ? "inalterado" : "atualizar");
           }
 
           items.push({
@@ -1086,13 +1088,13 @@ export async function importGempItemsToDb(payload: GempImportCommitPayload) {
           grupoParcelamentoId, numeroParcela, totalParcelas
         ) VALUES ${rowPlaceholders}
         ON DUPLICATE KEY UPDATE
-          tipo = VALUES(tipo),
+          tipo = IF(JSON_EXTRACT(TransacoesFinanceiras.metadata, '$.manualOverride') = true, TransacoesFinanceiras.tipo, VALUES(tipo)),
           categoria = COALESCE(NULLIF(TransacoesFinanceiras.categoria, ''), VALUES(categoria)),
-          valor = VALUES(valor),
-          dataVencimento = VALUES(dataVencimento),
-          dataPagamento = VALUES(dataPagamento),
-          status = VALUES(status),
-          descricao = VALUES(descricao),
+          valor = IF(JSON_EXTRACT(TransacoesFinanceiras.metadata, '$.manualOverride') = true, TransacoesFinanceiras.valor, VALUES(valor)),
+          dataVencimento = IF(JSON_EXTRACT(TransacoesFinanceiras.metadata, '$.manualOverride') = true, TransacoesFinanceiras.dataVencimento, VALUES(dataVencimento)),
+          dataPagamento = IF(JSON_EXTRACT(TransacoesFinanceiras.metadata, '$.manualOverride') = true, TransacoesFinanceiras.dataPagamento, VALUES(dataPagamento)),
+          status = IF(JSON_EXTRACT(TransacoesFinanceiras.metadata, '$.manualOverride') = true, TransacoesFinanceiras.status, VALUES(status)),
+          descricao = IF(JSON_EXTRACT(TransacoesFinanceiras.metadata, '$.manualOverride') = true, TransacoesFinanceiras.descricao, VALUES(descricao)),
           metodoPagamento = COALESCE(VALUES(metodoPagamento), TransacoesFinanceiras.metodoPagamento),
           operador = COALESCE(VALUES(operador), TransacoesFinanceiras.operador),
           clienteId = COALESCE(VALUES(clienteId), TransacoesFinanceiras.clienteId),
@@ -1101,8 +1103,8 @@ export async function importGempItemsToDb(payload: GempImportCommitPayload) {
           contaBancariaId = COALESCE(VALUES(contaBancariaId), TransacoesFinanceiras.contaBancariaId),
           planoContasId = COALESCE(VALUES(planoContasId), TransacoesFinanceiras.planoContasId),
           centroCustoId = COALESCE(VALUES(centroCustoId), TransacoesFinanceiras.centroCustoId),
-          metadata = VALUES(metadata),
-          empresa = VALUES(empresa),
+          metadata = IF(JSON_EXTRACT(TransacoesFinanceiras.metadata, '$.manualOverride') = true, TransacoesFinanceiras.metadata, VALUES(metadata)),
+          empresa = IF(JSON_EXTRACT(TransacoesFinanceiras.metadata, '$.manualOverride') = true, TransacoesFinanceiras.empresa, VALUES(empresa)),
           origem_empresa = VALUES(origem_empresa),
           grupoParcelamentoId = COALESCE(VALUES(grupoParcelamentoId), TransacoesFinanceiras.grupoParcelamentoId),
           numeroParcela = VALUES(numeroParcela),
