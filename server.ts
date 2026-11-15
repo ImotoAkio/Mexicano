@@ -43,7 +43,14 @@ import utvRoutes from "./server-routes/utv.routes";
 import marinaAgendamentosRoutes from "./server-routes/marina-agendamentos.routes";
 import notificationsRoutes from "./server-routes/notifications.routes";
 import atividadesOperacionaisRoutes from "./server-routes/atividades-operacionais.routes";
-import mcpRoutes from "./server-routes/mcp.routes";
+import mcpRoutes, {
+  buildOAuthProtectedResourceMetadata,
+  buildOAuthAuthorizationServerMetadata,
+  handleMcpOAuthRegister,
+  handleMcpOAuthAuthorizeGet,
+  handleMcpOAuthAuthorizePost,
+  handleMcpOAuthToken,
+} from "./server-routes/mcp.routes";
 import { startNotificationScheduler } from "./server-notifications-scheduler";
 import {
   getDbPool, getDbStatus, initializeDatabase, pullDatabase,
@@ -116,6 +123,7 @@ function checkOriginAllowed(origin: string | undefined): boolean {
   if (allowedOrigins.includes(origin)) return true;
   if (origin.startsWith("http://192.168.")) return true;
   if (origin.endsWith(".echo.dev.br") || origin === "https://echo.dev.br") return true;
+  if (origin === "https://gemini.google.com" || origin.endsWith(".google.com") || origin.endsWith(".googleusercontent.com")) return true;
   return false;
 }
 
@@ -302,6 +310,24 @@ app.use("/api/utv", utvRoutes);
 app.use("/api", notificationsRoutes);
 app.use("/api/atividades-operacionais", atividadesOperacionaisRoutes);
 app.use("/api", mcpRoutes);
+
+// --- MCP OAuth 2.1 Discovery & Authorization Endpoints at Root (RFC 9728 / RFC 8414 / RFC 7591) ---
+app.get("/.well-known/oauth-protected-resource*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.json(buildOAuthProtectedResourceMetadata(req));
+});
+app.get("/.well-known/oauth-authorization-server*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.json(buildOAuthAuthorizationServerMetadata(req));
+});
+app.get("/.well-known/openid-configuration*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.json(buildOAuthAuthorizationServerMetadata(req));
+});
+app.post(["/oauth/register", "/register"], handleMcpOAuthRegister);
+app.get(["/oauth/authorize", "/authorize"], handleMcpOAuthAuthorizeGet);
+app.post(["/oauth/authorize", "/authorize"], handleMcpOAuthAuthorizePost);
+app.post(["/oauth/token", "/token"], handleMcpOAuthToken);
 
 // Short Magic Link direct redirect for client WhatsApp notifications
 app.get("/m/:code", async (req, res) => {

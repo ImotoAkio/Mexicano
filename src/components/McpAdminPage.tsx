@@ -728,10 +728,46 @@ export default function McpAdminPage() {
                 </p>
               </div>
 
+              <div className="pt-2 border-t border-slate-100 space-y-2.5">
+                <div className="text-[11px] font-extrabold uppercase text-[#186b77] flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Conexão OAuth 2.1 para Google Gemini Web (gemini.google.com/customize/connectors)
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  O servidor possui descoberta automática <strong>OAuth 2.1 (RFC 9728 / RFC 8414 / PKCE)</strong> integrada. Basta colar a URL <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">{streamableHttpUrl}</code> em <strong>Conectar-se a um servidor MCP</strong> e clicar em <strong>Avançar</strong>. Caso abra <em>Configurações avançadas</em>, use:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-slate-400 font-bold block text-[10px] uppercase">OAuth Client ID</span>
+                      <code className="font-mono font-bold text-slate-800">mexicano-gemini-client</code>
+                    </div>
+                    <button
+                      onClick={() => handleCopy('mexicano-gemini-client', 'oauthClientId')}
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer"
+                    >
+                      {copiedField === 'oauthClientId' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+                    <div className="truncate">
+                      <span className="text-slate-400 font-bold block text-[10px] uppercase">OAuth Client Secret</span>
+                      <code className="font-mono font-bold text-slate-800">{showApiKey ? apiKey : 'Usa sua MCP_API_KEY acima'}</code>
+                    </div>
+                    <button
+                      onClick={() => handleCopy(apiKey, 'oauthClientSecret')}
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer shrink-0"
+                    >
+                      {copiedField === 'oauthClientSecret' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[11px] font-bold uppercase text-slate-500">
-                    JSON Pronto para Clientes MCP (Antigravity / Claude / Cursor)
+                    JSON Pronto para Clientes MCP Desktop (Antigravity / Claude / Cursor)
                   </label>
                   <button
                     onClick={() =>

@@ -2,9 +2,13 @@ import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import https from "https";
 import http from "http";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import { GoogleGenAI } from "@google/genai";
-import { getDbPool, getConfigValue, setConfigValue, invalidateDbCache } from "../server-db";
+import { getDbPool, getConfigValue, setConfigValue, invalidateDbCache, getAdminByUsername } from "../server-db";
 import { requireAdminAuth, writeAuditLog, getClientIp } from "./middlewares";
+
+const MCP_JWT_SECRET = process.env.JWT_SECRET || "mexicano-mcp-fallback-secret";
 
 const router = Router();
 
@@ -1679,10 +1683,84 @@ async function executeMcpToolByName(
   }
 }
 
+// ─── Helpers de URL Base e Metadados OAuth 2.1 (RFC 9728 / RFC 8414 / RFC 7591) ─
+
+export function getPublicBaseUrl(req: Request): string {
+  const host = req.get("x-forwarded-host") || req.get("host") || "mexicano.echo.dev.br";
+  const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("192.168.");
+  const proto = isLocal ? (req.get("x-forwarded-proto") || req.protocol || "http") : "https";
+  return `${proto}://${host}`;
+}
+
+export function buildOAuthProtectedResourceMetadata(req: Request) {
+  const baseUrl = getPublicBaseUrl(req);
+  const fullPath = (req.originalUrl || req.path || "").split("?")[0];
+  let resourcePath = "/api/mcp";
+  const prefixIdx = fullPath.indexOf("/.well-known/oauth-protected-resource");
+  if (prefixIdx >= 0) {
+    const after = fullPath.slice(prefixIdx + "/.well-known/oauth-protected-resource".length);
+    if (after && after.startsWith("/")) {
+      resourcePath = after;
+    } else if (prefixIdx > 0) {
+      resourcePath = fullPath.slice(0, prefixIdx);
+    }
+  }
+  return {
+    resource: `${baseUrl}${resourcePath}`,
+    authorization_servers: [baseUrl],
+    bearer_methods_supported: ["header"],
+    scopes_supported: ["mcp:tools", "read", "write"],
+    resource_documentation: `${baseUrl}/api/mcp/health`,
+  };
+}
+
+export function buildOAuthAuthorizationServerMetadata(req: Request) {
+  const baseUrl = getPublicBaseUrl(req);
+  return {
+    issuer: baseUrl,
+    authorization_endpoint: `${baseUrl}/api/mcp/oauth/authorize`,
+    token_endpoint: `${baseUrl}/api/mcp/oauth/token`,
+    registration_endpoint: `${baseUrl}/api/mcp/oauth/register`,
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "refresh_token", "client_credentials"],
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
+    code_challenge_methods_supported: ["S256", "plain"],
+    scopes_supported: ["mcp:tools", "read", "write"],
+    service_documentation: `${baseUrl}/api/mcp/health`,
+  };
+}
+
+function setMcpCorsHeaders(res: Response) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-MCP-API-Key, Mcp-Session-Id, Accept, MCP-Protocol-Version");
+  res.setHeader("Access-Control-Expose-Headers", "WWW-Authenticate, Mcp-Session-Id");
+}
+
+function verifyBearerTokenOrApiKey(token: string, expectedApiKey: string): boolean {
+  if (!token) return false;
+  // 1) Verifica se é um token JWT OAuth 2.1 emitido por este servidor
+  try {
+    const decoded = jwt.verify(token, MCP_JWT_SECRET) as any;
+    if (decoded && (decoded.type === "mcp_oauth_access" || decoded.role === "admin")) {
+      return true;
+    }
+  } catch {}
+
+  // 2) Verifica se é a MCP_API_KEY estática
+  const expectedBuf = Buffer.from(expectedApiKey, "utf-8");
+  const receivedBuf = Buffer.from(token, "utf-8");
+  if (expectedBuf.length === receivedBuf.length && crypto.timingSafeEqual(expectedBuf, receivedBuf)) {
+    return true;
+  }
+  return false;
+}
+
 // ─── Middleware de Autenticação das Rotas Externas MCP (/api/mcp/*) ─────────
 
 async function requireMcpExternalAuth(req: Request, res: Response, next: NextFunction) {
   try {
+    setMcpCorsHeaders(res);
     const settings = await getMcpSettings();
     if (!settings.mcpAtivo) {
       return res.status(403).json({
@@ -1691,25 +1769,31 @@ async function requireMcpExternalAuth(req: Request, res: Response, next: NextFun
       });
     }
 
+    const baseUrl = getPublicBaseUrl(req);
+    const reqPath = (req.originalUrl || req.path || "/api/mcp").split("?")[0];
+    const metadataUrl = `${baseUrl}/.well-known/oauth-protected-resource${reqPath.startsWith("/") ? reqPath : `/${reqPath}`}`;
+    const wwwAuthHeader = `Bearer realm="mcp", resource_metadata="${metadataUrl}"`;
+
     const authHeader = req.headers.authorization;
     const headerKey = (req.headers["x-mcp-api-key"] as string) || "";
     const bearerToken = authHeader?.startsWith("Bearer ")
       ? authHeader.slice(7).trim()
-      : (headerKey || (req.query.apiKey as string) || "").trim();
+      : (headerKey || (req.query.apiKey as string) || (req.query.access_token as string) || "").trim();
 
     if (!bearerToken) {
+      res.setHeader("WWW-Authenticate", wwwAuthHeader);
       return res.status(401).json({
-        error: "Unauthorized",
-        message: "Autenticação obrigatória. Envie o header 'Authorization: Bearer <MCP_API_KEY>' ou '?apiKey=<MCP_API_KEY>'.",
+        error: "invalid_token",
+        error_description: "OAuth 2.0 Bearer token ou MCP_API_KEY obrigatório.",
+        resource_metadata: metadataUrl,
       });
     }
 
-    const expectedBuf = Buffer.from(settings.apiKey, "utf-8");
-    const receivedBuf = Buffer.from(bearerToken, "utf-8");
-    if (expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {
+    if (!verifyBearerTokenOrApiKey(bearerToken, settings.apiKey)) {
+      res.setHeader("WWW-Authenticate", `${wwwAuthHeader}, error="invalid_token", error_description="Invalid or expired access token"`);
       return res.status(401).json({
-        error: "Unauthorized",
-        message: "MCP_API_KEY inválida.",
+        error: "invalid_token",
+        error_description: "Token OAuth ou MCP_API_KEY inválido ou expirado.",
       });
     }
 
@@ -1739,13 +1823,15 @@ async function handleJsonRpcMessage(payload: any, io?: any): Promise<any | null>
         jsonrpc: "2.0",
         id,
         result: {
-          protocolVersion: params?.protocolVersion || "2024-11-05",
+          protocolVersion: params?.protocolVersion || "2025-03-26",
           capabilities: {
             tools: { listChanged: false },
+            resources: { subscribe: false, listChanged: false },
+            prompts: { listChanged: false },
           },
           serverInfo: {
             name: "mexicano-gestao-nautica",
-            version: "1.1.0",
+            version: "1.2.0",
           },
         },
       };
@@ -1753,6 +1839,18 @@ async function handleJsonRpcMessage(payload: any, io?: any): Promise<any | null>
 
     if (method === "ping") {
       return { jsonrpc: "2.0", id, result: {} };
+    }
+
+    if (method === "resources/list") {
+      return { jsonrpc: "2.0", id, result: { resources: [] } };
+    }
+
+    if (method === "resources/templates/list") {
+      return { jsonrpc: "2.0", id, result: { resourceTemplates: [] } };
+    }
+
+    if (method === "prompts/list") {
+      return { jsonrpc: "2.0", id, result: { prompts: [] } };
     }
 
     if (method === "tools/list") {
@@ -1800,50 +1898,577 @@ async function handleJsonRpcMessage(payload: any, io?: any): Promise<any | null>
   }
 }
 
+// ─── Rotas OAuth 2.1 + Descoberta Dinâmica para Google Gemini / Claude ──────
+
+router.options("/mcp*", (_req, res) => {
+  setMcpCorsHeaders(res);
+  res.status(204).end();
+});
+
+router.get("/mcp/.well-known/oauth-protected-resource", (req, res) => {
+  setMcpCorsHeaders(res);
+  res.json(buildOAuthProtectedResourceMetadata(req));
+});
+
+router.get("/mcp/.well-known/oauth-authorization-server", (req, res) => {
+  setMcpCorsHeaders(res);
+  res.json(buildOAuthAuthorizationServerMetadata(req));
+});
+
+router.get("/mcp/.well-known/openid-configuration", (req, res) => {
+  setMcpCorsHeaders(res);
+  res.json(buildOAuthAuthorizationServerMetadata(req));
+});
+
+// RFC 7591 - Dynamic Client Registration
+export async function handleMcpOAuthRegister(req: Request, res: Response) {
+  try {
+    setMcpCorsHeaders(res);
+    const settings = await getMcpSettings();
+    const body = req.body || {};
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const clientId = body.client_id || `mexicano_client_${crypto.randomBytes(6).toString("hex")}`;
+    const authMethod = body.token_endpoint_auth_method || "none";
+
+    res.status(201).json({
+      client_id: clientId,
+      client_secret: settings.apiKey,
+      client_id_issued_at: issuedAt,
+      client_secret_expires_at: 0,
+      client_name: body.client_name || "Google Gemini MCP Connector",
+      redirect_uris: Array.isArray(body.redirect_uris) ? body.redirect_uris : [],
+      grant_types: body.grant_types || ["authorization_code", "refresh_token", "client_credentials"],
+      response_types: body.response_types || ["code"],
+      token_endpoint_auth_method: authMethod,
+      scope: body.scope || "mcp:tools read write",
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "server_error", error_description: err.message });
+  }
+}
+
+// OAuth 2.1 Authorization Endpoint (GET -> Tela de Consentimento do Administrador)
+export async function handleMcpOAuthAuthorizeGet(req: Request, res: Response) {
+  setMcpCorsHeaders(res);
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; form-action *;"
+  );
+
+  const clientId = String(req.query.client_id || "mexicano-gemini-client");
+  const redirectUri = String(req.query.redirect_uri || "");
+  const state = String(req.query.state || "");
+  const codeChallenge = String(req.query.code_challenge || "");
+  const codeChallengeMethod = String(req.query.code_challenge_method || "S256");
+  const scope = String(req.query.scope || "mcp:tools");
+  const resource = String(req.query.resource || "");
+
+  const escapeHtml = (str: string) =>
+    String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Autorizar Conexão MCP — Marina El Mexicano</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at top, #0f172a 0%, #020617 100%);
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(14, 165, 233, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 20px; font-weight: 700; color: #ffffff; margin-bottom: 6px; }
+    p.sub { font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 20px; }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: #020617;
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid #1e293b;
+      margin-bottom: 18px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      padding: 8px 10px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      background: #020617;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      padding: 11px 13px;
+      border-radius: 10px;
+      font-size: 14px;
+      margin-bottom: 14px;
+      outline: none;
+    }
+    input:focus { border-color: #38bdf8; }
+    .error-box {
+      display: none;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+    .btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+      color: #ffffff;
+      border: none;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-submit:disabled { opacity: 0.6; cursor: wait; }
+    .scope-box {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #1e293b;
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    .scope-box strong { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">OAuth 2.1 Seguro • MCP Server</div>
+    <h1>Conectar ao Google Gemini</h1>
+    <p class="sub">Autorize o conector externo a acessar as 22 ferramentas do <strong>Sistema de Gestão Marina El Mexicano</strong>.</p>
+
+    <div class="tabs">
+      <button type="button" id="tab-admin" class="tab-btn active" onclick="switchMode('admin')">Login do Painel Admin</button>
+      <button type="button" id="tab-key" class="tab-btn" onclick="switchMode('key')">Chave MCP_API_KEY</button>
+    </div>
+
+    <div id="error-box" class="error-box"></div>
+
+    <form id="oauth-form" onsubmit="submitConsent(event)">
+      <div id="mode-admin">
+        <label for="username">Usuário Administrador</label>
+        <input type="text" id="username" name="username" placeholder="Digite seu usuário admin" autocomplete="username" />
+        <label for="password">Senha</label>
+        <input type="password" id="password" name="password" placeholder="Digite sua senha" autocomplete="current-password" />
+      </div>
+
+      <div id="mode-key" style="display:none;">
+        <label for="apiKey">Chave Secreta (MCP_API_KEY)</label>
+        <input type="password" id="apiKey" name="apiKey" placeholder="mcp_mex_..." autocomplete="off" />
+      </div>
+
+      <button type="submit" id="submit-btn" class="btn-submit">Autorizar e Conectar ao Gemini</button>
+    </form>
+
+    <div class="scope-box">
+      <strong>Cliente OAuth:</strong> ${escapeHtml(clientId)}<br/>
+      <strong>Permissões:</strong> 17 ferramentas de leitura (360°, Financeiro, OS, UTV, Combustível) + Reservas + WhatsApp (protegidas pelas travas do painel).
+    </div>
+  </div>
+
+  <script>
+    var authMode = 'admin';
+    var oauthParams = {
+      client_id: ${JSON.stringify(clientId)},
+      redirect_uri: ${JSON.stringify(redirectUri)},
+      state: ${JSON.stringify(state)},
+      code_challenge: ${JSON.stringify(codeChallenge)},
+      code_challenge_method: ${JSON.stringify(codeChallengeMethod)},
+      scope: ${JSON.stringify(scope)},
+      resource: ${JSON.stringify(resource)}
+    };
+
+    function switchMode(mode) {
+      authMode = mode;
+      document.getElementById('mode-admin').style.display = mode === 'admin' ? 'block' : 'none';
+      document.getElementById('mode-key').style.display = mode === 'key' ? 'block' : 'none';
+      document.getElementById('tab-admin').className = 'tab-btn' + (mode === 'admin' ? ' active' : '');
+      document.getElementById('tab-key').className = 'tab-btn' + (mode === 'key' ? ' active' : '');
+      document.getElementById('error-box').style.display = 'none';
+    }
+
+    async function submitConsent(e) {
+      e.preventDefault();
+      var errBox = document.getElementById('error-box');
+      var btn = document.getElementById('submit-btn');
+      errBox.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Validando e redirecionando...';
+
+      var payload = Object.assign({}, oauthParams, {
+        authMode: authMode,
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value,
+        apiKey: document.getElementById('apiKey').value.trim()
+      });
+
+      try {
+        var res = await fetch('/api/mcp/oauth/authorize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        var data = await res.json();
+        if (!res.ok || !data.success) {
+          errBox.textContent = data.message || 'Falha na autenticação. Verifique suas credenciais.';
+          errBox.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Autorizar e Conectar ao Gemini';
+          return;
+        }
+        window.location.replace(data.redirectUrl);
+      } catch (err) {
+        errBox.textContent = 'Erro de conexão com o servidor: ' + err.message;
+        errBox.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Autorizar e Conectar ao Gemini';
+      }
+    }
+  </script>
+</body>
+</html>`;
+
+  res.status(200).send(html);
+}
+
+// OAuth 2.1 Authorization POST (Valida Admin ou MCP_API_KEY e emite Authorization Code PKCE)
+export async function handleMcpOAuthAuthorizePost(req: Request, res: Response) {
+  try {
+    setMcpCorsHeaders(res);
+    const settings = await getMcpSettings();
+    if (!settings.mcpAtivo) {
+      return res.status(403).json({ success: false, message: "O Servidor MCP está desativado no painel." });
+    }
+
+    const {
+      authMode,
+      username,
+      password,
+      apiKey,
+      client_id,
+      redirect_uri,
+      state,
+      code_challenge,
+      code_challenge_method,
+      scope,
+      resource,
+    } = req.body || {};
+
+    if (!redirect_uri) {
+      return res.status(400).json({ success: false, message: "Parâmetro 'redirect_uri' ausente na requisição OAuth." });
+    }
+
+    let authorizedSub = "mcp-admin";
+
+    if (authMode === "key" || (!username && apiKey)) {
+      const cleanKey = String(apiKey || "").trim();
+      if (!cleanKey || !verifyBearerTokenOrApiKey(cleanKey, settings.apiKey)) {
+        writeAuditLog("oauth-mcp", "admin", "MCP_OAUTH_FAILED", getClientIp(req), "MCP_API_KEY inválida no consentimento OAuth");
+        return res.status(401).json({ success: false, message: "Chave MCP_API_KEY inválida." });
+      }
+      authorizedSub = "mcp-apikey-admin";
+    } else {
+      if (!username || !password) {
+        return res.status(400).json({ success: false, message: "Informe seu usuário e senha de administrador (ou use a aba Chave MCP_API_KEY)." });
+      }
+      const admin = await getAdminByUsername(String(username).trim());
+      if (!admin) {
+        writeAuditLog(String(username), "admin", "MCP_OAUTH_FAILED", getClientIp(req), "Usuário não encontrado no OAuth MCP");
+        return res.status(401).json({ success: false, message: "Usuário ou senha de administrador inválidos." });
+      }
+      const validPass = await bcrypt.compare(String(password), admin.passwordHash);
+      if (!validPass) {
+        writeAuditLog(String(username), "admin", "MCP_OAUTH_FAILED", getClientIp(req), "Senha incorreta no OAuth MCP");
+        return res.status(401).json({ success: false, message: "Usuário ou senha de administrador inválidos." });
+      }
+      authorizedSub = admin.username;
+    }
+
+    const authCode = jwt.sign(
+      {
+        type: "mcp_oauth_code",
+        sub: authorizedSub,
+        client_id: client_id || "mexicano-gemini-client",
+        redirect_uri,
+        code_challenge: code_challenge || "",
+        code_challenge_method: code_challenge_method || "S256",
+        scope: scope || "mcp:tools",
+        resource: resource || "",
+      },
+      MCP_JWT_SECRET,
+      { expiresIn: "10m" }
+    );
+
+    writeAuditLog(authorizedSub, "admin", "MCP_OAUTH_AUTHORIZED", getClientIp(req), `Conector OAuth autorizado (${client_id || "gemini"})`);
+
+    const targetUrl = new URL(String(redirect_uri));
+    targetUrl.searchParams.set("code", authCode);
+    if (state !== undefined && state !== "") {
+      targetUrl.searchParams.set("state", String(state));
+    }
+
+    if (String(req.headers.accept || "").includes("application/json")) {
+      return res.json({ success: true, redirectUrl: targetUrl.toString() });
+    }
+    return res.redirect(302, targetUrl.toString());
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || "Erro interno ao autorizar OAuth." });
+  }
+}
+
+// OAuth 2.1 Token Endpoint (Suporta authorization_code + PKCE, refresh_token e client_credentials)
+export async function handleMcpOAuthToken(req: Request, res: Response) {
+  try {
+    setMcpCorsHeaders(res);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Pragma", "no-cache");
+
+    const settings = await getMcpSettings();
+    if (!settings.mcpAtivo) {
+      return res.status(403).json({ error: "access_denied", error_description: "MCP Server disabled by administrator" });
+    }
+
+    const grantType = req.body?.grant_type || req.query?.grant_type;
+    const code = req.body?.code || req.query?.code;
+    const codeVerifier = req.body?.code_verifier || req.query?.code_verifier;
+    const refreshToken = req.body?.refresh_token || req.query?.refresh_token;
+
+    // Extrai client_secret caso enviado via Basic Auth ou post body
+    let clientSecret = req.body?.client_secret || "";
+    const authHeader = req.headers.authorization || "";
+    if (authHeader.startsWith("Basic ")) {
+      try {
+        const decodedBasic = Buffer.from(authHeader.slice(6), "base64").toString("utf-8");
+        const colonIdx = decodedBasic.indexOf(":");
+        if (colonIdx >= 0) {
+          clientSecret = decodedBasic.slice(colonIdx + 1);
+        }
+      } catch {}
+    }
+
+    if (grantType === "authorization_code") {
+      if (!code) {
+        return res.status(400).json({ error: "invalid_request", error_description: "Missing authorization code" });
+      }
+
+      let decodedCode: any;
+      try {
+        decodedCode = jwt.verify(String(code), MCP_JWT_SECRET);
+      } catch {
+        return res.status(400).json({ error: "invalid_grant", error_description: "Authorization code expired or invalid" });
+      }
+
+      if (!decodedCode || decodedCode.type !== "mcp_oauth_code") {
+        return res.status(400).json({ error: "invalid_grant", error_description: "Invalid authorization code type" });
+      }
+
+      // Validação PKCE (S256 ou plain) se code_challenge foi enviado na autorização
+      if (decodedCode.code_challenge) {
+        if (!codeVerifier) {
+          return res.status(400).json({ error: "invalid_request", error_description: "Missing code_verifier for PKCE" });
+        }
+        const method = String(decodedCode.code_challenge_method || "S256").toUpperCase();
+        const computedChallenge =
+          method === "PLAIN"
+            ? String(codeVerifier)
+            : crypto.createHash("sha256").update(String(codeVerifier)).digest("base64url");
+
+        if (computedChallenge !== decodedCode.code_challenge) {
+          return res.status(400).json({ error: "invalid_grant", error_description: "PKCE code_verifier mismatch" });
+        }
+      }
+
+      const accessToken = jwt.sign(
+        {
+          type: "mcp_oauth_access",
+          sub: decodedCode.sub || "mcp-admin",
+          scope: decodedCode.scope || "mcp:tools",
+        },
+        MCP_JWT_SECRET,
+        { expiresIn: "365d" }
+      );
+
+      const newRefreshToken = jwt.sign(
+        {
+          type: "mcp_oauth_refresh",
+          sub: decodedCode.sub || "mcp-admin",
+          scope: decodedCode.scope || "mcp:tools",
+        },
+        MCP_JWT_SECRET,
+        { expiresIn: "365d" }
+      );
+
+      return res.json({
+        access_token: accessToken,
+        token_type: "Bearer",
+        expires_in: 2592000,
+        refresh_token: newRefreshToken,
+        scope: decodedCode.scope || "mcp:tools",
+      });
+    }
+
+    if (grantType === "refresh_token") {
+      if (!refreshToken) {
+        return res.status(400).json({ error: "invalid_request", error_description: "Missing refresh_token" });
+      }
+      let decodedRefresh: any;
+      try {
+        decodedRefresh = jwt.verify(String(refreshToken), MCP_JWT_SECRET);
+      } catch {
+        return res.status(400).json({ error: "invalid_grant", error_description: "Invalid or expired refresh_token" });
+      }
+      if (!decodedRefresh || decodedRefresh.type !== "mcp_oauth_refresh") {
+        return res.status(400).json({ error: "invalid_grant", error_description: "Invalid refresh_token type" });
+      }
+
+      const accessToken = jwt.sign(
+        {
+          type: "mcp_oauth_access",
+          sub: decodedRefresh.sub || "mcp-admin",
+          scope: decodedRefresh.scope || "mcp:tools",
+        },
+        MCP_JWT_SECRET,
+        { expiresIn: "365d" }
+      );
+
+      return res.json({
+        access_token: accessToken,
+        token_type: "Bearer",
+        expires_in: 2592000,
+        refresh_token: refreshToken,
+        scope: decodedRefresh.scope || "mcp:tools",
+      });
+    }
+
+    if (grantType === "client_credentials") {
+      if (!clientSecret || !verifyBearerTokenOrApiKey(String(clientSecret), settings.apiKey)) {
+        return res.status(401).json({ error: "invalid_client", error_description: "Invalid client_secret" });
+      }
+
+      const accessToken = jwt.sign(
+        {
+          type: "mcp_oauth_access",
+          sub: "mcp-client-credentials",
+          scope: "mcp:tools",
+        },
+        MCP_JWT_SECRET,
+        { expiresIn: "365d" }
+      );
+
+      return res.json({
+        access_token: accessToken,
+        token_type: "Bearer",
+        expires_in: 2592000,
+        scope: "mcp:tools",
+      });
+    }
+
+    return res.status(400).json({
+      error: "unsupported_grant_type",
+      error_description: `Grant type '${grantType}' is not supported`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: "server_error", error_description: err.message });
+  }
+}
+
+router.post("/mcp/oauth/register", handleMcpOAuthRegister);
+router.get("/mcp/oauth/authorize", handleMcpOAuthAuthorizeGet);
+router.post("/mcp/oauth/authorize", handleMcpOAuthAuthorizePost);
+router.post("/mcp/oauth/token", handleMcpOAuthToken);
+
 // ─── Rotas Públicas/Externas do Protocolo MCP (/api/mcp/*) ──────────────────
 
 const sseSessions = new Map<string, Response>();
 
-router.get("/mcp/health", async (_req, res) => {
+router.get("/mcp/health", async (req, res) => {
+  setMcpCorsHeaders(res);
   const settings = await getMcpSettings();
   const pool = getDbPool();
+  const baseUrl = getPublicBaseUrl(req);
   res.json({
     status: pool ? "healthy" : "degraded",
     service: "mexicano-mcp-integrated",
-    version: "1.1.0",
+    version: "1.2.0",
     mcpAtivo: settings.mcpAtivo,
+    oauth2Enabled: true,
     totalTools: MCP_TOOLS.length,
     endpoints: {
-      streamableHttp: "/api/mcp",
-      sse: "/api/mcp/sse",
-      messages: "/api/mcp/messages",
+      streamableHttp: `${baseUrl}/api/mcp`,
+      sse: `${baseUrl}/api/mcp/sse`,
+      messages: `${baseUrl}/api/mcp/messages`,
+      oauthProtectedResource: `${baseUrl}/.well-known/oauth-protected-resource`,
+      oauthAuthorizationServer: `${baseUrl}/.well-known/oauth-authorization-server`,
+      oauthAuthorize: `${baseUrl}/api/mcp/oauth/authorize`,
+      oauthToken: `${baseUrl}/api/mcp/oauth/token`,
+      oauthRegister: `${baseUrl}/api/mcp/oauth/register`,
     },
   });
 });
 
-// Transporte Streamable HTTP (MCP 2025-03-26)
-router.post("/mcp", requireMcpExternalAuth, async (req, res) => {
-  const io = req.app.locals.io;
-  const body = req.body;
-
-  if (Array.isArray(body)) {
-    const responses = [];
-    for (const item of body) {
-      const r = await handleJsonRpcMessage(item, io);
-      if (r) responses.push(r);
-    }
-    return res.json(responses);
-  }
-
-  const response = await handleJsonRpcMessage(body, io);
-  if (!response) {
-    return res.status(202).end();
-  }
-  return res.json(response);
-});
-
-// Transporte SSE (MCP 2024-11-05)
-router.get("/mcp/sse", requireMcpExternalAuth, (req, res) => {
+function openSseSession(req: Request, res: Response) {
+  setMcpCorsHeaders(res);
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -1867,6 +2492,54 @@ router.get("/mcp/sse", requireMcpExternalAuth, (req, res) => {
     clearInterval(keepAlive);
     sseSessions.delete(sessionId);
   });
+}
+
+// Transporte Streamable HTTP GET / SSE unificado em /api/mcp
+router.get("/mcp", requireMcpExternalAuth, (req, res) => {
+  const accept = String(req.headers.accept || "");
+  if (accept.includes("text/event-stream")) {
+    return openSseSession(req, res);
+  }
+  return res.json({
+    status: "ok",
+    service: "mexicano-gestao-nautica",
+    version: "1.2.0",
+    protocolVersion: "2025-03-26",
+  });
+});
+
+// Transporte Streamable HTTP POST (MCP 2025-03-26)
+router.post("/mcp", requireMcpExternalAuth, async (req, res) => {
+  const io = req.app.locals.io;
+  const body = req.body;
+
+  if (!req.headers["mcp-session-id"]) {
+    res.setHeader("Mcp-Session-Id", crypto.randomUUID());
+  }
+
+  if (Array.isArray(body)) {
+    const responses = [];
+    for (const item of body) {
+      const r = await handleJsonRpcMessage(item, io);
+      if (r) responses.push(r);
+    }
+    return res.json(responses);
+  }
+
+  const response = await handleJsonRpcMessage(body, io);
+  if (!response) {
+    return res.status(202).end();
+  }
+  return res.json(response);
+});
+
+router.delete("/mcp", requireMcpExternalAuth, (_req, res) => {
+  return res.status(200).json({ terminated: true });
+});
+
+// Transporte SSE (MCP 2024-11-05)
+router.get("/mcp/sse", requireMcpExternalAuth, (req, res) => {
+  openSseSession(req, res);
 });
 
 router.post("/mcp/messages", requireMcpExternalAuth, async (req, res) => {
