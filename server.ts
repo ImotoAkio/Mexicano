@@ -43,6 +43,7 @@ import utvRoutes from "./server-routes/utv.routes";
 import marinaAgendamentosRoutes from "./server-routes/marina-agendamentos.routes";
 import notificationsRoutes from "./server-routes/notifications.routes";
 import atividadesOperacionaisRoutes from "./server-routes/atividades-operacionais.routes";
+import mcpRoutes from "./server-routes/mcp.routes";
 import { startNotificationScheduler } from "./server-notifications-scheduler";
 import {
   getDbPool, getDbStatus, initializeDatabase, pullDatabase,
@@ -300,6 +301,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/utv", utvRoutes);
 app.use("/api", notificationsRoutes);
 app.use("/api/atividades-operacionais", atividadesOperacionaisRoutes);
+app.use("/api", mcpRoutes);
 
 // Short Magic Link direct redirect for client WhatsApp notifications
 app.get("/m/:code", async (req, res) => {

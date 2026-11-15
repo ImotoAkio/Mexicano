@@ -473,6 +473,34 @@ export default function IntegrationsPage({ onNavigate }: IntegrationsPageProps) 
         </div>
       </div>
 
+      {/* SERVIDOR MCP & ASSISTENTE GEMINI */}
+      <div className="bg-gradient-to-r from-[#0f2930] via-[#186b77] to-slate-900 rounded-2xl p-5 text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-teal-500/30">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Wand2 className="w-5 h-5 text-teal-300" />
+            <h3 className="text-base font-bold">Servidor MCP & Assistente IA (Gemini)</h3>
+            <span className="bg-teal-400/20 text-teal-200 text-[10px] px-2 py-0.5 rounded-full font-bold border border-teal-400/30">
+              22 Tools Integradas
+            </span>
+          </div>
+          <p className="text-xs text-slate-200 max-w-2xl">
+            Gerencie a URL da API MCP (`/api/mcp`), chave de segurança `MCP_API_KEY`, travas de permissão e converse ao vivo com o Gemini conectado ao banco de dados e WhatsApp.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (onNavigate) {
+              onNavigate('mcp-manager');
+            }
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-white text-slate-900 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+        >
+          <Key className="w-4 h-4 text-[#186b77]" />
+          Gerenciar MCP & Testar Gemini
+        </button>
+      </div>
+
       {/* NOVO: ROBÔ INTELIGENTE DE NOTIFICAÇÕES WHATSAPP */}
       <div className="bg-gradient-to-r from-slate-900 via-[#186b77] to-slate-900 rounded-2xl p-5 text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1">

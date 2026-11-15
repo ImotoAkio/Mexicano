@@ -61,6 +61,7 @@ const CatalogoPublicoPage = lazy(() => import('./components/comercial/CatalogoPu
 const ValidarEmbarquePage = lazy(() => import('./components/ValidarEmbarquePage'));
 const ControleAtividadesPage = lazy(() => import('./components/ControleAtividadesPage'));
 const ServicosGeraisDashboard = lazy(() => import('./components/ServicosGeraisDashboard'));
+const McpAdminPage = lazy(() => import('./components/McpAdminPage'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
 import {
   Compass,
@@ -144,7 +145,7 @@ const AdminFuelWrapper = () => {
   return <AdminFuelPage data={data} setData={setData} reloadData={loadData} operadorNome="Admin" isAdmin={true} />;
 };
 
-type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'finance-gemp' | 'finance-clientes' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'controle-atividades' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot' | 'comercial-hub' | 'marina-hub';
+type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'finance-gemp' | 'finance-clientes' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'mcp-manager' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'controle-atividades' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot' | 'comercial-hub' | 'marina-hub';
 
 function persistClientSessionToken(token: string, reservaId?: string | null) {
   if (!token || token === 'null' || token === 'undefined') return;
@@ -537,6 +538,7 @@ export default function App() {
     {
       group: 'Administração & Sistema',
       items: [
+        { id: 'mcp-manager' as TabType, label: 'Servidor MCP & IA Gemini', icon: Bot },
         { id: 'users' as TabType, label: 'Gestão de Usuários', icon: Shield },
         { id: 'whatsapp' as TabType, label: 'Central de WhatsApp', icon: MessageSquare },
         { id: 'notificacoes-robot' as TabType, label: 'Robô de Notificações', icon: Bot },
@@ -1046,6 +1048,7 @@ export default function App() {
                 {activeTab === 'users' && <UsersPage />}
                 {activeTab === 'feedback' && <FeedbackAdmin />}
                 {activeTab === 'integrations' && <IntegrationsPage onNavigate={handleTabChange} />}
+                {activeTab === 'mcp-manager' && <McpAdminPage />}
                 {activeTab === 'portal-interno' && <PortalInterno />}
                 {activeTab === 'aviso-saida' && <AvisosSaidaPage />}
                 {activeTab === 'dp-dashboard' && <DPPage />}
