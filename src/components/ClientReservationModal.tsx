@@ -15,6 +15,7 @@ interface ClientReservationModalProps {
   marinaDatasFechadas?: Array<{ data: string; motivo: string }>;
   clientToken?: string | null;
   onSuccess: (newRes?: any) => void;
+  onGoToFinance?: () => void;
 }
 
 function getFirstTwoNames(fullName: string): string {
@@ -34,7 +35,8 @@ export default function ClientReservationModal({
   preselectedBoatId,
   marinaDatasFechadas = [],
   clientToken,
-  onSuccess 
+  onSuccess,
+  onGoToFinance
 }: ClientReservationModalProps) {
   const [selectedBoatId, setSelectedBoatId] = useState(() => {
     if (preselectedBoatId) return preselectedBoatId;
@@ -59,6 +61,8 @@ export default function ClientReservationModal({
       setSuccessMsg(null);
       setErrorMsg(null);
       setConfirmExtraObj(null);
+      setPaidLaunchAgreed(false);
+      setCreatedFinancialTx(null);
       setObservacoes('');
       setCreatedReservation(null);
       setWhatsappStatus('idle');
@@ -74,6 +78,8 @@ export default function ClientReservationModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [confirmExtraObj, setConfirmExtraObj] = useState<{ message: string } | null>(null);
+  const [paidLaunchAgreed, setPaidLaunchAgreed] = useState(false);
+  const [createdFinancialTx, setCreatedFinancialTx] = useState<any>(null);
 
   const [isSuccessState, setIsSuccessState] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -139,6 +145,21 @@ export default function ClientReservationModal({
       return;
     }
 
+    const boatEntryForSubmit = Array.isArray(client?.embarcacoes)
+      ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === selectedBoatId)
+      : (client?.embarcacaoId === selectedBoatId ? client : null);
+    const isMarinaOnlySubmit = Boolean(boat?.empresas && boat.empresas.includes('MARINA') && !boat.empresas.includes('VALE'));
+    const isPlanoCompletoSubmit = boatEntryForSubmit?.plano === 'completo' || (!boatEntryForSubmit?.plano && client?.plano === 'completo');
+    const submitDayOfWeek = dateValue ? new Date(dateValue + 'T12:00:00Z').getUTCDay() : -1;
+    const isPaidExtraDaySubmit = !isMarinaOnlySubmit && (submitDayOfWeek === 1 || submitDayOfWeek === 2) && !isPlanoCompletoSubmit;
+    const isJetSubmit = Boolean(boat && (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet')));
+    const expectedFeeSubmit = isPaidExtraDaySubmit ? (isJetSubmit ? 100 : 150) : 0;
+
+    if (isPaidExtraDaySubmit && !paidLaunchAgreed) {
+      setErrorMsg('Revise os dados e concorde com a cobrança da descida avulsa antes de solicitar.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -157,7 +178,9 @@ export default function ClientReservationModal({
           observacoes,
           previsaoSaida: previsaoSaida || '09:00',
           previsaoChegada: previsaoChegada || undefined,
-          confirmExtra: isConfirmedExtra
+          confirmExtra: isConfirmedExtra,
+          confirmPaidLaunch: isPaidExtraDaySubmit ? paidLaunchAgreed : false,
+          acceptedFee: isPaidExtraDaySubmit ? expectedFeeSubmit : undefined
         })
       });
 
@@ -168,6 +191,11 @@ export default function ClientReservationModal({
         setIsSubmitting(false);
         return;
       }
+      if (dbRes.status === 409 && dbData.requirePaidLaunchConfirmation) {
+        setErrorMsg(dbData.message || 'Confirme a cobrança da descida fora do plano para prosseguir.');
+        setIsSubmitting(false);
+        return;
+      }
       setConfirmExtraObj(null); // limpa caso existisse
 
       if (!dbRes.ok) {
@@ -175,6 +203,7 @@ export default function ClientReservationModal({
       }
       
       setCreatedReservation(dbData.reservation);
+      setCreatedFinancialTx(dbData.financialTransaction || null);
 
       // 2. Enviar para o Google Calendar usando o mesmo fluxo do admin
       const shortName = getFirstTwoNames(client.nome).toUpperCase();
@@ -292,6 +321,32 @@ export default function ClientReservationModal({
               </div>
             </div>
 
+            {createdFinancialTx && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
+                    Registro Financeiro Gerado
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Aguardando Pagamento
+                  </span>
+                </div>
+                <p className="text-xs text-white/75 leading-relaxed">
+                  {createdFinancialTx.descricao}
+                </p>
+                <div className="flex items-center justify-between pt-2 border-t border-white/10 text-sm">
+                  <span className="text-white/50">Valor da cobrança</span>
+                  <span className="font-bold text-amber-300">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(createdFinancialTx.valor || 0))}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/50">Vencimento</span>
+                  <span className="text-white/80 font-medium">{formatDateBR(createdFinancialTx.dataVencimento)}</span>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 mt-8">
               <h4 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-4">Informações Importantes</h4>
               <ul className="space-y-3 text-sm text-white/60">
@@ -312,7 +367,7 @@ export default function ClientReservationModal({
 
           </div>
 
-          <div className="p-6 border-t border-white/5 bg-[#050505] flex justify-end">
+          <div className="p-6 border-t border-white/5 bg-[#050505] flex flex-col sm:flex-row justify-end gap-3">
             <div className="hidden">
               <MonthlyCalendarGenerator
                 initialBoatId={selectedBoatId}
@@ -329,6 +384,17 @@ export default function ClientReservationModal({
                 }}
               />
             </div>
+            {createdFinancialTx && onGoToFinance && (
+              <button
+                onClick={() => {
+                  handleFinish();
+                  onGoToFinance();
+                }}
+                className="w-full sm:w-auto px-6 py-3.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-sm tracking-wide rounded-xl transition-all"
+              >
+                Ir para Financeiro / Pagar
+              </button>
+            )}
             <button
               onClick={handleFinish}
               className="w-full sm:w-auto px-8 py-3.5 bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 font-bold text-sm tracking-wide rounded-xl transition-all shadow-[0_0_20px_rgba(182,157,116,0.15)]"
@@ -351,13 +417,18 @@ export default function ClientReservationModal({
   const clientBoatEntry = Array.isArray(client?.embarcacoes)
     ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === selectedBoatId)
     : (client?.embarcacaoId === selectedBoatId ? client : null);
+  const isMarinaOnlyBoat = Boolean(selectedBoatObj?.empresas && selectedBoatObj.empresas.includes('MARINA') && !selectedBoatObj.empresas.includes('VALE'));
   const isPlanoCompleto = clientBoatEntry?.plano === 'completo' || (!clientBoatEntry?.plano && client?.plano === 'completo');
   const chosenDayOfWeek = dateValue ? new Date(dateValue + 'T12:00:00Z').getUTCDay() : -1;
-  const isWeeklyClosed = (chosenDayOfWeek === 1 || chosenDayOfWeek === 2) && !isPlanoCompleto;
+  const isWeeklyExtraDay = !isMarinaOnlyBoat && (chosenDayOfWeek === 1 || chosenDayOfWeek === 2) && !isPlanoCompleto;
+  const isJetSelected = Boolean(selectedBoatObj && (selectedBoatObj.tipo === 'jet' || (selectedBoatObj.nome || '').toLowerCase().includes('jet')));
+  const extraDayFee = isWeeklyExtraDay ? (isJetSelected ? 100 : 150) : 0;
+  const boatTypeLabel = isJetSelected ? 'Jet Ski' : 'Lancha';
+  const extraDayName = chosenDayOfWeek === 1 ? 'Segunda-feira' : chosenDayOfWeek === 2 ? 'Terça-feira' : '';
   
   const specialClosedEntry = (marinaDatasFechadas || []).find(d => d.data === dateValue);
   const isSpecialClosed = !!specialClosedEntry;
-  const isClosedDay = isSpecialClosed || isWeeklyClosed;
+  const isClosedDay = isSpecialClosed;
 
   const isDateOccupied = !isClosedDay && !!(selectedBoatId && dateValue && reservations.some((r: any) =>
     r.embarcacaoId === selectedBoatId && r.data === dateValue && r.status !== 'cancelado'
@@ -417,6 +488,7 @@ export default function ClientReservationModal({
                 onChange={(e) => {
                   setDateValue(e.target.value);
                   setConfirmExtraObj(null);
+                  setPaidLaunchAgreed(false);
                   setErrorMsg(null);
                 }}
                 className="w-full px-4 py-3 bg-[#111] border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74] focus:outline-none"
@@ -427,10 +499,10 @@ export default function ClientReservationModal({
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   A marina estará fechada nesta data{specialClosedEntry?.motivo ? ` (${specialClosedEntry.motivo})` : ''}.
                 </p>
-              ) : isWeeklyClosed ? (
-                <p className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
+              ) : isWeeklyExtraDay ? (
+                <p className="mt-2 text-xs text-amber-400 flex items-center gap-1.5 font-medium">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  A marina não funciona às segundas e terças-feiras para o plano desta embarcação.
+                  Descida às segundas e terças não está inclusa no plano atual. Cobrança avulsa de R$ {extraDayFee},00 ({boatTypeLabel}).
                 </p>
               ) : null}
               {!isClosedDay && isDateOccupied && (
@@ -457,6 +529,7 @@ export default function ClientReservationModal({
                   onChange={(e) => {
                     setSelectedBoatId(e.target.value);
                     setConfirmExtraObj(null);
+                    setPaidLaunchAgreed(false);
                     setErrorMsg(null);
                   }}
                   className="w-full px-4 py-3 bg-[#111] border border-white/10 rounded-xl text-white text-sm focus:ring-1 focus:ring-[#B69D74] focus:border-[#B69D74] focus:outline-none appearance-none cursor-pointer"
@@ -523,6 +596,63 @@ export default function ClientReservationModal({
               </div>
             </div>
 
+            {/* Revisão e Concordância de Cobrança (Seg/Ter fora do plano) */}
+            {isWeeklyExtraDay && !isSelectionInvalid && selectedBoatObj && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-3">
+                <div className="flex items-start gap-2.5 text-amber-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                      Revisão de Cobrança · Descida Fora do Plano
+                    </h4>
+                    <p className="text-xs text-white/75 mt-1 leading-relaxed">
+                      Esta descida de embarcação não está inclusa no seu plano atual (válido de quarta a domingo). Ao prosseguir, será gerado um registro financeiro para pagamento.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-black/40 border border-white/10 rounded-lg p-3 space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Embarcação ({boatTypeLabel})</span>
+                    <span className="text-white font-medium">{getBoatCode(selectedBoatObj)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Data ({extraDayName})</span>
+                    <span className="text-white font-medium">{formatDateBR(dateValue)}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-white/40 pt-1 border-t border-white/5">
+                    <span>Tabela avulsa</span>
+                    <span>Jet Ski: R$ 100,00 · Lancha: R$ 150,00</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1.5 border-t border-white/10">
+                    <span className="text-amber-300 font-semibold">Valor da Cobrança</span>
+                    <span className="text-base font-bold text-amber-300">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(extraDayFee)}
+                    </span>
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-2.5 cursor-pointer select-none pt-1">
+                  <input
+                    type="checkbox"
+                    checked={paidLaunchAgreed}
+                    onChange={(e) => {
+                      setPaidLaunchAgreed(e.target.checked);
+                      setErrorMsg(null);
+                    }}
+                    className="mt-0.5 w-4 h-4 rounded border-amber-500/50 bg-black/50 text-[#B69D74] focus:ring-[#B69D74]"
+                  />
+                  <span className="text-xs text-white/85 leading-relaxed">
+                    Revisei os dados acima, estou ciente de que a descida não está inclusa no plano atual e concordo com a geração da cobrança de{' '}
+                    <strong className="text-amber-300">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(extraDayFee)}
+                    </strong>{' '}
+                    no meu financeiro.
+                  </span>
+                </label>
+              </div>
+            )}
+
             {/* Extras Confirmation */}
             {confirmExtraObj && (
               <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl space-y-3">
@@ -559,11 +689,13 @@ export default function ClientReservationModal({
               <div className="pt-4">
                 <button
                   type="submit"
-                  disabled={isSubmitting || !selectedBoatId || isSelectionInvalid}
+                  disabled={isSubmitting || !selectedBoatId || isSelectionInvalid || (isWeeklyExtraDay && !paidLaunchAgreed)}
                   className="w-full py-4 rounded-xl bg-[#B69D74] hover:bg-[#a38b65] text-slate-900 font-bold tracking-wide transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(182,157,116,0.15)] flex justify-center items-center"
                 >
                   {isSubmitting ? (
                     <div className="w-5 h-5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
+                  ) : isWeeklyExtraDay ? (
+                    `Concordar e Solicitar Descida (R$ ${extraDayFee},00)`
                   ) : (
                     'Confirmar Reserva'
                   )}

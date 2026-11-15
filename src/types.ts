@@ -1236,3 +1236,68 @@ export const DEFAULT_VITRINE_SETTINGS: VitrineSettings = {
   showroomCustomTitleYacht: '',
   showroomCustomTitleJet: '',
 };
+
+// ==========================================
+// MÓDULO DE CONTROLE DE ATIVIDADES OPERACIONAIS (MARINHEIROS & SERVIÇOS GERAIS)
+// ==========================================
+
+export type ClasseFuncionarioAtividade = 'marinheiro' | 'servicos_gerais';
+
+export type FrequenciaAtividadeOperacional = 'avulsa' | 'diaria' | 'semanal' | 'quinzenal' | 'mensal';
+
+export type PrioridadeAtividadeOperacional = 'baixa' | 'normal' | 'alta' | 'urgente';
+
+export interface AtividadeProgramada {
+  id: string;
+  titulo: string;
+  descricao?: string;
+  classeDestino: ClasseFuncionarioAtividade;
+  funcionarioDestinoId?: string | null;
+  funcionarioDestinoNome?: string | null;
+  embarcacaoId?: string | null;
+  embarcacaoNome?: string | null;
+  setorLocal?: string | null;
+  prioridade: PrioridadeAtividadeOperacional;
+  frequencia: Exclude<FrequenciaAtividadeOperacional, 'avulsa'>;
+  diasSemana?: number[]; // 0=Dom .. 6=Sáb (para semanal)
+  diaMes?: number | null; // 1..31 (para mensal)
+  dataInicio: string; // YYYY-MM-DD (data base para quinzenal e início de vigência)
+  horarioLimite?: string | null; // HH:mm
+  tempoEstimadoMinutos?: number | null;
+  fotoObrigatoria: boolean;
+  ativo: boolean;
+  criadoPor: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AtividadeOperacional {
+  id: string;
+  programacaoId?: string | null;
+  titulo: string;
+  descricao?: string;
+  classeDestino: ClasseFuncionarioAtividade;
+  funcionarioDestinoId?: string | null;
+  funcionarioDestinoNome?: string | null;
+  embarcacaoId?: string | null;
+  embarcacaoNome?: string | null;
+  setorLocal?: string | null;
+  prioridade: PrioridadeAtividadeOperacional;
+  frequenciaOrigem: FrequenciaAtividadeOperacional;
+  dataProgramada: string; // YYYY-MM-DD
+  horarioLimite?: string | null; // HH:mm
+  tempoEstimadoMinutos?: number | null;
+  fotoObrigatoria: boolean;
+  status: 'pendente' | 'em_andamento' | 'concluida';
+  iniciadoEm?: string | null; // ISO timestamp
+  concluidoEm?: string | null; // ISO timestamp
+  duracaoSegundos?: number | null;
+  executadoPorId?: string | null;
+  executadoPorNome?: string | null;
+  fotoConferenciaUrl?: string | null;
+  observacaoExecucao?: string | null;
+  criadoPor: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import crypto from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -31,8 +32,14 @@ import {
 import {
   ListarReservasSchema,
   ConsultarSaidasDoDiaSchema,
+  CriarReservaSchema,
+  AtualizarReservaSchema,
+  CancelarReservaSchema,
   handlerListarReservas,
   handlerConsultarSaidasDoDia,
+  handlerCriarReserva,
+  handlerAtualizarReserva,
+  handlerCancelarReserva,
 } from "./tools/reservas.tools.js";
 
 import {
@@ -65,13 +72,20 @@ import {
   handlerListarAbastecimentos,
 } from "./tools/combustivel.tools.js";
 
+import {
+  VerificarStatusWhatsappSchema,
+  EnviarMensagemWhatsappSchema,
+  handlerVerificarStatusWhatsapp,
+  handlerEnviarMensagemWhatsapp,
+} from "./tools/whatsapp.tools.js";
+
 /**
  * Criação da instância central do Servidor MCP
  */
 function createMcpServerInstance() {
   const server = new McpServer({
     name: "mexicano-gestao-nautica",
-    version: "1.0.0",
+    version: "1.1.0",
   });
 
   const formatResult = (data: any) => ({
@@ -128,7 +142,7 @@ function createMcpServerInstance() {
     async (args) => formatResult(await handlerConsultarCotistasEmbarcacao(args))
   );
 
-  // ── 4. RESERVAS & MARINA ───────────────────────────────────────────────
+  // ── 4. RESERVAS & MARINA (CONSULTAS E AÇÕES) ───────────────────────────
   server.tool(
     "listar_reservas",
     "Lista reservas e agendamentos de uso das embarcações com filtros por período (datas), barco, cliente e status.",
@@ -141,6 +155,27 @@ function createMcpServerInstance() {
     "Consulta rápida de todas as saídas e chegadas de barcos agendadas para o dia especificado (ou hoje).",
     ConsultarSaidasDoDiaSchema.shape,
     async (args) => formatResult(await handlerConsultarSaidasDoDia(args))
+  );
+
+  server.tool(
+    "criar_reserva",
+    "Cria uma nova reserva ou agendamento de saída (cota, marina ou visitante avulso), validando disponibilidade da embarcação, manutenção e datas de fechamento.",
+    CriarReservaSchema.shape,
+    async (args) => formatResult(await handlerCriarReserva(args))
+  );
+
+  server.tool(
+    "atualizar_reserva",
+    "Atualiza dados de uma reserva existente (data, período, status, horários previstos, destino, pessoas a bordo, marinheiro ou observações).",
+    AtualizarReservaSchema.shape,
+    async (args) => formatResult(await handlerAtualizarReserva(args))
+  );
+
+  server.tool(
+    "cancelar_reserva",
+    "Cancela uma reserva ou agendamento ativo pelo ID, registrando opcionalmente o motivo do cancelamento.",
+    CancelarReservaSchema.shape,
+    async (args) => formatResult(await handlerCancelarReserva(args))
   );
 
   // ── 5. FINANCEIRO ──────────────────────────────────────────────────────
@@ -210,12 +245,27 @@ function createMcpServerInstance() {
     async (args) => formatResult(await handlerListarAbastecimentos(args))
   );
 
+  // ── 9. WHATSAPP (EVOLUTION API) ────────────────────────────────────────
+  server.tool(
+    "verificar_status_whatsapp",
+    "Verifica o estado da conexão da instância do WhatsApp na Evolution API e informa se a trava de segurança Sandbox está ativa.",
+    VerificarStatusWhatsappSchema.shape,
+    async (args) => formatResult(await handlerVerificarStatusWhatsapp(args))
+  );
+
+  server.tool(
+    "enviar_mensagem_whatsapp",
+    "Envia uma mensagem de texto pelo WhatsApp para um cliente (via clienteId ou telefone), respeitando a trava física de Sandbox do sistema.",
+    EnviarMensagemWhatsappSchema.shape,
+    async (args) => formatResult(await handlerEnviarMensagemWhatsapp(args))
+  );
+
   return server;
 }
 
 /**
  * Ponto de entrada do serviço:
- * - Se iniciado com `--stdio`, opera via stdin/stdout (ex: Claude Desktop / CLI).
+ * - Se iniciado com `--stdio`, opera via stdin/stdout (ex: Antigravity / Claude Desktop / CLI).
  * - Caso contrário, inicializa o servidor HTTP com transporte SSE protegido por API Key.
  */
 async function main() {
@@ -225,7 +275,7 @@ async function main() {
     const server = createMcpServerInstance();
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("🚀 Servidor MCP Gestão Náutica iniciado via Stdio.");
+    console.error("🚀 Servidor MCP Gestão Náutica v1.1.0 iniciado via Stdio (Consultas + Reservas + WhatsApp).");
   } else {
     const app = express();
     app.use(cors());
@@ -237,26 +287,39 @@ async function main() {
       res.json({
         status: dbStatus.connected ? "healthy" : "degraded",
         service: "mexicano-mcp-server",
+        version: "1.1.0",
         db: dbStatus,
         uptime: process.uptime(),
       });
     });
 
-    // Middleware de Autenticação para endpoints MCP
+    // Middleware de Autenticação Fail-Closed para endpoints MCP HTTP/SSE
     app.use((req, res, next) => {
-      if (!config.mcp.apiKey) {
-        return next(); // Se não foi definida chave no .env, permite passagem (aviso emitido nos logs)
+      if (!config.mcp.apiKey || config.mcp.apiKey === "defina_uma_chave_secreta_aqui_para_autenticacao_mcp") {
+        return res.status(503).json({
+          error: "Service Unavailable",
+          message: "Servidor MCP HTTP bloqueado por segurança: defina uma MCP_API_KEY válida no arquivo .env.",
+        });
       }
 
       const authHeader = req.headers.authorization;
       const bearerToken = authHeader?.startsWith("Bearer ")
-        ? authHeader.slice(7)
-        : (req.query.apiKey as string);
+        ? authHeader.slice(7).trim()
+        : (req.query.apiKey as string)?.trim();
 
-      if (!bearerToken || bearerToken !== config.mcp.apiKey) {
+      if (!bearerToken) {
         return res.status(401).json({
           error: "Unauthorized",
-          message: "Cabeçalho Authorization: Bearer <MCP_API_KEY> inválido ou ausente.",
+          message: "Cabeçalho Authorization: Bearer <MCP_API_KEY> ausente.",
+        });
+      }
+
+      const expectedBuf = Buffer.from(config.mcp.apiKey, "utf-8");
+      const receivedBuf = Buffer.from(bearerToken, "utf-8");
+      if (expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {
+        return res.status(401).json({
+          error: "Unauthorized",
+          message: "MCP_API_KEY inválida.",
         });
       }
 
@@ -297,14 +360,15 @@ async function main() {
     });
 
     const port = config.mcp.port;
-    app.listen(port, () => {
+    const host = config.mcp.host;
+    app.listen(port, host, () => {
       console.log(`=======================================================`);
-      console.log(`⚓ SERVIDOR MCP GESTÃO NÁUTICA (READ-ONLY) ONLINE`);
-      console.log(`📡 Porta: ${port}`);
-      console.log(`🔒 Modo de Segurança: Read-Only Ativo`);
-      console.log(`🔑 Autenticação MCP_API_KEY: ${config.mcp.apiKey ? "Habilitada" : "Desabilitada (Inseguro para Produção)"}`);
-      console.log(`🔗 Endpoint SSE: http://0.0.0.0:${port}/sse`);
-      console.log(`❤️  Healthcheck:  http://0.0.0.0:${port}/health`);
+      console.log(`⚓ SERVIDOR MCP GESTÃO NÁUTICA v1.1.0 ONLINE`);
+      console.log(`📡 Endereço: ${host}:${port}`);
+      console.log(`🧰 Tools: 17 Consultas + 3 Reservas + 2 WhatsApp (22 total)`);
+      console.log(`🔑 Autenticação MCP_API_KEY: ${config.mcp.apiKey ? "Obrigatória (Fail-Closed Ativo)" : "BLOQUEADO (Defina MCP_API_KEY no .env)"}`);
+      console.log(`🔗 Endpoint SSE: http://${host}:${port}/sse`);
+      console.log(`❤️  Healthcheck:  http://${host}:${port}/health`);
       console.log(`=======================================================`);
     });
   }

@@ -34,6 +34,7 @@ interface ClientCheckinModalProps {
   onSelectReservation?: (res: any) => void; // Alternar entre reservas do dia
   isInadimplente?: boolean; // Bloqueio por valores em aberto
   totalAberto?: number; // Total em aberto (vencido)
+  transacoes?: any[]; // Lista de transacoes do cliente para checar cobranca pendente da reserva
   onGoToPayments?: () => void; // Direciona para a pagina de pagamentos
   onPaymentConfirmed?: () => void; // Callback ao quitar PIX dentro do próprio modal
   onCancelReservation?: (reservaId: string) => Promise<void> | void; // Cancelar reserva direto pelo modal
@@ -67,6 +68,7 @@ export default function ClientCheckinModal({
   onSelectReservation,
   isInadimplente = false,
   totalAberto = 0,
+  transacoes = [],
   onGoToPayments,
   onPaymentConfirmed,
   onCancelReservation,
@@ -117,7 +119,14 @@ export default function ClientCheckinModal({
     embarcacaoReserva?.acessorios?.bancosCadeiras;
   const maxSteps = hasAcessorios ? 4 : 3;
 
-  const hasOpenDebts = !inPlacePixCleared && (isInadimplente || totalAberto > 0 || serverFinancialBlock);
+  const checkinTxSource = (transacoes && transacoes.length > 0) ? transacoes : (client?.transacoes || []);
+  const pendingReservationTx = checkinTxSource.find(
+    (t: any) =>
+      t.reservaId === reservation?.id &&
+      (!t.tipo || t.tipo === 'receita') &&
+      !['pago', 'cancelado', 'realizado', 'estornado'].includes(String(t.status || '').toLowerCase())
+  );
+  const hasOpenDebts = !inPlacePixCleared && (isInadimplente || totalAberto > 0 || Boolean(pendingReservationTx) || serverFinancialBlock);
   const hasMultipleBoatsToday = allTodayReservations.length > 1;
 
   useEffect(() => {
@@ -477,7 +486,7 @@ export default function ClientCheckinModal({
     );
   };
 
-  const effectiveOpenValue = inlinePixFinalValue ?? totalAberto;
+  const effectiveOpenValue = inlinePixFinalValue ?? (totalAberto > 0 ? totalAberto : Number(pendingReservationTx?.valor || 0));
   const formattedOpenAmount = effectiveOpenValue > 0
     ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(effectiveOpenValue)
     : null;

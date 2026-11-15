@@ -19,7 +19,7 @@ export function maskPhone(phone?: string | null): string {
   return `(XX) X****-${lastFour}`;
 }
 
-export function safeJsonParse<T = any>(val: any, fallback: T): T {
+export function safeJsonParse<T = any>(val: any, fallback: any = null): T {
   if (!val) return fallback;
   if (typeof val === "object") return val;
   try {

@@ -61,9 +61,12 @@ services:
       - NODE_ENV=production
       - DB_HOST=${DB_HOST:-84.247.143.102}
       - DB_PORT=${DB_PORT:-13306}
-      - DB_USER=${DB_MCP_USER:-mcp_readonly}
+      - DB_USER=${DB_MCP_USER:-${DB_USER:-nautico_user}}
       - DB_PASSWORD=${DB_MCP_PASSWORD:-${DB_PASSWORD}}
       - DB_NAME=${DB_NAME:-gestao_nautica}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL:-https://api.echo.dev.br}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-mexicano}
       - MCP_PORT=3001
       - MCP_API_KEY=${MCP_API_KEY}
     networks:

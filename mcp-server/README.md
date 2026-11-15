@@ -20,7 +20,7 @@ Servidor MCP em **TypeScript** desenvolvido com `@modelcontextprotocol/sdk` para
 
 ---
 
-## 🧰 Catálogo de Tools Disponíveis (17 Tools)
+## 🧰 Catálogo de Tools Disponíveis (22 Tools)
 
 ### 🌟 1. Super-Tools Relacionais (Visão 360°)
 | Tool | Descrição |
@@ -40,11 +40,14 @@ Servidor MCP em **TypeScript** desenvolvido com `@modelcontextprotocol/sdk` para
 | `listar_embarcacoes` | Lista a frota com filtros por status de manutenção, tipo (lancha, jet ski), empresa e busca por nome ou vaga. |
 | `consultar_cotistas_embarcacao` | Lista todos os cotistas de uma lancha específica com vagas disponíveis no plano de cotas. |
 
-### 📅 4. Reservas & Marina
+### 📅 4. Reservas & Marina (Consultas e Ações)
 | Tool | Descrição |
 | :--- | :--- |
 | `listar_reservas` | Lista agendamentos de saídas com filtros por período, barco, cliente e status. |
 | `consultar_saidas_do_dia` | Consulta rápida de todas as saídas e chegadas programadas para uma data específica (ou hoje). |
+| `criar_reserva` | Cria uma nova reserva (cota, marina ou visitante avulso), validando disponibilidade, manutenção, datas fechadas e calculando `posicaoFila`. |
+| `atualizar_reserva` | Atualiza dados de uma reserva existente (data, período, status, horários previstos, destino, pessoas a bordo, marinheiro ou observações). |
+| `cancelar_reserva` | Cancela uma reserva ativa pelo ID (`status = 'cancelado'`), registrando o motivo do cancelamento nas observações. |
 
 ### 💰 5. Financeiro
 | Tool | Descrição |
@@ -71,15 +74,22 @@ Servidor MCP em **TypeScript** desenvolvido com `@modelcontextprotocol/sdk` para
 | `consultar_estoque_combustivel` | Nível atual do tanque principal, galões e alertas de nível mínimo. |
 | `listar_abastecimentos` | Histórico recente de abastecimentos realizados por barco ou período. |
 
+### 💬 9. WhatsApp (Evolution API)
+| Tool | Descrição |
+| :--- | :--- |
+| `verificar_status_whatsapp` | Verifica o estado da conexão da instância do WhatsApp na Evolution API e informa se o Modo Sandbox (`notif_sandbox_ativa`) está ativo. |
+| `enviar_mensagem_whatsapp` | Envia mensagem via WhatsApp buscando o telefone pelo `clienteId` ou número direto, respeitando obrigatoriamente a trava física de Sandbox. |
+
 ---
 
-## ⚙️ Configuração do Banco (Usuário Read-Only)
+## ⚙️ Configuração do Banco (Permissões Granulares)
 
-No seu servidor MariaDB / MySQL (VPS), crie um usuário restrito:
+No seu servidor MariaDB / MySQL (VPS), você pode usar um usuário restrito com `SELECT` global e permissão de escrita apenas na tabela `Reservas`:
 
 ```sql
-CREATE USER 'mcp_readonly'@'%' IDENTIFIED BY 'sua_senha_super_segura';
-GRANT SELECT ON gestao_nautica.* TO 'mcp_readonly'@'%';
+CREATE USER 'mcp_user'@'%' IDENTIFIED BY 'sua_senha_super_segura';
+GRANT SELECT ON gestao_nautica.* TO 'mcp_user'@'%';
+GRANT INSERT, UPDATE ON gestao_nautica.Reservas TO 'mcp_user'@'%';
 FLUSH PRIVILEGES;
 ```
 

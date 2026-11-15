@@ -3,8 +3,10 @@ import { Search, UserPlus, Users, Briefcase, ChevronRight, Calendar, Shield, Map
 import { funcionarioDB } from '../../db';
 import { Funcionario } from '../../types';
 import FuncionarioPerfil from './FuncionarioPerfil';
+import ControleAtividadesPage from '../ControleAtividadesPage';
 
 export default function DPPage() {
+  const [dpSubTab, setDpSubTab] = useState<'colaboradores' | 'atividades'>('colaboradores');
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFunc, setSelectedFunc] = useState<Funcionario | null>(null);
@@ -50,16 +52,48 @@ export default function DPPage() {
 
   return (
     <div className="space-y-6 print:hidden">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Departamento Pessoal</h2>
-          <p className="text-sm text-slate-500">Gestão completa de colaboradores, férias e documentos.</p>
-        </div>
-        <button onClick={() => setIsNewFuncModalOpen(true)} className="bg-slate-900 text-white px-4 py-2 rounded-lg flex items-center hover:bg-slate-800 transition-colors">
-          <UserPlus className="w-4 h-4 mr-2" />
-          Novo Colaborador
+      {/* Sub-navegação rápida do Departamento Pessoal */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+        <button
+          type="button"
+          onClick={() => setDpSubTab('colaboradores')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+            dpSubTab === 'colaboradores'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          Colaboradores & Cadastros
+        </button>
+        <button
+          type="button"
+          onClick={() => setDpSubTab('atividades')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+            dpSubTab === 'atividades'
+              ? 'bg-[#186b77] text-white shadow-xs'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          Controle de Atividades (Marinheiros & Serviços Gerais)
         </button>
       </div>
+
+      {dpSubTab === 'atividades' ? (
+        <ControleAtividadesPage />
+      ) : (
+        <>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800">Departamento Pessoal</h2>
+              <p className="text-sm text-slate-500">Gestão completa de colaboradores, férias e documentos.</p>
+            </div>
+            <button onClick={() => setIsNewFuncModalOpen(true)} className="bg-slate-900 text-white px-4 py-2 rounded-lg flex items-center hover:bg-slate-800 transition-colors">
+              <UserPlus className="w-4 h-4 mr-2" />
+              Novo Colaborador
+            </button>
+          </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
@@ -329,6 +363,8 @@ export default function DPPage() {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

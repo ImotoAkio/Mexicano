@@ -45,3 +45,21 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
+
+      - name: Extract metadata for MCP Server Docker image
+        id: meta_mcp
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-mcp
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+
+      - name: Build and push MCP Server Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-server
+          push: true
+          tags: ${{ steps.meta_mcp.outputs.tags }}
+          labels: ${{ steps.meta_mcp.outputs.labels }}
+          provenance: false

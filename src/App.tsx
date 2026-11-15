@@ -59,6 +59,8 @@ const UtvPage = lazy(() => import('./components/utv/UtvPage'));
 const MarinaAgendamentosView = lazy(() => import('./components/MarinaAgendamentosView'));
 const CatalogoPublicoPage = lazy(() => import('./components/comercial/CatalogoPublicoPage'));
 const ValidarEmbarquePage = lazy(() => import('./components/ValidarEmbarquePage'));
+const ControleAtividadesPage = lazy(() => import('./components/ControleAtividadesPage'));
+const ServicosGeraisDashboard = lazy(() => import('./components/ServicosGeraisDashboard'));
 import { clientDB, boatDB, reservationDB, registrosAtividadesDB } from './db';
 import {
   Compass,
@@ -142,7 +144,7 @@ const AdminFuelWrapper = () => {
   return <AdminFuelPage data={data} setData={setData} reloadData={loadData} operadorNome="Admin" isAdmin={true} />;
 };
 
-type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'finance-gemp' | 'finance-clientes' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot' | 'comercial-hub' | 'marina-hub';
+type TabType = 'finance-dashboard' | 'finance-fluxo' | 'finance-recorrencia' | 'finance-cadastros' | 'finance-relatorios' | 'finance-gemp' | 'finance-clientes' | 'dp-dashboard' | 'dashboard' | 'schedules' | 'marina-agendamentos' | 'reports' | 'clients' | 'boats' | 'contratos' | 'integrations' | 'sound' | 'finance-aprovacoes' | 'finance-lancamentos' | 'finance-fuel' | 'finance-atividades' | 'finance-cobranca' | 'finance-whatsapp' | 'finance-schedules' | 'finance-boletos' | 'users' | 'feedback' | 'manutencoes' | 'chamados' | 'portal-interno' | 'checklists' | 'fuel' | 'whatsapp' | 'aviso-saida' | 'controle-folgas' | 'controle-epi' | 'controle-atividades' | 'audit-logs' | 'pecas-whatsapp' | 'pecas-atividades' | 'pecas-horimetros' | 'pecas-acessorios' | 'utv-operacao' | 'utv-controle-anual' | 'utv-rateio' | 'notificacoes-robot' | 'comercial-hub' | 'marina-hub';
 
 function persistClientSessionToken(token: string, reservaId?: string | null) {
   if (!token || token === 'null' || token === 'undefined') return;
@@ -475,6 +477,7 @@ export default function App() {
       group: 'Marina & Operação',
       items: [
         { id: 'marina-hub' as TabType, label: 'Painel da Marina (Fila)', icon: Anchor },
+        { id: 'controle-atividades' as TabType, label: 'Controle de Atividades', icon: CheckCircle },
         { id: 'checklists' as TabType, label: 'Checklists Diários', icon: ClipboardList },
         { id: 'aviso-saida' as TabType, label: 'Planos de Navegação', icon: Printer },
         { id: 'fuel' as TabType, label: 'Abastecimento', icon: Droplets },
@@ -520,6 +523,7 @@ export default function App() {
       group: 'Departamento Pessoal',
       items: [
         { id: 'dp-dashboard' as TabType, label: 'Painel & Cadastros', icon: Users },
+        { id: 'controle-atividades' as TabType, label: 'Controle de Atividades', icon: CheckCircle },
         { id: 'controle-folgas' as TabType, label: 'Controle de Folgas', icon: CalendarIcon },
         { id: 'controle-epi' as TabType, label: 'Controle de EPI', icon: Shield },
       ]
@@ -824,6 +828,16 @@ export default function App() {
     );
   }
 
+  if (normalizedRole === 'servicos_gerais') {
+    return (
+      <div className="admin-panel h-full w-full">
+        <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin"></div></div>}>
+          <ServicosGeraisDashboard onLogout={handleLogout} operadorNome={adminName} />
+        </Suspense>
+      </div>
+    );
+  }
+
   if (normalizedRole === 'marina_gerente') {
     return (
       <div className="admin-panel h-full w-full">
@@ -1037,6 +1051,7 @@ export default function App() {
                 {activeTab === 'dp-dashboard' && <DPPage />}
                 {activeTab === 'controle-folgas' && <ControleFolgasPage />}
                 {activeTab === 'controle-epi' && <ControleEpiPage />}
+                {activeTab === 'controle-atividades' && <ControleAtividadesPage />}
                 {activeTab === 'audit-logs' && <AuditLogsPage logs={registrosAtividadesDB.getAll() || []} boats={boatDB.getAll() || []} />}
                 {activeTab === 'utv-operacao' && isAdmin && <UtvPage initialTab="operacao" />}
                 {activeTab === 'utv-controle-anual' && isAdmin && <UtvPage initialTab="controle-anual" />}

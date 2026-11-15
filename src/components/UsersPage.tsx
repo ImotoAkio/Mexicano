@@ -23,7 +23,7 @@ export default function UsersPage() {
   
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'marina_operador' | 'servicos_gerais' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('all');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,7 +35,7 @@ export default function UsersPage() {
   const [formFuncionarioId, setFormFuncionarioId] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formConfirmPassword, setFormConfirmPassword] = useState('');
-  const [formRole, setFormRole] = useState<'admin' | 'marina_operador' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('admin');
+  const [formRole, setFormRole] = useState<'admin' | 'marina_operador' | 'servicos_gerais' | 'marina_gerente' | 'financeiro' | 'pecas_servicos' | 'comercial'>('admin');
   const [formError, setFormError] = useState<string | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
 
@@ -277,6 +277,7 @@ export default function UsersPage() {
             <option value="all">Todos os Tipos</option>
             <option value="admin">Administrador</option>
             <option value="marina_operador">Marina - Marinheiro / Operador</option>
+            <option value="servicos_gerais">Marina - Serviços Gerais</option>
             <option value="marina_gerente">Marina - Gerente / Supervisor</option>
             <option value="financeiro">Financeiro</option>
             <option value="pecas_servicos">Peças e Serviços</option>
@@ -340,6 +341,8 @@ export default function UsersPage() {
                             ? 'bg-blue-100 text-blue-700 border border-blue-200' 
                             : user.role === 'marina_operador'
                             ? 'bg-cyan-100 text-cyan-700 border border-cyan-200'
+                            : user.role === 'servicos_gerais'
+                            ? 'bg-teal-100 text-teal-700 border border-teal-200'
                             : user.role === 'financeiro'
                             ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                             : user.role === 'pecas_servicos'
@@ -350,6 +353,8 @@ export default function UsersPage() {
                         }`}>
                           {user.role === 'marina_operador' 
                             ? 'Marinheiro / Operador' 
+                            : user.role === 'servicos_gerais'
+                            ? 'Serviços Gerais'
                             : user.role === 'marina_gerente'
                             ? 'Gerente de Marina' 
                             : user.role === 'financeiro' 
@@ -471,8 +476,9 @@ export default function UsersPage() {
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-950 focus:bg-white transition-all appearance-none"
                   >
                     <option value="admin">Administrador (Acesso Total)</option>
-                    <option value="marina_operador">Marina - Marinheiro / Operador (Checklists e Abastecimento no Píer)</option>
-                    <option value="marina_gerente">Marina - Gerente / Supervisor (Gestão da Marina, Tanques e Auditoria)</option>
+                    <option value="marina_operador">Marina - Marinheiro / Operador (Checklists, Abastecimento e Atividades)</option>
+                    <option value="servicos_gerais">Marina - Serviços Gerais (Execução de Atividades Operacionais e Perfil)</option>
+                    <option value="marina_gerente">Marina - Gerente / Supervisor (Gestão da Marina, Atividades e Auditoria)</option>
                     <option value="financeiro">Financeiro (Acesso Exclusivo Financeiro)</option>
                     <option value="pecas_servicos">Peças e Serviços (Manutenção, Agenda e Financeiro)</option>
                     <option value="comercial">Comercial (Clientes, Cotas, Embarcações e Contratos)</option>

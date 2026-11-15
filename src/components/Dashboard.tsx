@@ -824,7 +824,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
           <p className="text-xs text-slate-500 mt-1">Acesso rápido às áreas operacionais, financeiras e de gestão de pessoas.</p>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <button
             onClick={() => onNavigate && onNavigate('schedules')}
             className="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-xl hover:shadow-md transition-all group cursor-pointer text-center"
@@ -834,6 +834,17 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
             </div>
             <span className="font-bold text-slate-800">Operacional</span>
             <span className="text-[11px] text-slate-500 mt-1">Gestão de Reservas e Lanchas</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate && onNavigate('controle-atividades')}
+            className="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-teal-50 to-white border border-teal-100 rounded-xl hover:shadow-md transition-all group cursor-pointer text-center"
+          >
+            <div className="w-12 h-12 bg-teal-100 text-teal-700 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <span className="font-bold text-slate-800">Controle de Atividades</span>
+            <span className="text-[11px] text-slate-500 mt-1">Marinheiros & Serviços Gerais</span>
           </button>
 
           <button
@@ -855,7 +866,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (tab: string) =
               <Briefcase className="w-6 h-6" />
             </div>
             <span className="font-bold text-slate-800">Departamento Pessoal</span>
-            <span className="text-[11px] text-slate-500 mt-1">Funcionários, Folgas e EPIs</span>
+            <span className="text-[11px] text-slate-500 mt-1">Funcionários, Atividades, Folgas e EPIs</span>
             
             {employeesOnLeaveToday > 0 && (
                <span className="absolute top-4 right-4 bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse shadow-sm">

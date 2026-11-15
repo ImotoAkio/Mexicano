@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { getDbPool, pullDatabase, getClientPortalData, invalidateDbCache, upsertReservation, deleteReservation, cancelReservation, getConfigValue, getClientAuth, upsertClientAuth } from "../server-db";
+import { getDbPool, pullDatabase, getClientPortalData, invalidateDbCache, invalidateTransacoesCache, syncClientFinancialStatus, upsertReservation, deleteReservation, cancelReservation, getConfigValue, getClientAuth, upsertClientAuth } from "../server-db";
 import { requireClientAuth, sensitiveLimiter, whatsappLimiter } from "./middlewares";
 import { writeAuditLog } from "./middlewares";
 import { getVapidKeys, saveClientPushSubscription, removeClientPushSubscription } from "../server-push";
@@ -154,7 +154,7 @@ clientRoutes.get("/me", requireClientAuth, async (req, res) => {
 });
 
 // Route: Create a new reservation for the client securely
-clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
+clientRoutes.post("/reserve", requireClientAuth, sensitiveLimiter, async (req, res) => {
   try {
     const userId = (req as any).user.id;
     const { embarcacaoId, date, periodo = 'dia_inteiro', observacoes = '' } = req.body;
@@ -236,6 +236,10 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
 
     const isMarinaOnlyBoat = boat?.empresas && boat.empresas.includes('MARINA') && !boat.empresas.includes('VALE');
     let tipoReserva: 'garantida' | 'extra' = 'garantida';
+    let isPaidExtraDay = false;
+    let extraDayFee = 0;
+    let boatTypeLabel = 'Lancha';
+    let dayName = '';
 
     if (!isMarinaOnlyBoat) {
       const clientBoatEntry = Array.isArray(client.embarcacoes)
@@ -244,7 +248,30 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
       const boatPlano = clientBoatEntry?.plano || (client.plano === 'completo' ? 'completo' : 'normal');
 
       if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && boatPlano !== 'completo') {
-        return res.status(400).json({ error: true, message: "A Marina é fechada às segundas e terças-feiras para o plano contratado desta embarcação." });
+        const isJetBoat = Boolean(boat && (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet')));
+        extraDayFee = isJetBoat ? 100 : 150;
+        boatTypeLabel = isJetBoat ? 'Jet Ski' : 'Lancha';
+        dayName = reqDayOfWeek === 1 ? 'segunda-feira' : 'terça-feira';
+        isPaidExtraDay = true;
+
+        const { confirmPaidLaunch, acceptedFee } = req.body;
+        if (confirmPaidLaunch !== true) {
+          return res.status(409).json({
+            error: true,
+            requirePaidLaunchConfirmation: true,
+            feeAmount: extraDayFee,
+            boatTypeLabel,
+            dayName,
+            message: `Descidas às segundas e terças-feiras não estão inclusas no seu plano atual. Ao concordar, será gerado um registro financeiro de R$ ${extraDayFee.toFixed(2).replace('.', ',')} (${boatTypeLabel}) para pagamento.`
+          });
+        }
+
+        if (acceptedFee !== undefined && Number(acceptedFee) !== extraDayFee) {
+          return res.status(400).json({
+            error: true,
+            message: "Valor da cobrança divergente do plano/embarcação. Atualize a página e tente novamente."
+          });
+        }
       }
 
       // Weekend reservation logic: guaranteed vs extra
@@ -259,12 +286,12 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
         // Check if the request explicitly confirms extra reservation
         const { confirmExtra } = req.body;
         if (tipoReserva === 'extra' && !confirmExtra) {
-          const dayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
+          const weekendDayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
           return res.status(409).json({
             error: true,
             requireConfirmation: true,
             tipoReserva: 'extra',
-            message: `Você já utilizou seu ${dayName} garantido neste mês para esta embarcação. Esta será uma reserva EXTRA e poderá ser contestada por outro cotista até 48 horas antes da data.`
+            message: `Você já utilizou seu ${weekendDayName} garantido neste mês para esta embarcação. Esta será uma reserva EXTRA e poderá ser contestada por outro cotista até 48 horas antes da data.`
           });
         }
       }
@@ -285,6 +312,7 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
     // Validação concorrente com lock de transação
     const conn = await currentPool.getConnection();
     let newRes: any;
+    let createdTx: any = null;
     try {
       await conn.beginTransaction();
 
@@ -315,6 +343,7 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
         [date]
       );
       const nextPos = ((maxRows as any[])[0]?.maxPos || 0) + 1;
+      const nowIso = new Date().toISOString();
 
       newRes = {
         id: `res_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
@@ -331,7 +360,7 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
         tipoReserva,
         origem: isMarinaOnlyBoat ? 'marina' : 'cota',
         posicaoFila: nextPos,
-        createdAt: new Date().toISOString()
+        createdAt: nowIso
       };
 
       await conn.query(
@@ -340,9 +369,73 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
         [newRes.id, newRes.embarcacaoId, newRes.clienteId, newRes.data, newRes.periodo, newRes.previsaoSaida, newRes.previsaoChegada, newRes.observacoes, newRes.status, newRes.statusMarina, newRes.tipoReserva, newRes.origem, newRes.posicaoFila, newRes.createdAt]
       );
 
+      if (isPaidExtraDay) {
+        const [existingTxRows] = await conn.query(
+          "SELECT id FROM TransacoesFinanceiras WHERE reservaId = ? AND status != 'cancelado' LIMIT 1",
+          [newRes.id]
+        );
+        if ((existingTxRows as any[]).length > 0) {
+          throw new Error("Registro financeiro duplicado detectado para esta reserva.");
+        }
+
+        const dateBR = date.split('-').reverse().join('/');
+        const boatNameDisplay = boat?.nome || embarcacaoId;
+        const txId = `tx_descida_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const txDescricao = `Descida avulsa (${dayName} ${dateBR}) - ${boatTypeLabel} ${boatNameDisplay} (fora do plano)`;
+        const txMetadata = JSON.stringify({
+          origem: 'portal_cliente_descida_seg_ter',
+          reservaId: newRes.id,
+          embarcacaoId,
+          boatType: boatTypeLabel === 'Jet Ski' ? 'jet' : 'lancha',
+          feeAmount: extraDayFee,
+          confirmedByClientAt: nowIso,
+          clientIp: req.ip || null
+        });
+
+        createdTx = {
+          id: txId,
+          tipo: 'receita',
+          categoria: 'Descida Avulsa (Seg/Ter)',
+          valor: extraDayFee,
+          dataVencimento: date,
+          status: 'lancado',
+          descricao: txDescricao,
+          clienteId: userId,
+          embarcacaoId,
+          reservaId: newRes.id,
+          operador: client.nome,
+          empresa: 'Marina Velho Chico',
+          createdAt: nowIso
+        };
+
+        await conn.query(
+          `INSERT INTO TransacoesFinanceiras (
+            id, tipo, categoria, valor, dataVencimento, status, descricao,
+            clienteId, embarcacaoId, reservaId, operador, metadata, empresa, createdAt
+          ) VALUES (?, 'receita', ?, ?, ?, 'lancado', ?, ?, ?, ?, ?, ?, 'Marina Velho Chico', ?)`,
+          [
+            txId,
+            createdTx.categoria,
+            extraDayFee,
+            date,
+            txDescricao,
+            userId,
+            embarcacaoId,
+            newRes.id,
+            client.nome,
+            txMetadata,
+            nowIso
+          ]
+        );
+      }
+
       await conn.commit();
       conn.release();
       invalidateDbCache();
+      if (isPaidExtraDay) {
+        invalidateTransacoesCache();
+        await syncClientFinancialStatus(userId);
+      }
     } catch (txErr) {
       await conn.rollback();
       conn.release();
@@ -354,8 +447,18 @@ clientRoutes.post("/reserve", requireClientAuth, async (req, res) => {
     const enrichedRes = { ...newRes, embarcacaoNome: fetchedBoat?.nome || embarcacaoId, clienteNome: client.nome };
     req.app.locals.io?.emit("marina_update", { action: 'new', reservation: enrichedRes });
 
-    writeAuditLog(client.nome, "client", "CREATE_RESERVATION", req.ip, `Reserva criada: ${date} - ${embarcacaoId}`);
-    res.json({ success: true, reservation: newRes });
+    if (isPaidExtraDay && createdTx) {
+      writeAuditLog(
+        client.nome,
+        "client",
+        "CREATE_PAID_RESERVATION_SEG_TER",
+        req.ip,
+        `Reserva: ${newRes.id} (${date} - ${boatTypeLabel} ${embarcacaoId}) | Financeiro: ${createdTx.id} (R$ ${extraDayFee.toFixed(2)})`
+      );
+    } else {
+      writeAuditLog(client.nome, "client", "CREATE_RESERVATION", req.ip, `Reserva criada: ${date} - ${embarcacaoId}`);
+    }
+    res.json({ success: true, reservation: newRes, financialTransaction: createdTx });
   } catch (err: any) {
     console.error("Client reserve error:", err);
     res.status(500).json({ error: true, message: "Erro ao realizar agendamento." });
@@ -480,6 +583,22 @@ clientRoutes.post("/checkin", requireClientAuth, async (req, res) => {
       return res.status(403).json({ error: true, message: "Você possui valores em aberto. Regularize sua situação para confirmar a saída." });
     }
 
+    // Verifica se há cobrança avulsa vinculada especificamente a esta reserva ainda pendente de pagamento
+    const [pendingResTxRows] = await currentPool.query(
+      `SELECT id, valor FROM TransacoesFinanceiras
+       WHERE reservaId = ? AND clienteId = ? AND tipo = 'receita'
+         AND status NOT IN ('pago', 'realizado', 'cancelado', 'estornado')
+       LIMIT 1`,
+      [reserva.id, userId]
+    );
+    if ((pendingResTxRows as any[]).length > 0) {
+      return res.status(403).json({
+        error: true,
+        code: "RESERVATION_PAYMENT_PENDING",
+        message: "Esta descida fora do plano possui uma cobrança pendente de pagamento. Regularize o pagamento para liberar a descida."
+      });
+    }
+
     const [boatRows] = await currentPool.query("SELECT emManutencao, tipo, capacidadePassageiros, nome FROM Embarcacoes WHERE id = ?", [reserva.embarcacaoId]);
     const boat = (boatRows as any[])[0];
     if (boat && (boat.emManutencao === 1 || boat.emManutencao === true || boat.emManutencao === 'true')) {
@@ -561,16 +680,60 @@ clientRoutes.post("/cancel-reservation", requireClientAuth, async (req, res) => 
       return res.status(400).json({ error: true, message: "Não é possível cancelar reservas de datas passadas." });
     }
 
-    const [updateResult]: any = await currentPool.query(
-      "UPDATE Reservas SET status = 'cancelado' WHERE id = ? AND clienteId = ? AND status != 'cancelado'",
+    const [linkedTxRows] = await currentPool.query(
+      "SELECT id, status FROM TransacoesFinanceiras WHERE reservaId = ? AND clienteId = ? AND status != 'cancelado'",
       [id, userId]
     );
+    const linkedTxs = linkedTxRows as any[];
+    if (linkedTxs.some((t) => ['pago', 'realizado'].includes(String(t.status || '').toLowerCase()))) {
+      return res.status(400).json({
+        error: true,
+        message: "Esta reserva possui uma cobrança já paga. Entre em contato com o financeiro para cancelar ou solicitar estorno."
+      });
+    }
 
-    if (updateResult.affectedRows === 0) {
-      return res.status(400).json({ error: true, message: "Não foi possível cancelar o agendamento." });
+    const conn = await currentPool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [updateResult]: any = await conn.query(
+        "UPDATE Reservas SET status = 'cancelado' WHERE id = ? AND clienteId = ? AND status != 'cancelado'",
+        [id, userId]
+      );
+
+      if (updateResult.affectedRows === 0) {
+        await conn.rollback();
+        conn.release();
+        return res.status(400).json({ error: true, message: "Não foi possível cancelar o agendamento." });
+      }
+
+      if (linkedTxs.length > 0) {
+        await conn.query(
+          "UPDATE TransacoesFinanceiras SET status = 'cancelado' WHERE reservaId = ? AND clienteId = ? AND status NOT IN ('pago', 'realizado', 'cancelado', 'estornado')",
+          [id, userId]
+        );
+      }
+
+      await conn.commit();
+      conn.release();
+    } catch (cancelTxErr) {
+      await conn.rollback();
+      conn.release();
+      throw cancelTxErr;
     }
 
     invalidateDbCache();
+    if (linkedTxs.length > 0) {
+      invalidateTransacoesCache();
+      await syncClientFinancialStatus(userId);
+    }
+    writeAuditLog(
+      (req as any).user?.nome || userId,
+      "client",
+      "CANCEL_RESERVATION",
+      req.ip,
+      `Reserva cancelada: ${id}${linkedTxs.length > 0 ? ` (cobrança vinculada cancelada: ${linkedTxs.map(t => t.id).join(',')})` : ''}`
+    );
     req.app.locals.io?.emit("marina_update", { action: 'cancel', reservation: { id, status: 'cancelado' } });
 
     res.json({ success: true });

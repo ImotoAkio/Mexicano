@@ -1703,6 +1703,74 @@ export async function initializeDatabase() {
     `);
     console.log("✅ MagicLinks table ready.");
 
+    // 27. AtividadesProgramadas Table (Recorrências de Atividades Operacionais: Marinheiros & Serviços Gerais)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS AtividadesProgramadas (
+        id VARCHAR(80) PRIMARY KEY,
+        titulo VARCHAR(255) NOT NULL,
+        descricao TEXT NULL,
+        classeDestino VARCHAR(50) NOT NULL,
+        funcionarioDestinoId VARCHAR(80) NULL,
+        funcionarioDestinoNome VARCHAR(255) NULL,
+        embarcacaoId VARCHAR(80) NULL,
+        embarcacaoNome VARCHAR(255) NULL,
+        setorLocal VARCHAR(120) NULL,
+        prioridade VARCHAR(30) NOT NULL DEFAULT 'normal',
+        frequencia VARCHAR(30) NOT NULL DEFAULT 'diaria',
+        diasSemana JSON NULL,
+        diaMes INT NULL,
+        dataInicio VARCHAR(20) NOT NULL,
+        horarioLimite VARCHAR(20) NULL,
+        tempoEstimadoMinutos INT NULL,
+        fotoObrigatoria TINYINT(1) NOT NULL DEFAULT 0,
+        ativo TINYINT(1) NOT NULL DEFAULT 1,
+        criadoPor VARCHAR(120) NOT NULL,
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL,
+        INDEX idx_atv_prog_classe (classeDestino),
+        INDEX idx_atv_prog_ativo (ativo)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ AtividadesProgramadas table ready.");
+
+    // 28. AtividadesOperacionais Table (Execução Diária com Timestamp Inicial/Final e Foto de Conferência)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS AtividadesOperacionais (
+        id VARCHAR(120) PRIMARY KEY,
+        programacaoId VARCHAR(80) NULL,
+        titulo VARCHAR(255) NOT NULL,
+        descricao TEXT NULL,
+        classeDestino VARCHAR(50) NOT NULL,
+        funcionarioDestinoId VARCHAR(80) NULL,
+        funcionarioDestinoNome VARCHAR(255) NULL,
+        embarcacaoId VARCHAR(80) NULL,
+        embarcacaoNome VARCHAR(255) NULL,
+        setorLocal VARCHAR(120) NULL,
+        prioridade VARCHAR(30) NOT NULL DEFAULT 'normal',
+        frequenciaOrigem VARCHAR(30) NOT NULL DEFAULT 'avulsa',
+        dataProgramada VARCHAR(20) NOT NULL,
+        horarioLimite VARCHAR(20) NULL,
+        tempoEstimadoMinutos INT NULL,
+        fotoObrigatoria TINYINT(1) NOT NULL DEFAULT 0,
+        status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+        iniciadoEm VARCHAR(50) NULL,
+        concluidoEm VARCHAR(50) NULL,
+        duracaoSegundos INT NULL,
+        executadoPorId VARCHAR(80) NULL,
+        executadoPorNome VARCHAR(255) NULL,
+        fotoConferenciaUrl TEXT NULL,
+        observacaoExecucao TEXT NULL,
+        criadoPor VARCHAR(120) NOT NULL,
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL,
+        INDEX idx_atv_op_data (dataProgramada),
+        INDEX idx_atv_op_classe (classeDestino),
+        INDEX idx_atv_op_status (status),
+        INDEX idx_atv_op_prog (programacaoId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ AtividadesOperacionais table ready.");
+
     connection.release();
     isInitialized = true;
     console.log("VPS Database tables validated/initialized successfully.");
@@ -8216,6 +8284,489 @@ export async function hasNotificacaoLog(
   const [rows] = await currentPool.query(query, params);
   return (rows as any[]).length > 0;
 }
+
+// ==========================================
+// MÓDULO DE CONTROLE DE ATIVIDADES OPERACIONAIS (MARINHEIROS & SERVIÇOS GERAIS)
+// ==========================================
+
+let atividadesTablesEnsured = false;
+const memoryAtividadesProgramadas: any[] = [];
+const memoryAtividadesOperacionais: any[] = [];
+
+async function ensureAtividadesOperacionaisTables(): Promise<boolean> {
+  const currentPool = getDbPool();
+  if (!currentPool) return false;
+  if (atividadesTablesEnsured) return true;
+  try {
+    await currentPool.query(`
+      CREATE TABLE IF NOT EXISTS AtividadesProgramadas (
+        id VARCHAR(80) PRIMARY KEY,
+        titulo VARCHAR(255) NOT NULL,
+        descricao TEXT NULL,
+        classeDestino VARCHAR(50) NOT NULL,
+        funcionarioDestinoId VARCHAR(80) NULL,
+        funcionarioDestinoNome VARCHAR(255) NULL,
+        embarcacaoId VARCHAR(80) NULL,
+        embarcacaoNome VARCHAR(255) NULL,
+        setorLocal VARCHAR(120) NULL,
+        prioridade VARCHAR(30) NOT NULL DEFAULT 'normal',
+        frequencia VARCHAR(30) NOT NULL DEFAULT 'diaria',
+        diasSemana JSON NULL,
+        diaMes INT NULL,
+        dataInicio VARCHAR(20) NOT NULL,
+        horarioLimite VARCHAR(20) NULL,
+        tempoEstimadoMinutos INT NULL,
+        fotoObrigatoria TINYINT(1) NOT NULL DEFAULT 0,
+        ativo TINYINT(1) NOT NULL DEFAULT 1,
+        criadoPor VARCHAR(120) NOT NULL,
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL,
+        INDEX idx_atv_prog_classe (classeDestino),
+        INDEX idx_atv_prog_ativo (ativo)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await currentPool.query(`
+      CREATE TABLE IF NOT EXISTS AtividadesOperacionais (
+        id VARCHAR(120) PRIMARY KEY,
+        programacaoId VARCHAR(80) NULL,
+        titulo VARCHAR(255) NOT NULL,
+        descricao TEXT NULL,
+        classeDestino VARCHAR(50) NOT NULL,
+        funcionarioDestinoId VARCHAR(80) NULL,
+        funcionarioDestinoNome VARCHAR(255) NULL,
+        embarcacaoId VARCHAR(80) NULL,
+        embarcacaoNome VARCHAR(255) NULL,
+        setorLocal VARCHAR(120) NULL,
+        prioridade VARCHAR(30) NOT NULL DEFAULT 'normal',
+        frequenciaOrigem VARCHAR(30) NOT NULL DEFAULT 'avulsa',
+        dataProgramada VARCHAR(20) NOT NULL,
+        horarioLimite VARCHAR(20) NULL,
+        tempoEstimadoMinutos INT NULL,
+        fotoObrigatoria TINYINT(1) NOT NULL DEFAULT 0,
+        status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+        iniciadoEm VARCHAR(50) NULL,
+        concluidoEm VARCHAR(50) NULL,
+        duracaoSegundos INT NULL,
+        executadoPorId VARCHAR(80) NULL,
+        executadoPorNome VARCHAR(255) NULL,
+        fotoConferenciaUrl TEXT NULL,
+        observacaoExecucao TEXT NULL,
+        criadoPor VARCHAR(120) NOT NULL,
+        createdAt VARCHAR(50) NOT NULL,
+        updatedAt VARCHAR(50) NOT NULL,
+        INDEX idx_atv_op_data (dataProgramada),
+        INDEX idx_atv_op_classe (classeDestino),
+        INDEX idx_atv_op_status (status),
+        INDEX idx_atv_op_prog (programacaoId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    atividadesTablesEnsured = true;
+    return true;
+  } catch (err) {
+    console.warn("[ensureAtividadesOperacionaisTables] Warning:", err);
+    return false;
+  }
+}
+
+function mapRowToProgramacao(row: any): any {
+  let diasSemana: number[] = [];
+  if (Array.isArray(row.diasSemana)) {
+    diasSemana = row.diasSemana.map((n: any) => Number(n));
+  } else if (typeof row.diasSemana === 'string' && row.diasSemana.trim()) {
+    try {
+      const parsed = JSON.parse(row.diasSemana);
+      if (Array.isArray(parsed)) diasSemana = parsed.map((n: any) => Number(n));
+    } catch {}
+  }
+  return {
+    id: row.id,
+    titulo: row.titulo,
+    descricao: row.descricao || '',
+    classeDestino: row.classeDestino || 'marinheiro',
+    funcionarioDestinoId: row.funcionarioDestinoId || null,
+    funcionarioDestinoNome: row.funcionarioDestinoNome || null,
+    embarcacaoId: row.embarcacaoId || null,
+    embarcacaoNome: row.embarcacaoNome || null,
+    setorLocal: row.setorLocal || null,
+    prioridade: row.prioridade || 'normal',
+    frequencia: row.frequencia || 'diaria',
+    diasSemana,
+    diaMes: row.diaMes != null ? Number(row.diaMes) : null,
+    dataInicio: row.dataInicio,
+    horarioLimite: row.horarioLimite || null,
+    tempoEstimadoMinutos: row.tempoEstimadoMinutos != null ? Number(row.tempoEstimadoMinutos) : null,
+    fotoObrigatoria: Boolean(row.fotoObrigatoria),
+    ativo: row.ativo === undefined ? true : Boolean(row.ativo),
+    criadoPor: row.criadoPor || 'Admin',
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function mapRowToAtividadeOperacional(row: any): any {
+  return {
+    id: row.id,
+    programacaoId: row.programacaoId || null,
+    titulo: row.titulo,
+    descricao: row.descricao || '',
+    classeDestino: row.classeDestino || 'marinheiro',
+    funcionarioDestinoId: row.funcionarioDestinoId || null,
+    funcionarioDestinoNome: row.funcionarioDestinoNome || null,
+    embarcacaoId: row.embarcacaoId || null,
+    embarcacaoNome: row.embarcacaoNome || null,
+    setorLocal: row.setorLocal || null,
+    prioridade: row.prioridade || 'normal',
+    frequenciaOrigem: row.frequenciaOrigem || 'avulsa',
+    dataProgramada: row.dataProgramada,
+    horarioLimite: row.horarioLimite || null,
+    tempoEstimadoMinutos: row.tempoEstimadoMinutos != null ? Number(row.tempoEstimadoMinutos) : null,
+    fotoObrigatoria: Boolean(row.fotoObrigatoria),
+    status: row.status || 'pendente',
+    iniciadoEm: row.iniciadoEm || null,
+    concluidoEm: row.concluidoEm || null,
+    duracaoSegundos: row.duracaoSegundos != null ? Number(row.duracaoSegundos) : null,
+    executadoPorId: row.executadoPorId || null,
+    executadoPorNome: row.executadoPorNome || null,
+    fotoConferenciaUrl: row.fotoConferenciaUrl || null,
+    observacaoExecucao: row.observacaoExecucao || null,
+    criadoPor: row.criadoPor || 'Admin',
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export function doesProgramacaoMatchDate(prog: any, dateStr: string): boolean {
+  if (!prog || !prog.ativo) return false;
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const startStr = prog.dataInicio || dateStr;
+  if (dateStr < startStr) return false;
+
+  const targetDate = new Date(`${dateStr}T12:00:00`);
+  const startDate = new Date(`${startStr}T12:00:00`);
+  if (isNaN(targetDate.getTime()) || isNaN(startDate.getTime())) return false;
+
+  const freq = prog.frequencia;
+  if (freq === 'diaria') {
+    return true;
+  }
+  if (freq === 'semanal') {
+    const dow = targetDate.getDay();
+    if (Array.isArray(prog.diasSemana) && prog.diasSemana.length > 0) {
+      return prog.diasSemana.map((n: any) => Number(n)).includes(dow);
+    }
+    return dow === startDate.getDay();
+  }
+  if (freq === 'quinzenal') {
+    const diffMs = targetDate.getTime() - startDate.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 && diffDays % 14 === 0;
+  }
+  if (freq === 'mensal') {
+    const desiredDay = prog.diaMes ? Number(prog.diaMes) : startDate.getDate();
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+    const effectiveDay = Math.min(desiredDay, lastDayOfMonth);
+    return targetDate.getDate() === effectiveDay;
+  }
+  return false;
+}
+
+export async function getAllAtividadesProgramadas(): Promise<any[]> {
+  const hasDb = await ensureAtividadesOperacionaisTables();
+  const currentPool = getDbPool();
+  if (!hasDb || !currentPool) {
+    return [...memoryAtividadesProgramadas].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }
+  const [rows] = await currentPool.query(`SELECT * FROM AtividadesProgramadas ORDER BY createdAt DESC`);
+  return (rows as any[]).map(mapRowToProgramacao);
+}
+
+export async function upsertAtividadeProgramada(data: any): Promise<any> {
+  const now = new Date().toISOString();
+  const record = mapRowToProgramacao({
+    ...data,
+    id: data.id || `prog_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    createdAt: data.createdAt || now,
+    updatedAt: now,
+  });
+
+  const hasDb = await ensureAtividadesOperacionaisTables();
+  const currentPool = getDbPool();
+  if (!hasDb || !currentPool) {
+    const idx = memoryAtividadesProgramadas.findIndex(p => p.id === record.id);
+    if (idx >= 0) memoryAtividadesProgramadas[idx] = record;
+    else memoryAtividadesProgramadas.unshift(record);
+    return record;
+  }
+
+  await currentPool.query(
+    `INSERT INTO AtividadesProgramadas (
+      id, titulo, descricao, classeDestino, funcionarioDestinoId, funcionarioDestinoNome,
+      embarcacaoId, embarcacaoNome, setorLocal, prioridade, frequencia, diasSemana, diaMes,
+      dataInicio, horarioLimite, tempoEstimadoMinutos, fotoObrigatoria, ativo, criadoPor, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      titulo = VALUES(titulo),
+      descricao = VALUES(descricao),
+      classeDestino = VALUES(classeDestino),
+      funcionarioDestinoId = VALUES(funcionarioDestinoId),
+      funcionarioDestinoNome = VALUES(funcionarioDestinoNome),
+      embarcacaoId = VALUES(embarcacaoId),
+      embarcacaoNome = VALUES(embarcacaoNome),
+      setorLocal = VALUES(setorLocal),
+      prioridade = VALUES(prioridade),
+      frequencia = VALUES(frequencia),
+      diasSemana = VALUES(diasSemana),
+      diaMes = VALUES(diaMes),
+      dataInicio = VALUES(dataInicio),
+      horarioLimite = VALUES(horarioLimite),
+      tempoEstimadoMinutos = VALUES(tempoEstimadoMinutos),
+      fotoObrigatoria = VALUES(fotoObrigatoria),
+      ativo = VALUES(ativo),
+      updatedAt = VALUES(updatedAt)`,
+    [
+      record.id,
+      record.titulo,
+      record.descricao || null,
+      record.classeDestino,
+      record.funcionarioDestinoId || null,
+      record.funcionarioDestinoNome || null,
+      record.embarcacaoId || null,
+      record.embarcacaoNome || null,
+      record.setorLocal || null,
+      record.prioridade || 'normal',
+      record.frequencia || 'diaria',
+      JSON.stringify(record.diasSemana || []),
+      record.diaMes || null,
+      record.dataInicio,
+      record.horarioLimite || null,
+      record.tempoEstimadoMinutos || null,
+      record.fotoObrigatoria ? 1 : 0,
+      record.ativo ? 1 : 0,
+      record.criadoPor || 'Admin',
+      record.createdAt,
+      record.updatedAt,
+    ]
+  );
+
+  return record;
+}
+
+export async function deleteAtividadeProgramada(id: string): Promise<void> {
+  const hasDb = await ensureAtividadesOperacionaisTables();
+  const currentPool = getDbPool();
+  if (!hasDb || !currentPool) {
+    const idx = memoryAtividadesProgramadas.findIndex(p => p.id === id);
+    if (idx >= 0) memoryAtividadesProgramadas.splice(idx, 1);
+    return;
+  }
+  await currentPool.query(`DELETE FROM AtividadesProgramadas WHERE id = ?`, [id]);
+}
+
+export async function materializeProgramacoesForDate(dateStr: string): Promise<void> {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+  const programacoes = await getAllAtividadesProgramadas();
+  const matching = programacoes.filter(p => doesProgramacaoMatchDate(p, dateStr));
+  if (matching.length === 0) return;
+
+  const now = new Date().toISOString();
+  const hasDb = await ensureAtividadesOperacionaisTables();
+  const currentPool = getDbPool();
+
+  for (const prog of matching) {
+    const instanceId = `atv_${prog.id}_${dateStr}`;
+    if (!hasDb || !currentPool) {
+      const exists = memoryAtividadesOperacionais.some(a => a.id === instanceId);
+      if (!exists) {
+        memoryAtividadesOperacionais.push(mapRowToAtividadeOperacional({
+          id: instanceId,
+          programacaoId: prog.id,
+          titulo: prog.titulo,
+          descricao: prog.descricao,
+          classeDestino: prog.classeDestino,
+          funcionarioDestinoId: prog.funcionarioDestinoId,
+          funcionarioDestinoNome: prog.funcionarioDestinoNome,
+          embarcacaoId: prog.embarcacaoId,
+          embarcacaoNome: prog.embarcacaoNome,
+          setorLocal: prog.setorLocal,
+          prioridade: prog.prioridade,
+          frequenciaOrigem: prog.frequencia,
+          dataProgramada: dateStr,
+          horarioLimite: prog.horarioLimite,
+          tempoEstimadoMinutos: prog.tempoEstimadoMinutos,
+          fotoObrigatoria: prog.fotoObrigatoria,
+          status: 'pendente',
+          criadoPor: prog.criadoPor,
+          createdAt: now,
+          updatedAt: now,
+        }));
+      }
+    } else {
+      await currentPool.query(
+        `INSERT IGNORE INTO AtividadesOperacionais (
+          id, programacaoId, titulo, descricao, classeDestino, funcionarioDestinoId, funcionarioDestinoNome,
+          embarcacaoId, embarcacaoNome, setorLocal, prioridade, frequenciaOrigem, dataProgramada,
+          horarioLimite, tempoEstimadoMinutos, fotoObrigatoria, status, criadoPor, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', ?, ?, ?)`,
+        [
+          instanceId,
+          prog.id,
+          prog.titulo,
+          prog.descricao || null,
+          prog.classeDestino,
+          prog.funcionarioDestinoId || null,
+          prog.funcionarioDestinoNome || null,
+          prog.embarcacaoId || null,
+          prog.embarcacaoNome || null,
+          prog.setorLocal || null,
+          prog.prioridade || 'normal',
+          prog.frequencia || 'diaria',
+          dateStr,
+          prog.horarioLimite || null,
+          prog.tempoEstimadoMinutos || null,
+          prog.fotoObrigatoria ? 1 : 0,
+          prog.criadoPor || 'Admin',
+          now,
+          now,
+        ]
+      );
+    }
+  }
+}
+
+export async function getAtividadesOperacionaisByDate(dateStr?: string, classeDestino?: string): Promise<any[]> {
+  if (dateStr) {
+    await materializeProgramacoesForDate(dateStr);
+  }
+  const hasDb = await ensureAtividadesOperacionaisTables();
+  const currentPool = getDbPool();
+  if (!hasDb || !currentPool) {
+    return memoryAtividadesOperacionais
+      .filter(a => (!dateStr || a.dataProgramada === dateStr) && (!classeDestino || a.classeDestino === classeDestino))
+      .sort((a, b) => (a.horarioLimite || '99:99').localeCompare(b.horarioLimite || '99:99'));
+  }
+
+  let sql = `SELECT * FROM AtividadesOperacionais WHERE 1=1`;
+  const params: any[] = [];
+  if (dateStr) {
+    sql += ` AND dataProgramada = ?`;
+    params.push(dateStr);
+  }
+  if (classeDestino) {
+    sql += ` AND classeDestino = ?`;
+    params.push(classeDestino);
+  }
+  sql += ` ORDER BY COALESCE(horarioLimite, '99:99') ASC, createdAt DESC`;
+  const [rows] = await currentPool.query(sql, params);
+  return (rows as any[]).map(mapRowToAtividadeOperacional);
+}
+
+export async function getAtividadeOperacionalById(id: string): Promise<any | null> {
+  const hasDb = await ensureAtividadesOperacionaisTables();
+  const currentPool = getDbPool();
+  if (!hasDb || !currentPool) {
+    return memoryAtividadesOperacionais.find(a => a.id === id) || null;
+  }
+  const [rows] = await currentPool.query(`SELECT * FROM AtividadesOperacionais WHERE id = ? LIMIT 1`, [id]);
+  const r = (rows as any[])[0];
+  return r ? mapRowToAtividadeOperacional(r) : null;
+}
+
+export async function upsertAtividadeOperacional(data: any): Promise<any> {
+  const now = new Date().toISOString();
+  const record = mapRowToAtividadeOperacional({
+    ...data,
+    id: data.id || `atv_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    createdAt: data.createdAt || now,
+    updatedAt: now,
+  });
+
+  const hasDb = await ensureAtividadesOperacionaisTables();
+  const currentPool = getDbPool();
+  if (!hasDb || !currentPool) {
+    const idx = memoryAtividadesOperacionais.findIndex(a => a.id === record.id);
+    if (idx >= 0) memoryAtividadesOperacionais[idx] = record;
+    else memoryAtividadesOperacionais.unshift(record);
+    return record;
+  }
+
+  await currentPool.query(
+    `INSERT INTO AtividadesOperacionais (
+      id, programacaoId, titulo, descricao, classeDestino, funcionarioDestinoId, funcionarioDestinoNome,
+      embarcacaoId, embarcacaoNome, setorLocal, prioridade, frequenciaOrigem, dataProgramada,
+      horarioLimite, tempoEstimadoMinutos, fotoObrigatoria, status, iniciadoEm, concluidoEm,
+      duracaoSegundos, executadoPorId, executadoPorNome, fotoConferenciaUrl, observacaoExecucao,
+      criadoPor, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      titulo = VALUES(titulo),
+      descricao = VALUES(descricao),
+      classeDestino = VALUES(classeDestino),
+      funcionarioDestinoId = VALUES(funcionarioDestinoId),
+      funcionarioDestinoNome = VALUES(funcionarioDestinoNome),
+      embarcacaoId = VALUES(embarcacaoId),
+      embarcacaoNome = VALUES(embarcacaoNome),
+      setorLocal = VALUES(setorLocal),
+      prioridade = VALUES(prioridade),
+      frequenciaOrigem = VALUES(frequenciaOrigem),
+      dataProgramada = VALUES(dataProgramada),
+      horarioLimite = VALUES(horarioLimite),
+      tempoEstimadoMinutos = VALUES(tempoEstimadoMinutos),
+      fotoObrigatoria = VALUES(fotoObrigatoria),
+      status = VALUES(status),
+      iniciadoEm = VALUES(iniciadoEm),
+      concluidoEm = VALUES(concluidoEm),
+      duracaoSegundos = VALUES(duracaoSegundos),
+      executadoPorId = VALUES(executadoPorId),
+      executadoPorNome = VALUES(executadoPorNome),
+      fotoConferenciaUrl = VALUES(fotoConferenciaUrl),
+      observacaoExecucao = VALUES(observacaoExecucao),
+      updatedAt = VALUES(updatedAt)`,
+    [
+      record.id,
+      record.programacaoId || null,
+      record.titulo,
+      record.descricao || null,
+      record.classeDestino,
+      record.funcionarioDestinoId || null,
+      record.funcionarioDestinoNome || null,
+      record.embarcacaoId || null,
+      record.embarcacaoNome || null,
+      record.setorLocal || null,
+      record.prioridade || 'normal',
+      record.frequenciaOrigem || 'avulsa',
+      record.dataProgramada,
+      record.horarioLimite || null,
+      record.tempoEstimadoMinutos || null,
+      record.fotoObrigatoria ? 1 : 0,
+      record.status || 'pendente',
+      record.iniciadoEm || null,
+      record.concluidoEm || null,
+      record.duracaoSegundos ?? null,
+      record.executadoPorId || null,
+      record.executadoPorNome || null,
+      record.fotoConferenciaUrl || null,
+      record.observacaoExecucao || null,
+      record.criadoPor || 'Admin',
+      record.createdAt,
+      record.updatedAt,
+    ]
+  );
+
+  return record;
+}
+
+export async function deleteAtividadeOperacional(id: string): Promise<void> {
+  const hasDb = await ensureAtividadesOperacionaisTables();
+  const currentPool = getDbPool();
+  if (!hasDb || !currentPool) {
+    const idx = memoryAtividadesOperacionais.findIndex(a => a.id === id);
+    if (idx >= 0) memoryAtividadesOperacionais.splice(idx, 1);
+    return;
+  }
+  await currentPool.query(`DELETE FROM AtividadesOperacionais WHERE id = ?`, [id]);
+}
+
 
 
 

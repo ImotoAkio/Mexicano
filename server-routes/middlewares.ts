@@ -90,7 +90,7 @@ export function requireAdminAuth(req: express.Request, res: express.Response, ne
     }
 
     const validAdminRoles = [
-      "admin", "marina_gerente", "marina_operador", "financeiro", "pecas_servicos", "comercial"
+      "admin", "marina_gerente", "marina_operador", "servicos_gerais", "financeiro", "pecas_servicos", "comercial"
     ];
 
     if (userRole && !validAdminRoles.includes(userRole)) {

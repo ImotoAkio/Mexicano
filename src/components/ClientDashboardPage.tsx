@@ -1463,11 +1463,6 @@ export default function ClientDashboardPage({
       return;
     }
 
-    if (isClosed) {
-      showToast('Aviso', 'A marina não funciona às segundas e terças para esta embarcação (exceto plano completo).', 'warning');
-      return;
-    }
-
     if (isOccupied) {
       showToast('Aviso', 'Esta data já encontra-se ocupada por outro sócio.', 'warning');
       return;
@@ -1721,8 +1716,9 @@ export default function ClientDashboardPage({
                 ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === activeBoatId)
                 : (client.embarcacaoId === activeBoatId ? client : null);
               const isPlanoCompletoForActiveBoat = activeBoatEntry?.plano === 'completo' || (!activeBoatEntry?.plano && client.plano === 'completo');
-              const isWeeklyClosed = (dayOfWeek === 1 || dayOfWeek === 2) && !isPlanoCompletoForActiveBoat;
-              const isClosed = isSpecialClosed || isWeeklyClosed;
+              const isMarinaOnlyActiveBoat = Boolean(activeBoat?.empresas && activeBoat.empresas.includes('MARINA') && !activeBoat.empresas.includes('VALE'));
+              const isWeeklyClosed = !isMarinaOnlyActiveBoat && (dayOfWeek === 1 || dayOfWeek === 2) && !isPlanoCompletoForActiveBoat;
+              const isClosed = isSpecialClosed;
 
               // Verificar se o CLIENTE tem reserva nessa embarcação ou se está ocupada
               const hasMyReservation = myBoatReservations.find(r => r.data === isoStr && r.status !== 'cancelado');
@@ -1760,7 +1756,7 @@ export default function ClientDashboardPage({
               return (
                 <button
                   key={idx}
-                  title={specialClosed ? `Marina Fechada: ${specialClosed.motivo || 'Fechamento Programado'}` : isWeeklyClosed ? 'Fechado (Seg/Ter)' : undefined}
+                  title={specialClosed ? `Marina Fechada: ${specialClosed.motivo || 'Fechamento Programado'}` : isWeeklyClosed ? 'Seg/Ter fora do plano (sujeito a taxa avulsa)' : undefined}
                   onClick={() => openReservation(dateObj, isoStr, !!isOccupied, isClosed, contestableRes, specialClosed)}
                   className={`
                     relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all duration-300
@@ -1773,7 +1769,9 @@ export default function ClientDashboardPage({
                           ? 'bg-amber-500/10 border border-amber-500/30 text-amber-500 hover:bg-amber-500/20'
                           : isOccupied
                             ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
-                            : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
+                            : isWeeklyClosed
+                              ? 'bg-amber-500/[0.04] border border-dashed border-amber-500/30 hover:bg-amber-500/10 text-amber-200/80'
+                              : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
                     ${isToday && !hasMyReservation && !isOccupied && !contestableRes ? 'ring-1 ring-white/20 bg-white/10 text-white' : ''}
                   `}
                 >
@@ -1820,8 +1818,8 @@ export default function ClientDashboardPage({
               <span>Suplência</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full border border-dashed border-white/30 shrink-0" />
-              <span>Fechado (Seg/Ter/Feriados)</span>
+              <span className="w-2.5 h-2.5 rounded-full border border-dashed border-amber-400/60 shrink-0" />
+              <span>Seg/Ter (Taxa Avulsa)</span>
             </div>
           </div>
         </div>
@@ -3487,6 +3485,7 @@ export default function ClientDashboardPage({
             window.location.reload();
           }
         }}
+        onGoToFinance={() => handleTabChange('finance')}
       />
 
       <ClientCheckinModal
@@ -3500,6 +3499,7 @@ export default function ClientDashboardPage({
         onSelectReservation={(res) => setSelectedReservationForCheckin(res)}
         isInadimplente={isInadimplente}
         totalAberto={totalAberto}
+        transacoes={transacoesList}
         onGoToPayments={() => {
           if (selectedReservationForCheckin) {
             setPendingCheckinAfterPayment(selectedReservationForCheckin);

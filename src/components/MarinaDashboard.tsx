@@ -16,6 +16,7 @@ import FinanceSchedulesPage from './FinanceSchedulesPage';
 import MarinaAgendamentosView from './MarinaAgendamentosView';
 import AdicionarFilaModal from './AdicionarFilaModal';
 import ControleFolgasPage from './ControleFolgasPage';
+import ControleAtividadesPage from './ControleAtividadesPage';
 import AvisosSaidaPage from './AvisosSaidaPage';
 import SettingsPage from './SettingsPage';
 import PlanoNavegacaoModal from './PlanoNavegacaoModal';
@@ -135,11 +136,11 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
   };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  type MarinaTabType = 'home' | 'operacao' | 'chamados' | 'embarcacoes-clientes' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes' | 'caixa';
+  type MarinaTabType = 'home' | 'operacao' | 'chamados' | 'embarcacoes-clientes' | 'clientes' | 'embarcacoes' | 'checklists' | 'agendamentos' | 'folgas' | 'atividades' | 'aviso-saida' | 'combustivel' | 'tanques' | 'configuracoes' | 'caixa';
   const [activeTab, setActiveTab] = useState<MarinaTabType>(() => {
     try {
       const saved = localStorage.getItem('marina_active_tab') as MarinaTabType;
-      const validTabs: MarinaTabType[] = ['home', 'operacao', 'chamados', 'embarcacoes-clientes', 'clientes', 'embarcacoes', 'checklists', 'agendamentos', 'folgas', 'aviso-saida', 'combustivel', 'tanques', 'configuracoes', 'caixa'];
+      const validTabs: MarinaTabType[] = ['home', 'operacao', 'chamados', 'embarcacoes-clientes', 'clientes', 'embarcacoes', 'checklists', 'agendamentos', 'folgas', 'atividades', 'aviso-saida', 'combustivel', 'tanques', 'configuracoes', 'caixa'];
       return saved && validTabs.includes(saved) ? saved : 'home';
     } catch {
       return 'home';
@@ -1163,6 +1164,15 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
           <div>
             {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Gestão de Equipe</p>}
             <nav className="space-y-1">
+              <button 
+                onClick={() => setActiveTab('atividades')}
+                className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'atividades' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Controle de Atividades"
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-teal-600" />
+                {isSidebarOpen && <span>Controle de Atividades</span>}
+              </button>
+
               <button 
                 onClick={() => setActiveTab('folgas')}
                 className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all text-xs font-bold cursor-pointer ${isSidebarOpen ? 'space-x-3' : 'justify-center'} ${activeTab === 'folgas' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
@@ -2627,6 +2637,12 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
         {activeTab === 'folgas' && (
           <div className="max-w-7xl mx-auto">
             <ControleFolgasPage />
+          </div>
+        )}
+
+        {activeTab === 'atividades' && (
+          <div className="max-w-7xl mx-auto">
+            <ControleAtividadesPage />
           </div>
         )}
 

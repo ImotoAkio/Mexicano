@@ -19,7 +19,7 @@ tools/mariadb/data/
 .agents/
 tsc_output.txt
 .claude/
-clientes.*
+/clientes.*
 clientes_embarcacoes.json
 parsed_clientes.json
 parse_final.cjs

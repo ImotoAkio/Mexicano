@@ -57,6 +57,7 @@ import { AvulsoChecklistModal } from './MarinaOperador/AvulsoChecklistModal';
 import { AvulsoFuelSelectorModal } from './MarinaOperador/AvulsoFuelSelectorModal';
 import { ViewChecklistModal } from './MarinaOperador/ViewChecklistModal';
 import { PerfilTab } from './MarinaOperador/PerfilTab';
+import { AtividadesOperacionaisTab } from './MarinaOperador/AtividadesOperacionaisTab';
 import { NotificationDrawer } from './MarinaOperador/NotificationDrawer';
 import { NotificationBanner } from './MarinaOperador/NotificationBanner';
 import logoMarinaSrc from '../../logos/logo_marina.svg';
@@ -152,7 +153,7 @@ export default function MarinaOperadorDashboard({ onLogout, operadorNome }: Mari
 
   const { isToday, label: relativeLabel } = getRelativeDateInfo(selectedDate);
 
-  const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'abastecimentos' | 'perfil'>('operacao');
+  const [activeTab, setActiveTab] = useState<'operacao' | 'checklists' | 'abastecimentos' | 'atividades' | 'perfil'>('operacao');
   const [filterType, setFilterType] = useState<string>('todas');
   const [searchTerm, setSearchTerm] = useState('');
   const [showOnlyConfirmed, setShowOnlyConfirmed] = useState(false);
@@ -1318,6 +1319,17 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         />
       )}
 
+      {activeTab === 'atividades' && (
+        <main className="max-w-4xl mx-auto p-3 sm:p-4">
+          <AtividadesOperacionaisTab
+            classeDestino="marinheiro"
+            operadorNome={currentUser.nome}
+            selectedDate={selectedDate}
+            onDateChange={handleSelectDate}
+          />
+        </main>
+      )}
+
       {activeTab === 'perfil' && (
         <PerfilTab
           operadorNome={currentUser.nome}
@@ -1380,6 +1392,18 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
             </span>
           </div>
           <span className="text-[10px] font-bold uppercase tracking-wider mt-1">Combustível</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('atividades')}
+          className={`flex-1 pt-2 pb-1 px-1 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+            activeTab === 'atividades'
+              ? 'text-blue-600'
+              : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          <CheckCircle2 className={`w-6 h-6`} />
+          <span className="text-[10px] font-bold uppercase tracking-wider mt-1">Atividades</span>
         </button>
 
         <button
