@@ -44,6 +44,7 @@ import {
   formatStopwatch,
   formatTimeTimestamp,
 } from './MarinaOperador/AtividadesOperacionaisTab';
+import { uploadPhotoToStorage } from '../utils/checklistStorage';
 
 const DIAS_SEMANA = [
   { id: 1, short: 'Seg', full: 'Segunda' },
@@ -397,18 +398,8 @@ export default function ControleAtividadesPage() {
     if (!file) return;
     setIsUploadingFoto(true);
     try {
-      const token = getAdminToken();
-      const formData = new FormData();
-      formData.append('image', file);
-      const res = await fetch('/api/upload/checklist-image', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-      const data = await res.json();
-      if (res.ok && data.imageUrl) {
-        setInspectFotoUrl(data.imageUrl);
-      }
+      const imageUrl = await uploadPhotoToStorage(file);
+      setInspectFotoUrl(imageUrl);
     } catch (err) {
       console.error('Erro no upload de foto:', err);
     } finally {

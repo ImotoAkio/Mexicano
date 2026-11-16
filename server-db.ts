@@ -48,6 +48,7 @@ export function getDbPool(): mysql.Pool | null {
 }
 
 import { getFuelPrice } from "./src/utils/constants";
+import { getBoatOperationRules } from "./src/utils/boatRules";
 
 // Check database status
 export async function getDbStatus() {
@@ -384,6 +385,9 @@ export async function initializeDatabase() {
     try {
       await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN descricaoComercial TEXT;`);
     } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Embarcacoes ADD COLUMN regrasOperacao TEXT;`);
+    } catch (e) {}
 
     // 3. Reservas Table
     await connection.query(`
@@ -523,6 +527,21 @@ export async function initializeDatabase() {
     } catch (e) {}
     try {
       await connection.query(`ALTER TABLE Reservas ADD COLUMN ultimaTentativaConfirmacao VARCHAR(50);`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN fotosExtrasDescida TEXT;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN fotosExtrasSubida TEXT;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN checklistEquipamentos TEXT;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN checklistObservacoes TEXT;`);
+    } catch (e) {}
+    try {
+      await connection.query(`ALTER TABLE Reservas ADD COLUMN observacoesSubida TEXT;`);
     } catch (e) {}
 
     // 4. ControlesSom Table
@@ -1973,6 +1992,21 @@ function parseBoatRow(b: any, embarcacaoEmpresasMap?: Map<string, string[]>) {
   const effectiveImagemUrl = b.imagemUrl || fotosList[0] || undefined;
   const effectiveDescricao = b.descricaoComercial || (parsedAcessorios && (parsedAcessorios as any).descricaoComercial) || undefined;
 
+  let rawRegrasOperacao = undefined;
+  if (b.regrasOperacao) {
+    try {
+      rawRegrasOperacao = typeof b.regrasOperacao === 'string' ? JSON.parse(b.regrasOperacao) : b.regrasOperacao;
+    } catch {}
+  }
+  if (!rawRegrasOperacao && parsedAcessorios && (parsedAcessorios as any).regrasOperacao) {
+    rawRegrasOperacao = (parsedAcessorios as any).regrasOperacao;
+  }
+  const resolvedRegrasOperacao = getBoatOperationRules({
+    ...b,
+    regrasOperacao: rawRegrasOperacao,
+    acessorios: parsedAcessorios
+  });
+
   return {
     ...b,
     empresas: embarcacaoEmpresasMap?.get(b.id) || ['VALE'],
@@ -1995,6 +2029,7 @@ function parseBoatRow(b: any, embarcacaoEmpresasMap?: Map<string, string[]>) {
     fotos: fotosList,
     descricaoComercial: effectiveDescricao,
     acessorios: parsedAcessorios,
+    regrasOperacao: resolvedRegrasOperacao,
     capacidadePassageiros: b.capacidadePassageiros !== null && b.capacidadePassageiros !== undefined ? Number(b.capacidadePassageiros) : undefined,
     totalCotas: b.totalCotas !== null && b.totalCotas !== undefined && Number(b.totalCotas) > 0 ? Number(b.totalCotas) : (b.nome === 'M55' || b.id === 'boat_M55' ? 8 : 4),
     valorCota: b.valorCota !== null && b.valorCota !== undefined ? Number(b.valorCota) : 0,
@@ -2011,10 +2046,16 @@ function parseReservationRow(r: any) {
   let fotosChecklistChegada = [];
   let fotosChecklistDescida = [];
   let fotosChecklistSubida = [];
+  let fotosExtrasDescida = [];
+  let fotosExtrasSubida = [];
+  let checklistEquipamentos = undefined;
   try { if (r.fotosChecklistSaida) fotosChecklistSaida = JSON.parse(r.fotosChecklistSaida); } catch {}
   try { if (r.fotosChecklistChegada) fotosChecklistChegada = JSON.parse(r.fotosChecklistChegada); } catch {}
   try { if (r.fotosChecklistDescida) fotosChecklistDescida = JSON.parse(r.fotosChecklistDescida); } catch {}
   try { if (r.fotosChecklistSubida) fotosChecklistSubida = JSON.parse(r.fotosChecklistSubida); } catch {}
+  try { if (r.fotosExtrasDescida) fotosExtrasDescida = typeof r.fotosExtrasDescida === "string" ? JSON.parse(r.fotosExtrasDescida) : r.fotosExtrasDescida; } catch {}
+  try { if (r.fotosExtrasSubida) fotosExtrasSubida = typeof r.fotosExtrasSubida === "string" ? JSON.parse(r.fotosExtrasSubida) : r.fotosExtrasSubida; } catch {}
+  try { if (r.checklistEquipamentos) checklistEquipamentos = typeof r.checklistEquipamentos === "string" ? JSON.parse(r.checklistEquipamentos) : r.checklistEquipamentos; } catch {}
 
   return {
     ...r,
@@ -2027,6 +2068,11 @@ function parseReservationRow(r: any) {
     fotosChecklistChegada,
     fotosChecklistDescida,
     fotosChecklistSubida,
+    fotosExtrasDescida: Array.isArray(fotosExtrasDescida) ? fotosExtrasDescida : [],
+    fotosExtrasSubida: Array.isArray(fotosExtrasSubida) ? fotosExtrasSubida : [],
+    checklistEquipamentos,
+    checklistObservacoes: r.checklistObservacoes || r.observacoesDescida || "",
+    observacoesSubida: r.observacoesSubida || "",
     acessoriosSolicitados: r.acessoriosSolicitados ? (typeof r.acessoriosSolicitados === "string" ? JSON.parse(r.acessoriosSolicitados) : r.acessoriosSolicitados) : undefined,
   };
 }
@@ -2907,6 +2953,9 @@ export async function upsertBoat(boat: any) {
     try {
       await currentPool.query(`ALTER TABLE Embarcacoes ADD COLUMN comprimento VARCHAR(50);`);
     } catch (e) {}
+    try {
+      await currentPool.query(`ALTER TABLE Embarcacoes ADD COLUMN regrasOperacao TEXT;`);
+    } catch (e) {}
     boatMediaColumnsEnsured = true;
   }
 
@@ -2965,6 +3014,15 @@ export async function upsertBoat(boat: any) {
   if (boat.validadeSeguro) {
     acessoriosObj.validadeSeguro = boat.validadeSeguro;
   }
+
+  let regrasOperacaoJson: string | null = null;
+  const rawRegrasInput = boat.regrasOperacao !== undefined ? boat.regrasOperacao : acessoriosObj.regrasOperacao;
+  if (rawRegrasInput !== undefined && rawRegrasInput !== null) {
+    const resolvedRegras = getBoatOperationRules({ ...boat, regrasOperacao: rawRegrasInput, acessorios: acessoriosObj });
+    acessoriosObj.regrasOperacao = resolvedRegras;
+    regrasOperacaoJson = JSON.stringify(resolvedRegras);
+  }
+
   const acessoriosJson = Object.keys(acessoriosObj).length > 0 ? JSON.stringify(acessoriosObj) : null;
 
   const historicoHorasJson = boat.historicoHoras
@@ -2973,8 +3031,8 @@ export async function upsertBoat(boat: any) {
 
   const query = `
     INSERT INTO Embarcacoes (
-      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, marcaMotor, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, fotos, descricaoComercial, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho, valorCota, taxaAdmMensal
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, marcaMotor, donos, googleCalendarId, whatsappGroupId, emManutencao, imagemUrl, fotos, descricaoComercial, temSom, documentoUrl, seguroUrl, acessorios, horasMotor, ultimaAtualizacaoHoras, horasUltimaManutencao, historicoHoras, capacidadePassageiros, totalCotas, vaga, tamanho, valorCota, taxaAdmMensal, regrasOperacao
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       tipo = VALUES(tipo),
       nome = VALUES(nome),
@@ -3007,7 +3065,8 @@ export async function upsertBoat(boat: any) {
       vaga = VALUES(vaga),
       tamanho = VALUES(tamanho),
       valorCota = VALUES(valorCota),
-      taxaAdmMensal = VALUES(taxaAdmMensal)
+      taxaAdmMensal = VALUES(taxaAdmMensal),
+      regrasOperacao = COALESCE(VALUES(regrasOperacao), regrasOperacao)
   `;
 
   const valorCotaNum = boat.valorCota !== undefined && !isNaN(Number(boat.valorCota)) ? Number(boat.valorCota) : 0;
@@ -3046,7 +3105,8 @@ export async function upsertBoat(boat: any) {
     boat.vaga || null,
     rawComprimento,
     valorCotaNum,
-    taxaAdmMensalNum
+    taxaAdmMensalNum,
+    regrasOperacaoJson
   ]);
 
   try {
@@ -3108,6 +3168,9 @@ export async function upsertReservation(reserva: any) {
   const fotosChecklistSaidaStr = reserva.fotosChecklistSaida ? JSON.stringify(reserva.fotosChecklistSaida) : null;
   const fotosChecklistChegadaStr = reserva.fotosChecklistChegada ? JSON.stringify(reserva.fotosChecklistChegada) : null;
   const fotosChecklistSubidaStr = reserva.fotosChecklistSubida ? JSON.stringify(reserva.fotosChecklistSubida) : null;
+  const fotosExtrasDescidaStr = reserva.fotosExtrasDescida ? JSON.stringify(reserva.fotosExtrasDescida) : null;
+  const fotosExtrasSubidaStr = reserva.fotosExtrasSubida ? JSON.stringify(reserva.fotosExtrasSubida) : null;
+  const checklistEquipamentosStr = reserva.checklistEquipamentos ? JSON.stringify(reserva.checklistEquipamentos) : null;
   const acessoriosSolicitadosStr = reserva.acessoriosSolicitados ? JSON.stringify(reserva.acessoriosSolicitados) : null;
 
   const query = `
@@ -3118,8 +3181,9 @@ export async function upsertReservation(reserva: any) {
       acessoriosSolicitados,
       abastecimentoLitros, abastecimentoStatusCobranca, abastecimentoFormaPagamento, abastecimentoValorTotal, abastecimentoComprovanteUrl, abastecimentoOperador,
       tipoReserva, contestadaPor, contestadaEm,
-      origem, nomeAvulso, telefoneAvulso, modeloAvulso, tipoAvulso, posicaoFila, combustivelInicial, litrosAbastecerPrevio, marinheiroPiloto, observacoesDescida
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      origem, nomeAvulso, telefoneAvulso, modeloAvulso, tipoAvulso, posicaoFila, combustivelInicial, litrosAbastecerPrevio, marinheiroPiloto, observacoesDescida,
+      fotosExtrasDescida, fotosExtrasSubida, checklistEquipamentos, checklistObservacoes, observacoesSubida
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       embarcacaoId = VALUES(embarcacaoId),
       clienteId = VALUES(clienteId),
@@ -3169,7 +3233,12 @@ export async function upsertReservation(reserva: any) {
       combustivelInicial = VALUES(combustivelInicial),
       litrosAbastecerPrevio = VALUES(litrosAbastecerPrevio),
       marinheiroPiloto = VALUES(marinheiroPiloto),
-      observacoesDescida = VALUES(observacoesDescida)
+      observacoesDescida = VALUES(observacoesDescida),
+      fotosExtrasDescida = VALUES(fotosExtrasDescida),
+      fotosExtrasSubida = VALUES(fotosExtrasSubida),
+      checklistEquipamentos = VALUES(checklistEquipamentos),
+      checklistObservacoes = VALUES(checklistObservacoes),
+      observacoesSubida = VALUES(observacoesSubida)
   `;
 
   const values = [
@@ -3223,7 +3292,12 @@ export async function upsertReservation(reserva: any) {
     reserva.combustivelInicial || null,
     reserva.litrosAbastecerPrevio || null,
     reserva.marinheiroPiloto || null,
-    reserva.observacoesDescida || null
+    reserva.observacoesDescida || null,
+    fotosExtrasDescidaStr,
+    fotosExtrasSubidaStr,
+    checklistEquipamentosStr,
+    reserva.checklistObservacoes || null,
+    reserva.observacoesSubida || null
   ];
 
   await currentPool.query(query, values);
@@ -3231,16 +3305,20 @@ export async function upsertReservation(reserva: any) {
 
 // Cancel (or update status) of reservation
 export async function cancelReservation(id: string) {
+  invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query("UPDATE Reservas SET status = 'cancelado' WHERE id = ?", [id]);
+  invalidateDbCache();
 }
 
 // Clean delete a reservation record
 export async function deleteReservation(id: string) {
+  invalidateDbCache();
   const currentPool = getDbPool();
   if (!currentPool) throw new Error("MySQL Connection pool is offline.");
   await currentPool.query("DELETE FROM Reservas WHERE id = ?", [id]);
+  invalidateDbCache();
 }
 
 // Bulk sync upsert of all client records (highly optimized)
@@ -3255,21 +3333,26 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
     // 1. Sync boats
     for (const boat of payload.boats) {
       const donosJson = boat.donos ? JSON.stringify(boat.donos) : JSON.stringify([]);
+      const regrasJson = boat.regrasOperacao
+        ? (typeof boat.regrasOperacao === 'string' ? boat.regrasOperacao : JSON.stringify(boat.regrasOperacao))
+        : null;
       await connection.query(`
-        INSERT INTO Embarcacoes (id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, temSom, imagemUrl, documentoUrl, seguroUrl, capacidadePassageiros)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO Embarcacoes (id, tipo, nome, numero, modelo, fabricante, ano, chassi, inscricao, tipo_propulsao, potencia, donos, googleCalendarId, whatsappGroupId, emManutencao, temSom, imagemUrl, documentoUrl, seguroUrl, capacidadePassageiros, regrasOperacao)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           tipo = VALUES(tipo), nome = VALUES(nome), numero = VALUES(numero),
           modelo = VALUES(modelo), fabricante = VALUES(fabricante), ano = VALUES(ano),
           chassi = VALUES(chassi), inscricao = VALUES(inscricao), tipo_propulsao = VALUES(tipo_propulsao), potencia = VALUES(potencia),
           donos = VALUES(donos), googleCalendarId = VALUES(googleCalendarId),
           whatsappGroupId = VALUES(whatsappGroupId), emManutencao = VALUES(emManutencao), temSom = VALUES(temSom),
-          imagemUrl = VALUES(imagemUrl), documentoUrl = VALUES(documentoUrl), seguroUrl = VALUES(seguroUrl), capacidadePassageiros = VALUES(capacidadePassageiros)
+          imagemUrl = VALUES(imagemUrl), documentoUrl = VALUES(documentoUrl), seguroUrl = VALUES(seguroUrl), capacidadePassageiros = VALUES(capacidadePassageiros),
+          regrasOperacao = COALESCE(VALUES(regrasOperacao), regrasOperacao)
       `, [
         boat.id, boat.tipo, boat.nome, boat.numero, boat.modelo, boat.fabricante, boat.ano,
         boat.chassi || null, boat.inscricao || null, boat.tipo_propulsao || null, boat.potencia || null,
         donosJson, boat.googleCalendarId || null, boat.whatsappGroupId || null, boat.emManutencao ? 1 : 0, boat.temSom ? 1 : 0, boat.imagemUrl || null, boat.documentoUrl || null, boat.seguroUrl || null,
-        boat.capacidadePassageiros !== undefined && boat.capacidadePassageiros !== null ? Number(boat.capacidadePassageiros) : null
+        boat.capacidadePassageiros !== undefined && boat.capacidadePassageiros !== null ? Number(boat.capacidadePassageiros) : null,
+        regrasJson
       ]);
     }
 
@@ -3383,13 +3466,17 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
       const fotosChecklistDescidaStr = res.fotosChecklistDescida ? JSON.stringify(res.fotosChecklistDescida) : null;
       const fotosChecklistSaidaStr = res.fotosChecklistSaida ? JSON.stringify(res.fotosChecklistSaida) : null;
       const fotosChecklistChegadaStr = res.fotosChecklistChegada ? JSON.stringify(res.fotosChecklistChegada) : null;
+      const fotosExtrasDescidaStr = res.fotosExtrasDescida ? JSON.stringify(res.fotosExtrasDescida) : null;
+      const fotosExtrasSubidaStr = res.fotosExtrasSubida ? JSON.stringify(res.fotosExtrasSubida) : null;
+      const checklistEquipamentosStr = res.checklistEquipamentos ? JSON.stringify(res.checklistEquipamentos) : null;
       
       await connection.query(`
         INSERT INTO Reservas (id, embarcacaoId, clienteId, data, periodo, observacoes, googleEventId, status, createdAt,
           somRetirado, somTesteSaida, somTesteRetorno, horaSaida, horaChegada, fotosChecklistSaida, fotosChecklistChegada,
           previsaoSaida, previsaoChegada, destino, pessoasABordo, statusMarina, horaDescida, fotosChecklistDescida,
-          operadorDescida, operadorSaida, operadorChegada, confirmacaoEnviada, litrosAbastecidos)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          operadorDescida, operadorSaida, operadorChegada, confirmacaoEnviada, litrosAbastecidos,
+          fotosExtrasDescida, fotosExtrasSubida, checklistEquipamentos, checklistObservacoes, observacoesSubida)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           embarcacaoId = VALUES(embarcacaoId), clienteId = VALUES(clienteId),
           data = VALUES(data), periodo = VALUES(periodo), observacoes = VALUES(observacoes),
@@ -3403,7 +3490,12 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
           fotosChecklistDescida = VALUES(fotosChecklistDescida),
           operadorDescida = VALUES(operadorDescida), operadorSaida = VALUES(operadorSaida),
           operadorChegada = VALUES(operadorChegada), confirmacaoEnviada = GREATEST(COALESCE(confirmacaoEnviada, 0), VALUES(confirmacaoEnviada)),
-          litrosAbastecidos = VALUES(litrosAbastecidos)
+          litrosAbastecidos = VALUES(litrosAbastecidos),
+          fotosExtrasDescida = VALUES(fotosExtrasDescida),
+          fotosExtrasSubida = VALUES(fotosExtrasSubida),
+          checklistEquipamentos = VALUES(checklistEquipamentos),
+          checklistObservacoes = VALUES(checklistObservacoes),
+          observacoesSubida = VALUES(observacoesSubida)
       `, [
         res.id, res.embarcacaoId, res.clienteId, res.data, res.periodo,
         obs, res.googleEventId || null, res.status || "confirmado",
@@ -3415,7 +3507,9 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
         res.destino || null, res.pessoasABordo || null,
         res.statusMarina || null, res.horaDescida || null, fotosChecklistDescidaStr,
         res.operadorDescida || null, res.operadorSaida || null, res.operadorChegada || null,
-        res.confirmacaoEnviada ? 1 : 0, res.litrosAbastecidos || null
+        res.confirmacaoEnviada ? 1 : 0, res.litrosAbastecidos || null,
+        fotosExtrasDescidaStr, fotosExtrasSubidaStr, checklistEquipamentosStr,
+        res.checklistObservacoes || null, res.observacoesSubida || null
       ]);
     }
 
@@ -3440,6 +3534,7 @@ export async function bulkSyncDatabase(payload: { clients: any[]; boats: any[]; 
     await reconcileBoatCotasWithMexicano(connection);
 
     await connection.commit();
+    invalidateDbCache();
     return true;
   } catch (err: any) {
     await connection.rollback();
@@ -5243,6 +5338,7 @@ export async function consumeFuelAtomicDb(litros: number, barcoNome: string, ope
     ]);
 
     await connection.commit();
+    invalidateDbCache();
     return true;
   } catch(e: any) {
     await connection.rollback();
@@ -5302,6 +5398,7 @@ export async function restoreFuelAtomicDb(litros: number, motivo: string, operad
     ]);
 
     await connection.commit();
+    invalidateDbCache();
     return true;
   } catch(e: any) {
     await connection.rollback();

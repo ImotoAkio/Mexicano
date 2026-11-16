@@ -4,6 +4,13 @@ import { getDbPool, pullDatabase, getClientPortalData, invalidateDbCache, invali
 import { requireClientAuth, sensitiveLimiter, whatsappLimiter } from "./middlewares";
 import { writeAuditLog } from "./middlewares";
 import { getVapidKeys, saveClientPushSubscription, removeClientPushSubscription } from "../server-push";
+import {
+  getBoatOperationRules,
+  getClientWeekendUsageInMonth,
+  evaluateWeekendBookingForClient,
+  evaluateDateRestrictionsForClient,
+  canClientContestExtraReservation
+} from "../src/utils/boatRules";
 import https from "https";
 import http from "http";
 
@@ -23,27 +30,6 @@ function getBrasiliaDateMs(dateStr: string): number {
 function isHoliday(dateStr: string, holidays: string[]): boolean {
   return holidays.includes(dateStr);
 }
-
-/** Helper: determine tipoReserva for a weekend request */
-function calcTipoReserva(
-  userId: string,
-  embarcacaoId: string,
-  reqDayOfWeek: number,
-  reqMonth: number,
-  reqYear: number,
-  reservations: any[]
-): 'garantida' | 'extra' {
-  const sameDayType = reservations.filter((r: any) => {
-    if (r.clienteId !== userId || r.embarcacaoId !== embarcacaoId || r.status === 'cancelado') return false;
-    const rDateObj = new Date(r.data + "T12:00:00Z");
-    return rDateObj.getUTCMonth() === reqMonth &&
-           rDateObj.getUTCFullYear() === reqYear &&
-           rDateObj.getUTCDay() === reqDayOfWeek;
-  });
-  // First weekend day of this type in the month => garantida; subsequent => extra
-  return sameDayType.length >= 1 ? 'extra' : 'garantida';
-}
-
 
 /** Helper: check if a client has overdue unpaid revenue transactions */
 function hasClientOverdueDebt(client: any, transacoes: any[]): boolean {
@@ -234,6 +220,16 @@ clientRoutes.post("/reserve", requireClientAuth, sensitiveLimiter, async (req, r
     const reqDateObj = new Date(date + "T12:00:00Z");
     const reqDayOfWeek = reqDateObj.getUTCDay();
 
+    const rules = getBoatOperationRules(boat);
+    const dateRestriction = evaluateDateRestrictionsForClient({ dateStr: date, todayStr, boat });
+    if (!dateRestriction.allowed) {
+      return res.status(400).json({
+        error: true,
+        ruleBlocked: true,
+        message: dateRestriction.reason || "Data não permitida pelas regras desta embarcação."
+      });
+    }
+
     const isMarinaOnlyBoat = boat?.empresas && boat.empresas.includes('MARINA') && !boat.empresas.includes('VALE');
     let tipoReserva: 'garantida' | 'extra' = 'garantida';
     let isPaidExtraDay = false;
@@ -249,58 +245,79 @@ clientRoutes.post("/reserve", requireClientAuth, sensitiveLimiter, async (req, r
 
       if ((reqDayOfWeek === 1 || reqDayOfWeek === 2) && boatPlano !== 'completo') {
         const isJetBoat = Boolean(boat && (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet')));
-        extraDayFee = isJetBoat ? 100 : 150;
+        const defaultExtraFee = isJetBoat ? 100 : 150;
+        extraDayFee =
+          rules.taxaDescidaAvulsaPersonalizada !== null &&
+          rules.taxaDescidaAvulsaPersonalizada !== undefined &&
+          Number(rules.taxaDescidaAvulsaPersonalizada) >= 0
+            ? Number(rules.taxaDescidaAvulsaPersonalizada)
+            : defaultExtraFee;
         boatTypeLabel = isJetBoat ? 'Jet Ski' : 'Lancha';
         dayName = reqDayOfWeek === 1 ? 'segunda-feira' : 'terça-feira';
-        isPaidExtraDay = true;
 
-        const { confirmPaidLaunch, acceptedFee } = req.body;
-        if (confirmPaidLaunch !== true) {
-          return res.status(409).json({
-            error: true,
-            requirePaidLaunchConfirmation: true,
-            feeAmount: extraDayFee,
-            boatTypeLabel,
-            dayName,
-            message: `Descidas às segundas e terças-feiras não estão inclusas no seu plano atual. Ao concordar, será gerado um registro financeiro de R$ ${extraDayFee.toFixed(2).replace('.', ',')} (${boatTypeLabel}) para pagamento.`
-          });
-        }
+        if (extraDayFee > 0) {
+          isPaidExtraDay = true;
+          const { confirmPaidLaunch, acceptedFee } = req.body;
+          if (confirmPaidLaunch !== true) {
+            return res.status(409).json({
+              error: true,
+              requirePaidLaunchConfirmation: true,
+              feeAmount: extraDayFee,
+              boatTypeLabel,
+              dayName,
+              message: `Descidas às segundas e terças-feiras não estão inclusas no seu plano atual. Ao concordar, será gerado um registro financeiro de R$ ${extraDayFee.toFixed(2).replace('.', ',')} (${boatTypeLabel}) para pagamento.`
+            });
+          }
 
-        if (acceptedFee !== undefined && Number(acceptedFee) !== extraDayFee) {
-          return res.status(400).json({
-            error: true,
-            message: "Valor da cobrança divergente do plano/embarcação. Atualize a página e tente novamente."
-          });
-        }
-      }
-
-      // Weekend reservation logic: guaranteed vs extra
-      const isWeekend = reqDayOfWeek === 0 || reqDayOfWeek === 6;
-
-      if (isWeekend) {
-        const reqMonth = reqDateObj.getUTCMonth();
-        const reqYear = reqDateObj.getUTCFullYear();
-
-        tipoReserva = calcTipoReserva(userId, embarcacaoId, reqDayOfWeek, reqMonth, reqYear, dbData.reservations);
-
-        // Check if the request explicitly confirms extra reservation
-        const { confirmExtra } = req.body;
-        if (tipoReserva === 'extra' && !confirmExtra) {
-          const weekendDayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
-          return res.status(409).json({
-            error: true,
-            requireConfirmation: true,
-            tipoReserva: 'extra',
-            message: `Você já utilizou seu ${weekendDayName} garantido neste mês para esta embarcação. Esta será uma reserva EXTRA e poderá ser contestada por outro cotista até 48 horas antes da data.`
-          });
+          if (acceptedFee !== undefined && Number(acceptedFee) !== extraDayFee) {
+            return res.status(400).json({
+              error: true,
+              message: "Valor da cobrança divergente do plano/embarcação. Atualize a página e tente novamente."
+            });
+          }
         }
       }
 
       const activeReservations = dbData.reservations.filter((r: any) =>
         r.clienteId === userId && r.embarcacaoId === embarcacaoId && r.status !== 'cancelado' && r.data >= todayStr
       );
-      if (activeReservations.length >= 2) {
-        return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas para esta embarcação." });
+      if (activeReservations.length >= rules.maxReservasAtivas) {
+        const limitMsg =
+          rules.maxReservasAtivas === 1
+            ? "Você já possui 1 reserva ativa para esta embarcação. Pela regra de operação, só é permitido ter 1 reserva ativa por vez."
+            : `Você atingiu o limite máximo de ${rules.maxReservasAtivas} reservas ativas simultâneas para esta embarcação.`;
+        return res.status(400).json({ error: true, ruleBlocked: true, message: limitMsg });
+      }
+
+      // Weekend reservation logic: guaranteed vs extra vs blocked
+      const weekendEval = evaluateWeekendBookingForClient({
+        userId,
+        embarcacaoId,
+        dateStr: date,
+        reservations: dbData.reservations,
+        boat
+      });
+
+      if (weekendEval.isWeekend) {
+        if (!weekendEval.allowed) {
+          return res.status(400).json({
+            error: true,
+            ruleBlocked: true,
+            message: weekendEval.blockedReason || "Você atingiu o limite de agendamentos de fim de semana neste mês para esta embarcação."
+          });
+        }
+        tipoReserva = weekendEval.tipoReserva;
+
+        // Check if the request explicitly confirms extra reservation
+        const { confirmExtra } = req.body;
+        if (tipoReserva === 'extra' && !confirmExtra) {
+          return res.status(409).json({
+            error: true,
+            requireConfirmation: true,
+            tipoReserva: 'extra',
+            message: weekendEval.confirmMessage
+          });
+        }
       }
     }
 
@@ -328,13 +345,52 @@ clientRoutes.post("/reserve", requireClientAuth, sensitiveLimiter, async (req, r
 
       if (!isMarinaOnlyBoat) {
         const [clientActiveRows] = await conn.query(
-          "SELECT id FROM Reservas WHERE clienteId = ? AND embarcacaoId = ? AND status != 'cancelado' AND data >= ?",
+          "SELECT id, data, tipoReserva, status FROM Reservas WHERE clienteId = ? AND embarcacaoId = ? AND status != 'cancelado' AND data >= ? FOR UPDATE",
           [userId, embarcacaoId, todayStr]
         );
-        if ((clientActiveRows as any[]).length >= 2) {
+        if ((clientActiveRows as any[]).length >= rules.maxReservasAtivas) {
           await conn.rollback();
           conn.release();
-          return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas para esta embarcação." });
+          const limitMsg =
+            rules.maxReservasAtivas === 1
+              ? "Você já possui 1 reserva ativa para esta embarcação. Pela regra de operação, só é permitido ter 1 reserva ativa por vez."
+              : `Você atingiu o limite máximo de ${rules.maxReservasAtivas} reservas ativas simultâneas para esta embarcação.`;
+          return res.status(400).json({ error: true, ruleBlocked: true, message: limitMsg });
+        }
+
+        if (reqDayOfWeek === 0 || reqDayOfWeek === 6) {
+          const monthPrefix = date.slice(0, 7);
+          const [monthClientRows] = await conn.query(
+            "SELECT id, embarcacaoId, clienteId, data, tipoReserva, status FROM Reservas WHERE clienteId = ? AND embarcacaoId = ? AND status != 'cancelado' AND data LIKE ? FOR UPDATE",
+            [userId, embarcacaoId, `${monthPrefix}%`]
+          );
+          const freshWeekendEval = evaluateWeekendBookingForClient({
+            userId,
+            embarcacaoId,
+            dateStr: date,
+            reservations: monthClientRows as any[],
+            boat
+          });
+          if (!freshWeekendEval.allowed) {
+            await conn.rollback();
+            conn.release();
+            return res.status(400).json({
+              error: true,
+              ruleBlocked: true,
+              message: freshWeekendEval.blockedReason || "Você atingiu o limite de agendamentos de fim de semana neste mês para esta embarcação."
+            });
+          }
+          tipoReserva = freshWeekendEval.tipoReserva;
+          if (tipoReserva === 'extra' && !req.body.confirmExtra) {
+            await conn.rollback();
+            conn.release();
+            return res.status(409).json({
+              error: true,
+              requireConfirmation: true,
+              tipoReserva: 'extra',
+              message: freshWeekendEval.confirmMessage
+            });
+          }
         }
       }
 
@@ -756,20 +812,29 @@ clientRoutes.get("/weekend-info", requireClientAuth, async (req, res) => {
     const y = Number(year);
 
     const dbData = await getClientPortalData(userId);
+    const boat = dbData.boats.find((b: any) => b.id === embarcacaoId);
+    const rules = getBoatOperationRules(boat);
+    const todayStr = getTodayBrasilia();
 
-    // Count how many guaranteed Saturdays and Sundays this client used this month
-    const usage = { saturdayUsed: false, sundayUsed: false };
-    for (const r of dbData.reservations) {
-      if (r.clienteId !== userId || r.embarcacaoId !== embarcacaoId || r.status === 'cancelado') continue;
-      const rDate = new Date(r.data + "T12:00:00Z");
-      if (rDate.getUTCMonth() !== m || rDate.getUTCFullYear() !== y) continue;
-      const dow = rDate.getUTCDay();
-      if (dow === 6 && r.tipoReserva !== 'extra') usage.saturdayUsed = true;
-      if (dow === 0 && r.tipoReserva !== 'extra') usage.sundayUsed = true;
-    }
+    const usageRaw = getClientWeekendUsageInMonth(userId, String(embarcacaoId), m, y, dbData.reservations);
+    const weekendQuotaUsed =
+      rules.regraFimDeSemana === 'sabado_ou_domingo'
+        ? (rules.permitirReservaExtraFds ? usageRaw.guaranteedWeekendReservations.length >= 1 : usageRaw.allWeekendReservations.length >= 1)
+        : rules.regraFimDeSemana === 'personalizado'
+          ? (rules.permitirReservaExtraFds
+              ? usageRaw.guaranteedWeekendReservations.length >= (rules.maxFdsGarantidosMes || 1)
+              : usageRaw.allWeekendReservations.length >= (rules.maxFdsGarantidosMes || 1))
+          : false;
+
+    const usage = {
+      saturdayUsed: usageRaw.saturdaysGuaranteed.length > 0,
+      sundayUsed: usageRaw.sundaysGuaranteed.length > 0,
+      weekendQuotaUsed,
+      rules
+    };
 
     // Find extra reservations from OTHER cotistas on this boat that this client could contest
-    const now = new Date();
+    const nowMs = Date.now();
     const contestable: any[] = [];
 
     for (const r of dbData.reservations) {
@@ -779,20 +844,21 @@ clientRoutes.get("/weekend-info", requireClientAuth, async (req, res) => {
       const rDate = new Date(r.data + "T12:00:00Z");
       if (rDate.getUTCMonth() !== m || rDate.getUTCFullYear() !== y) continue;
 
-      // 48h check
-      const resDateTime = new Date(r.data + "T00:00:00");
-      const hoursUntil = (resDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-      if (hoursUntil <= 48) continue;
-
-      // Check if the current client still has their guaranteed day available
-      const dow = rDate.getUTCDay();
-      if (dow === 6 && usage.saturdayUsed) continue;
-      if (dow === 0 && usage.sundayUsed) continue;
+      const contestEval = canClientContestExtraReservation({
+        userId,
+        embarcacaoId: String(embarcacaoId),
+        targetReservation: r,
+        reservations: dbData.reservations,
+        boat,
+        todayStr,
+        nowMs
+      });
+      if (!contestEval.canContest) continue;
 
       contestable.push({
         id: r.id,
         data: r.data,
-        dayOfWeek: dow
+        dayOfWeek: rDate.getUTCDay()
       });
     }
 
@@ -834,41 +900,26 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
       return res.status(400).json({ error: true, message: "Esta embarcação está em manutenção. Não é possível contestar reservas no momento." });
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    const activeReservations = dbData.reservations.filter((r: any) =>
-      r.clienteId === userId && r.embarcacaoId === embarcacaoId && r.status !== 'cancelado' && r.data >= todayStr
-    );
-    if (activeReservations.length >= 2) {
-      return res.status(400).json({ error: true, message: "Você atingiu o limite máximo de 2 reservas ativas simultâneas para esta embarcação." });
-    }
+    const rules = getBoatOperationRules(boat);
+    const todayStr = getTodayBrasilia();
 
     // Find the target reservation
     const targetRes = dbData.reservations.find((r: any) => r.id === reservaId);
-    if (!targetRes) return res.status(404).json({ error: true, message: "Reserva não encontrada." });
-    if (targetRes.status === 'cancelado') return res.status(400).json({ error: true, message: "Esta reserva já foi cancelada." });
-    if (targetRes.tipoReserva !== 'extra') return res.status(400).json({ error: true, message: "Apenas reservas EXTRAS podem ser contestadas." });
-    if (targetRes.clienteId === userId) return res.status(400).json({ error: true, message: "Você não pode contestar sua própria reserva." });
-    if (targetRes.embarcacaoId !== embarcacaoId) return res.status(400).json({ error: true, message: "Embarcação não confere." });
-
-    // 48-hour deadline check
-    const nowMs = Date.now();
-    const resDateMs = getBrasiliaDateMs(targetRes.data);
-    const hoursUntil = (resDateMs - nowMs) / (1000 * 60 * 60);
-    if (hoursUntil <= 48) {
-      return res.status(400).json({ error: true, message: "Esta reserva não pode mais ser contestada pois está a menos de 48 horas da data." });
+    const contestEval = canClientContestExtraReservation({
+      userId,
+      embarcacaoId,
+      targetReservation: targetRes,
+      reservations: dbData.reservations,
+      boat,
+      todayStr
+    });
+    if (!contestEval.canContest) {
+      const status = !targetRes ? 404 : 400;
+      return res.status(status).json({ error: true, message: contestEval.reason || "Não é possível contestar esta reserva." });
     }
 
-    // Check if the contesting client already used their guaranteed day this month
     const reqDateObj = new Date(targetRes.data + "T12:00:00Z");
     const reqDayOfWeek = reqDateObj.getUTCDay();
-    const reqMonth = reqDateObj.getUTCMonth();
-    const reqYear = reqDateObj.getUTCFullYear();
-
-    const tipo = calcTipoReserva(userId, embarcacaoId, reqDayOfWeek, reqMonth, reqYear, dbData.reservations);
-    if (tipo !== 'garantida') {
-      const dayName = reqDayOfWeek === 0 ? "domingo" : "sábado";
-      return res.status(400).json({ error: true, message: `Você já utilizou seu ${dayName} garantido neste mês. Não é possível contestar.` });
-    }
 
     // All checks passed — proceed with contestation in atomic transaction
     const currentPool = getDbPool();
@@ -878,6 +929,21 @@ clientRoutes.post("/contestar", requireClientAuth, sensitiveLimiter, async (req,
     let newRes: any;
     try {
       await conn.beginTransaction();
+
+      // Enforce active reservation limit atomically inside transaction
+      const [clientActiveRows]: any = await conn.query(
+        "SELECT id FROM Reservas WHERE clienteId = ? AND embarcacaoId = ? AND status != 'cancelado' AND data >= ? FOR UPDATE",
+        [userId, embarcacaoId, todayStr]
+      );
+      if ((clientActiveRows as any[]).length >= rules.maxReservasAtivas) {
+        await conn.rollback();
+        conn.release();
+        const limitMsg =
+          rules.maxReservasAtivas === 1
+            ? "Você já possui 1 reserva ativa para esta embarcação. Pela regra de operação, só é permitido ter 1 reserva ativa por vez."
+            : `Você atingiu o limite máximo de ${rules.maxReservasAtivas} reservas ativas simultâneas para esta embarcação.`;
+        return res.status(400).json({ error: true, message: limitMsg });
+      }
 
       // Lock target reservation
       const [targetLockRows]: any = await conn.query(

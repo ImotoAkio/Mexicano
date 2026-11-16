@@ -78,7 +78,7 @@ router.get("/cadastros-basicos", requireAdminAuth, async (req, res) => {
       fornecedores,
       centros
     ] = await Promise.all([
-      pool.query("SELECT id, nome, telefone, email, cpfCnpj, statusFinanceiro, embarcacaoId, embarcacoes FROM Clientes ORDER BY nome ASC"),
+      pool.query("SELECT id, nome, telefone, email, cpf, cpf AS cpfCnpj, statusFinanceiro, embarcacaoId, embarcacoes FROM Clientes ORDER BY nome ASC"),
       pool.query("SELECT id, nome, numero, modelo, tipo FROM Embarcacoes ORDER BY nome ASC"),
       getAllContasBancarias(),
       getAllPlanosDeContas(),

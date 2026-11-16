@@ -38,7 +38,7 @@ router.post("/boat-image", requireAdminAuth, upload.single('image'), async (req,
   try {
     if (!req.file) return res.status(400).json({ error: true, message: "No image file provided." });
     const filename = `boat_${Date.now()}.webp`;
-    const outBuf = await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+    const outBuf = await sharp(req.file.buffer).rotate().resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
 
     try {
       const publicUrl = await uploadToR2(outBuf, `boats/${filename}`, "image/webp");
@@ -67,7 +67,7 @@ router.post("/boat-document", requireAdminAuth, upload.single('document'), async
       filename = `doc_${Date.now()}_${Math.floor(Math.random()*1000)}.pdf`;
     } else {
       filename = `doc_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
-      outBuf = await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+      outBuf = await sharp(req.file.buffer).rotate().resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
       mime = "image/webp";
     }
 
@@ -91,21 +91,39 @@ router.post("/checklist-image", requireAdminAuth, upload.single('image'), async 
     if (!req.file) return res.status(400).json({ error: true, message: "No image file provided." });
     const filename = `chk_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
 
-    // Resize image and convert to webp buffer
     let outBuf: Buffer;
+    let outMime = "image/webp";
     try {
-      outBuf = await sharp(req.file.buffer).resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+      const meta = await sharp(req.file.buffer).metadata();
+      const isOptimizedClientWebp =
+        meta.format === 'webp' &&
+        (meta.width || 0) <= 1200 &&
+        (meta.height || 0) <= 1200 &&
+        (!meta.orientation || meta.orientation === 1) &&
+        req.file.buffer.length <= 350 * 1024;
+
+      if (isOptimizedClientWebp) {
+        outBuf = req.file.buffer;
+      } else {
+        outBuf = await sharp(req.file.buffer)
+          .rotate()
+          .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 80, effort: 4 })
+          .toBuffer();
+      }
     } catch (sharpErr) {
       console.warn("Sharp error, using raw buffer:", sharpErr);
       outBuf = req.file.buffer;
+      outMime = req.file.mimetype || "image/jpeg";
     }
 
     try {
-      const publicUrl = await uploadToR2(outBuf, `checklists/${filename}`, "image/webp");
+      const publicUrl = await uploadToR2(outBuf, `checklists/${filename}`, outMime);
       res.json({ success: true, imageUrl: publicUrl });
     } catch (r2Err) {
       console.error("R2 Upload Failed:", r2Err);
       // Fallback local
+      fs.mkdirSync(checklistUploadsDir, { recursive: true });
       fs.writeFileSync(path.join(checklistUploadsDir, filename), outBuf);
       res.json({ success: true, imageUrl: `/uploads/checklists/${filename}` });
     }
@@ -131,7 +149,7 @@ router.post("/comprovante", requireAdminAuth, upload.single('comprovante'), asyn
     
     if (isImage) {
       filename = `comp_${Date.now()}_${Math.floor(Math.random()*1000)}.webp`;
-      outBuf = await sharp(req.file.buffer).resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+      outBuf = await sharp(req.file.buffer).rotate().resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
       mime = "image/webp";
     } else {
       filename = `comp_${Date.now()}_${originalNameClean}`;

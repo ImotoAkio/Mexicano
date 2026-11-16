@@ -1011,7 +1011,7 @@ export default function AvisosSaidaPage({
                     className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs mb-1.5"
                   />
                   <div className="flex flex-wrap gap-1">
-                    {['Ilha do Maroto', 'Ilha do Rodeadouro', 'Ponte Presidente Dutra'].map(sug => (
+                    {['Ilha do Maroto', 'Ilha do Rodeadouro', 'Ponte Presidente Dutra', 'Orla (Petrolina / Juazeiro)'].map(sug => (
                       <button
                         key={sug}
                         type="button"

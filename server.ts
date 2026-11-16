@@ -226,8 +226,11 @@ if (!fs.existsSync(contratosAquisicaoUploadsDir)) fs.mkdirSync(contratosAquisica
 if (!fs.existsSync(contratosGestaoUploadsDir)) fs.mkdirSync(contratosGestaoUploadsDir, { recursive: true });
 
 app.use('/uploads', express.static(uploadsDir, {
-  setHeaders: (res, path) => {
-    if (/\.pdf$/i.test(path)) {
+  setHeaders: (res, filePath) => {
+    if (/\.(webp|jpe?g|png)$/i.test(filePath)) {
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+    if (/\.pdf$/i.test(filePath)) {
       // O visualizador nativo de PDF do navegador é bloqueado por CSP restritiva; PDFs não executam scripts da página.
       res.set('X-Content-Type-Options', 'nosniff');
       res.set('Content-Disposition', 'inline');
@@ -236,7 +239,7 @@ app.use('/uploads', express.static(uploadsDir, {
     // Bloqueia execução de scripts nos arquivos enviados pelo cliente (Prevenção de XSS)
     res.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline';");
     // Força download (attachment) de extensões perigosas que o navegador tentaria renderizar
-    if (path.match(/\.(html|htm|svg|xml|js|json|css)$/i)) {
+    if (filePath.match(/\.(html|htm|svg|xml|js|json|css)$/i)) {
       res.set('Content-Disposition', 'attachment');
       res.set('X-Content-Type-Options', 'nosniff');
     }

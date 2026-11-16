@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   X,
   Camera,
@@ -6,16 +6,14 @@ import {
   AlertCircle,
   Trash2,
   Eye,
-  Plus,
   ShieldCheck,
   FileText,
   AlertTriangle,
   RotateCcw,
-  ZoomIn,
-  ZoomOut,
   ChevronLeft,
   ChevronRight,
-  Image as ImageIcon
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { uploadPhotoToStorage } from '../../utils/checklistStorage';
 import { getBoatCode } from '../../utils/boatUtils';
@@ -34,12 +32,12 @@ import painelJet from '../../assets/images/checklist/jet/painel.webp';
 import portaObjetosJet from '../../assets/images/checklist/jet/porta-objetos.webp';
 import bauJet from '../../assets/images/checklist/jet/bau.webp';
 
-import proaLancha from '../../assets/images/checklist/lancha/proa.png';
-import popaLancha from '../../assets/images/checklist/lancha/popa.png';
-import esquerdaLancha from '../../assets/images/checklist/lancha/esquerda.png';
-import direitaLancha from '../../assets/images/checklist/lancha/direita.png';
-import painelLancha from '../../assets/images/checklist/lancha/painel.png';
-import cascoLancha from '../../assets/images/checklist/lancha/casco.png';
+import proaLancha from '../../assets/images/checklist/lancha/proa.webp';
+import popaLancha from '../../assets/images/checklist/lancha/popa.webp';
+import esquerdaLancha from '../../assets/images/checklist/lancha/esquerda.webp';
+import direitaLancha from '../../assets/images/checklist/lancha/direita.webp';
+import painelLancha from '../../assets/images/checklist/lancha/painel.webp';
+import cascoLancha from '../../assets/images/checklist/lancha/casco.webp';
 
 /* ──────────────────────────────────────────────
    TYPES
@@ -79,6 +77,15 @@ interface ChecklistCaptureModalProps {
   onSuccess: (data: ChecklistCaptureData) => Promise<void>;
 }
 
+type UploadStatus = 'uploading' | 'uploaded' | 'error';
+
+interface ExtraUploadItem {
+  id: string;
+  url: string;
+  status: UploadStatus;
+  file?: File | Blob;
+}
+
 /* ──────────────────────────────────────────────
    ANGLE DEFINITIONS
    ────────────────────────────────────────────── */
@@ -110,8 +117,8 @@ const ANGLES_LANCHA: ChecklistAngle[] = [
   { id: 'lat_esq_proa',      angleKey: 'lat_esq_proa',     name: 'Lat. Esquerda — Proa',      description: 'Costado bombordo seção da proa',                 required: true,  svgPath: esquerdaLancha },
   { id: 'lat_esq_popa',      angleKey: 'lat_esq_popa',     name: 'Lat. Esquerda — Popa',      description: 'Costado bombordo seção da popa',                 required: true,  svgPath: esquerdaLancha },
   // Lateral direita (boreste) — dividir proa/popa
-  { id: 'lat_dir_proa',      angleKey: 'lat_dir_proa',     name: 'Lat. Direita — Proa',       description: 'Costado boreste seção da proa',                  required: true,  svgPath: direitaLancha },
-  { id: 'lat_dir_popa',      angleKey: 'lat_dir_popa',     name: 'Lat. Direita — Popa',       description: 'Costado boreste seção da popa',                  required: true,  svgPath: direitaLancha },
+  { id: 'lat_dir_proa',      angleKey: 'lat_dir_proa',       name: 'Lat. Direita — Proa',       description: 'Costado boreste seção da proa',                  required: true,  svgPath: direitaLancha },
+  { id: 'lat_dir_popa',      angleKey: 'lat_dir_popa',       name: 'Lat. Direita — Popa',       description: 'Costado boreste seção da popa',                  required: true,  svgPath: direitaLancha },
   // Painel
   { id: 'painel',            angleKey: 'painel',            name: 'Painel de Comando',         description: 'Instrumentos, manetes, rádio e eletrônica',      required: true,  svgPath: painelLancha },
   // Casco
@@ -160,10 +167,12 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
   onSuccess
 }) => {
   const [fotos, setFotos] = useState<{ [angleKey: string]: string }>({});
-  const [fotosExtras, setFotosExtras] = useState<string[]>([]);
-  const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
-  const [uploadingExtra, setUploadingExtra] = useState(false);
+  const [angleStatus, setAngleStatus] = useState<Record<string, UploadStatus>>({});
+  const [failedAngleFiles, setFailedAngleFiles] = useState<Record<string, File | Blob>>({});
+  const [extraUploads, setExtraUploads] = useState<ExtraUploadItem[]>([]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [waitingForUploadsToFinish, setWaitingForUploadsToFinish] = useState(false);
 
   // Step wizard: 0 = fotos, 1 = segurança (lancha only), 2 = observações, 3 = revisão
   const [step, setStep] = useState(0);
@@ -173,7 +182,6 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
 
   // Preview modal state
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [previewZoom, setPreviewZoom] = useState(1);
   const [refGuideAngle, setRefGuideAngle] = useState<ChecklistAngle | null>(null);
 
   // Safety items (only used for lanchas)
@@ -192,6 +200,49 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
   const cameraInputRefs = useRef<{ [angleKey: string]: HTMLInputElement | null }>({});
   const thumbnailRefs = useRef<{ [idx: number]: HTMLButtonElement | null }>({});
   const extraCameraInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Refs para controle de ciclo de vida, blob URLs e race conditions
+  const isMountedRef = useRef(true);
+  const fotosRef = useRef<{ [angleKey: string]: string }>({});
+  const blobUrlsRef = useRef<Set<string>>(new Set());
+  const angleGenerationRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      blobUrlsRef.current.forEach((url) => {
+        try { URL.revokeObjectURL(url); } catch {}
+      });
+      blobUrlsRef.current.clear();
+    };
+  }, []);
+
+  const registerBlobUrl = useCallback((url: string) => {
+    if (url.startsWith('blob:')) {
+      blobUrlsRef.current.add(url);
+    }
+    return url;
+  }, []);
+
+  const revokeBlobUrl = useCallback((url?: string | null) => {
+    if (url && url.startsWith('blob:')) {
+      try { URL.revokeObjectURL(url); } catch {}
+      blobUrlsRef.current.delete(url);
+    }
+  }, []);
+
+  const revokeAllBlobs = useCallback(() => {
+    blobUrlsRef.current.forEach((url) => {
+      try { URL.revokeObjectURL(url); } catch {}
+    });
+    blobUrlsRef.current.clear();
+  }, []);
+
+  const fotosExtras = useMemo(
+    () => extraUploads.map((item) => item.url),
+    [extraUploads]
+  );
 
   const embarcacao = embarcacaoTarget || reservaTarget?.embarcacao || {};
   const isJetSki = /jet/i.test(embarcacao.tipo || embarcacao.nome || '');
@@ -222,16 +273,20 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
   }, [activeAngleIdx, isOpen, step]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      revokeAllBlobs();
+      return;
+    }
+
+    revokeAllBlobs();
+    angleGenerationRef.current = {};
 
     // Reset wizard e estados de navegação para o primeiro passo
     setStep(0);
     setActiveAngleIdx(0);
-    setUploadingAngle(null);
-    setUploadingExtra(false);
     setIsSubmitting(false);
+    setWaitingForUploadsToFinish(false);
     setPreviewImage(null);
-    setPreviewZoom(1);
     setRefGuideAngle(null);
 
     // Carrega fotos e dados específicos do tipo de checklist selecionado (descida, subida, avulso, etc.)
@@ -292,20 +347,85 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
       }
     }
 
+    const initialStatuses: Record<string, UploadStatus> = {};
+    Object.keys(initialFotos).forEach((key) => {
+      if (initialFotos[key]) initialStatuses[key] = 'uploaded';
+    });
+
+    fotosRef.current = initialFotos;
     setFotos(initialFotos);
-    setFotosExtras(initialFotosExtras);
+    setAngleStatus(initialStatuses);
+    setFailedAngleFiles({});
+    setExtraUploads(
+      initialFotosExtras.map((url, idx) => ({
+        id: `init_extra_${idx}_${Date.now()}`,
+        url,
+        status: 'uploaded',
+      }))
+    );
     setObservacoes(initialObs);
     setItensSeguranca(initialSafety);
-  }, [isOpen, tipo, reservaTarget?.id]);
-
-  if (!isOpen) return null;
+  }, [isOpen, tipo, reservaTarget?.id, revokeAllBlobs]);
 
   const totalRequired = angles.filter(a => a.required).length;
   const filledRequired = angles.filter(a => a.required && fotos[a.angleKey]).length;
   const isComplete = filledRequired >= totalRequired;
-  const progressPct = totalRequired > 0 ? (filledRequired / totalRequired) * 100 : 0;
 
-  const isUploadingBlob = Object.values(fotos).some(url => url.startsWith('blob:')) || fotosExtras.some(url => url.startsWith('blob:'));
+  const uploadingAnglesCount = Object.values(angleStatus).filter(s => s === 'uploading').length;
+  const uploadingExtrasCount = extraUploads.filter(item => item.status === 'uploading').length;
+  const uploadingCount = uploadingAnglesCount + uploadingExtrasCount;
+
+  const failedAngleKeys = Object.entries(angleStatus)
+    .filter(([, s]) => s === 'error')
+    .map(([k]) => k);
+  const failedExtras = extraUploads.filter(item => item.status === 'error');
+  const errorCount = failedAngleKeys.length + failedExtras.length;
+
+  const isUploadingBlob =
+    uploadingCount > 0 ||
+    Object.values(fotos).some(url => url.startsWith('blob:')) ||
+    fotosExtras.some(url => url.startsWith('blob:'));
+
+  const executeSubmit = useCallback(async () => {
+    if (!isComplete) {
+      alert(`Por favor, tire todas as ${totalRequired} fotos obrigatórias antes de finalizar.`);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await onSuccess({
+        tipo,
+        fotos: fotosRef.current,
+        fotosExtras,
+        itensSeguranca: isJetSki ? undefined : itensSeguranca,
+        observacoes,
+      });
+      onClose();
+    } catch (err: any) {
+      console.error('Erro ao salvar checklist:', err);
+      alert(err.message || 'Ocorreu um erro ao salvar o checklist.');
+    } finally {
+      if (isMountedRef.current) {
+        setIsSubmitting(false);
+        setWaitingForUploadsToFinish(false);
+      }
+    }
+  }, [isComplete, totalRequired, onSuccess, tipo, fotosExtras, isJetSki, itensSeguranca, observacoes, onClose]);
+
+  // Se o operador clicou em Concluir enquanto as últimas fotos subiam em 2º plano, finaliza assim que acabarem
+  useEffect(() => {
+    if (!waitingForUploadsToFinish) return;
+    if (errorCount > 0) {
+      setWaitingForUploadsToFinish(false);
+      return;
+    }
+    if (uploadingCount === 0 && !isUploadingBlob && !isSubmitting) {
+      executeSubmit();
+    }
+  }, [waitingForUploadsToFinish, uploadingCount, errorCount, isUploadingBlob, isSubmitting, executeSubmit]);
+
+  if (!isOpen) return null;
 
   const getTipoLabel = () => {
     switch (tipo) {
@@ -317,58 +437,193 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
     }
   };
 
-  /* ── HANDLERS ── */
+  /* ── UPLOAD RUNNERS (OPTIMISTIC + BACKGROUND QUEUE) ── */
 
-  const handleCaptureAngle = async (angleKey: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const startAngleUpload = async (angleKey: string, file: File | Blob, previewUrl: string, gen: number) => {
     try {
-      setUploadingAngle(angleKey);
-      const url = await uploadPhotoToStorage(file);
-      setFotos(prev => ({ ...prev, [angleKey]: url }));
-    } catch (err: any) {
-      console.error('Erro ao enviar foto:', err);
-      alert('Falha ao processar foto da câmera. Tente novamente.');
-    } finally {
-      setUploadingAngle(null);
-      if (cameraInputRefs.current[angleKey]) {
-        cameraInputRefs.current[angleKey]!.value = '';
+      const remoteUrl = await uploadPhotoToStorage(file);
+
+      if (!isMountedRef.current || angleGenerationRef.current[angleKey] !== gen) {
+        revokeBlobUrl(previewUrl);
+        return;
       }
+
+      const nextFotos = { ...fotosRef.current, [angleKey]: remoteUrl };
+      fotosRef.current = nextFotos;
+      setFotos(nextFotos);
+      setAngleStatus(prev => ({ ...prev, [angleKey]: 'uploaded' }));
+      setFailedAngleFiles(prev => {
+        if (!prev[angleKey]) return prev;
+        const next = { ...prev };
+        delete next[angleKey];
+        return next;
+      });
+      revokeBlobUrl(previewUrl);
+    } catch (err) {
+      console.error(`Erro ao enviar foto (${angleKey}):`, err);
+      if (!isMountedRef.current || angleGenerationRef.current[angleKey] !== gen) {
+        return;
+      }
+      setAngleStatus(prev => ({ ...prev, [angleKey]: 'error' }));
+      setFailedAngleFiles(prev => ({ ...prev, [angleKey]: file }));
     }
   };
 
-  const handleCaptureExtra = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const startExtraUpload = async (extraId: string, file: File | Blob, previewUrl: string) => {
+    try {
+      const remoteUrl = await uploadPhotoToStorage(file);
+      if (!isMountedRef.current) {
+        revokeBlobUrl(previewUrl);
+        return;
+      }
+
+      let found = false;
+      setExtraUploads(prev =>
+        prev.map(item => {
+          if (item.id !== extraId) return item;
+          found = true;
+          return { id: item.id, url: remoteUrl, status: 'uploaded' };
+        })
+      );
+      if (!found) {
+        revokeBlobUrl(previewUrl);
+      } else {
+        revokeBlobUrl(previewUrl);
+      }
+    } catch (err) {
+      console.error('Erro ao enviar foto extra:', err);
+      if (!isMountedRef.current) return;
+      setExtraUploads(prev =>
+        prev.map(item =>
+          item.id === extraId ? { ...item, status: 'error', file } : item
+        )
+      );
+    }
+  };
+
+  /* ── HANDLERS ── */
+
+  const findNextMissingAngleIdx = (updatedFotos: Record<string, string>, fromIdx: number) => {
+    for (let i = fromIdx + 1; i < angles.length; i++) {
+      if (!updatedFotos[angles[i].angleKey]) return i;
+    }
+    for (let i = 0; i < fromIdx; i++) {
+      if (!updatedFotos[angles[i].angleKey]) return i;
+    }
+    return -1;
+  };
+
+  const handleCaptureAngle = (angleKey: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
 
-    try {
-      setUploadingExtra(true);
-      const url = await uploadPhotoToStorage(file);
-      setFotosExtras(prev => [...prev, url]);
-    } catch (err: any) {
-      console.error('Erro ao enviar foto extra:', err);
-      alert('Falha ao processar foto extra.');
-    } finally {
-      setUploadingExtra(false);
-      if (extraCameraInputRef.current) {
-        extraCameraInputRef.current.value = '';
-      }
+    const prevUrl = fotosRef.current[angleKey];
+    if (prevUrl) revokeBlobUrl(prevUrl);
+
+    const previewUrl = registerBlobUrl(URL.createObjectURL(file));
+    const gen = (angleGenerationRef.current[angleKey] || 0) + 1;
+    angleGenerationRef.current[angleKey] = gen;
+
+    const nextFotos = { ...fotosRef.current, [angleKey]: previewUrl };
+    fotosRef.current = nextFotos;
+    setFotos(nextFotos);
+    setAngleStatus(prev => ({ ...prev, [angleKey]: 'uploading' }));
+    setFailedAngleFiles(prev => {
+      if (!prev[angleKey]) return prev;
+      const next = { ...prev };
+      delete next[angleKey];
+      return next;
+    });
+
+    // Auto-avanço imediato para o próximo ângulo pendente
+    const nextIdx = findNextMissingAngleIdx(nextFotos, activeAngleIdx);
+    if (nextIdx !== -1) {
+      setActiveAngleIdx(nextIdx);
     }
+
+    // Envio em segundo plano (não bloqueia a UI nem o operador)
+    void startAngleUpload(angleKey, file, previewUrl, gen);
+  };
+
+  const handleRetryAngle = (angleKey: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const file = failedAngleFiles[angleKey];
+    const previewUrl = fotosRef.current[angleKey];
+    if (!file || !previewUrl) return;
+
+    const gen = (angleGenerationRef.current[angleKey] || 0) + 1;
+    angleGenerationRef.current[angleKey] = gen;
+
+    setAngleStatus(prev => ({ ...prev, [angleKey]: 'uploading' }));
+    void startAngleUpload(angleKey, file, previewUrl, gen);
+  };
+
+  const handleCaptureExtra = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const previewUrl = registerBlobUrl(URL.createObjectURL(file));
+    const extraId = `extra_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    setExtraUploads(prev => [
+      ...prev,
+      { id: extraId, url: previewUrl, status: 'uploading', file },
+    ]);
+
+    void startExtraUpload(extraId, file, previewUrl);
+  };
+
+  const handleRetryExtra = (extraId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const target = extraUploads.find(item => item.id === extraId);
+    if (!target || !target.file) return;
+
+    setExtraUploads(prev =>
+      prev.map(item => (item.id === extraId ? { ...item, status: 'uploading' } : item))
+    );
+    void startExtraUpload(extraId, target.file, target.url);
+  };
+
+  const handleRetryAllFailed = () => {
+    failedAngleKeys.forEach((key) => handleRetryAngle(key));
+    failedExtras.forEach((item) => handleRetryExtra(item.id));
   };
 
   const handleDeleteAnglePhoto = (angleKey: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setFotos(prev => {
+    const gen = (angleGenerationRef.current[angleKey] || 0) + 1;
+    angleGenerationRef.current[angleKey] = gen;
+
+    const prevUrl = fotosRef.current[angleKey];
+    if (prevUrl) revokeBlobUrl(prevUrl);
+
+    const nextFotos = { ...fotosRef.current };
+    delete nextFotos[angleKey];
+    fotosRef.current = nextFotos;
+    setFotos(nextFotos);
+
+    setAngleStatus(prev => {
+      const next = { ...prev };
+      delete next[angleKey];
+      return next;
+    });
+    setFailedAngleFiles(prev => {
+      if (!prev[angleKey]) return prev;
       const next = { ...prev };
       delete next[angleKey];
       return next;
     });
   };
 
-  const handleDeleteExtraPhoto = (index: number, e: React.MouseEvent) => {
+  const handleDeleteExtraPhoto = (extraId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setFotosExtras(prev => prev.filter((_, idx) => idx !== index));
+    setExtraUploads(prev => {
+      const item = prev.find(x => x.id === extraId);
+      if (item) revokeBlobUrl(item.url);
+      return prev.filter(x => x.id !== extraId);
+    });
   };
 
   const handleSubmit = async () => {
@@ -377,22 +632,18 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-      await onSuccess({
-        tipo,
-        fotos,
-        fotosExtras,
-        itensSeguranca: isJetSki ? undefined : itensSeguranca,
-        observacoes,
-      });
-      onClose();
-    } catch (err: any) {
-      console.error('Erro ao salvar checklist:', err);
-      alert(err.message || 'Ocorreu um erro ao salvar o checklist.');
-    } finally {
-      setIsSubmitting(false);
+    if (errorCount > 0) {
+      handleRetryAllFailed();
+      setWaitingForUploadsToFinish(true);
+      return;
     }
+
+    if (uploadingCount > 0 || isUploadingBlob) {
+      setWaitingForUploadsToFinish(true);
+      return;
+    }
+
+    await executeSubmit();
   };
 
   const typeInfo = getTipoLabel();
@@ -406,6 +657,8 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
     : ['Fotos', 'Segurança', 'Observações', 'Revisão'];
 
   const activeAngle = angles[activeAngleIdx];
+  const activePhotoUrl = fotos[activeAngle.angleKey];
+  const activeStatus = angleStatus[activeAngle.angleKey] || (activePhotoUrl ? 'uploaded' : undefined);
   const totalPhotos = Object.keys(fotos).length;
 
   const canAdvanceFromPhotos = isComplete;
@@ -490,6 +743,36 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
             </button>
           ))}
         </div>
+
+        {/* Background Upload Progress / Failure Banner */}
+        {(errorCount > 0 || uploadingCount > 0) && (
+          <div className={`px-4 py-1.5 flex items-center justify-between gap-2 text-xs font-bold border-t ${
+            errorCount > 0
+              ? 'bg-rose-50 text-rose-700 border-rose-200'
+              : 'bg-blue-50 text-blue-700 border-blue-100'
+          }`}>
+            {errorCount > 0 ? (
+              <>
+                <span className="flex items-center gap-1.5 truncate">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{errorCount} foto(s) falharam ao enviar</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRetryAllFailed}
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-extrabold flex items-center gap-1 shrink-0 active:scale-95 transition cursor-pointer"
+                >
+                  <RefreshCw className="w-3 h-3" /> Reenviar
+                </button>
+              </>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 shrink-0" />
+                <span>Enviando {uploadingCount} foto(s) em 2º plano — pode continuar fotografando</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ═══════ MAIN CONTENT AREA ═══════ */}
@@ -505,13 +788,18 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                 {/* Reference image or capture area */}
                 <div
                   className={`relative flex-1 min-h-[280px] rounded-2xl overflow-hidden border-2 transition-all ${
-                    fotos[activeAngle.angleKey]
-                      ? 'border-emerald-400 bg-emerald-50'
+                    activePhotoUrl
+                      ? activeStatus === 'error'
+                        ? 'border-rose-400 bg-rose-50'
+                        : activeStatus === 'uploading'
+                        ? 'border-blue-400 bg-blue-50'
+                        : 'border-emerald-400 bg-emerald-50'
                       : 'border-dashed border-slate-300 bg-slate-50'
                   }`}
                 >
                   {/* Câmera Direta (capture="environment" para abrir exclusivamente a câmera) */}
                   <input
+                    key={activeAngle.angleKey}
                     type="file"
                     accept="image/*"
                     capture="environment"
@@ -520,11 +808,11 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                     onChange={(e) => handleCaptureAngle(activeAngle.angleKey, e)}
                   />
 
-                  {fotos[activeAngle.angleKey] ? (
-                    /* ── Photo captured ── */
+                  {activePhotoUrl ? (
+                    /* ── Photo captured (Optimistic Instant Preview) ── */
                     <>
                       <img
-                        src={fotos[activeAngle.angleKey]}
+                        src={activePhotoUrl}
                         alt={activeAngle.name}
                         className="w-full h-full object-cover absolute inset-0"
                       />
@@ -532,29 +820,50 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
 
                       {/* Status badge */}
                       <div className="absolute top-3 left-3">
-                        <span className="bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
-                          <CheckCircle2 className="w-4 h-4" /> Foto capturada
-                        </span>
+                        {activeStatus === 'uploading' ? (
+                          <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
+                            <Loader2 className="w-4 h-4 animate-spin" /> Enviando em 2º plano...
+                          </span>
+                        ) : activeStatus === 'error' ? (
+                          <span className="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
+                            <AlertCircle className="w-4 h-4" /> Falha no envio
+                          </span>
+                        ) : (
+                          <span className="bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
+                            <CheckCircle2 className="w-4 h-4" /> Foto salva
+                          </span>
+                        )}
                       </div>
 
                       {/* Action buttons */}
                       <div className="absolute bottom-3 left-3 right-3 flex gap-2">
                         <button
                           type="button"
-                          onClick={() => setPreviewImage(fotos[activeAngle.angleKey])}
+                          onClick={() => setPreviewImage(activePhotoUrl)}
                           className="py-2.5 px-3 bg-white/95 text-slate-800 rounded-xl font-bold text-xs flex items-center justify-center gap-1 shadow-md active:scale-[0.97] transition backdrop-blur-sm cursor-pointer"
                         >
                           <Eye className="w-4 h-4" />
                           <span>Ver</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
-                          className="flex-1 py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-[0.97] transition cursor-pointer"
-                        >
-                          <Camera className="w-4 h-4" />
-                          <span>Nova Foto</span>
-                        </button>
+                        {activeStatus === 'error' && failedAngleFiles[activeAngle.angleKey] ? (
+                          <button
+                            type="button"
+                            onClick={(e) => handleRetryAngle(activeAngle.angleKey, e)}
+                            className="flex-1 py-2.5 px-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-[0.97] transition cursor-pointer"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            <span>Reenviar Foto</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
+                            className="flex-1 py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-[0.97] transition cursor-pointer"
+                          >
+                            <Camera className="w-4 h-4" />
+                            <span>Nova Foto</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => handleDeleteAnglePhoto(activeAngle.angleKey, e)}
@@ -565,13 +874,6 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                         </button>
                       </div>
                     </>
-                  ) : uploadingAngle === activeAngle.angleKey ? (
-                    /* ── Uploading ── */
-                    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 absolute inset-0 bg-white/95">
-                      <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-base font-bold text-blue-600">Otimizando e salvando foto...</span>
-                      <p className="text-xs text-slate-400">Reduzindo uso de memória RAM</p>
-                    </div>
                   ) : (
                     /* ── Empty — tap to capture ── */
                     <div
@@ -601,7 +903,7 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                         )}
                       </div>
 
-                      {/* Main reference image display (crisp & clear, no opacity-50) */}
+                      {/* Main reference image display */}
                       <div className="flex-1 w-full flex items-center justify-center p-2 relative my-1">
                         {activeAngle.svgPath ? (
                           <img
@@ -664,7 +966,9 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
             <div className="border-t border-slate-100 bg-white px-2 py-3 shrink-0">
               <div className="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-none">
                 {angles.map((angle, idx) => {
-                  const hasPhoto = !!fotos[angle.angleKey];
+                  const photoUrl = fotos[angle.angleKey];
+                  const hasPhoto = !!photoUrl;
+                  const status = angleStatus[angle.angleKey] || (hasPhoto ? 'uploaded' : undefined);
                   const isActive = idx === activeAngleIdx;
 
                   return (
@@ -675,6 +979,10 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                       className={`shrink-0 snap-center w-16 h-16 rounded-xl overflow-hidden border-2 transition-all active:scale-95 relative ${
                         isActive
                           ? 'border-blue-600 shadow-md shadow-blue-200'
+                          : status === 'error'
+                          ? 'border-rose-500'
+                          : status === 'uploading'
+                          ? 'border-blue-400'
                           : hasPhoto
                           ? 'border-emerald-400'
                           : 'border-slate-200'
@@ -682,9 +990,19 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                     >
                       {hasPhoto ? (
                         <>
-                          <img src={fotos[angle.angleKey]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                          <img src={photoUrl} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                           <div className="absolute top-0.5 right-0.5">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-500 drop-shadow" />
+                            {status === 'uploading' ? (
+                              <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
+                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                              </span>
+                            ) : status === 'error' ? (
+                              <span className="w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow">
+                                <AlertCircle className="w-3 h-3" />
+                              </span>
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 drop-shadow bg-white rounded-full" />
+                            )}
                           </div>
                         </>
                       ) : (
@@ -709,20 +1027,18 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                   <button
                     type="button"
                     onClick={() => extraCameraInputRef.current?.click()}
-                    disabled={uploadingExtra}
                     title="Tirar foto extra com a câmera"
-                    className="w-16 h-16 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100/60 flex flex-col items-center justify-center gap-0.5 active:scale-95 transition cursor-pointer"
+                    className="w-16 h-16 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100/60 flex flex-col items-center justify-center gap-0.5 active:scale-95 transition cursor-pointer relative"
                   >
-                    {uploadingExtra ? (
-                      <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Camera className="w-4 h-4 text-amber-600" />
-                        <span className="text-[8px] font-bold text-amber-700 uppercase">+ Foto Extra</span>
-                        {fotosExtras.length > 0 && (
-                          <span className="text-[8px] font-bold text-amber-800">{fotosExtras.length}</span>
-                        )}
-                      </>
+                    <Camera className="w-4 h-4 text-amber-600" />
+                    <span className="text-[8px] font-bold text-amber-700 uppercase">+ Extra</span>
+                    {extraUploads.length > 0 && (
+                      <span className="text-[9px] font-black text-amber-800">{extraUploads.length}</span>
+                    )}
+                    {uploadingExtrasCount > 0 && (
+                      <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                      </span>
                     )}
                   </button>
                 </div>
@@ -749,29 +1065,18 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                 <ChevronLeft className="w-7 h-7" />
               </button>
 
-              {!fotos[activeAngle.angleKey] ? (
+              {!activePhotoUrl ? (
                 /* SEM FOTO NO ÂNGULO ATUAL: Botão direto para câmera */
                 <button
                   type="button"
                   onClick={() => cameraInputRefs.current[activeAngle.angleKey]?.click()}
-                  disabled={uploadingAngle === activeAngle.angleKey}
-                  className="flex-1 h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer disabled:opacity-50"
+                  className="flex-1 h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer"
                 >
                   <Camera className="w-5 h-5" />
                   <span>Tirar Foto</span>
                 </button>
-              ) : activeAngleIdx < angles.length - 1 ? (
-                /* COM FOTO NO ÂNGULO ATUAL: Botão inteligente passa para o próximo ângulo */
-                <button
-                  type="button"
-                  onClick={() => setActiveAngleIdx(activeAngleIdx + 1)}
-                  className="flex-1 h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer"
-                >
-                  <span>Próximo Ângulo</span>
-                  <ChevronRight className="w-5 h-5" />
-                </button>
               ) : canAdvanceFromPhotos ? (
-                /* COM FOTO NO ÚLTIMO ÂNGULO E TODAS OBRIGATÓRIAS CONCLUÍDAS: Avança para o próximo step */
+                /* TODAS OBRIGATÓRIAS CAPTURADAS: Avança direto para o próximo step */
                 <button
                   type="button"
                   onClick={handleNextStep}
@@ -780,8 +1085,21 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                   <span>Avançar</span>
                   <ChevronRight className="w-5 h-5" />
                 </button>
+              ) : activeAngleIdx < angles.length - 1 ? (
+                /* COM FOTO NO ÂNGULO ATUAL: Botão passa para o próximo ângulo */
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMissing = findNextMissingAngleIdx(fotos, activeAngleIdx);
+                    setActiveAngleIdx(nextMissing !== -1 ? nextMissing : activeAngleIdx + 1);
+                  }}
+                  className="flex-1 h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-md cursor-pointer"
+                >
+                  <span>Próximo Ângulo</span>
+                  <ChevronRight className="w-5 h-5" />
+                </button>
               ) : (
-                /* COM FOTO NO ÚLTIMO ÂNGULO MAS FALTA ALGUM OBRIGATÓRIO: Redireciona para o primeiro pendente */
+                /* ÚLTIMO ÂNGULO MAS FALTA ALGUM OBRIGATÓRIO: Redireciona para o primeiro pendente */
                 <button
                   type="button"
                   onClick={() => {
@@ -907,7 +1225,7 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                  Fotos Extras ({fotosExtras.length})
+                  Fotos Extras ({extraUploads.length})
                 </label>
                 <button
                   type="button"
@@ -918,15 +1236,41 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                 </button>
               </div>
 
-              {fotosExtras.length > 0 ? (
+              {extraUploads.length > 0 ? (
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {fotosExtras.map((url, idx) => (
-                    <div key={idx} className="shrink-0 w-20 h-20 rounded-xl overflow-hidden border border-slate-200 relative group cursor-pointer" onClick={() => setPreviewImage(url)}>
-                      <img src={url} alt="" className="w-full h-full object-cover" />
+                  {extraUploads.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 relative group cursor-pointer ${
+                        item.status === 'error'
+                          ? 'border-rose-500'
+                          : item.status === 'uploading'
+                          ? 'border-blue-400'
+                          : 'border-slate-200'
+                      }`}
+                      onClick={() => setPreviewImage(item.url)}
+                    >
+                      <img src={item.url} alt="" className="w-full h-full object-cover" />
+                      {item.status === 'uploading' && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                          <Loader2 className="w-5 h-5 text-white animate-spin" />
+                        </div>
+                      )}
+                      {item.status === 'error' && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleRetryExtra(item.id, e)}
+                          title="Reenviar foto extra"
+                          className="absolute inset-0 bg-rose-900/70 text-white flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold cursor-pointer"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          <span>Reenviar</span>
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={(e) => handleDeleteExtraPhoto(idx, e)}
-                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 group-active:opacity-100 transition shadow cursor-pointer"
+                        onClick={(e) => handleDeleteExtraPhoto(item.id, e)}
+                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full shadow cursor-pointer"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -944,11 +1288,16 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
         {step === STEP_REVIEW && (
           <div className="px-4 py-5 space-y-5">
             <div className="text-center mb-2">
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 ${isComplete ? 'bg-emerald-50' : 'bg-amber-50'}`}>
-                {isComplete
-                  ? <CheckCircle2 className="w-8 h-8 text-emerald-600" />
-                  : <AlertCircle className="w-8 h-8 text-amber-600" />
-                }
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 ${
+                errorCount > 0 ? 'bg-rose-50' : isComplete ? 'bg-emerald-50' : 'bg-amber-50'
+              }`}>
+                {errorCount > 0 ? (
+                  <AlertCircle className="w-8 h-8 text-rose-600" />
+                ) : isComplete ? (
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="w-8 h-8 text-amber-600" />
+                )}
               </div>
               <h2 className="text-xl font-extrabold text-slate-900">Revisão Final</h2>
               <p className="text-sm text-slate-500 mt-1">{typeInfo.label} — {embarcacao.nome || 'Embarcação'}</p>
@@ -966,21 +1315,56 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {angles.map((angle, idx) => {
-                  const hasPhoto = !!fotos[angle.angleKey];
+                  const photoUrl = fotos[angle.angleKey];
+                  const hasPhoto = !!photoUrl;
+                  const status = angleStatus[angle.angleKey] || (hasPhoto ? 'uploaded' : undefined);
+
                   return (
                     <button
                       key={angle.id}
-                      onClick={() => hasPhoto ? setPreviewImage(fotos[angle.angleKey]) : goToAngle(idx)}
+                      type="button"
+                      onClick={() => {
+                        if (status === 'error' && failedAngleFiles[angle.angleKey]) {
+                          handleRetryAngle(angle.angleKey);
+                        } else if (hasPhoto) {
+                          setPreviewImage(photoUrl);
+                        } else {
+                          goToAngle(idx);
+                        }
+                      }}
                       className={`aspect-square rounded-xl overflow-hidden border-2 relative transition active:scale-95 ${
-                        hasPhoto ? 'border-emerald-400' : angle.required ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'
+                        status === 'error'
+                          ? 'border-rose-500 bg-rose-50'
+                          : status === 'uploading'
+                          ? 'border-blue-400'
+                          : hasPhoto
+                          ? 'border-emerald-400'
+                          : angle.required
+                          ? 'border-red-300 bg-red-50'
+                          : 'border-slate-200 bg-slate-50'
                       }`}
                     >
                       {hasPhoto ? (
                         <>
-                          <img src={fotos[angle.angleKey]} alt="" className="w-full h-full object-cover" />
+                          <img src={photoUrl} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                           <div className="absolute top-1 right-1">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-500 drop-shadow" />
+                            {status === 'uploading' ? (
+                              <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              </span>
+                            ) : status === 'error' ? (
+                              <span className="w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center shadow">
+                                <RotateCcw className="w-3 h-3" />
+                              </span>
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 drop-shadow bg-white rounded-full" />
+                            )}
                           </div>
+                          {status === 'error' && (
+                            <div className="absolute inset-x-0 bottom-0 bg-rose-600/90 text-white text-[9px] font-extrabold py-0.5 text-center">
+                              Toque p/ reenviar
+                            </div>
+                          )}
                         </>
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center p-1">
@@ -994,6 +1378,38 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
                 })}
               </div>
             </div>
+
+            {/* Extra photos summary in review if any */}
+            {extraUploads.length > 0 && (
+              <div className="bg-amber-50/70 rounded-2xl p-3.5 border border-amber-200">
+                <span className="text-xs font-bold text-amber-800 uppercase tracking-wider block mb-2">
+                  Fotos Extras ({extraUploads.length})
+                </span>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {extraUploads.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => item.status === 'error' ? handleRetryExtra(item.id) : setPreviewImage(item.url)}
+                      className={`shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 relative cursor-pointer ${
+                        item.status === 'error' ? 'border-rose-500' : item.status === 'uploading' ? 'border-blue-400' : 'border-emerald-400'
+                      }`}
+                    >
+                      <img src={item.url} alt="" className="w-full h-full object-cover" />
+                      {item.status === 'uploading' && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                          <Loader2 className="w-4 h-4 text-white animate-spin" />
+                        </div>
+                      )}
+                      {item.status === 'error' && (
+                        <div className="absolute inset-0 bg-rose-700/80 text-white flex items-center justify-center">
+                          <RotateCcw className="w-4 h-4" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Safety summary (lanchas) */}
             {!isJetSki && (
@@ -1035,44 +1451,57 @@ export const ChecklistCaptureModal: React.FC<ChecklistCaptureModalProps> = ({
       {step !== STEP_FOTOS && (
         <div className="border-t border-slate-100 bg-white p-4 shrink-0">
           {step === STEP_REVIEW ? (
-            /* Final submit */
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!isComplete || isSubmitting || isUploadingBlob}
-              className={`w-full h-14 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition active:scale-[0.98] ${
-                isComplete && !isUploadingBlob
-                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200'
-                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Gravando...
-                </>
-              ) : isUploadingBlob ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-                  Aguarde o envio das fotos...
-                </>
-              ) : isComplete ? (
-                <>
-                  <CheckCircle2 className="w-6 h-6" />
-                  Concluir e Salvar Checklist
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="w-5 h-5" />
-                  Faltam {totalRequired - filledRequired} fotos obrigatórias
-                </>
-              )}
-            </button>
+            errorCount > 0 ? (
+              <button
+                type="button"
+                onClick={handleRetryAllFailed}
+                className="w-full h-14 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-200 cursor-pointer"
+              >
+                <RotateCcw className="w-5 h-5" />
+                Reenviar {errorCount} foto(s) com falha
+              </button>
+            ) : (
+              /* Final submit */
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!isComplete || isSubmitting || waitingForUploadsToFinish}
+                className={`w-full h-14 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition active:scale-[0.98] ${
+                  isComplete && !isSubmitting && !waitingForUploadsToFinish
+                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 cursor-pointer'
+                    : isComplete && (isSubmitting || waitingForUploadsToFinish)
+                    ? 'bg-emerald-600 text-white opacity-90 cursor-wait'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Gravando...
+                  </>
+                ) : waitingForUploadsToFinish ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Finalizando envio de {uploadingCount || 1} foto(s)...
+                  </>
+                ) : isComplete ? (
+                  <>
+                    <CheckCircle2 className="w-6 h-6" />
+                    Concluir e Salvar Checklist
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5" />
+                    Faltam {totalRequired - filledRequired} fotos obrigatórias
+                  </>
+                )}
+              </button>
+            )
           ) : (
             /* Next step */
             <button
               onClick={handleNextStep}
-              className="w-full h-14 rounded-2xl bg-blue-600 text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-sm"
+              className="w-full h-14 rounded-2xl bg-blue-600 text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.97] transition shadow-sm cursor-pointer"
             >
               Continuar <ChevronRight className="w-5 h-5" />
             </button>

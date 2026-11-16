@@ -22,6 +22,7 @@ import SettingsPage from './SettingsPage';
 import PlanoNavegacaoModal from './PlanoNavegacaoModal';
 import { getFuelInventory, consumeFuelForEmbarcacao } from '../utils/fuelInventory';
 import { getFuelPrice } from '../utils/constants';
+import { uploadPhotoToStorage } from '../utils/checklistStorage';
 import refFrente from '../assets/images/checklist/frente.png';
 import refTras from '../assets/images/checklist/tras.png';
 import refEsquerda from '../assets/images/checklist/esquerda.png';
@@ -489,19 +490,8 @@ export default function MarinaDashboard({ onLogout, operadorNome }: MarinaDashbo
 
     setUploadingAngle(angleId);
     try {
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const res = await fetch('/api/upload/checklist-image', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
-        body: formData
-      });
-
-      const json = await res.json();
-      if (!json.success) throw new Error(json.message);
-
-      setChecklistFotos(prev => ({ ...prev, [angleId]: [...(prev[angleId] || []), json.imageUrl] }));
+      const imageUrl = await uploadPhotoToStorage(file);
+      setChecklistFotos(prev => ({ ...prev, [angleId]: [...(prev[angleId] || []), imageUrl] }));
     } catch (err) {
       alert('Erro ao fazer upload da foto.');
     } finally {

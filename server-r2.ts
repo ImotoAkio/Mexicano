@@ -26,6 +26,8 @@ export const isR2Configured = (): boolean =>
 export interface UploadToR2Options {
   /** Ex.: `inline; filename="contrato.pdf"` — controla visualização/download no navegador. */
   contentDisposition?: string;
+  /** Política de cache no CDN/navegador (padrão: 1 ano imutável). */
+  cacheControl?: string;
   /** Metadados livres gravados junto ao objeto (somente ASCII). */
   metadata?: Record<string, string>;
 }
@@ -45,6 +47,7 @@ export const uploadToR2 = async (
     Key: filename,
     Body: buffer,
     ContentType: mimeType,
+    CacheControl: options.cacheControl || "public, max-age=31536000, immutable",
     ...(options.contentDisposition ? { ContentDisposition: options.contentDisposition } : {}),
     ...(options.metadata ? { Metadata: options.metadata } : {}),
   };

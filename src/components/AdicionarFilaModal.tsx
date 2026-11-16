@@ -20,7 +20,8 @@ interface AdicionarFilaModalProps {
 const DESTINO_SUGESTOES = [
   'Ilha do Maroto',
   'Ilha do Rodeadouro',
-  'Ponte Presidente Dutra'
+  'Ponte Presidente Dutra',
+  'Orla (Petrolina / Juazeiro)'
 ];
 
 export default function AdicionarFilaModal({

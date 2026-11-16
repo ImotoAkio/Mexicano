@@ -10,6 +10,7 @@ import { getBoatCode, matchesBoatSearch } from '../utils/boatUtils';
 import { generateAdminReportPDF } from '../utils/pdfGenerator';
 import { ZoomableImage } from './ZoomableImage';
 import { logAction } from '../db';
+import { uploadPhotoToStorage } from '../utils/checklistStorage';
 
 const CHECKLIST_ANGLES = [
   { id: 'painel', label: 'Painel', icon: Ship },
@@ -326,21 +327,7 @@ export default function MarinaChecklistsView({ data, operadorNome, setData, relo
 
     setUploadingAngle(angleId);
     try {
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const res = await fetch('/api/upload/checklist-image', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: formData
-      });
-
-      if (!res.ok) throw new Error('Falha no upload');
-      const dataRes = await res.json();
-      const uploadedUrl = dataRes.imageUrl || dataRes.url;
-      if (!uploadedUrl) throw new Error('URL ausente');
+      const uploadedUrl = await uploadPhotoToStorage(file);
       
       setChecklistFotos(prev => ({
         ...prev,

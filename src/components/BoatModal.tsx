@@ -6,7 +6,10 @@ import {
   ShieldCheck, ShieldAlert, Calendar, AlertCircle, Clock, Flame, MessageSquare } from 'lucide-react';
 import { boatDB, clientDB, getAdminToken } from '../db';
 import { fetchWhatsAppGroups, getCachedWhatsAppGroups, findWhatsAppGroup, WhatsAppGroup } from '../utils/whatsappGroups';
-import { Embarcacao, Cliente } from '../types';
+import { Embarcacao, Cliente, RegrasOperacaoEmbarcacao } from '../types';
+import { getBoatCode } from '../utils/boatUtils';
+import { getBoatOperationRules, DEFAULT_FLEET_RULES, M62_DEFAULT_RULES, isBoatM62 } from '../utils/boatRules';
+import BoatOperationRulesEditor from './shared/BoatOperationRulesEditor';
 
 interface BoatModalProps {
   isOpen: boolean;
@@ -66,6 +69,8 @@ export default function BoatModal({
   const [validadeExtintor, setValidadeExtintor] = useState('');
   const [validadeTie, setValidadeTie] = useState('');
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [regrasOperacao, setRegrasOperacao] = useState<RegrasOperacaoEmbarcacao>(() => ({ ...DEFAULT_FLEET_RULES }));
+  const [hasEditedRules, setHasEditedRules] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const isMarinaGerente = userRole === 'marina_gerente' || lockEmpresa === 'MARINA';
@@ -161,6 +166,8 @@ export default function BoatModal({
         setValidadeSeguro(editingBoat.validadeSeguro || (editingBoat.acessorios as any)?.validadeSeguro || '');
         setValidadeExtintor(editingBoat.validadeExtintor || (editingBoat.acessorios as any)?.validadeExtintor || '');
         setEmpresas(editingBoat.empresas && editingBoat.empresas.length > 0 ? editingBoat.empresas : defaultEmps);
+        setRegrasOperacao(getBoatOperationRules(editingBoat));
+        setHasEditedRules(true);
         setIsAdvancedOpen(Boolean(mappedId || editingBoat.whatsappGroupId));
       } else {
         setTipo('lancha');
@@ -190,6 +197,8 @@ export default function BoatModal({
         setValidadeSeguro('');
         setValidadeExtintor('');
         setEmpresas(defaultEmps);
+        setRegrasOperacao({ ...DEFAULT_FLEET_RULES });
+        setHasEditedRules(false);
         setIsAdvancedOpen(false);
       }
 
@@ -207,6 +216,14 @@ export default function BoatModal({
       }
     }
   }, [isOpen, editingBoat, isMarinaGerente]);
+
+  useEffect(() => {
+    if (isOpen && !editingBoat && !hasEditedRules) {
+      if (isBoatM62({ nome, numero })) {
+        setRegrasOperacao({ ...M62_DEFAULT_RULES });
+      }
+    }
+  }, [isOpen, editingBoat, hasEditedRules, nome, numero]);
 
   const handleFetchGroups = async (notify = true) => {
     setIsFetchingGroups(true);
@@ -365,7 +382,12 @@ export default function BoatModal({
         validadeTie: validadeTie || undefined,
         validadeSeguro: validadeSeguro || undefined,
         validadeExtintor: validadeExtintor || undefined,
-        empresas: finalEmpresas
+        empresas: finalEmpresas,
+        regrasOperacao,
+        acessorios: {
+          ...(editingBoat?.acessorios || {}),
+          regrasOperacao
+        }
       };
 
       if (editingBoat) {
@@ -944,6 +966,17 @@ export default function BoatModal({
                   </label>
                 </div>
               </div>
+
+              {/* Regras de Operação & Reserva */}
+              <BoatOperationRulesEditor
+                value={regrasOperacao}
+                onChange={(next) => {
+                  setHasEditedRules(true);
+                  setRegrasOperacao(next);
+                }}
+                boatCode={numero ? getBoatCode({ nome, numero }) : nome || undefined}
+                compact={true}
+              />
             </div>
 
             {/* Coluna 3: Mídia & Vínculo de Empresa (3 cols) */}

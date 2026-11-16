@@ -913,7 +913,7 @@ export default function ClientCheckinModal({
 
                   <div>
                     <div className="flex flex-wrap gap-2 justify-center mb-4">
-                      {['Ilha da Amélia', 'Ilha do Rodeadouro', ' Dunas do Velho Chico', 'Orla de Petrolina', 'Orla de Juazeiro', 'Restaurante Flutuante'].map((sugestao) => (
+                      {['Ilha do Maroto', 'Ilha do Rodeadouro', 'Ponte Presidente Dutra', 'Orla (Petrolina / Juazeiro)'].map((sugestao) => (
                         <button
                           key={sugestao}
                           type="button"

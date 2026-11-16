@@ -15,6 +15,13 @@ import FeedbackForm from './FeedbackForm';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import { generateAvisoSaidaPDF } from '../utils/pdfGenerator';
 import { getBoatCode } from '../utils/boatUtils';
+import {
+  getBoatOperationRules,
+  evaluateWeekendBookingForClient,
+  evaluateDateRestrictionsForClient,
+  canClientContestExtraReservation,
+  formatBoatRulesSummaryBadges
+} from '../utils/boatRules';
 import { Chamado } from '../types';
 import { chamadoDB } from '../db';
 import InstallAppSheet from './pwa/InstallAppSheet';
@@ -1468,6 +1475,54 @@ export default function ClientDashboardPage({
       return;
     }
 
+    const activeBoatObj = boats.find(b => b.id === selectedCalendarBoatId) || boats[0] || null;
+    if (activeBoatObj) {
+      const boatRules = getBoatOperationRules(activeBoatObj);
+      const isMarinaOnly = Boolean(activeBoatObj.empresas && activeBoatObj.empresas.includes('MARINA') && !activeBoatObj.empresas.includes('VALE'));
+
+      const dateRestr = evaluateDateRestrictionsForClient({
+        dateStr: isoStr,
+        todayStr,
+        boat: activeBoatObj
+      });
+      if (!dateRestr.allowed) {
+        showToast('Data Indisponível', dateRestr.reason || 'Data bloqueada pelas regras da embarcação.', 'warning');
+        return;
+      }
+
+      if (!isMarinaOnly) {
+        const activeBoatRes = myReservations.filter(
+          r => r.embarcacaoId === activeBoatObj.id && r.data >= todayStr && r.status !== 'cancelado'
+        );
+        if (activeBoatRes.length >= boatRules.maxReservasAtivas) {
+          const datesText = activeBoatRes
+            .map(r => r.data.split('-').reverse().join('/'))
+            .join(', ');
+          const limitMsg = boatRules.maxReservasAtivas === 1
+            ? `A embarcação ${getBoatCode(activeBoatObj)} permite apenas 1 reserva ativa por vez. Você já possui reserva ativa para ${datesText}.`
+            : `Você atingiu o limite máximo de ${boatRules.maxReservasAtivas} reservas ativas simultâneas para ${getBoatCode(activeBoatObj)} (${datesText}).`;
+          showToast('Limite de Reserva Ativa', limitMsg, 'warning');
+          return;
+        }
+
+        const weekendEval = evaluateWeekendBookingForClient({
+          userId: client.id,
+          embarcacaoId: activeBoatObj.id,
+          dateStr: isoStr,
+          reservations: mergedReservations,
+          boat: activeBoatObj
+        });
+        if (weekendEval.isWeekend && !weekendEval.allowed) {
+          showToast(
+            'Limite de Fim de Semana',
+            weekendEval.blockedReason || 'Você já utilizou sua cota de fim de semana neste mês para esta embarcação.',
+            'warning'
+          );
+          return;
+        }
+      }
+    }
+
     setSelectedDate(isoStr);
     setIsReservationModalOpen(true);
   };
@@ -1485,10 +1540,16 @@ export default function ClientDashboardPage({
     // Find active boat selected for calendar view
     const activeBoat = boats.find(b => b.id === selectedCalendarBoatId) || boats[0] || null;
     const activeBoatId = activeBoat ? activeBoat.id : null;
+    const activeBoatRules = getBoatOperationRules(activeBoat);
+    const activeRuleBadges = formatBoatRulesSummaryBadges(activeBoat);
+    const isMarinaOnlyActiveBoatGlobal = Boolean(
+      activeBoat?.empresas && activeBoat.empresas.includes('MARINA') && !activeBoat.empresas.includes('VALE')
+    );
 
     // Filter reservations specifically for the active boat
     const myBoatReservations = myReservations.filter(r => !activeBoatId || r.embarcacaoId === activeBoatId);
     const occupiedBoatReservations = mergedReservations.filter(r => (!activeBoatId || r.embarcacaoId === activeBoatId) && r.status !== 'cancelado' && r.clienteId !== client.id);
+    const activeMyBoatFutureCount = myBoatReservations.filter(r => r.data >= todayStr && r.status !== 'cancelado').length;
 
     return (
       <div className="flex flex-col flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500 p-6 pt-0">
@@ -1667,6 +1728,26 @@ export default function ClientDashboardPage({
                     Plano Normal (Qua a Dom)
                   </span>
                 )}
+                {!isMarinaOnlyActiveBoatGlobal && (
+                  <>
+                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-semibold uppercase tracking-wider border ${
+                      activeMyBoatFutureCount >= activeBoatRules.maxReservasAtivas
+                        ? 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+                        : activeRuleBadges.isCustom
+                          ? 'bg-[#B69D74]/15 border-[#B69D74]/30 text-[#B69D74]'
+                          : 'bg-white/5 border-white/10 text-white/60'
+                    }`}>
+                      {activeRuleBadges.activeLimitLabel} ({activeMyBoatFutureCount}/{activeBoatRules.maxReservasAtivas})
+                    </span>
+                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-semibold uppercase tracking-wider border ${
+                      activeRuleBadges.isCustom
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                        : 'bg-white/5 border-white/10 text-white/60'
+                    }`}>
+                      {activeRuleBadges.weekendRuleLabel}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           );
@@ -1730,37 +1811,65 @@ export default function ClientDashboardPage({
 
               // Identificar possibilidade de contestação
               let contestableRes = null;
-              if (isOccupied && !hasMyReservation && !past && !isSpecialClosed) {
-                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                if (isWeekend && isOccupied.tipoReserva === 'extra') {
-                  const rDateObj = new Date(isoStr + "T00:00:00");
-                  const hoursUntil = (rDateObj.getTime() - Date.now()) / (1000 * 60 * 60);
+              if (isOccupied && !hasMyReservation && !past && !isSpecialClosed && !isMarinaOnlyActiveBoat && activeBoatId) {
+                const contestEval = canClientContestExtraReservation({
+                  userId: client.id,
+                  embarcacaoId: activeBoatId,
+                  targetReservation: isOccupied,
+                  reservations: mergedReservations,
+                  boat: activeBoat,
+                  todayStr
+                });
+                if (contestEval.canContest) {
+                  contestableRes = isOccupied;
+                }
+              }
 
-                  if (hoursUntil > 48) {
-                    const theMonth = dateObj.getMonth();
-                    const theYear = dateObj.getFullYear();
-                    const usedMyQuota = myBoatReservations.some(r => {
-                      if (r.status === 'cancelado') return false;
-                      const rr = new Date(r.data + "T12:00:00Z");
-                      return rr.getUTCMonth() === theMonth &&
-                             rr.getUTCFullYear() === theYear &&
-                             rr.getUTCDay() === dayOfWeek;
-                    });
-                    if (!usedMyQuota) {
-                      contestableRes = isOccupied;
-                    }
+              // Identificar bloqueios por regra operacional da embarcação
+              let isWeekendQuotaBlocked = false;
+              let isRuleDateBlocked = false;
+              let ruleBlockedReason = '';
+              if (!hasMyReservation && !isOccupied && !past && !isClosed && activeBoat && activeBoatId) {
+                const dateRestr = evaluateDateRestrictionsForClient({
+                  dateStr: isoStr,
+                  todayStr,
+                  boat: activeBoat
+                });
+                if (!dateRestr.allowed) {
+                  isRuleDateBlocked = true;
+                  ruleBlockedReason = dateRestr.reason || 'Data indisponível pelas regras da embarcação.';
+                } else if (!isMarinaOnlyActiveBoat) {
+                  const wkEval = evaluateWeekendBookingForClient({
+                    userId: client.id,
+                    embarcacaoId: activeBoatId,
+                    dateStr: isoStr,
+                    reservations: mergedReservations,
+                    boat: activeBoat
+                  });
+                  if (wkEval.isWeekend && !wkEval.allowed) {
+                    isWeekendQuotaBlocked = true;
+                    ruleBlockedReason = wkEval.blockedReason || 'Cota mensal de fim de semana já utilizada.';
                   }
                 }
               }
+              const isDayBlockedByRule = isRuleDateBlocked || isWeekendQuotaBlocked;
 
               return (
                 <button
                   key={idx}
-                  title={specialClosed ? `Marina Fechada: ${specialClosed.motivo || 'Fechamento Programado'}` : isWeeklyClosed ? 'Seg/Ter fora do plano (sujeito a taxa avulsa)' : undefined}
+                  title={
+                    specialClosed
+                      ? `Marina Fechada: ${specialClosed.motivo || 'Fechamento Programado'}`
+                      : isDayBlockedByRule
+                        ? ruleBlockedReason
+                        : isWeeklyClosed
+                          ? 'Seg/Ter fora do plano (sujeito a taxa avulsa)'
+                          : undefined
+                  }
                   onClick={() => openReservation(dateObj, isoStr, !!isOccupied, isClosed, contestableRes, specialClosed)}
                   className={`
                     relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all duration-300
-                    ${(past || (isOccupied && !contestableRes) || isClosed) ? 'opacity-30' : 'hover:scale-105 cursor-pointer shadow-lg'}
+                    ${(past || (isOccupied && !contestableRes) || isClosed) ? 'opacity-30' : isDayBlockedByRule ? 'opacity-45 cursor-not-allowed' : 'hover:scale-105 cursor-pointer shadow-lg'}
                     ${hasMyReservation
                       ? 'bg-[#B69D74]/20 border border-[#B69D74]/40 text-[#B69D74]'
                       : isSpecialClosed
@@ -1769,10 +1878,12 @@ export default function ClientDashboardPage({
                           ? 'bg-amber-500/10 border border-amber-500/30 text-amber-500 hover:bg-amber-500/20'
                           : isOccupied
                             ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
-                            : isWeeklyClosed
-                              ? 'bg-amber-500/[0.04] border border-dashed border-amber-500/30 hover:bg-amber-500/10 text-amber-200/80'
-                              : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
-                    ${isToday && !hasMyReservation && !isOccupied && !contestableRes ? 'ring-1 ring-white/20 bg-white/10 text-white' : ''}
+                            : isDayBlockedByRule
+                              ? 'bg-white/[0.015] border border-dashed border-rose-500/25 text-white/35'
+                              : isWeeklyClosed
+                                ? 'bg-amber-500/[0.04] border border-dashed border-amber-500/30 hover:bg-amber-500/10 text-amber-200/80'
+                                : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/70'}
+                    ${isToday && !hasMyReservation && !isOccupied && !contestableRes && !isDayBlockedByRule ? 'ring-1 ring-white/20 bg-white/10 text-white' : ''}
                   `}
                 >
                   <span className={`text-sm ${hasMyReservation || isOccupied || isSpecialClosed ? 'font-bold' : 'font-medium'}`}>
@@ -1784,6 +1895,11 @@ export default function ClientDashboardPage({
                       Fechado
                     </span>
                   )}
+                  {isWeekendQuotaBlocked && !hasMyReservation && !isSpecialClosed && (
+                    <span className="text-[7px] font-bold uppercase tracking-tighter text-rose-400/75 mt-0.5 line-clamp-1 px-0.5">
+                      Cota FDS
+                    </span>
+                  )}
                   {hasMyReservation && (
                     <div className={`w-1.5 h-1.5 rounded-full bg-[#B69D74] mt-1 shadow-[0_0_8px_rgba(182,157,116,0.8)] ${hasMyReservation.id === lastAddedResId ? 'animate-[ping_2s_ease-out_1,pulse_2s_infinite]' : ''}`} />
                   )}
@@ -1793,7 +1909,7 @@ export default function ClientDashboardPage({
                   {isOccupied && !contestableRes && !hasMyReservation && (
                     <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
                   )}
-                  {!hasMyReservation && !isOccupied && !past && !isClosed && (
+                  {!hasMyReservation && !isOccupied && !past && !isClosed && !isDayBlockedByRule && (
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                       <Plus className="w-5 h-5 text-white/50" />
                     </div>
@@ -1821,6 +1937,12 @@ export default function ClientDashboardPage({
               <span className="w-2.5 h-2.5 rounded-full border border-dashed border-amber-400/60 shrink-0" />
               <span>Seg/Ter (Taxa Avulsa)</span>
             </div>
+            {!isMarinaOnlyActiveBoatGlobal && !activeBoatRules.permitirReservaExtraFds && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full border border-dashed border-rose-500/40 shrink-0" />
+                <span>Cota FDS Utilizada</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2814,6 +2936,21 @@ export default function ClientDashboardPage({
                       return;
                     }
                     const targetBoatId = selectedCalendarBoatId || (boats[0] && boats[0].id);
+                    const targetBoat = boats.find(b => b.id === targetBoatId) || boats[0] || null;
+                    const targetBoatRules = getBoatOperationRules(targetBoat);
+                    const isMarinaOnlyTarget = Boolean(targetBoat?.empresas && targetBoat.empresas.includes('MARINA') && !targetBoat.empresas.includes('VALE'));
+                    if (boats.length <= 1 && targetBoat && !isMarinaOnlyTarget) {
+                      const activeResCount = myReservations.filter(
+                        r => r.embarcacaoId === targetBoat.id && r.data >= todayStrLocal && r.status !== 'cancelado'
+                      ).length;
+                      if (activeResCount >= targetBoatRules.maxReservasAtivas) {
+                        const msg = targetBoatRules.maxReservasAtivas === 1
+                          ? `A embarcação ${getBoatCode(targetBoat)} permite apenas 1 reserva ativa por vez e você já possui uma reserva agendada.`
+                          : `Você atingiu o limite máximo de ${targetBoatRules.maxReservasAtivas} reservas ativas simultâneas para ${getBoatCode(targetBoat)}.`;
+                        showToast('Limite de Reserva Ativa', msg, 'warning');
+                        return;
+                      }
+                    }
                     const boatEntry = Array.isArray(client.embarcacoes)
                       ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === targetBoatId)
                       : (client.embarcacaoId === targetBoatId ? client : null);
@@ -2828,8 +2965,13 @@ export default function ClientDashboardPage({
                         String(candidate.getDate()).padStart(2, '0')
                       ].join('-');
                       const closed = (dow === 1 || dow === 2) && !isPlanoComp;
+                      const specialClosedDay = (marinaDatasFechadas || []).some((f: any) => f.data === candIso);
                       const occupied = mergedReservations.some((r: any) => r.embarcacaoId === targetBoatId && r.data === candIso && r.status !== 'cancelado');
-                      if (!closed && !occupied) {
+                      const dateRestr = targetBoat ? evaluateDateRestrictionsForClient({ dateStr: candIso, todayStr: todayStrLocal, boat: targetBoat }) : { allowed: true };
+                      const wkEval = targetBoat && !isMarinaOnlyTarget
+                        ? evaluateWeekendBookingForClient({ userId: client.id, embarcacaoId: targetBoat.id, dateStr: candIso, reservations: mergedReservations, boat: targetBoat })
+                        : { allowed: true };
+                      if (!closed && !specialClosedDay && !occupied && dateRestr.allowed && wkEval.allowed) {
                         setSelectedDate(candIso);
                         break;
                       }

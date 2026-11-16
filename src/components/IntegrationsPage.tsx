@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Compass, CalendarDays, CheckCircle2, X, CreditCard, Key, Shield,
   ShieldCheck, AlertTriangle, RefreshCw, MessageSquare, QrCode, Loader2, Check,
-  Copy, ExternalLink, Wand2, Sparkles, Send, Trash2, Plus, CalendarOff
+  Copy, ExternalLink, Wand2, Sparkles, Send, Trash2, Plus, CalendarOff, Sliders, Save
 } from 'lucide-react';
 import { io } from 'socket.io-client';
-import { Cliente } from '../types';
+import { Cliente, Embarcacao, RegrasOperacaoEmbarcacao } from '../types';
 import {
   initiateOAuthLogin,
   isServiceAccountMode,
@@ -20,7 +20,14 @@ import {
   setCachedToken,
   checkServerConfig,
 } from '../googleCalendar';
-import { boatDB, clientDB } from '../db';
+import { boatDB, clientDB, getAdminToken } from '../db';
+import { getBoatCode } from '../utils/boatUtils';
+import {
+  getBoatOperationRules,
+  formatBoatRulesSummaryBadges,
+  DEFAULT_FLEET_RULES
+} from '../utils/boatRules';
+import BoatOperationRulesEditor from './shared/BoatOperationRulesEditor';
 
 interface IntegrationsPageProps { onNavigate?: (tab: any) => void; }
 
@@ -64,6 +71,85 @@ export default function IntegrationsPage({ onNavigate }: IntegrationsPageProps) 
   const [marinaDatasFechadas, setMarinaDatasFechadas] = useState<Array<{ data: string; motivo: string }>>([]);
   const [novaDataFechada, setNovaDataFechada] = useState('');
   const [novoMotivoFechada, setNovoMotivoFechada] = useState('');
+
+  // Regras Operacionais por Embarcação (Portal do Sócio)
+  const [boatsForRules, setBoatsForRules] = useState<Embarcacao[]>(() =>
+    [...boatDB.getAll()].sort((a, b) => getBoatCode(a).localeCompare(getBoatCode(b)))
+  );
+  const [selectedRuleBoatId, setSelectedRuleBoatId] = useState<string>(() => {
+    const all = boatDB.getAll();
+    const m62 = all.find(b => getBoatCode(b).toUpperCase() === 'M62');
+    return m62?.id || all[0]?.id || '';
+  });
+  const [editingBoatRules, setEditingBoatRules] = useState<RegrasOperacaoEmbarcacao>(() => {
+    const all = boatDB.getAll();
+    const target = all.find(b => getBoatCode(b).toUpperCase() === 'M62') || all[0];
+    return target ? getBoatOperationRules(target) : { ...DEFAULT_FLEET_RULES };
+  });
+  const [isSavingBoatRules, setIsSavingBoatRules] = useState(false);
+
+  useEffect(() => {
+    const refreshBoats = () => {
+      const sorted = [...boatDB.getAll()].sort((a, b) => getBoatCode(a).localeCompare(getBoatCode(b)));
+      setBoatsForRules(sorted);
+      if (sorted.length > 0) {
+        setSelectedRuleBoatId(prev => {
+          if (prev && sorted.some(b => b.id === prev)) return prev;
+          const m62 = sorted.find(b => getBoatCode(b).toUpperCase() === 'M62');
+          const chosen = m62 || sorted[0];
+          setEditingBoatRules(getBoatOperationRules(chosen));
+          return chosen.id;
+        });
+      }
+    };
+    window.addEventListener('db_updated', refreshBoats);
+    window.addEventListener('db_synced', refreshBoats);
+    return () => {
+      window.removeEventListener('db_updated', refreshBoats);
+      window.removeEventListener('db_synced', refreshBoats);
+    };
+  }, []);
+
+  const handleSelectRuleBoat = (boatId: string) => {
+    setSelectedRuleBoatId(boatId);
+    const target = boatsForRules.find(b => b.id === boatId);
+    if (target) {
+      setEditingBoatRules(getBoatOperationRules(target));
+    }
+  };
+
+  const handleSaveBoatRules = async () => {
+    const target = boatsForRules.find(b => b.id === selectedRuleBoatId);
+    if (!target) return;
+    setIsSavingBoatRules(true);
+    try {
+      const updatedBoat = boatDB.update(target.id, {
+        regrasOperacao: editingBoatRules,
+        acessorios: {
+          ...(target.acessorios || {}),
+          regrasOperacao: editingBoatRules
+        }
+      });
+      const token = getAdminToken() || localStorage.getItem('admin_token');
+      const res = await fetch('/api/db/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ type: 'boats', action: 'upsert', data: updatedBoat })
+      });
+      if (!res.ok) {
+        throw new Error('Falha ao salvar regras no servidor.');
+      }
+      setBoatsForRules([...boatDB.getAll()].sort((a, b) => getBoatCode(a).localeCompare(getBoatCode(b))));
+      showToast(`Regras da embarcação ${getBoatCode(target)} salvas com sucesso!`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Erro ao salvar regras da embarcação.', 'error');
+    } finally {
+      setIsSavingBoatRules(false);
+    }
+  };
 
   // Per-day-of-week schedule: keys 0-6 = Sunday-Saturday (JS Date.getDay())
   const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -1067,6 +1153,119 @@ export default function IntegrationsPage({ onNavigate }: IntegrationsPageProps) 
                 disabled={isLoading}
               >
                 {isLoading ? 'Aguarde...' : 'Salvar Configurações da Marina'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* REGRAS DE OPERAÇÃO & RESERVA POR EMBARCAÇÃO (PORTAL DO SÓCIO) */}
+        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm flex flex-col justify-between">
+          <div className="border-b border-slate-100 bg-slate-50 p-6 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                <Sliders className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800">Regras de Agendamento por Embarcação</h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Defina limites de reservas ativas, regras de fim de semana (ex: M62) e bloqueios no App do Sócio.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-4 flex-1">
+            {boatsForRules.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
+                Nenhuma embarcação carregada no momento.
+              </div>
+            ) : (
+              <>
+                {(() => {
+                  const customBoats = boatsForRules.filter(b => formatBoatRulesSummaryBadges(b).isCustom);
+                  if (customBoats.length === 0) return null;
+                  return (
+                    <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 block">
+                        Embarcações com Regras Especiais ({customBoats.length})
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {customBoats.map(b => {
+                          const info = formatBoatRulesSummaryBadges(b);
+                          const isActive = b.id === selectedRuleBoatId;
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => handleSelectRuleBoat(b.id)}
+                              className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                isActive
+                                  ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                                  : 'bg-white text-amber-950 border-amber-200 hover:bg-amber-100/70'
+                              }`}
+                            >
+                              <span>{getBoatCode(b)}</span>
+                              <span className={`text-[10px] font-medium ${isActive ? 'text-amber-100' : 'text-amber-700'}`}>
+                                · {info.activeLimitLabel}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1.5">
+                    Embarcação Selecionada
+                  </label>
+                  <select
+                    value={selectedRuleBoatId}
+                    onChange={(e) => handleSelectRuleBoat(e.target.value)}
+                    className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer"
+                  >
+                    {boatsForRules.map(b => {
+                      const info = formatBoatRulesSummaryBadges(b);
+                      return (
+                        <option key={b.id} value={b.id}>
+                          {getBoatCode(b)} — {b.nome} {info.isCustom ? '★ (Regra Personalizada)' : '(Padrão da Frota)'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {selectedRuleBoatId && (
+                  <BoatOperationRulesEditor
+                    value={editingBoatRules}
+                    onChange={setEditingBoatRules}
+                    boatCode={(() => {
+                      const b = boatsForRules.find(item => item.id === selectedRuleBoatId);
+                      return b ? getBoatCode(b) : undefined;
+                    })()}
+                    compact={true}
+                  />
+                )}
+              </>
+            )}
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={handleSaveBoatRules}
+                disabled={!selectedRuleBoatId || isSavingBoatRules}
+                className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                {isSavingBoatRules ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" /> Salvar Regras da Embarcação
+                  </>
+                )}
               </button>
             </div>
           </div>

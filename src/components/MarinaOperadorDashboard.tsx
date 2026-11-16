@@ -745,41 +745,66 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
     });
   };
 
-  const handleCaptureModalSuccess = async (data: any) => {
+  const handleCaptureModalSuccess = async (checklistData: any) => {
     // Process new checklist data (descida/subida/avulso)
     const target = captureReservaTarget;
-    let updatedReserva = target ? { ...target } : {};
+    const boat = captureEmbarcacaoTarget;
+
+    if (!target && !boat) return;
+
+    let updatedReserva = target
+      ? { ...target }
+      : {
+          id: `chk_${Date.now()}`,
+          embarcacaoId: boat.id,
+          clienteId: boat.clienteId || boat.donos?.[0] || '',
+          data: selectedDate,
+          periodo: 'integral',
+          status: 'confirmado',
+          origem: 'checklist_avulso',
+          createdAt: new Date().toISOString(),
+        };
+
+    const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     if (captureModalTipo === 'descida') {
-        const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        updatedReserva.horaDescida = horaAtual;
-        updatedReserva.statusMarina = 'pronta'; // na água pronta para sair
-        updatedReserva.fotosChecklistDescida = data.fotos; // Mapeado por ângulo
-        updatedReserva.fotosExtrasDescida = data.fotosExtras; // Array normal
-        updatedReserva.checklistEquipamentos = data.itensSeguranca;
-        updatedReserva.checklistObservacoes = data.observacoes;
+      updatedReserva.horaDescida = horaAtual;
+      updatedReserva.statusMarina = 'pronta'; // na água pronta para sair
+      updatedReserva.fotosChecklistDescida = checklistData.fotos; // Mapeado por ângulo
+      updatedReserva.fotosExtrasDescida = checklistData.fotosExtras; // Array normal
+      if (checklistData.itensSeguranca !== undefined) {
+        updatedReserva.checklistEquipamentos = checklistData.itensSeguranca;
+      }
+      updatedReserva.checklistObservacoes = checklistData.observacoes;
+      updatedReserva.operadorDescida = currentUser.nome;
     } else if (captureModalTipo === 'subida') {
-        const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        updatedReserva.horaSubida = horaAtual;
-        updatedReserva.statusMarina = 'guardada';
-        updatedReserva.statusOperacional = 'guardado';
-        updatedReserva.fotosChecklistSubida = data.fotos;
-        updatedReserva.fotosExtrasSubida = data.fotosExtras;
-        updatedReserva.operadorSubida = currentUser.nome;
+      updatedReserva.horaSubida = horaAtual;
+      updatedReserva.statusMarina = 'guardada';
+      updatedReserva.statusOperacional = 'guardado';
+      updatedReserva.fotosChecklistSubida = checklistData.fotos;
+      updatedReserva.fotosExtrasSubida = checklistData.fotosExtras;
+      updatedReserva.operadorSubida = currentUser.nome;
+      updatedReserva.observacoesSubida = checklistData.observacoes;
+      if (checklistData.itensSeguranca !== undefined) {
+        updatedReserva.checklistEquipamentos = checklistData.itensSeguranca;
+      }
     } else {
-        // Para avulsos ou outros modos que não exigem lógica prévia
-        const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        updatedReserva.horaManual = horaAtual;
-        updatedReserva.fotosAvulsas = data.fotos;
-        updatedReserva.fotosExtrasAvulsas = data.fotosExtras;
+      // Para avulsos ou outros modos que não exigem lógica prévia
+      updatedReserva.horaManual = horaAtual;
+      updatedReserva.fotosAvulsas = checklistData.fotos;
+      updatedReserva.fotosExtrasAvulsas = checklistData.fotosExtras;
     }
 
     // 1. Atualiza na memória do operador imediatamente (sem tela de carregamento)
     setData((prev: any) => {
-      if (!prev || !target) return prev;
-      const reservations = (prev.reservations || []).map((r: any) =>
-        r.id === target.id ? { ...r, ...updatedReserva } : r
-      );
+      if (!prev) return prev;
+      const currentReservations = prev.reservations || [];
+      const exists = currentReservations.some((r: any) => r.id === updatedReserva.id);
+      const reservations = exists
+        ? currentReservations.map((r: any) =>
+            r.id === updatedReserva.id ? { ...r, ...updatedReserva } : r
+          )
+        : [updatedReserva, ...currentReservations];
       return { ...prev, reservations };
     });
 
@@ -790,12 +815,13 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
 
     // 2. Salva no banco de dados em segundo plano silencioso
     try {
-      if (target) {
-        await fetch('/api/db/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
-          body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
-        });
+      const res = await fetch('/api/db/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+        body: JSON.stringify({ type: 'reservations', action: 'upsert', data: updatedReserva })
+      });
+      if (!res.ok) {
+        throw new Error('Falha ao gravar no banco');
       }
     } catch (err) {
       showToast('Erro ao sincronizar checklist com o servidor.', 'warning');
@@ -1508,8 +1534,14 @@ const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' |
         getCliente={getCliente}
         onConfirm={(boat, mode) => {
           setIsAvulsoModalOpen(false);
+          const existingReserva = (data?.reservations || []).find((r: any) =>
+            (r.data || r.date) === selectedDate &&
+            r.embarcacaoId === boat.id &&
+            r.status !== 'cancelado' &&
+            r.statusMarina !== 'cancelada'
+          ) || null;
           setCaptureEmbarcacaoTarget(boat);
-          setCaptureReservaTarget(null);
+          setCaptureReservaTarget(existingReserva);
           setCaptureModalTipo(mode);
           setIsCaptureModalOpen(true);
         }}

@@ -2,6 +2,12 @@ import React, { useState } from 'react';
 import { X, Calendar, Anchor, CheckCircle2, AlertTriangle, FileText, MessageSquare } from 'lucide-react';
 import { createGoogleCalendarEvent, CalendarSyncResult } from '../googleCalendar';
 import { getBoatCode } from '../utils/boatUtils';
+import {
+  getBoatOperationRules,
+  evaluateWeekendBookingForClient,
+  evaluateDateRestrictionsForClient,
+  formatBoatRulesSummaryBadges
+} from '../utils/boatRules';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 
 interface ClientReservationModalProps {
@@ -149,11 +155,61 @@ export default function ClientReservationModal({
       ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === selectedBoatId)
       : (client?.embarcacaoId === selectedBoatId ? client : null);
     const isMarinaOnlySubmit = Boolean(boat?.empresas && boat.empresas.includes('MARINA') && !boat.empresas.includes('VALE'));
+    const boatRulesSubmit = getBoatOperationRules(boat);
+
+    const _nowSubmit = new Date();
+    const todaySubmitStr = `${_nowSubmit.getFullYear()}-${String(_nowSubmit.getMonth() + 1).padStart(2, '0')}-${String(_nowSubmit.getDate()).padStart(2, '0')}`;
+
+    const dateRestrSubmit = evaluateDateRestrictionsForClient({
+      dateStr: dateValue,
+      todayStr: todaySubmitStr,
+      boat
+    });
+    if (!dateRestrSubmit.allowed) {
+      setErrorMsg(dateRestrSubmit.reason || 'Esta data não está liberada pelas regras da embarcação.');
+      return;
+    }
+
+    if (!isMarinaOnlySubmit) {
+      const activeResSubmit = reservations.filter((r: any) =>
+        r.clienteId === client?.id &&
+        r.embarcacaoId === selectedBoatId &&
+        r.status !== 'cancelado' &&
+        r.data >= todaySubmitStr
+      );
+      if (activeResSubmit.length >= boatRulesSubmit.maxReservasAtivas) {
+        const msg = boatRulesSubmit.maxReservasAtivas === 1
+          ? `A embarcação ${getBoatCode(boat)} permite apenas 1 reserva ativa por vez.`
+          : `Você atingiu o limite máximo de ${boatRulesSubmit.maxReservasAtivas} reservas ativas simultâneas para ${getBoatCode(boat)}.`;
+        setErrorMsg(msg);
+        return;
+      }
+
+      const weekendEvalSubmit = evaluateWeekendBookingForClient({
+        userId: client?.id,
+        embarcacaoId: selectedBoatId,
+        dateStr: dateValue,
+        reservations,
+        boat
+      });
+      if (weekendEvalSubmit.isWeekend && !weekendEvalSubmit.allowed) {
+        setErrorMsg(weekendEvalSubmit.blockedReason || 'Limite mensal de fim de semana atingido para esta embarcação.');
+        return;
+      }
+    }
+
     const isPlanoCompletoSubmit = boatEntryForSubmit?.plano === 'completo' || (!boatEntryForSubmit?.plano && client?.plano === 'completo');
     const submitDayOfWeek = dateValue ? new Date(dateValue + 'T12:00:00Z').getUTCDay() : -1;
-    const isPaidExtraDaySubmit = !isMarinaOnlySubmit && (submitDayOfWeek === 1 || submitDayOfWeek === 2) && !isPlanoCompletoSubmit;
     const isJetSubmit = Boolean(boat && (boat.tipo === 'jet' || (boat.nome || '').toLowerCase().includes('jet')));
-    const expectedFeeSubmit = isPaidExtraDaySubmit ? (isJetSubmit ? 100 : 150) : 0;
+    const defaultFeeSubmit = isJetSubmit ? 100 : 150;
+    const resolvedExtraFeeSubmit =
+      boatRulesSubmit.taxaDescidaAvulsaPersonalizada !== null &&
+      boatRulesSubmit.taxaDescidaAvulsaPersonalizada !== undefined &&
+      Number(boatRulesSubmit.taxaDescidaAvulsaPersonalizada) >= 0
+        ? Number(boatRulesSubmit.taxaDescidaAvulsaPersonalizada)
+        : defaultFeeSubmit;
+    const isPaidExtraDaySubmit = !isMarinaOnlySubmit && (submitDayOfWeek === 1 || submitDayOfWeek === 2) && !isPlanoCompletoSubmit && resolvedExtraFeeSubmit > 0;
+    const expectedFeeSubmit = isPaidExtraDaySubmit ? resolvedExtraFeeSubmit : 0;
 
     if (isPaidExtraDaySubmit && !paidLaunchAgreed) {
       setErrorMsg('Revise os dados e concorde com a cobrança da descida avulsa antes de solicitar.');
@@ -413,6 +469,8 @@ export default function ClientReservationModal({
   const minDateStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
   const selectedBoatObj = boats.find(b => b.id === selectedBoatId);
   const isBoatInMaintenance = !!selectedBoatObj?.emManutencao;
+  const selectedBoatRules = getBoatOperationRules(selectedBoatObj);
+  const selectedRuleBadges = formatBoatRulesSummaryBadges(selectedBoatObj);
 
   const clientBoatEntry = Array.isArray(client?.embarcacoes)
     ? client.embarcacoes.find((eb: any) => eb?.embarcacaoId === selectedBoatId)
@@ -420,9 +478,16 @@ export default function ClientReservationModal({
   const isMarinaOnlyBoat = Boolean(selectedBoatObj?.empresas && selectedBoatObj.empresas.includes('MARINA') && !selectedBoatObj.empresas.includes('VALE'));
   const isPlanoCompleto = clientBoatEntry?.plano === 'completo' || (!clientBoatEntry?.plano && client?.plano === 'completo');
   const chosenDayOfWeek = dateValue ? new Date(dateValue + 'T12:00:00Z').getUTCDay() : -1;
-  const isWeeklyExtraDay = !isMarinaOnlyBoat && (chosenDayOfWeek === 1 || chosenDayOfWeek === 2) && !isPlanoCompleto;
   const isJetSelected = Boolean(selectedBoatObj && (selectedBoatObj.tipo === 'jet' || (selectedBoatObj.nome || '').toLowerCase().includes('jet')));
-  const extraDayFee = isWeeklyExtraDay ? (isJetSelected ? 100 : 150) : 0;
+  const defaultExtraFee = isJetSelected ? 100 : 150;
+  const resolvedExtraFee =
+    selectedBoatRules.taxaDescidaAvulsaPersonalizada !== null &&
+    selectedBoatRules.taxaDescidaAvulsaPersonalizada !== undefined &&
+    Number(selectedBoatRules.taxaDescidaAvulsaPersonalizada) >= 0
+      ? Number(selectedBoatRules.taxaDescidaAvulsaPersonalizada)
+      : defaultExtraFee;
+  const isWeeklyExtraDay = !isMarinaOnlyBoat && (chosenDayOfWeek === 1 || chosenDayOfWeek === 2) && !isPlanoCompleto && resolvedExtraFee > 0;
+  const extraDayFee = isWeeklyExtraDay ? resolvedExtraFee : 0;
   const boatTypeLabel = isJetSelected ? 'Jet Ski' : 'Lancha';
   const extraDayName = chosenDayOfWeek === 1 ? 'Segunda-feira' : chosenDayOfWeek === 2 ? 'Terça-feira' : '';
   
@@ -434,7 +499,43 @@ export default function ClientReservationModal({
     r.embarcacaoId === selectedBoatId && r.data === dateValue && r.status !== 'cancelado'
   ));
   const isPastDate = !!(dateValue && dateValue < minDateStr);
-  const isSelectionInvalid = isBoatInMaintenance || isClosedDay || isDateOccupied || isPastDate;
+
+  const activeClientBoatReservations = selectedBoatId
+    ? reservations.filter((r: any) =>
+        r.clienteId === client?.id &&
+        r.embarcacaoId === selectedBoatId &&
+        r.status !== 'cancelado' &&
+        r.data >= minDateStr
+      )
+    : [];
+  const activeLimitExceeded = !isMarinaOnlyBoat && Boolean(selectedBoatObj) && activeClientBoatReservations.length >= selectedBoatRules.maxReservasAtivas;
+  const activeLimitMessage = activeLimitExceeded
+    ? (selectedBoatRules.maxReservasAtivas === 1
+        ? `A embarcação ${getBoatCode(selectedBoatObj)} permite apenas 1 reserva ativa por vez. Você já possui reserva ativa em ${activeClientBoatReservations.map((r: any) => formatDateBR(r.data)).join(', ')}.`
+        : `Você atingiu o limite máximo de ${selectedBoatRules.maxReservasAtivas} reservas ativas simultâneas para ${getBoatCode(selectedBoatObj)}.`)
+    : null;
+
+  const dateRestrictionEval = selectedBoatObj && dateValue
+    ? evaluateDateRestrictionsForClient({ dateStr: dateValue, todayStr: minDateStr, boat: selectedBoatObj })
+    : { allowed: true };
+  const weekendEval = !isMarinaOnlyBoat && selectedBoatObj && dateValue
+    ? evaluateWeekendBookingForClient({
+        userId: client?.id,
+        embarcacaoId: selectedBoatId,
+        dateStr: dateValue,
+        reservations,
+        boat: selectedBoatObj
+      })
+    : { isWeekend: false, allowed: true, tipoReserva: 'garantida' as const };
+
+  const ruleBlockReason =
+    activeLimitMessage ||
+    (!dateRestrictionEval.allowed ? (dateRestrictionEval.reason || 'Data não permitida pelas regras da embarcação.') : null) ||
+    (weekendEval.isWeekend && !weekendEval.allowed ? (weekendEval.blockedReason || 'Cota mensal de fim de semana atingida.') : null) ||
+    null;
+  const isRuleBlocked = Boolean(ruleBlockReason);
+
+  const isSelectionInvalid = isBoatInMaintenance || isClosedDay || isDateOccupied || isPastDate || isRuleBlocked;
 
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center pt-[max(env(safe-area-inset-top,0px),2rem)] pb-[max(env(safe-area-inset-bottom,0px),1.5rem)] px-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200 ios-scroll">
@@ -549,6 +650,31 @@ export default function ClientReservationModal({
                   <div>
                     <span className="font-bold uppercase tracking-wider block text-[10px] mb-0.5">Embarcação em Manutenção</span>
                     <span className="leading-tight">Esta embarcação encontra-se em manutenção no momento. Novos agendamentos estão temporariamente bloqueados até a conclusão dos reparos.</span>
+                  </div>
+                </div>
+              )}
+              {selectedBoatObj && !isMarinaOnlyBoat && (
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <span className={`text-[10px] px-2 py-0.5 rounded-md border ${
+                    activeLimitExceeded
+                      ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                      : 'bg-white/[0.04] border-white/10 text-white/60'
+                  }`}>
+                    {selectedRuleBadges.activeLimitLabel} ({activeClientBoatReservations.length}/{selectedBoatRules.maxReservasAtivas})
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/10 text-white/60">
+                    {selectedRuleBadges.weekendRuleLabel}
+                  </span>
+                </div>
+              )}
+              {isRuleBlocked && ruleBlockReason && (
+                <div className="mt-3 flex items-start gap-2 bg-rose-500/10 border border-rose-500/30 p-3 rounded-xl text-rose-300 text-xs">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                  <div>
+                    <span className="font-bold uppercase tracking-wider block text-[10px] text-rose-400 mb-0.5">
+                      Regra de Operação da Embarcação
+                    </span>
+                    <span className="leading-relaxed">{ruleBlockReason}</span>
                   </div>
                 </div>
               )}

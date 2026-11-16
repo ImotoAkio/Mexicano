@@ -201,7 +201,7 @@ export default function SchedulesPage() {
   };
 
   // Load Data
-  const loadData = async (isInitial = false) => {
+  const loadData = async (isInitial = false, forceRefresh = false) => {
     // 1. Instant display from in-memory cache if available
     const cachedRes = reservationDB.getAll();
     if (cachedRes.length > 0) {
@@ -216,7 +216,7 @@ export default function SchedulesPage() {
 
     try {
       // 2. Fetch full remote database from server
-      await syncWithRemote();
+      await syncWithRemote(forceRefresh);
       setReservations([...reservationDB.getAll()]);
       setBoats([...boatDB.getAll()]);
       setClients([...clientDB.getAll()]);
@@ -241,7 +241,7 @@ export default function SchedulesPage() {
         });
 
         socket.on('marina_update', async () => {
-          await syncWithRemote();
+          await syncWithRemote(true);
           setReservations([...reservationDB.getAll()]);
           setBoats([...boatDB.getAll()]);
           setClients([...clientDB.getAll()]);
@@ -316,22 +316,33 @@ export default function SchedulesPage() {
   const handleDeleteReservation = async (res: Reserva) => {
     const boat = boatDB.getById(res.embarcacaoId);
     const client = clientDB.getById(res.clienteId);
-    const confirmText = `Deseja realmente excluir o agendamento de ${boat ? getBoatCode(boat) : 'embarcação'} para ${client ? client.nome : 'cliente'} em ${res.data}?`;
+    const boatCode = boat ? getBoatCode(boat) : undefined;
+    const confirmText = `Deseja realmente excluir o agendamento de ${boatCode || 'embarcação'} para ${client ? client.nome : 'cliente'} em ${res.data}?`;
     if (!window.confirm(confirmText)) return;
 
+    // Atualização otimista imediata na UI
+    setReservations(prev => prev.filter(r => r.id !== res.id));
+
     try {
-      if (res.googleEventId && isCalendarConnected()) {
-        try {
-          await deleteGoogleCalendarEvent(res.googleEventId, res.embarcacaoId);
-        } catch (e) {
-          console.warn('Google event delete warning:', e);
-        }
+      const deletedOk = await reservationDB.delete(res.id);
+      if (!deletedOk) {
+        await loadData(false, true);
+        showToast('Erro ao excluir agendamento no servidor.', 'error');
+        return;
       }
-      reservationDB.delete(res.id);
-      loadData();
+
+      // Remoção do Google Calendar em background (erros 404/410 não bloqueiam o sistema)
+      if (res.googleEventId && isCalendarConnected()) {
+        deleteGoogleCalendarEvent(res.googleEventId, boatCode).catch((e) => {
+          console.warn('Google event delete warning:', e);
+        });
+      }
+
+      await loadData(false, true);
       showToast('Agendamento excluído com sucesso.');
     } catch (err: any) {
       console.error(err);
+      await loadData(false, true);
       showToast('Erro ao excluir agendamento.', 'error');
     }
   };
@@ -441,7 +452,7 @@ export default function SchedulesPage() {
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={loadData}
+            onClick={() => loadData(false, true)}
             disabled={isLoading}
             className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg text-[#374151] bg-white hover:bg-[#F3F4F6] border border-[#E5E7EB] transition-colors cursor-pointer disabled:opacity-40"
             title="Recarregar dados"

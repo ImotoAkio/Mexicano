@@ -3,7 +3,12 @@ import { clientDB, boatDB, reservationDB } from '../db';
 import { createGoogleCalendarEvent, CalendarSyncResult } from '../googleCalendar';
 import { Embarcacao, Cliente } from '../types';
 import { getBoatCode } from '../utils/boatUtils';
-import { X, Calendar, User, Clock, Check, FileText, CheckCircle2, Copy, Search, Wrench, AlertTriangle } from 'lucide-react';
+import {
+  getBoatOperationRules,
+  evaluateAdminReservationWarnings,
+  formatBoatRulesSummaryBadges
+} from '../utils/boatRules';
+import { X, Calendar, User, Clock, Check, FileText, CheckCircle2, Copy, Search, Wrench, AlertTriangle, ShieldAlert } from 'lucide-react';
 import MonthlyCalendarGenerator from './MonthlyCalendarGenerator';
 import SearchableSelect, { SelectOption } from './shared/SearchableSelect';
 
@@ -44,6 +49,8 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
   const [somRetirado, setSomRetirado] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [confirmAdminException, setConfirmAdminException] = useState(false);
+  const [showExceptionConfirmPrompt, setShowExceptionConfirmPrompt] = useState(false);
 
   // Sound system control states moved to confirmation
 
@@ -92,19 +99,61 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
     }
   }, [selectedBoatId, boats]);
 
+  const todayStrBrasilia = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    } catch {
+      return new Date().toISOString().split('T')[0];
+    }
+  }, []);
+
+  const selectedBoatObj = useMemo(
+    () => boats.find(b => b.id === selectedBoatId) || null,
+    [boats, selectedBoatId]
+  );
+  const boatRules = useMemo(() => getBoatOperationRules(selectedBoatObj), [selectedBoatObj]);
+  const boatRuleBadges = useMemo(() => formatBoatRulesSummaryBadges(selectedBoatObj), [selectedBoatObj]);
+
+  const targetDates = useMemo(() => {
+    const raw =
+      (bookingType as string) === 'range'
+        ? getDatesInRange(startDate, endDate)
+        : bookingType === 'distinct'
+        ? distinctDates
+        : [data];
+    return raw.filter(d => d && !isNaN(new Date(d + 'T12:00:00').getTime()));
+  }, [bookingType, startDate, endDate, distinctDates, data]);
+
   const activeBookings = (() => {
     if (!selectedClientId) return [];
-    const todayStr = new Date().toISOString().split('T')[0];
     return reservationDB.getAll().filter(
       r => r.clienteId === selectedClientId &&
       r.embarcacaoId === selectedBoatId &&
       r.status !== 'cancelado' &&
-      r.data >= todayStr
+      r.data >= todayStrBrasilia
     );
   })();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const adminRuleEvaluation = useMemo(() => {
+    if (!selectedBoatId || !selectedClientId || !selectedBoatObj) {
+      return { hasWarnings: false, warnings: [], rulesSummary: '', rules: boatRules };
+    }
+    return evaluateAdminReservationWarnings({
+      clientId: selectedClientId,
+      embarcacaoId: selectedBoatId,
+      datesToBook: targetDates,
+      reservations: reservationDB.getAll(),
+      boat: selectedBoatObj,
+      todayStr: todayStrBrasilia
+    });
+  }, [selectedBoatId, selectedClientId, selectedBoatObj, targetDates, todayStrBrasilia, boatRules]);
+
+  useEffect(() => {
+    setConfirmAdminException(false);
+    setShowExceptionConfirmPrompt(false);
+  }, [selectedBoatId, selectedClientId, bookingType, data, startDate, endDate, distinctDates]);
+
+  const executeReservationSave = async (bypassExceptionCheck = false) => {
     setErrorMsg(null);
 
     if (!selectedBoatId) {
@@ -134,11 +183,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
     }
 
     // Determine target dates
-    const datesToBook = (
-      bookingType === 'range' ? getDatesInRange(startDate, endDate) : 
-      bookingType === 'distinct' ? distinctDates : 
-      [data]
-    ).filter(d => d && !isNaN(new Date(d + 'T12:00:00').getTime()));
+    const datesToBook = targetDates;
 
     if (datesToBook.length === 0) {
       setErrorMsg('Data ou período de datas inválido. Certifique-se de que a data final seja igual ou posterior à data inicial.');
@@ -167,8 +212,11 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
       return;
     }
 
-    // The limit check that prevented insertions was removed per user request.
-    // The admin now only relies on the visual red badge warning in the UI but can force the reservation anyway.
+    // Exige ciência explícita do Administrador quando a reserva violar regras operacionais da embarcação
+    if (adminRuleEvaluation.hasWarnings && !confirmAdminException && !bypassExceptionCheck) {
+      setShowExceptionConfirmPrompt(true);
+      return;
+    }
 
     // Compose formatted calendar event summary using ONLY first & second names in UPPERCASE
     const shortName = getFirstTwoNames(client.nome).toUpperCase();
@@ -193,7 +241,7 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
         });
 
         // 2. Persist to local database
-        const createdRes = reservationDB.create({
+        reservationDB.create({
           embarcacaoId: selectedBoatId,
           clienteId: selectedClientId,
           data: d,
@@ -242,6 +290,11 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executeReservationSave(false);
   };
 
   const handleFinish = () => {
@@ -675,6 +728,24 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
                 </div>
               </>
             )}
+            {selectedBoatObj && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                  boatRuleBadges.isCustom
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}>
+                  {boatRuleBadges.activeLimitLabel}
+                </span>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                  boatRuleBadges.isCustom
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}>
+                  {boatRuleBadges.weekendRuleLabel}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Owner Filtered Selection */}
@@ -731,11 +802,11 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
               <div className="mt-1.5 flex items-center justify-between text-[10px] font-semibold font-sans">
                 <span className="text-slate-500">Agendamentos ativos (a vir):</span>
                 <span className={`px-2 py-0.5 rounded-full font-bold ${
-                  activeBookings.length >= 2 
-                    ? 'bg-rose-50 text-rose-700 border border-rose-100' 
+                  activeBookings.length >= boatRules.maxReservasAtivas
+                    ? 'bg-rose-50 text-rose-700 border border-rose-200' 
                     : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                 }`}>
-                  {activeBookings.length} {activeBookings.length === 1 ? 'ativo' : 'ativos'}
+                  {activeBookings.length}/{boatRules.maxReservasAtivas} {activeBookings.length === 1 ? 'ativo' : 'ativos'}
                 </span>
               </div>
             )}
@@ -944,6 +1015,28 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
             />
           </div>
 
+          {/* Alerta de Regras Operacionais (Exceção Administrativa) */}
+          {adminRuleEvaluation.hasWarnings && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 space-y-2 animate-in fade-in duration-150">
+              <div className="flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-amber-900 block">
+                    Aviso de Exceção às Regras ({selectedBoatObj ? getBoatCode(selectedBoatObj) : 'Embarcação'})
+                  </span>
+                  <ul className="space-y-1 text-[11px] text-amber-900 leading-snug list-disc pl-4">
+                    {adminRuleEvaluation.warnings.map((w, idx) => (
+                      <li key={idx}>{w}</li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-amber-800/90 font-medium pt-0.5">
+                    No Portal do Cliente esta operação é bloqueada, mas o Administrador pode abrir exceção mediante confirmação.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Simple Informational Footnote replacing the scary Google pop warning */}
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200/80 text-[11px] text-slate-550 leading-relaxed font-sans">
             <span className="font-bold text-slate-700 block">Sincronização Integrada:</span>
@@ -951,29 +1044,70 @@ export default function ReservationModal({ onClose, onSuccess }: ReservationModa
           </div>
         </div>
 
-        <div className="flex space-x-3 p-6 pt-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
-          <button
-            id="btn-cancel-res"
-            type="button"
-            onClick={onClose}
-            className="flex-1 px-4 py-2 bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-          >
-            Cancelar
-          </button>
-          <button
-            id="btn-submit-res"
-            type="submit"
-            disabled={isSubmitting}
-            className="flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 rounded-lg transition-colors cursor-pointer shadow-xs"
-          >
-            {isSubmitting ? 'Reservando...' : (
-              <>
-                <Check className="w-4 h-4 mr-1.5" />
-                Salvar Reserva
-              </>
-            )}
-          </button>
-        </div>
+        {showExceptionConfirmPrompt && adminRuleEvaluation.hasWarnings ? (
+          <div className="p-5 pt-4 border-t border-rose-200 bg-rose-50/90 space-y-3 shrink-0 animate-in fade-in duration-150">
+            <div className="flex items-start gap-2.5 text-rose-900">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-rose-900">
+                  Confirmar Agendamento em Exceção?
+                </h4>
+                <p className="text-[11px] text-rose-800 mt-0.5 leading-relaxed">
+                  Você está prestes a criar uma reserva que excede as regras configuradas para esta embarcação. Confirme que está ciente para prosseguir.
+                </p>
+              </div>
+            </div>
+            <div className="flex space-x-2.5">
+              <button
+                type="button"
+                onClick={() => setShowExceptionConfirmPrompt(false)}
+                disabled={isSubmitting}
+                className="flex-1 px-4 py-2 bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+              >
+                Revisar / Voltar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmAdminException(true);
+                  executeReservationSave(true);
+                }}
+                disabled={isSubmitting}
+                className="flex-1 inline-flex items-center justify-center px-4 py-2 text-xs font-extrabold text-white bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 rounded-lg transition-colors cursor-pointer shadow-xs"
+              >
+                {isSubmitting ? 'Salvando Exceção...' : 'Estou Ciente, Confirmar Exceção'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex space-x-3 p-6 pt-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
+            <button
+              id="btn-cancel-res"
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              id="btn-submit-res"
+              type="submit"
+              disabled={isSubmitting}
+              className={`flex-1 inline-flex items-center justify-center px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors cursor-pointer shadow-xs ${
+                adminRuleEvaluation.hasWarnings
+                  ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400'
+                  : 'bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400'
+              }`}
+            >
+              {isSubmitting ? 'Reservando...' : (
+                <>
+                  <Check className="w-4 h-4 mr-1.5" />
+                  {adminRuleEvaluation.hasWarnings ? 'Solicitar Exceção e Salvar' : 'Salvar Reserva'}
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

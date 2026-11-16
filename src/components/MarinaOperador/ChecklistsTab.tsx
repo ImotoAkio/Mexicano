@@ -79,9 +79,24 @@ export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
             const fotosChecklistDescida = reserva.fotosChecklistDescida || (reserva.checklists?.find((c:any) => c.tipo === 'descida')?.fotos || {});
             const fotosChecklistSubida = reserva.fotosChecklistSubida || (reserva.checklists?.find((c:any) => c.tipo === 'subida')?.fotos || {});
 
+            const countFotos = (fotos: any, extras: any = []) => {
+              const mainCount = Array.isArray(fotos)
+                ? fotos.filter((u) => typeof u === 'string').length
+                : fotos && typeof fotos === 'object'
+                ? Object.values(fotos).filter((u) => typeof u === 'string').length
+                : 0;
+              const extrasCount = Array.isArray(extras)
+                ? extras.filter((u) => typeof u === 'string').length
+                : 0;
+              return mainCount + extrasCount;
+            };
+
+            const descidaCount = countFotos(fotosChecklistDescida, reserva.fotosExtrasDescida);
+            const subidaCount = countFotos(fotosChecklistSubida, reserva.fotosExtrasSubida);
+
             const isCancelado = reserva.status === 'cancelado' || reserva.statusMarina === 'cancelada';
-            const hasDescidaFotos = Object.keys(fotosChecklistDescida).length > 0;
-            const hasSubidaFotos = Object.keys(fotosChecklistSubida).length > 0;
+            const hasDescidaFotos = descidaCount > 0;
+            const hasSubidaFotos = subidaCount > 0;
             const litrosAbastecidos = Number(reserva.abastecimentoLitros) || 0;
 
             return (
@@ -124,11 +139,19 @@ export const ChecklistsTab: React.FC<ChecklistsTabProps> = ({
 
                 <div className="flex items-center justify-between w-full sm:w-auto gap-2 border-t pt-2 sm:border-0 sm:pt-0 border-slate-100">
                   <div className="flex items-center gap-1 bg-slate-50 p-1.5 rounded-xl border border-slate-100 shrink-0">
-                    <div title="Checklist de Descida" className={`w-7 h-7 rounded-lg flex items-center justify-center ${hasDescidaFotos ? 'bg-blue-100 text-blue-700 font-bold border border-blue-200' : 'bg-slate-100 text-slate-400 border border-transparent'}`}>
+                    <div
+                      title={`Checklist de Descida (${descidaCount} foto${descidaCount === 1 ? '' : 's'})`}
+                      className={`h-7 px-2 rounded-lg flex items-center justify-center gap-1 ${hasDescidaFotos ? 'bg-blue-100 text-blue-700 font-bold border border-blue-200' : 'bg-slate-100 text-slate-400 border border-transparent'}`}
+                    >
                       <Camera className="w-3.5 h-3.5" />
+                      {descidaCount > 0 && <span className="text-[10px] font-black font-mono">{descidaCount}</span>}
                     </div>
-                    <div title="Checklist de Chegada/Subida" className={`w-7 h-7 rounded-lg flex items-center justify-center ${hasSubidaFotos ? 'bg-emerald-100 text-emerald-700 font-bold border border-emerald-200' : 'bg-slate-100 text-slate-400 border border-transparent'}`}>
+                    <div
+                      title={`Checklist de Chegada/Subida (${subidaCount} foto${subidaCount === 1 ? '' : 's'})`}
+                      className={`h-7 px-2 rounded-lg flex items-center justify-center gap-1 ${hasSubidaFotos ? 'bg-emerald-100 text-emerald-700 font-bold border border-emerald-200' : 'bg-slate-100 text-slate-400 border border-transparent'}`}
+                    >
                       <Check className="w-3.5 h-3.5" />
+                      {subidaCount > 0 && <span className="text-[10px] font-black font-mono">{subidaCount}</span>}
                     </div>
                     <div title="Abastecimento Realizado" className={`w-7 h-7 rounded-lg flex items-center justify-center ${litrosAbastecidos > 0 ? 'bg-amber-100 text-amber-700 font-bold border border-amber-200' : 'bg-slate-100 text-slate-400 border border-transparent'}`}>
                       <Droplets className="w-3.5 h-3.5" />

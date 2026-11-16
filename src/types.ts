@@ -193,6 +193,18 @@ export interface ConfiguracaoHorimetro {
   intervalosPorModeloJet?: Record<string, number>;
 }
 
+export interface RegrasOperacaoEmbarcacao {
+  usarPadraoFrota?: boolean;
+  maxReservasAtivas: number; // Padrão: 2 | M62: 1
+  regraFimDeSemana: 'sabado_e_domingo' | 'sabado_ou_domingo' | 'personalizado';
+  maxFdsGarantidosMes?: number; // Usado quando 'personalizado' ou 'sabado_ou_domingo' (1)
+  permitirReservaExtraFds: boolean; // Padrão: true | M62: false (bloqueia 2º FDS no mês)
+  prazoContestacaoHoras: number; // Padrão: 48
+  antecedenciaMaximaDias?: number | null; // Opcional (null/0 = sem limite)
+  diasSemanaBloqueados?: number[]; // Opcional: 0=Dom..6=Sáb bloqueados para reserva do cliente
+  taxaDescidaAvulsaPersonalizada?: number | null; // Opcional: sobrescreve R$ 150 / R$ 100 em Seg/Ter
+}
+
 export interface Embarcacao {
   empresas?: string[];
   id: string;
@@ -251,7 +263,9 @@ export interface Embarcacao {
     ultimaConferencia?: string;
     historico?: RegistroAcessorios[];
     statusInfo?: any;
+    regrasOperacao?: RegrasOperacaoEmbarcacao;
   };
+  regrasOperacao?: RegrasOperacaoEmbarcacao;
   statusOperacional?: 'disponivel' | 'em_manutencao' | 'pendencia';
   motivoStatus?: string;
   observacaoStatus?: string;

@@ -35,10 +35,12 @@ import {
   Sliders,
   Sparkles
 } from 'lucide-react';
-import { Embarcacao, Cliente, Reserva, LeadComercial } from '../../types';
+import { Embarcacao, Cliente, Reserva, LeadComercial, RegrasOperacaoEmbarcacao } from '../../types';
 import { boatDB, getAdminToken, syncWithRemote } from '../../db';
 import { DEFAULT_TOTAL_COTAS, getBoatCotasStatusList, getBoatEstoqueResumo } from '../../utils/cotaUtils';
-import { isJetSkiBoat } from '../../utils/boatUtils';
+import { isJetSkiBoat, getBoatCode } from '../../utils/boatUtils';
+import { getBoatOperationRules, DEFAULT_FLEET_RULES } from '../../utils/boatRules';
+import BoatOperationRulesEditor from '../shared/BoatOperationRulesEditor';
 
 interface ComercialBoatDrawerProps {
   open: boolean;
@@ -132,6 +134,7 @@ export default function ComercialBoatDrawer({
   });
 
   // Reservas e Manutenções ativas carregadas do servidor
+  const [regrasOperacao, setRegrasOperacao] = useState<RegrasOperacaoEmbarcacao>(() => ({ ...DEFAULT_FLEET_RULES }));
   const [activeReservas, setActiveReservas] = useState<any[]>([]);
   const [proximasSaidas, setProximasSaidas] = useState<Reserva[]>([]);
   const [isLoadingAgenda, setIsLoadingAgenda] = useState(false);
@@ -236,6 +239,7 @@ export default function ComercialBoatDrawer({
         ducha: !!(editingBoat.acessorios as any)?.ducha,
         solario: !!(editingBoat.acessorios as any)?.solario
       });
+      setRegrasOperacao(getBoatOperationRules(editingBoat));
 
       // Carregar reservas e bloqueios da embarcação
       loadBoatAgendaAndReservas(editingBoat.id);
@@ -282,6 +286,7 @@ export default function ComercialBoatDrawer({
         ducha: false,
         solario: false
       });
+      setRegrasOperacao({ ...DEFAULT_FLEET_RULES });
       setActiveTab('ficha');
     }
 
@@ -577,10 +582,12 @@ export default function ComercialBoatDrawer({
         fotos: finalFotos,
         descricaoComercial: descricaoComercial.trim(),
         donos: selectedDonos,
+        regrasOperacao,
         acessorios: {
           ...acessorios,
           itensConforto,
           configurado: true,
+          regrasOperacao,
           ...(finalFotos.length > 0 ? { fotos: finalFotos } : {}),
           ...(descricaoComercial.trim() ? { descricaoComercial: descricaoComercial.trim() } : {})
         } as any
@@ -1326,6 +1333,14 @@ export default function ComercialBoatDrawer({
                   </div>
                 </div>
               </div>
+
+              {/* Regras de Operação & Reserva por Embarcação */}
+              <BoatOperationRulesEditor
+                value={regrasOperacao}
+                onChange={setRegrasOperacao}
+                boatCode={numero ? getBoatCode({ nome, numero }) : nome || undefined}
+                disabled={isReadOnly}
+              />
 
               {/* Botão de Salvar Alterações */}
               {!isReadOnly && (

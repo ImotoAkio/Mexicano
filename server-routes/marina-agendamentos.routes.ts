@@ -399,6 +399,7 @@ router.post("/fila/reordenar", requireAdminAuth, async (req, res) => {
       }
     }
 
+    invalidateDbCache();
     req.app.locals.io?.emit("marina_update", { action: "reorder", ordenacao });
     res.json({ success: true });
   } catch (err: any) {
@@ -455,6 +456,7 @@ router.patch("/fila/status", requireAdminAuth, async (req, res) => {
 
     params.push(id);
     await pool.query(`UPDATE Reservas SET ${updates.join(", ")} WHERE id = ?`, params);
+    invalidateDbCache();
 
     const [rows] = await pool.query("SELECT * FROM Reservas WHERE id = ?", [id]);
     const updated = (rows as any[])[0];

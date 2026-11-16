@@ -25,6 +25,7 @@ import {
 import { io } from 'socket.io-client';
 import { AtividadeOperacional, ClasseFuncionarioAtividade } from '../../types';
 import { getAdminToken } from '../../db';
+import { uploadPhotoToStorage } from '../../utils/checklistStorage';
 
 interface AtividadesOperacionaisTabProps {
   classeDestino: ClasseFuncionarioAtividade;
@@ -237,20 +238,8 @@ export const AtividadesOperacionaisTab: React.FC<AtividadesOperacionaisTabProps>
 
     setIsUploadingFoto(true);
     try {
-      const token = getAdminToken();
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const res = await fetch('/api/upload/checklist-image', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok || !data.imageUrl) {
-        throw new Error(data.message || 'Falha no envio da foto');
-      }
-      setFotoUrl(data.imageUrl);
+      const uploadedUrl = await uploadPhotoToStorage(file);
+      setFotoUrl(uploadedUrl);
       showToast('Foto anexada com sucesso!', 'success');
     } catch (err: any) {
       showToast(err.message || 'Erro ao enviar foto de conferência.', 'error');

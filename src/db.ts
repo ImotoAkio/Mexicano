@@ -52,8 +52,8 @@ export function getAdminToken(): string | null {
 const pendingSaves: Promise<any>[] = [];
 
 // Shared remote background synchronizer helper (with JWT auth)
-async function saveToRemoteDB(type: 'clients' | 'boats' | 'reservations' | 'manutencoes', action: 'create' | 'update' | 'delete', data: any) {
-  const p = (async () => {
+async function saveToRemoteDB(type: 'clients' | 'boats' | 'reservations' | 'manutencoes', action: 'create' | 'update' | 'delete', data: any): Promise<boolean> {
+  const p = (async (): Promise<boolean> => {
     try {
       const token = getAdminToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -68,15 +68,18 @@ async function saveToRemoteDB(type: 'clients' | 'boats' | 'reservations' | 'manu
       });
       if (!res.ok) {
         console.warn(`[Remote DB Sync Error] Failed to ${action} ${type} on server.`);
+        return false;
       }
+      return true;
     } catch (err) {
       console.warn(`[Remote DB Connection Error] Could not reach server to ${action} ${type}:`, err);
+      return false;
     }
   })();
   
   pendingSaves.push(p);
   try {
-    await p;
+    return await p;
   } finally {
     const idx = pendingSaves.indexOf(p);
     if (idx !== -1) pendingSaves.splice(idx, 1);
@@ -603,9 +606,10 @@ export const reservationDB = {
   cancel: (id: string): Reserva => {
     return reservationDB.update(id, { status: 'cancelado' });
   },
-  delete: (id: string): void => {
+  delete: async (id: string): Promise<boolean> => {
     memoryReservations = memoryReservations.filter(r => r.id !== id);
-    saveToRemoteDB('reservations', 'delete', { id });
+    notifyDbUpdate('reservation_deleted');
+    return await saveToRemoteDB('reservations', 'delete', { id });
   }
 };
 
@@ -1220,8 +1224,8 @@ export async function loadFromRemote(forceRefresh = false) {
 }
 
 // Mantendo o nome antigo temporariamente para não quebrar componentes não atualizados, mas chamando a versão nova
-export async function syncWithRemote() {
-  return await loadFromRemote();
+export async function syncWithRemote(forceRefresh = false) {
+  return await loadFromRemote(forceRefresh);
 }
 
 export const catalogoEpiDB = {

@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
-import { X, Shield, Activity, FileText, Pocket, Anchor, CheckCircle, Clock, LifeBuoy, Flame } from 'lucide-react';
-import { getBoatCode } from '../../utils/boatUtils';
+import {
+  X,
+  Shield,
+  Activity,
+  FileText,
+  Pocket,
+  Anchor,
+  LifeBuoy,
+  Flame,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 
 export interface ViewChecklistModalProps {
   reserva: any;
@@ -32,7 +42,11 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
   onOpenChecklistForDescida,
   onOpenChecklistForSubida
 }) => {
-  const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
+  const [zoomState, setZoomState] = useState<{
+    stage: string;
+    photos: { label: string; url: string }[];
+    index: number;
+  } | null>(null);
 
   if (!reserva) return null;
 
@@ -124,6 +138,7 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
 
   const fotosDescida = parseFotos(reserva.fotosChecklistDescida, reserva.fotosExtrasDescida);
   const fotosSubida = parseFotos(reserva.fotosChecklistSubida, reserva.fotosExtrasSubida);
+  const currentZoomPhoto = zoomState ? zoomState.photos[zoomState.index] : null;
 
   return (
     <>
@@ -151,15 +166,25 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
 
           {/* Body: Photos and Details */}
           <div className="p-4 overflow-y-auto space-y-4 flex-1 subtle-scrollbar text-xs">
-            {/* Horários */}
+            {/* Horários e Operadores */}
             <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-100 font-mono text-[11px]">
               <div>
                 <span className="text-[9px] text-slate-400 font-extrabold uppercase block">Hora Descida</span>
                 <span className="font-bold text-slate-800">{reserva.horaDescida || '--:--'}</span>
+                {reserva.operadorDescida && (
+                  <span className="text-[10px] text-slate-500 font-sans font-semibold block truncate mt-0.5">
+                    Por: {reserva.operadorDescida}
+                  </span>
+                )}
               </div>
               <div>
                 <span className="text-[9px] text-slate-400 font-extrabold uppercase block">Hora Subida</span>
                 <span className="font-bold text-slate-800">{reserva.horaSubida || '--:--'}</span>
+                {reserva.operadorSubida && (
+                  <span className="text-[10px] text-slate-500 font-sans font-semibold block truncate mt-0.5">
+                    Por: {reserva.operadorSubida}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -178,10 +203,16 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
               ) : (
                 <div className="grid grid-cols-3 gap-2">
                   {fotosDescida.map((foto, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer" onClick={() => setZoomedPhoto(foto.url)}>
+                    <div
+                      key={idx}
+                      className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer"
+                      onClick={() => setZoomState({ stage: 'Checklist Descida', photos: fotosDescida, index: idx })}
+                    >
                       <img
                         src={foto.url}
-                        alt={`Descida ${idx}`}
+                        alt={`Descida ${idx + 1} - ${foto.label}`}
+                        loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           const target = e.currentTarget;
                           if (foto.url.startsWith('/uploads/') && !target.dataset.fallbackApplied) {
@@ -215,10 +246,16 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
               ) : (
                 <div className="grid grid-cols-3 gap-2">
                   {fotosSubida.map((foto, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer" onClick={() => setZoomedPhoto(foto.url)}>
+                    <div
+                      key={idx}
+                      className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group cursor-pointer"
+                      onClick={() => setZoomState({ stage: 'Checklist Subida', photos: fotosSubida, index: idx })}
+                    >
                       <img
                         src={foto.url}
-                        alt={`Subida ${idx}`}
+                        alt={`Subida ${idx + 1} - ${foto.label}`}
+                        loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           const target = e.currentTarget;
                           if (foto.url.startsWith('/uploads/') && !target.dataset.fallbackApplied) {
@@ -237,20 +274,31 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
               )}
             </div>
 
-            {/* Equipamentos & Segurança da Lancha (Apenas para Lanchas) */}
+            {/* Equipamentos & Segurança da Lancha (Apenas para Lanchas) + Observações */}
             {(() => {
               const viewBoat = reserva ? getEmbarcacao(reserva.embarcacaoId) : null;
               const viewIsJet = viewBoat
                 ? (viewBoat.tipo === 'jet' || (viewBoat.nome || '').toLowerCase().includes('jet'))
                 : (reserva?.embarcacaoTipo === 'jet' || (reserva?.barcoNome || '').toLowerCase().includes('jet'));
 
+              const hasObsDescida = Boolean(reserva.checklistObservacoes);
+              const hasObsSubida = Boolean(reserva.observacoesSubida);
+
               if (viewIsJet) {
-                return reserva.checklistObservacoes ? (
+                return (hasObsDescida || hasObsSubida) ? (
                   <div className="space-y-2 pt-2 border-t border-slate-100">
-                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-700 font-medium">
-                      <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
-                      <p className="mt-0.5">{reserva.checklistObservacoes}</p>
-                    </div>
+                    {hasObsDescida && (
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-700 font-medium">
+                        <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações da Descida:</span>
+                        <p className="mt-0.5">{reserva.checklistObservacoes}</p>
+                      </div>
+                    )}
+                    {hasObsSubida && (
+                      <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200/80 text-[11px] text-slate-700 font-medium">
+                        <span className="font-bold text-emerald-900 block text-[10px] uppercase">Observações da Subida:</span>
+                        <p className="mt-0.5">{reserva.observacoesSubida}</p>
+                      </div>
+                    )}
                   </div>
                 ) : null;
               }
@@ -270,10 +318,16 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
                     {renderSafetyItem(reserva, 'boiaCircular', 'Bóia Circular', LifeBuoy)}
                     {renderSafetyItem(reserva, 'primeirosSocorros', 'P. Socorros', Pocket)}
                   </div>
-                  {reserva.checklistObservacoes && (
+                  {hasObsDescida && (
                     <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-700 font-medium mt-1">
-                      <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações do Marinheiro:</span>
+                      <span className="font-bold text-slate-900 block text-[10px] uppercase">Observações da Descida:</span>
                       <p className="mt-0.5">{reserva.checklistObservacoes}</p>
+                    </div>
+                  )}
+                  {hasObsSubida && (
+                    <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200/80 text-[11px] text-slate-700 font-medium mt-1">
+                      <span className="font-bold text-emerald-900 block text-[10px] uppercase">Observações da Subida:</span>
+                      <p className="mt-0.5">{reserva.observacoesSubida}</p>
                     </div>
                   )}
                 </div>
@@ -305,18 +359,81 @@ export const ViewChecklistModal: React.FC<ViewChecklistModalProps> = ({
         </div>
       </div>
 
-      {zoomedPhoto && (
+      {/* Lightbox com navegação entre ângulos */}
+      {zoomState && currentZoomPhoto && (
         <div
-          className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-2 cursor-pointer"
-          onClick={() => setZoomedPhoto(null)}
+          className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-2 sm:p-4"
+          onClick={() => setZoomState(null)}
         >
-          <img src={zoomedPhoto} alt="Zoom" className="max-w-full max-h-full object-contain rounded-lg" />
-          <button
-            className="absolute top-4 right-4 bg-white/10 text-white p-2 rounded-full backdrop-blur hover:bg-white/20 transition-colors"
-            onClick={(e) => { e.stopPropagation(); setZoomedPhoto(null); }}
+          {/* Top info & Close */}
+          <div
+            className="w-full max-w-2xl flex items-center justify-between px-2 py-2 text-white"
+            onClick={(e) => e.stopPropagation()}
           >
-            <X className="w-6 h-6" />
-          </button>
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 block">
+                {zoomState.stage} · {zoomState.index + 1} / {zoomState.photos.length}
+              </span>
+              <span className="text-sm font-bold text-white truncate block">
+                {currentZoomPhoto.label}
+              </span>
+            </div>
+            <button
+              className="bg-white/10 text-white p-2 rounded-full backdrop-blur hover:bg-white/20 transition-colors cursor-pointer shrink-0"
+              onClick={() => setZoomState(null)}
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Image + Prev/Next controls */}
+          <div
+            className="relative flex-1 w-full max-w-3xl flex items-center justify-center min-h-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {zoomState.photos.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setZoomState((prev) =>
+                    prev
+                      ? { ...prev, index: (prev.index - 1 + prev.photos.length) % prev.photos.length }
+                      : null
+                  )
+                }
+                className="absolute left-2 z-10 p-2.5 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/15 backdrop-blur active:scale-95 transition cursor-pointer"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            )}
+
+            <img
+              src={currentZoomPhoto.url}
+              alt={currentZoomPhoto.label}
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (currentZoomPhoto.url.startsWith('/uploads/') && !target.dataset.fallbackApplied) {
+                  target.dataset.fallbackApplied = 'true';
+                  target.src = `https://mexicano.echo.dev.br${currentZoomPhoto.url}`;
+                }
+              }}
+              className="max-w-full max-h-[78vh] object-contain rounded-lg"
+            />
+
+            {zoomState.photos.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setZoomState((prev) =>
+                    prev ? { ...prev, index: (prev.index + 1) % prev.photos.length } : null
+                  )
+                }
+                className="absolute right-2 z-10 p-2.5 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/15 backdrop-blur active:scale-95 transition cursor-pointer"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            )}
+          </div>
         </div>
       )}
     </>
